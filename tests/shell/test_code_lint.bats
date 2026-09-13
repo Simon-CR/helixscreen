@@ -1865,6 +1865,31 @@ EOF
     contains "backup + 1" "$output"
 }
 
+@test "the tool label gate catches the spellings the tree actually uses" {
+    # sizeof(buf) and lv_tr(...) each put a close paren between the formatting
+    # call's open paren and the index; a pattern that bridges the gap with
+    # [^)]* stops dead at that paren. These are the spellings of nearly every
+    # real snprintf and fmt::format site, so a fixture without them certifies
+    # nothing about the tree.
+    local d="${BATS_TEST_TMPDIR}/real_spellings"
+    mkdir -p "$d"
+    cat > "$d/a.cpp" <<'EOF'
+void h(char* buf, int slot_index) { snprintf(buf, sizeof(buf), "Slot %d", slot_index + 1); }
+void i(int lane) { auto s = fmt::format(lv_tr("Lane {}"), lane + 1); }
+void j(int gate) { lv_label_set_text_fmt(label, "Gate %d", gate + 1); }
+EOF
+    run run_tool_label_gate "$d"
+    [ "$status" -eq 1 ]
+    contains "slot_index + 1" "$output"
+    contains "lane + 1" "$output"
+    contains "gate + 1" "$output"
+}
+
+@test "the tool label gate fails closed when the scan root is missing" {
+    run run_tool_label_gate "${BATS_TEST_TMPDIR}/does_not_exist"
+    [ "$status" -eq 1 ]
+}
+
 @test "the tool label gate catches an assignment that feeds a formatting call a few lines later" {
     # Shape 3: shape 2 only sees the arithmetic and the formatting call
     # together on one physical line. Splitting the assignment out reaches the
