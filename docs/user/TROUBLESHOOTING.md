@@ -57,9 +57,11 @@ sudo systemctl restart helixscreen        # Raspberry Pi
 Then tail the log:
 
 ```bash
-sudo journalctl -u helixscreen -f         # Raspberry Pi (systemd)
-tail -f /var/log/messages | grep helix    # AD5M / non-systemd
+sudo journalctl -u helixscreen -f          # Raspberry Pi (systemd)
+tail -f /data/helixscreen/logs/helix.log   # AD5M
 ```
+
+The app log's location varies by platform; see [Collecting Logs](#collecting-logs) for the path on yours.
 
 **Verbosity levels:**
 - `warn` — production default (errors and warnings only)
@@ -1793,7 +1795,7 @@ Covers the K1, K1C and K1 Max on stock or Guilouz Helper Script firmware.
 - HelixScreen, Fluidd, Mainsail and Moonraker all work normally
 
 **Cause:**
-This is a deliberate trade-off, not a fault. HelixScreen and the stock Creality UI cannot share the framebuffer, so the installer stops the stock UI stack. On the K1 that stack is started by `/etc/init.d/S99start_app`, which also launches `master-server`, `app-server` and `web-server` — the backend Creality Print and the Creality Cloud app talk to. Stopping the stock UI takes those with it.
+This is a deliberate trade-off, not a fault. HelixScreen and the stock Creality UI cannot share the framebuffer, so the installer stops the stock UI stack. On the K1 that stack is started by `/etc/init.d/S99start_app`, which also launches `master-server`, `app-server` and `web-server` — the backend Creality Print and the Creality Cloud app talk to. Stopping the stock UI takes those with it. This is the stock-firmware and Guilouz case; on a Simple AF install the stock stack is already disabled and the installer stops only GuppyScreen, so a lost Creality Print connection there predates HelixScreen. Full setup path and background: [K1 / K1C / K1 Max setup guide](guide/creality-k1c-setup.md).
 
 **What still works for sending prints:**
 - Fluidd or Mainsail in a browser
@@ -1867,8 +1869,10 @@ ls -la /opt/config/mod/.root/S80guppyscreen
 
 **Check HelixScreen is running:**
 ```bash
-/etc/init.d/S90helixscreen status
-cat /opt/helixscreen/logs/launcher.log    # AD5M launcher capture
+/etc/init.d/S90helixscreen status                        # Forge-X (Klipper Mod: S80helixscreen)
+tail /data/helixscreen/logs/helix.log                    # structured app log
+cat /opt/helixscreen/logs/launcher.log                   # Forge-X launcher capture
+cat /root/printer_software/helixscreen/logs/launcher.log # Klipper Mod launcher capture
 ```
 
 ### Service commands (SysV init)
@@ -1879,15 +1883,15 @@ AD5M uses SysV init, not systemd. Commands are different:
 # Forge-X
 /etc/init.d/S90helixscreen start|stop|restart|status
 cat /opt/helixscreen/logs/launcher.log
-grep helix-screen /var/log/messages | tail -100    # structured app log
+tail -100 /data/helixscreen/logs/helix.log    # structured app log
 
 # Klipper Mod
 /etc/init.d/S80helixscreen start|stop|restart|status
-cat /opt/helixscreen/logs/launcher.log
-grep helix-screen /var/log/messages | tail -100
+cat /root/printer_software/helixscreen/logs/launcher.log
+tail -100 /data/helixscreen/logs/helix.log
 ```
 
-> The `launcher.log` file captures startup messages and crash output from the supervisor shell. The full structured app log (everything the app itself logs) goes to the system log (`/var/log/messages`). You usually want both when reporting an issue. On pre-v0.99.62 installs the launcher log lived at `/tmp/helixscreen.log` — check that path if `launcher.log` doesn't exist.
+> The `launcher.log` file captures startup messages and crash output from the supervisor shell. The full structured app log (everything the app itself logs) goes to `/data/helixscreen/logs/helix.log`, written directly to flash and rotated; `/var/log/messages` carries only the earliest startup output, before the app's own logging takes over. You usually want both when reporting an issue. On pre-v0.99.62 installs the launcher log lived at `/tmp/helixscreen.log` — check that path if `launcher.log` doesn't exist.
 
 ### SSH/SCP notes
 
@@ -2070,22 +2074,41 @@ Two streams to collect — both are needed when reporting an issue:
 
 ```bash
 # 1) Structured app log (everything from spdlog: connection events, errors, etc.)
-grep helix-screen /var/log/messages | tail -200
+tail -200 /data/helixscreen/logs/helix.log
 
 # 2) Launcher / supervisor capture (startup banner, crash output, glibc abort messages)
-tail -200 /opt/helixscreen/logs/launcher.log    # pre-v0.99.62 installs: /tmp/helixscreen.log
+#    Forge-X: /opt/helixscreen/logs/launcher.log
+#    Klipper Mod: /root/printer_software/helixscreen/logs/launcher.log
+#    pre-v0.99.62 installs: /tmp/helixscreen.log
+tail -200 /opt/helixscreen/logs/launcher.log
 
-# Follow the system log live while reproducing the issue
-tail -f /var/log/messages | grep helix-screen
+# Follow the app log live while reproducing the issue
+tail -f /data/helixscreen/logs/helix.log
 ```
 
-**Creality K1 / K1C / K2 (BusyBox in-memory syslog):**
+**Creality K1 / K1C (BusyBox):**
 ```bash
-# Structured app log — held in a RAM ring buffer, vanishes on reboot
-logread | grep helix-screen | tail -200
+# Structured app log (on flash, rotated)
+tail -200 /usr/data/helixscreen/logs/helix.log
 
 # Launcher / supervisor capture
 tail -200 /usr/data/helixscreen/logs/launcher.log
+
+# Anything that reached the in-memory syslog before the app log opened
+logread | grep helix-screen | tail -200
+```
+
+**Creality K2:**
+```bash
+# Structured app log (on the UDISK data partition, rotated)
+tail -200 /mnt/UDISK/helixscreen/logs/helix.log
+
+# Launcher / crash capture (lives beside the install; on builds whose
+# /var/log is persistent it lands at /var/log/helixscreen/launcher.log)
+tail -200 /opt/helixscreen/logs/launcher.log
+
+# Anything that reached the OpenWrt syslog
+logread | grep helix-screen | tail -200
 ```
 
 **Flashforge AD5X (ZMOD MIPS):**
@@ -2114,8 +2137,14 @@ tail -200 /var/log/helixscreen/launcher.log
 
 **Elegoo Centauri Carbon (COSMOS):**
 ```bash
-logread | grep helix-screen | tail -200
+# Structured app log (on flash, rotated)
+tail -200 /user-resource/helixscreen/logs/helix.log
+
+# Launcher / supervisor capture
 tail -200 /user-resource/helixscreen/logs/launcher.log
+
+# Anything that reached the in-memory syslog before the app log opened
+logread | grep helix-screen | tail -200
 ```
 
 ### Configuration
