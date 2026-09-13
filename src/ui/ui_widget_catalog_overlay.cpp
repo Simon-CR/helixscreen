@@ -75,7 +75,6 @@ void release_catalog_state() {
     g_catalog_state.config = nullptr;
     g_catalog_state.on_select = nullptr;
     g_catalog_state.on_close = nullptr;
-    g_catalog_state.entries.clear();
     if (on_close) {
         on_close();
     }
@@ -813,11 +812,8 @@ void WidgetCatalogOverlay::show(lv_obj_t* parent_screen, const PanelWidgetConfig
         }
     });
 
-    spdlog::info("[WidgetCatalog] Overlay shown with {} categories, {} of {} widgets available "
-                 "here, search over {} entries",
-                 get_widget_categories().size(),
-                 get_all_widget_defs().size() - gated_widget_defs().size(),
-                 get_all_widget_defs().size(), g_catalog_state.entries.size());
+    spdlog::info("[WidgetCatalog] Overlay shown with {} categories over {} widget definitions",
+                 get_widget_categories().size(), get_all_widget_defs().size());
 }
 
 // ============================================================================

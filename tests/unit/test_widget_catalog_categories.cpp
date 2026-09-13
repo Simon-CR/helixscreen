@@ -438,6 +438,46 @@ TEST_CASE_METHOD(WidgetCatalogCategoryFixture,
     }
 }
 
+TEST_CASE_METHOD(WidgetCatalogCategoryFixture,
+                 "Widget catalog: category rows count available widgets, not registry members",
+                 "[widget_catalog][1016]") {
+    open_catalog();
+    lv_obj_t* group = category_group();
+    REQUIRE(group != nullptr);
+
+    // The subtitle must advertise what the dive actually offers: the available
+    // count, not the registry membership (gated defs file under the unavailable
+    // row instead).
+    for (const auto& cat : get_widget_categories()) {
+        const size_t available = available_ids_in_category(cat.id).size();
+        if (available == 0) {
+            continue;
+        }
+        lv_obj_t* row = row_with_label(group, cat.display_name);
+        INFO("category: " << cat.display_name);
+        REQUIRE(row != nullptr);
+        lv_obj_t* desc = lv_obj_find_by_name(row, "description");
+        REQUIRE(desc != nullptr);
+        CHECK(lv_label_get_text(desc) == std::to_string(available) + " widgets");
+    }
+    const size_t gated = [&] {
+        size_t n = 0;
+        for (const auto& def : get_all_widget_defs()) {
+            n += def_is_gated_here(def);
+        }
+        return n;
+    }();
+    if (gated > 0) {
+        lv_obj_t* row = row_with_label(group, "Unavailable on this printer");
+        REQUIRE(row != nullptr);
+        lv_obj_t* desc = lv_obj_find_by_name(row, "description");
+        REQUIRE(desc != nullptr);
+        CHECK(lv_label_get_text(desc) == std::to_string(gated) + " widgets");
+    }
+
+    force_close();
+}
+
 // ============================================================================
 // Teardown
 // ============================================================================
