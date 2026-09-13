@@ -11,6 +11,7 @@
 #include "moonraker_api.h"
 #include "test_helpers/happy_hare_test_access.h"
 #include "test_helpers/registered_backend.h"
+#include "test_helpers/seeded_override.h"
 
 #include <algorithm>
 #include <vector>
@@ -64,8 +65,12 @@ class AmsBackendHappyHareTestHelper : public AmsBackendHappyHare {
     /// Seed a user override directly (no persist round-trip), as the AFC
     /// override tests do. Callers hold no lock; this takes mutex_.
     void set_gate_override(int slot_index, const helix::ams::FilamentSlotOverride& o) {
-        std::lock_guard<std::mutex> lock(mutex_);
-        HappyHareTestAccess::overrides(*this)[slot_index] = o;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            HappyHareTestAccess::overrides(*this)[slot_index] = o;
+        }
+        // The backend's own init files both stores together.
+        helix::test::file_override_as_lane_records(*this, slot_index, o);
     }
 
     [[nodiscard]] bool has_gate_override(int slot_index) const {

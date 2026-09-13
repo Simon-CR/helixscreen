@@ -21,6 +21,7 @@
 #include "settings_manager.h"
 #include "test_helpers/afc_test_access.h"
 #include "test_helpers/registered_backend.h"
+#include "test_helpers/seeded_override.h"
 
 #include <algorithm>
 #include <string>
@@ -40,8 +41,12 @@ class AfcReassertHelper : public AmsBackendAfc {
     }
 
     void set_override(int slot_index, const helix::ams::FilamentSlotOverride& o) {
-        std::lock_guard<std::mutex> lock(mutex_);
-        AfcTestAccess::overrides(*this)[slot_index] = o;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            AfcTestAccess::overrides(*this)[slot_index] = o;
+        }
+        // The backend's own init files both stores together.
+        helix::test::file_override_as_lane_records(*this, slot_index, o);
     }
 
     /// Drive the live status path, so assertions see what the UI would paint.

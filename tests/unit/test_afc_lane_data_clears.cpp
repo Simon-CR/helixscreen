@@ -20,6 +20,7 @@
 #include "ams_types.h"
 #include "test_helpers/afc_test_access.h"
 #include "test_helpers/registered_backend.h"
+#include "test_helpers/seeded_override.h"
 
 #include <string>
 
@@ -80,8 +81,12 @@ class AfcLaneDataClearHelper : public AmsBackendAfc {
     }
 
     void set_override(int slot_index, const helix::ams::FilamentSlotOverride& o) {
-        std::lock_guard<std::mutex> lock(mutex_);
-        AfcTestAccess::overrides(*this)[slot_index] = o;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            AfcTestAccess::overrides(*this)[slot_index] = o;
+        }
+        // The backend's own init files both stores together.
+        helix::test::file_override_as_lane_records(*this, slot_index, o);
     }
 
     [[nodiscard]] std::string brand(int slot_index) const {
