@@ -337,7 +337,8 @@ void save_touch_range(const TouchRangeSettings&) {}
 // here. The install/update entry points in ui_panel_advanced.cpp are gated to
 // a feature-unavailable toast on this platform, so the file-operation and
 // restart methods never run and their callbacks never fire.
-MacroManager::MacroManager(IMoonrakerAPI&, const PrinterDiscovery&) {}
+MacroManager::MacroManager(IMoonrakerAPI& api, const PrinterDiscovery& hardware)
+    : api_(api), hardware_(hardware) {}
 
 MacroManager::~MacroManager() {}
 
