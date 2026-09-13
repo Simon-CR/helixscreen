@@ -30,6 +30,7 @@
 #include "moonraker_api_mock.h"
 #include "moonraker_client_mock.h"
 #include "printer_state.h"
+#include "test_helpers/registered_backend.h"
 
 #include <filesystem>
 #include <functional>

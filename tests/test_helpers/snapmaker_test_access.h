@@ -6,6 +6,7 @@
 #include "ams_backend_snapmaker.h"
 #include "filament_slot_override.h"
 #include "filament_slot_override_store.h"
+#include "test_helpers/seeded_override.h"
 
 #include <memory>
 #include <mutex>
@@ -29,8 +30,13 @@ class SnapmakerTestAccess {
     }
     static void seed_override(AmsBackendSnapmaker& b, int slot_index,
                               const helix::ams::FilamentSlotOverride& ovr) {
-        std::lock_guard<std::mutex> lock(b.mutex_);
-        b.overrides_[slot_index] = ovr;
+        {
+            std::lock_guard<std::mutex> lock(b.mutex_);
+            b.overrides_[slot_index] = ovr;
+        }
+        // The backend's own init files both stores together; a fixture that
+        // wrote only this map would leave the lane reading empty.
+        helix::test::file_override_as_lane_records(b, slot_index, ovr);
     }
     static std::optional<helix::ams::FilamentSlotOverride>
     get_override(const AmsBackendSnapmaker& b, int slot_index) {

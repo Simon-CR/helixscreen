@@ -10,6 +10,7 @@
 #include "hh_defaults.h"
 #include "moonraker_api.h"
 #include "test_helpers/happy_hare_test_access.h"
+#include "test_helpers/registered_backend.h"
 
 #include <algorithm>
 #include <vector>
@@ -354,7 +355,8 @@ using helix::AmsBackendHappyHareTestHelper;
 // ============================================================================
 
 TEST_CASE("Happy Hare persistence: MMU_GATE_MAP basic format", "[ams][happy_hare][persistence]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
 
     SlotInfo info;
@@ -368,7 +370,8 @@ TEST_CASE("Happy Hare persistence: MMU_GATE_MAP basic format", "[ams][happy_hare
 }
 
 TEST_CASE("Happy Hare persistence: MMU_GATE_MAP with color", "[ams][happy_hare][persistence]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
 
     SlotInfo info;
@@ -384,7 +387,8 @@ TEST_CASE("Happy Hare persistence: MMU_GATE_MAP with color", "[ams][happy_hare][
 
 TEST_CASE("Happy Hare persistence: MMU_GATE_MAP color uppercase no prefix",
           "[ams][happy_hare][persistence]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
 
     SlotInfo info;
@@ -398,7 +402,8 @@ TEST_CASE("Happy Hare persistence: MMU_GATE_MAP color uppercase no prefix",
 }
 
 TEST_CASE("Happy Hare persistence: MMU_GATE_MAP with material", "[ams][happy_hare][persistence]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
 
     SlotInfo info;
@@ -413,7 +418,8 @@ TEST_CASE("Happy Hare persistence: MMU_GATE_MAP with material", "[ams][happy_har
 
 TEST_CASE("Happy Hare persistence: MMU_GATE_MAP with Spoolman ID",
           "[ams][happy_hare][persistence]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
 
     SlotInfo info;
@@ -428,7 +434,8 @@ TEST_CASE("Happy Hare persistence: MMU_GATE_MAP with Spoolman ID",
 
 TEST_CASE("Happy Hare persistence: MMU_GATE_MAP clear Spoolman with -1",
           "[ams][happy_hare][persistence]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
 
     // Pre-set existing spoolman_id on slot
@@ -449,7 +456,8 @@ TEST_CASE("Happy Hare persistence: MMU_GATE_MAP clear Spoolman with -1",
 
 TEST_CASE("Happy Hare persistence: full slot info generates complete command",
           "[ams][happy_hare][persistence]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
 
     SlotInfo info;
@@ -466,7 +474,8 @@ TEST_CASE("Happy Hare persistence: full slot info generates complete command",
 
 TEST_CASE("Happy Hare persistence: skips COLOR for default grey",
           "[ams][happy_hare][persistence]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
 
     SlotInfo info;
@@ -484,7 +493,8 @@ TEST_CASE("Happy Hare persistence: skips COLOR for default grey",
 // leaves the gate map on the previous colour (prestonbrown/helixscreen#1597).
 TEST_CASE("Happy Hare persistence: dispatches COLOR for pure black",
           "[ams][happy_hare][persistence][1597]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
 
     SlotInfo info;
@@ -498,7 +508,8 @@ TEST_CASE("Happy Hare persistence: dispatches COLOR for pure black",
 
 TEST_CASE("Happy Hare persistence: skips MATERIAL for empty string",
           "[ams][happy_hare][persistence]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
 
     SlotInfo info;
@@ -515,7 +526,8 @@ TEST_CASE("Happy Hare persistence: skips MATERIAL for empty string",
 
 TEST_CASE("Happy Hare persistence: skips SPOOLID when both old and new are zero/negative",
           "[ams][happy_hare][persistence]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
 
     // Slot starts with spoolman_id = 0 (default)
@@ -534,7 +546,8 @@ TEST_CASE("Happy Hare persistence: skips SPOOLID when both old and new are zero/
 
 TEST_CASE("Happy Hare persistence: skips command when all values are default/empty",
           "[ams][happy_hare][persistence]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
 
     SlotInfo info;
@@ -551,7 +564,8 @@ TEST_CASE("Happy Hare persistence: skips command when all values are default/emp
 
 TEST_CASE("Happy Hare persistence: MMU_TTG_MAP fires when mapped_tool changes via set_slot_info",
           "[ams][happy_hare][persistence]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
 
     // Default mapping for slot 0 is T0. Remap to T2 through the slot edit path.
@@ -565,7 +579,8 @@ TEST_CASE("Happy Hare persistence: MMU_TTG_MAP fires when mapped_tool changes vi
 
 TEST_CASE("Happy Hare persistence: MMU_TTG_MAP not fired when mapped_tool unchanged",
           "[ams][happy_hare][persistence]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
 
     // Slot 0 already maps to T0. Setting same value with other dirty fields must not
@@ -584,7 +599,8 @@ TEST_CASE("Happy Hare persistence: MMU_TTG_MAP not fired when mapped_tool unchan
 TEST_CASE("Happy Hare persistence: MMU_TTG_MAP not fired when caller leaves mapped_tool default "
           "(-1)",
           "[ams][happy_hare][persistence]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
 
     // Spoolman polling builds a SlotInfo from the existing slot, but a misuse
@@ -603,7 +619,8 @@ TEST_CASE("Happy Hare persistence: MMU_TTG_MAP not fired when caller leaves mapp
 }
 
 TEST_CASE("Happy Hare persistence: different gate indices", "[ams][happy_hare][persistence]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(8);
 
     SECTION("Gate 0") {
@@ -637,7 +654,8 @@ TEST_CASE("Happy Hare persistence: different gate indices", "[ams][happy_hare][p
 
 TEST_CASE("Happy Hare reset_tool_mappings sends MMU_TTG_MAP for each tool",
           "[ams][happy_hare][tool_mapping][reset]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
 
     auto result = helper.reset_tool_mappings();
@@ -652,7 +670,8 @@ TEST_CASE("Happy Hare reset_tool_mappings sends MMU_TTG_MAP for each tool",
 }
 
 TEST_CASE("Happy Hare reset_tool_mappings with 8 tools", "[ams][happy_hare][tool_mapping][reset]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(8);
 
     auto result = helper.reset_tool_mappings();
@@ -666,7 +685,8 @@ TEST_CASE("Happy Hare reset_tool_mappings with 8 tools", "[ams][happy_hare][tool
 
 TEST_CASE("Happy Hare reset_tool_mappings with zero tools is no-op",
           "[ams][happy_hare][tool_mapping][reset]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     // Don't initialize gates - tool_to_slot_map is empty
 
     auto result = helper.reset_tool_mappings();
@@ -681,7 +701,8 @@ TEST_CASE("Happy Hare reset_tool_mappings with zero tools is no-op",
 
 TEST_CASE("Happy Hare reset_endless_spool sends MMU_ENDLESS_SPOOL RESET",
           "[ams][happy_hare][endless_spool][reset]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
 
     auto result = helper.reset_endless_spool();
@@ -693,7 +714,8 @@ TEST_CASE("Happy Hare reset_endless_spool sends MMU_ENDLESS_SPOOL RESET",
 
 TEST_CASE("Happy Hare endless spool is editable on single-unit",
           "[ams][happy_hare][endless_spool]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
 
     auto caps = helper.get_endless_spool_capabilities();
@@ -704,7 +726,8 @@ TEST_CASE("Happy Hare endless spool is editable on single-unit",
 
 TEST_CASE("Happy Hare set_endless_spool_backup sends MMU_ENDLESS_SPOOL GROUPS",
           "[ams][happy_hare][endless_spool]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
 
     auto result = helper.set_endless_spool_backup(0, 2);
@@ -718,7 +741,8 @@ TEST_CASE("Happy Hare set_endless_spool_backup sends MMU_ENDLESS_SPOOL GROUPS",
 
 TEST_CASE("Happy Hare set_endless_spool_backup removal makes gate standalone",
           "[ams][happy_hare][endless_spool]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
     // Two backup pairs: gates 0&1 share group 0, gates 2&3 share group 1.
     helper.get_mutable_slot(0)->endless_spool_group = 0;
@@ -735,7 +759,8 @@ TEST_CASE("Happy Hare set_endless_spool_backup removal makes gate standalone",
 
 TEST_CASE("Happy Hare endless spool is read-only on multi-unit",
           "[ams][happy_hare][endless_spool]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates_multi({4, 4});
 
     auto caps = helper.get_endless_spool_capabilities();
@@ -755,7 +780,8 @@ TEST_CASE("Happy Hare endless spool is read-only on multi-unit",
 // decision layer that DID refuse -2 was fixed by teaching it the sentinel is a
 // real target. This asserts the backend half of that contract.
 TEST_CASE("Happy Hare unload_filament under bypass sends MMU_UNLOAD", "[ams][happy_hare][bypass]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
     helper.set_running(true);
     helper.set_filament_loaded(true);
@@ -772,7 +798,8 @@ TEST_CASE("Happy Hare unload_filament under bypass still refuses an empty toolhe
     // Bypass being engaged is not itself evidence of filament: the selector can
     // sit on the bypass position with nothing fed. The backend's own guard must
     // still bite, so the UI's affordance and the backend's refusal agree.
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
     helper.set_running(true);
     helper.set_filament_loaded(false);
@@ -790,7 +817,8 @@ TEST_CASE("Happy Hare unload_filament under bypass still refuses an empty toolhe
 // ============================================================================
 
 TEST_CASE("Happy Hare eject_lane sends MMU_EJECT command", "[ams][happy_hare][eject]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
     helper.set_running(true);
 
@@ -801,7 +829,8 @@ TEST_CASE("Happy Hare eject_lane sends MMU_EJECT command", "[ams][happy_hare][ej
 }
 
 TEST_CASE("Happy Hare eject_lane targets correct gate", "[ams][happy_hare][eject]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
     helper.set_running(true);
 
@@ -812,7 +841,8 @@ TEST_CASE("Happy Hare eject_lane targets correct gate", "[ams][happy_hare][eject
 }
 
 TEST_CASE("Happy Hare eject_lane validates slot index", "[ams][happy_hare][eject]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
     helper.set_running(true);
 
@@ -823,7 +853,8 @@ TEST_CASE("Happy Hare eject_lane validates slot index", "[ams][happy_hare][eject
 }
 
 TEST_CASE("Happy Hare eject_lane fails when not running", "[ams][happy_hare][eject]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
 
     auto result = helper.eject_lane(0);
@@ -840,7 +871,8 @@ TEST_CASE("Happy Hare clear_fault re-syncs the gate via MMU_RECOVER",
     // MMU_RECOVER is bookkeeping, not a filament move, so it is a fault clear
     // rather than a position recovery. The gate index must be honoured — HH's
     // fault clear is genuinely per-gate, unlike AFC's.
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
     helper.set_running(true);
 
@@ -851,7 +883,8 @@ TEST_CASE("Happy Hare clear_fault re-syncs the gate via MMU_RECOVER",
 }
 
 TEST_CASE("Happy Hare clear_fault targets correct gate", "[ams][happy_hare][recovery]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
     helper.set_running(true);
 
@@ -866,7 +899,8 @@ TEST_CASE("Happy Hare clear_fault validates a genuinely out-of-range slot index"
     // -1 is a documented sentinel ("no particular gate"), not an invalid index —
     // see the dedicated -1 test below. An out-of-range positive index is still
     // rejected.
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
     helper.set_running(true);
 
@@ -883,7 +917,8 @@ TEST_CASE("Happy Hare clear_fault honours -1 as \"no particular gate\"",
     // -1 whenever nothing is loaded — exactly the state Reset is pressed in.
     // Bare MMU_RECOVER (no GATE=) re-syncs the whole selector, the system-scoped
     // analogue of AFC's RESET_FAILURE.
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
     helper.set_running(true);
 
@@ -895,7 +930,8 @@ TEST_CASE("Happy Hare clear_fault honours -1 as \"no particular gate\"",
 }
 
 TEST_CASE("Happy Hare clear_fault fails when not running", "[ams][happy_hare][recovery]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
 
     auto result = helper.clear_fault(0);
@@ -908,7 +944,8 @@ TEST_CASE("Happy Hare clear_fault fails when not running", "[ams][happy_hare][re
 // ============================================================================
 
 TEST_CASE("Happy Hare supports_lane_eject returns true", "[ams][happy_hare][capability]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     REQUIRE(helper.supports_lane_eject());
 }
 
@@ -926,7 +963,8 @@ TEST_CASE("Default AmsBackend eject_lane returns not_supported", "[ams][capabili
 }
 
 TEST_CASE("Happy Hare reset button is labeled 'Home'", "[ams][happy_hare][capability]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     REQUIRE(helper.reset_button_label() == "Home");
 }
 
@@ -964,7 +1002,8 @@ TEST_CASE("ams_action_from_string handles v4 extruder actions", "[ams][happy_har
 // --- Phase 1C: Gate temperature parsing ---
 
 TEST_CASE("Happy Hare parses gate_temperature into slot nozzle temps", "[ams][happy_hare][v4]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
 
     nlohmann::json mmu_data = {{"gate_temperature", {210, 220, 230, 240}}};
@@ -985,7 +1024,8 @@ TEST_CASE("Happy Hare parses gate_temperature into slot nozzle temps", "[ams][ha
 // --- Phase 1D: Gate name parsing ---
 
 TEST_CASE("Happy Hare parses gate_name into slot color_name", "[ams][happy_hare][v4]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
 
     nlohmann::json mmu_data = {{"gate_name", {"Red PLA", "Blue PETG", "Black ABS", ""}}};
@@ -1004,7 +1044,8 @@ TEST_CASE("Happy Hare parses gate_name into slot color_name", "[ams][happy_hare]
 // --- Phase 2A: Bowden progress ---
 
 TEST_CASE("Happy Hare parses bowden_progress", "[ams][happy_hare][v4]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
 
     // Default is -1 (not available)
@@ -1035,7 +1076,8 @@ TEST_CASE("SpoolmanMode string conversions", "[ams][happy_hare][v4]") {
 }
 
 TEST_CASE("Happy Hare parses spoolman_support and pending_spool_id", "[ams][happy_hare][v4]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
 
     nlohmann::json mmu_data = {{"spoolman_support", "pull"}, {"pending_spool_id", 42}};
@@ -1049,7 +1091,8 @@ TEST_CASE("Happy Hare parses spoolman_support and pending_spool_id", "[ams][happ
 // --- Phase 2C: gate_spool_id parsing ---
 
 TEST_CASE("Happy Hare parses gate_spool_id into slot spoolman_id", "[ams][happy_hare][v4]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
 
     nlohmann::json mmu_data = {{"gate_spool_id", {5, 0, 12, 99}}};
@@ -1069,7 +1112,8 @@ TEST_CASE("Happy Hare parses gate_spool_id into slot spoolman_id", "[ams][happy_
 }
 
 TEST_CASE("Happy Hare gate_spool_id skips non-integer values", "[ams][happy_hare][v4]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(3);
 
     // Slot 0 is string (skip), slot 1 is valid, slot 2 is null (skip)
@@ -1088,7 +1132,8 @@ TEST_CASE("Happy Hare gate_spool_id skips non-integer values", "[ams][happy_hare
 
 TEST_CASE("Happy Hare gate_spool_id with negative values clears spool link",
           "[ams][happy_hare][v4]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(2);
 
     // First set valid IDs
@@ -1105,7 +1150,8 @@ TEST_CASE("Happy Hare gate_spool_id with negative values clears spool link",
 
 TEST_CASE("Happy Hare gate_spool_id partial array only updates provided slots",
           "[ams][happy_hare][v4]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
 
     // Only 2 elements for 4 gates — slots 2,3 should remain at default
@@ -1126,7 +1172,8 @@ TEST_CASE("Happy Hare external re-bind clears our override (#1281 step 7)",
     // wiring on the live gate_spool_id path. Another writer (Mainsail, an HH
     // macro) re-binds gate 0 to a different spool — firmware truth must win
     // and our whole override record must drop, never setting-gated.
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(2);
 
     helix::ams::FilamentSlotOverride o;
@@ -1145,7 +1192,8 @@ TEST_CASE("Happy Hare external re-bind clears our override (#1281 step 7)",
 
 TEST_CASE("Happy Hare dissimilar multi-unit initialization from num_gates string",
           "[ams][happy_hare][v4][multi-unit]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
 
     // Simulate v4 sending num_gates as comma-separated string, num_units: 2
     // First, set num_units via parse
@@ -1168,7 +1216,8 @@ TEST_CASE("Happy Hare dissimilar multi-unit initialization from num_gates string
 
 TEST_CASE("Happy Hare falls back to even split when no per-unit counts",
           "[ams][happy_hare][v4][multi-unit]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
 
     // v3-style: just num_units + gate_status
     nlohmann::json setup = {{"num_units", 2}};
@@ -1186,7 +1235,8 @@ TEST_CASE("Happy Hare falls back to even split when no per-unit counts",
 // --- Phase 4: Status fields ---
 
 TEST_CASE("Happy Hare parses v4 status fields", "[ams][happy_hare][v4]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
 
     nlohmann::json mmu_data = {{"espooler_active", "rewind"},
@@ -1207,7 +1257,8 @@ TEST_CASE("Happy Hare parses v4 status fields", "[ams][happy_hare][v4]") {
 }
 
 TEST_CASE("Happy Hare v4 status fields have safe defaults", "[ams][happy_hare][v4]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
 
     // Parse with no v4 fields (simulating v3)
@@ -1228,7 +1279,8 @@ TEST_CASE("Happy Hare v4 status fields have safe defaults", "[ams][happy_hare][v
 // --- Phase 5: Device actions ---
 
 TEST_CASE("Happy Hare device sections include accessories", "[ams][happy_hare][v4]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     auto sections = helper.get_device_sections();
 
     bool found_accessories = false;
@@ -1242,7 +1294,8 @@ TEST_CASE("Happy Hare device sections include accessories", "[ams][happy_hare][v
 }
 
 TEST_CASE("Happy Hare espooler_mode action sends MMU_ESPOOLER", "[ams][happy_hare][v4]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
     helper.set_running(true);
 
@@ -1252,7 +1305,8 @@ TEST_CASE("Happy Hare espooler_mode action sends MMU_ESPOOLER", "[ams][happy_har
 }
 
 TEST_CASE("Happy Hare clog_detection action sends MMU_TEST_CONFIG", "[ams][happy_hare][v4]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
     helper.set_running(true);
 
@@ -1269,13 +1323,15 @@ TEST_CASE("Happy Hare clog_detection action sends MMU_TEST_CONFIG", "[ams][happy
 // --- Phase 6: Dryer support ---
 
 TEST_CASE("Happy Hare dryer not supported by default", "[ams][happy_hare][v4]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     auto dryer = helper.get_dryer_info();
     REQUIRE_FALSE(dryer.supported);
 }
 
 TEST_CASE("Happy Hare parses drying_state from v4", "[ams][happy_hare][v4]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
 
     nlohmann::json mmu_data = {{"drying_state",
@@ -1298,7 +1354,8 @@ TEST_CASE("Happy Hare parses drying_state from v4", "[ams][happy_hare][v4]") {
 }
 
 TEST_CASE("Happy Hare dryer start/stop send MMU_HEATER commands", "[ams][happy_hare][v4]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
 
     // Enable dryer support by parsing drying_state
@@ -1316,7 +1373,8 @@ TEST_CASE("Happy Hare dryer start/stop send MMU_HEATER commands", "[ams][happy_h
 }
 
 TEST_CASE("Happy Hare drying targets a unit's gates on multi-unit", "[ams][happy_hare][v4]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     // Enable dryer support first, then install a two-unit (4+4) topology so the
     // per-unit GATES path is exercised.
     helper.test_parse_mmu_state({{"drying_state", {{"active", false}}}});
@@ -1335,7 +1393,8 @@ TEST_CASE("Happy Hare drying targets a unit's gates on multi-unit", "[ams][happy
 
 TEST_CASE("Happy Hare reads filament_heater + heater_max_temp from config",
           "[ams][happy_hare][v4]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     nlohmann::json settings = {{"mmu_machine", {{"filament_heater", "heater_generic box1_heater"}}},
                                {"mmu", {{"heater_max_temp", 65.0}}}};
     helper.test_apply_heater_config(settings);
@@ -1346,7 +1405,8 @@ TEST_CASE("Happy Hare reads filament_heater + heater_max_temp from config",
 
 TEST_CASE("Happy Hare surfaces env sensor temp+humidity without a heater",
           "[ams][happy_hare][v4]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
 
     // Heater-less enclosure: only an environment sensor is configured. The dryer is
@@ -1369,7 +1429,8 @@ TEST_CASE("Happy Hare surfaces env sensor temp+humidity without a heater",
 
 TEST_CASE("Happy Hare resolves a non-heater_generic filament heater verbatim",
           "[ams][happy_hare][v4]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
 
     // HH stores the full Klipper object name; a heater whose section is not
@@ -1385,7 +1446,8 @@ TEST_CASE("Happy Hare resolves a non-heater_generic filament heater verbatim",
 }
 
 TEST_CASE("Happy Hare surfaces box heater temp as unit environment", "[ams][happy_hare][v4]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
 
     // Before any dryer data, no environment is reported.
@@ -1406,7 +1468,8 @@ TEST_CASE("Happy Hare surfaces box heater temp as unit environment", "[ams][happ
 }
 
 TEST_CASE("Happy Hare reads box humidity from environment sensor chip", "[ams][happy_hare][v4]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
 
     // Configure the dryer + the environment_sensor name (mirrors [mmu_machine]).
@@ -1443,7 +1506,8 @@ TEST_CASE("Happy Hare resolves box humidity from aht20_f chip (QIDI Box)",
     // the parser must derive "aht20_f box" as a humidity-chip candidate. Before the
     // candidate list gained aht20_f/aht20, this resolved nothing and humidity never
     // showed for QIDI Box users on the Happy Hare backend (#1022).
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
 
     nlohmann::json settings = {{"mmu_machine",
@@ -1468,7 +1532,8 @@ TEST_CASE("Happy Hare resolves box humidity from aht20_f chip (QIDI Box)",
 
 TEST_CASE("Happy Hare per-gate sensors map to the right unit (multi-MMU)",
           "[ams][happy_hare][v4]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     // Two MMU units of 2 gates each (gates 0-1 = unit 0, gates 2-3 = unit 1).
     helper.initialize_test_units({2, 2});
 
@@ -1506,7 +1571,8 @@ TEST_CASE("Happy Hare per-gate sensors map to the right unit (multi-MMU)",
 }
 
 TEST_CASE("Happy Hare dryer computes remaining from commanded TIMER", "[ams][happy_hare][v4]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
     helper.test_set_clock([] { return std::time_t{1000}; });
     helper.test_parse_mmu_state(nlohmann::json{{"drying_state", {{"active", false}}}});
@@ -1516,7 +1582,8 @@ TEST_CASE("Happy Hare dryer computes remaining from commanded TIMER", "[ams][hap
 }
 
 TEST_CASE("Happy Hare dryer start without dryer returns not_supported", "[ams][happy_hare][v4]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
 
     // No drying_state parsed, so dryer is not supported
@@ -1581,7 +1648,8 @@ TEST_CASE("ams_action_from_string preserves all v3 mappings", "[ams][happy_hare]
 
 TEST_CASE("Happy Hare gate_temperature handles wrong value types gracefully",
           "[ams][happy_hare][v4][edge]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
 
     // Array with mixed types — string values should be ignored
@@ -1599,7 +1667,8 @@ TEST_CASE("Happy Hare gate_temperature handles wrong value types gracefully",
 
 TEST_CASE("Happy Hare gate_temperature with shorter array than gate count",
           "[ams][happy_hare][v4][edge]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(8);
 
     // Only 4 values for 8 gates — remaining should be untouched
@@ -1615,7 +1684,8 @@ TEST_CASE("Happy Hare gate_temperature with shorter array than gate count",
 // --- gate_name: empty strings, partial arrays ---
 
 TEST_CASE("Happy Hare gate_name with all empty strings", "[ams][happy_hare][v4][edge]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
 
     nlohmann::json mmu_data = {{"gate_name", {"", "", "", ""}}};
@@ -1630,7 +1700,8 @@ TEST_CASE("Happy Hare gate_name with all empty strings", "[ams][happy_hare][v4][
 // --- bowden_progress: boundary values ---
 
 TEST_CASE("Happy Hare bowden_progress boundary values", "[ams][happy_hare][v4][edge]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
 
     // 0%
@@ -1650,7 +1721,8 @@ TEST_CASE("Happy Hare bowden_progress boundary values", "[ams][happy_hare][v4][e
 }
 
 TEST_CASE("Happy Hare bowden_progress ignores non-integer values", "[ams][happy_hare][v4][edge]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
 
     // Set to known value first
@@ -1688,7 +1760,8 @@ TEST_CASE("SpoolmanMode from_string is case-sensitive with alternatives",
 
 TEST_CASE("Happy Hare dissimilar multi-unit with mismatched sum falls back to even split",
           "[ams][happy_hare][v4][multi-unit][edge]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
 
     // Set num_units first
     nlohmann::json setup = {{"num_units", 2}};
@@ -1710,7 +1783,8 @@ TEST_CASE("Happy Hare dissimilar multi-unit with mismatched sum falls back to ev
 
 TEST_CASE("Happy Hare unit_gate_counts array overrides num_gates string",
           "[ams][happy_hare][v4][multi-unit][edge]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
 
     nlohmann::json setup = {{"num_units", 2}};
     helper.test_parse_mmu_state(setup);
@@ -1729,7 +1803,8 @@ TEST_CASE("Happy Hare unit_gate_counts array overrides num_gates string",
 
 TEST_CASE("Happy Hare single unit ignores per-unit counts",
           "[ams][happy_hare][v4][multi-unit][edge]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
 
     // Single unit — per_unit_gate_counts should still work if size matches
     nlohmann::json mmu_data = {{"num_units", 1}, {"gate_status", {1, 1, 1, 1}}};
@@ -1743,7 +1818,8 @@ TEST_CASE("Happy Hare single unit ignores per-unit counts",
 
 TEST_CASE("Happy Hare num_gates string with invalid tokens",
           "[ams][happy_hare][v4][multi-unit][edge]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
 
     nlohmann::json setup = {{"num_units", 2}};
     helper.test_parse_mmu_state(setup);
@@ -1763,7 +1839,8 @@ TEST_CASE("Happy Hare num_gates string with invalid tokens",
 // --- v4 status fields: wrong types, missing nested fields ---
 
 TEST_CASE("Happy Hare v4 status fields ignore wrong types", "[ams][happy_hare][v4][edge]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
 
     // Wrong types for all fields — should be silently ignored
@@ -1786,7 +1863,8 @@ TEST_CASE("Happy Hare v4 status fields ignore wrong types", "[ams][happy_hare][v
 }
 
 TEST_CASE("Happy Hare encoder object without flow_rate field", "[ams][happy_hare][v4][edge]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
 
     // encoder object exists but without flow_rate
@@ -1800,7 +1878,8 @@ TEST_CASE("Happy Hare encoder object without flow_rate field", "[ams][happy_hare
 // --- v4 status field updates are incremental ---
 
 TEST_CASE("Happy Hare v4 status fields update incrementally", "[ams][happy_hare][v4][edge]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
 
     // Set espooler first
@@ -1820,7 +1899,8 @@ TEST_CASE("Happy Hare v4 status fields update incrementally", "[ams][happy_hare]
 // --- Dryer: partial drying_state ---
 
 TEST_CASE("Happy Hare drying_state with partial fields", "[ams][happy_hare][v4][edge]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
 
     // Only some fields present
@@ -1838,7 +1918,8 @@ TEST_CASE("Happy Hare drying_state with partial fields", "[ams][happy_hare][v4][
 
 TEST_CASE("Happy Hare dryer stop also returns not_supported without dryer hardware",
           "[ams][happy_hare][v4][edge]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
 
     auto result = helper.stop_drying();
@@ -1847,7 +1928,8 @@ TEST_CASE("Happy Hare dryer stop also returns not_supported without dryer hardwa
 }
 
 TEST_CASE("Happy Hare dryer start never sends FAN param", "[ams][happy_hare][v4][edge]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
 
     // Enable dryer
@@ -1864,7 +1946,8 @@ TEST_CASE("Happy Hare dryer start never sends FAN param", "[ams][happy_hare][v4]
 // --- Device action edge cases ---
 
 TEST_CASE("Happy Hare espooler_mode without value returns error", "[ams][happy_hare][v4][edge]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
     helper.set_running(true);
 
@@ -1873,7 +1956,8 @@ TEST_CASE("Happy Hare espooler_mode without value returns error", "[ams][happy_h
 }
 
 TEST_CASE("Happy Hare clog_detection Manual maps to 1", "[ams][happy_hare][v4][edge]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
     helper.set_running(true);
 
@@ -1885,7 +1969,8 @@ TEST_CASE("Happy Hare clog_detection Manual maps to 1", "[ams][happy_hare][v4][e
 // --- Backwards compatibility: v3 sends nothing new ---
 
 TEST_CASE("Happy Hare v3 data with no v4 fields works normally", "[ams][happy_hare][v4][compat]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
 
     // Pure v3 data — only classic fields
     nlohmann::json mmu_data = {{"gate", 2},
@@ -2017,7 +2102,8 @@ TEST_CASE("Happy Hare has_bypass drives supports_bypass", "[ams][happy_hare][byp
 // --- v3+v4 mixed: some v4 fields with v3 base ---
 
 TEST_CASE("Happy Hare mixed v3/v4 data parses both correctly", "[ams][happy_hare][v4][compat]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
 
     nlohmann::json mmu_data = {// v3 fields
                                {"gate", 0},
@@ -2064,7 +2150,8 @@ TEST_CASE("Happy Hare mixed v3/v4 data parses both correctly", "[ams][happy_hare
 
 TEST_CASE("Happy Hare bowden_progress clamped to valid range",
           "[ams][happy_hare][v4][bowden][edge]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
 
     SECTION("Value > 100 clamped to 100") {
         nlohmann::json mmu_data = {{"bowden_progress", 150}};
@@ -2092,7 +2179,8 @@ TEST_CASE("Happy Hare bowden_progress clamped to valid range",
 }
 
 TEST_CASE("Happy Hare num_units < 1 clamped to 1", "[ams][happy_hare][v4][multi-unit][edge]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
 
     SECTION("num_units = 0") {
         nlohmann::json mmu_data = {{"num_units", 0}, {"gate_status", {1, 1, 1, 1}}};
@@ -2112,7 +2200,8 @@ TEST_CASE("Happy Hare num_units < 1 clamped to 1", "[ams][happy_hare][v4][multi-
 
 TEST_CASE("Happy Hare encoder flow_rate accepts float values",
           "[ams][happy_hare][v4][status][edge]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
 
     // encoder.flow_rate uses is_number() — floats are accepted and truncated to int
     nlohmann::json mmu_data = {{"encoder", {{"flow_rate", 95.7}}}};
@@ -2122,7 +2211,8 @@ TEST_CASE("Happy Hare encoder flow_rate accepts float values",
 }
 
 TEST_CASE("Happy Hare active_unit parsed from status", "[ams][happy_hare][v4][multi-unit]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
 
     nlohmann::json mmu_data = {
         {"num_units", 2}, {"unit", 1}, {"gate_status", {1, 1, 1, 1, 0, 0, 0, 0}}};
@@ -2138,14 +2228,16 @@ TEST_CASE("Happy Hare active_unit parsed from status", "[ams][happy_hare][v4][mu
 
 TEST_CASE("Happy Hare manages_active_spool=false when spoolman off (default)",
           "[ams][happy_hare][spoolman]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     // Default spoolman_mode is OFF
     REQUIRE(helper.manages_active_spool() == false);
 }
 
 TEST_CASE("Happy Hare manages_active_spool=true when spoolman enabled",
           "[ams][happy_hare][spoolman]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
 
     SECTION("readonly mode") {
@@ -2176,7 +2268,8 @@ TEST_CASE("Happy Hare manages_active_spool=true when spoolman enabled",
 // ============================================================================
 
 TEST_CASE("Happy Hare parses live filament_heater temp/target", "[ams][happy_hare][v4]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
     helper.test_apply_heater_config(
         nlohmann::json{{"mmu_machine", {{"filament_heater", "heater_generic box1_heater"}}},
@@ -2190,7 +2283,8 @@ TEST_CASE("Happy Hare parses live filament_heater temp/target", "[ams][happy_har
 }
 
 TEST_CASE("Happy Hare array drying_state: complete is not active", "[ams][happy_hare][emu]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
     // A drying_state array ships on every Happy Hare install, so a heater has to be
     // configured for the dryer to be supported at all.
@@ -2255,7 +2349,8 @@ TEST_CASE_METHOD(AmsBackendHappyHareTestHelper, "EMU drying_state as array",
 // ============================================================================
 
 TEST_CASE("Happy Hare does not track weight locally", "[ams][happy_hare][spoolman]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     REQUIRE(helper.tracks_weight_locally() == false);
 }
 
@@ -2586,7 +2681,8 @@ TEST_CASE("EncoderClogInfo: is_warning false when desired is 0", "[ams][clog]") 
 // ============================================================================
 
 TEST_CASE("Happy Hare: parse full encoder object into encoder_info", "[ams][happy_hare][clog]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
 
     nlohmann::json mmu_data;
@@ -2609,7 +2705,8 @@ TEST_CASE("Happy Hare: parse full encoder object into encoder_info", "[ams][happ
 }
 
 TEST_CASE("Happy Hare: partial encoder object defaults missing fields", "[ams][happy_hare][clog]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
 
     nlohmann::json mmu_data;
@@ -2625,7 +2722,8 @@ TEST_CASE("Happy Hare: partial encoder object defaults missing fields", "[ams][h
 }
 
 TEST_CASE("Happy Hare: missing encoder object leaves defaults", "[ams][happy_hare][clog]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
 
     nlohmann::json mmu_data;
@@ -2638,7 +2736,8 @@ TEST_CASE("Happy Hare: missing encoder object leaves defaults", "[ams][happy_har
 }
 
 TEST_CASE("Happy Hare: parse flowguard object", "[ams][happy_hare][clog]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
 
     nlohmann::json mmu_data;
@@ -2656,7 +2755,8 @@ TEST_CASE("Happy Hare: parse flowguard object", "[ams][happy_hare][clog]") {
 }
 
 TEST_CASE("Happy Hare: missing flowguard object leaves defaults", "[ams][happy_hare][clog]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
 
     nlohmann::json mmu_data;
@@ -2670,7 +2770,8 @@ TEST_CASE("Happy Hare: missing flowguard object leaves defaults", "[ams][happy_h
 }
 
 TEST_CASE("Happy Hare: parse sync_feedback_flow_rate", "[ams][happy_hare][clog]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
 
     nlohmann::json mmu_data;
@@ -2692,19 +2793,22 @@ TEST_CASE("Happy Hare: parse sync_feedback_flow_rate", "[ams][happy_hare][clog]"
 // The selector_type is queried from configfile.settings.mmu_machine.selector_type
 
 TEST_CASE("Happy Hare: default topology is LINEAR", "[ams][happy_hare][topology]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     // No selector_type set — should default to LINEAR (Type A)
     REQUIRE(helper.get_topology() == PathTopology::LINEAR);
 }
 
 TEST_CASE("Happy Hare: Type B (VirtualSelector) topology is HUB", "[ams][happy_hare][topology]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.set_selector_type("VirtualSelector");
     REQUIRE(helper.get_topology() == PathTopology::HUB);
 }
 
 TEST_CASE("Happy Hare: Type A selector types stay LINEAR", "[ams][happy_hare][topology]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
 
     for (const auto& type : {"LinearSelector", "RotarySelector", "ServoSelector"}) {
         helper.set_selector_type(type);
@@ -2714,7 +2818,8 @@ TEST_CASE("Happy Hare: Type A selector types stay LINEAR", "[ams][happy_hare][to
 
 TEST_CASE("Happy Hare: get_unit_topology returns per-unit topology",
           "[ams][happy_hare][topology]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.set_selector_type("VirtualSelector");
     helper.initialize_test_gates(4);
 
@@ -2723,7 +2828,8 @@ TEST_CASE("Happy Hare: get_unit_topology returns per-unit topology",
 
 TEST_CASE("Happy Hare: get_unit_topology falls back for invalid index",
           "[ams][happy_hare][topology]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.set_selector_type("VirtualSelector");
     helper.initialize_test_gates(4);
 
@@ -2732,7 +2838,8 @@ TEST_CASE("Happy Hare: get_unit_topology falls back for invalid index",
 }
 
 TEST_CASE("Happy Hare: initialize_slots sets topology per unit", "[ams][happy_hare][topology]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.set_selector_type("VirtualSelector");
     helper.initialize_test_gates(4);
 
@@ -2743,7 +2850,8 @@ TEST_CASE("Happy Hare: initialize_slots sets topology per unit", "[ams][happy_ha
 
 TEST_CASE("Happy Hare: Type A initialize_slots sets LINEAR topology",
           "[ams][happy_hare][topology]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     // Default (no selector_type set) = Type A
     helper.initialize_test_gates(4);
 
@@ -2753,7 +2861,8 @@ TEST_CASE("Happy Hare: Type A initialize_slots sets LINEAR topology",
 }
 
 TEST_CASE("Happy Hare: multi-unit Type B all get HUB topology", "[ams][happy_hare][topology]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.set_selector_type("VirtualSelector");
     // Simulate 2-unit setup via parse
     nlohmann::json mmu_data;
@@ -2775,7 +2884,8 @@ TEST_CASE("Happy Hare: multi-unit Type B all get HUB topology", "[ams][happy_har
 }
 
 TEST_CASE("Happy Hare: Type B has_encoder is false", "[ams][happy_hare][topology]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.set_selector_type("VirtualSelector");
 
     nlohmann::json mmu_data;
@@ -2795,7 +2905,8 @@ TEST_CASE("Happy Hare: Type B has_encoder is false", "[ams][happy_hare][topology
 
 TEST_CASE("Happy Hare: late selector_type retroactively updates topology",
           "[ams][happy_hare][topology]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     // Initialize with default (LINEAR) first — simulates slots arriving before config
     helper.initialize_test_gates(4);
     auto info = helper.get_system_info();
@@ -2814,7 +2925,8 @@ TEST_CASE("Happy Hare: late selector_type retroactively updates topology",
 // --- Sync feedback bias parsing ---
 
 TEST_CASE("Happy Hare parses sync_feedback_bias fields", "[ams][happy_hare][v4][sync_feedback]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
 
     SECTION("positive bias (compression)") {
@@ -2850,7 +2962,8 @@ TEST_CASE("Happy Hare parses sync_feedback_bias fields", "[ams][happy_hare][v4][
 // --- Phase 10: Expanded device defaults (Task 2) ---
 
 TEST_CASE("Happy Hare device sections include toolhead", "[ams][happy_hare][device_actions]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     auto sections = helper.get_device_sections();
 
     bool found_toolhead = false;
@@ -2865,7 +2978,8 @@ TEST_CASE("Happy Hare device sections include toolhead", "[ams][happy_hare][devi
 }
 
 TEST_CASE("Happy Hare sections have correct ordering", "[ams][happy_hare][device_actions]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     auto sections = helper.get_device_sections();
 
     REQUIRE(sections.size() == 5);
@@ -2877,7 +2991,8 @@ TEST_CASE("Happy Hare sections have correct ordering", "[ams][happy_hare][device
 }
 
 TEST_CASE("Happy Hare actions include split gear speeds", "[ams][happy_hare][device_actions]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     auto actions = helper.get_device_actions();
 
     auto find_action = [&](const std::string& id) -> const helix::printer::DeviceAction* {
@@ -2904,7 +3019,8 @@ TEST_CASE("Happy Hare actions include split gear speeds", "[ams][happy_hare][dev
 }
 
 TEST_CASE("Happy Hare actions include extruder speeds", "[ams][happy_hare][device_actions]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     auto actions = helper.get_device_actions();
 
     auto find_action = [&](const std::string& id) -> const helix::printer::DeviceAction* {
@@ -2925,7 +3041,8 @@ TEST_CASE("Happy Hare actions include extruder speeds", "[ams][happy_hare][devic
 }
 
 TEST_CASE("Happy Hare actions include toolhead sliders", "[ams][happy_hare][device_actions]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     auto actions = helper.get_device_actions();
 
     auto find_action = [&](const std::string& id) -> const helix::printer::DeviceAction* {
@@ -2948,7 +3065,8 @@ TEST_CASE("Happy Hare actions include toolhead sliders", "[ams][happy_hare][devi
 
 TEST_CASE("Happy Hare actions include sync_to_extruder toggle",
           "[ams][happy_hare][device_actions]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     auto actions = helper.get_device_actions();
 
     auto find_action = [&](const std::string& id) -> const helix::printer::DeviceAction* {
@@ -2966,7 +3084,8 @@ TEST_CASE("Happy Hare actions include sync_to_extruder toggle",
 }
 
 TEST_CASE("Happy Hare actions include test_move button", "[ams][happy_hare][device_actions]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     auto actions = helper.get_device_actions();
 
     auto find_action = [&](const std::string& id) -> const helix::printer::DeviceAction* {
@@ -2985,7 +3104,8 @@ TEST_CASE("Happy Hare actions include test_move button", "[ams][happy_hare][devi
 
 TEST_CASE("Happy Hare actions do NOT include calibrate_servo",
           "[ams][happy_hare][device_actions]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     auto actions = helper.get_device_actions();
 
     for (const auto& a : actions) {
@@ -2996,7 +3116,8 @@ TEST_CASE("Happy Hare actions do NOT include calibrate_servo",
 // --- Phase 11: Live value population (Task 4) ---
 
 TEST_CASE("get_device_actions returns live config values", "[ams][happy_hare][device_actions]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
     helper.set_config_defaults_for_test();
 
@@ -3018,7 +3139,8 @@ TEST_CASE("get_device_actions returns live config values", "[ams][happy_hare][de
 
 TEST_CASE("get_device_actions disables non-buttons when config not loaded",
           "[ams][happy_hare][device_actions]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
     // Do NOT call set_config_defaults_for_test() — config_defaults_.loaded is false
 
@@ -3034,7 +3156,8 @@ TEST_CASE("get_device_actions disables non-buttons when config not loaded",
 
 TEST_CASE("get_device_actions overlays sync_to_extruder as bool",
           "[ams][happy_hare][device_actions]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
     helper.set_config_defaults_for_test();
 
@@ -3052,7 +3175,8 @@ TEST_CASE("get_device_actions overlays sync_to_extruder as bool",
 // --- Phase 12: Parse status for LED/eSpooler/flowguard (Task 5) ---
 
 TEST_CASE("parse_mmu_state extracts flowguard encoder_mode", "[ams][happy_hare][device_actions]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
 
     nlohmann::json mmu_data;
@@ -3070,7 +3194,8 @@ TEST_CASE("parse_mmu_state extracts flowguard encoder_mode", "[ams][happy_hare][
 }
 
 TEST_CASE("parse_mmu_state extracts LED exit_effect", "[ams][happy_hare][device_actions]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
     helper.set_config_defaults_for_test();
 
@@ -3089,7 +3214,8 @@ TEST_CASE("parse_mmu_state extracts LED exit_effect", "[ams][happy_hare][device_
 
 TEST_CASE("parse_mmu_state populates espooler_active for device actions",
           "[ams][happy_hare][device_actions]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
     helper.set_config_defaults_for_test();
 
@@ -3109,7 +3235,8 @@ TEST_CASE("parse_mmu_state populates espooler_active for device actions",
 // --- Phase 13: Topology filtering (Task 6) ---
 
 TEST_CASE("Type B topology hides servo and selector actions", "[ams][happy_hare][device_actions]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
     helper.set_config_defaults_for_test();
     helper.set_selector_type("VirtualSelector");
@@ -3131,7 +3258,8 @@ TEST_CASE("Type B topology hides servo and selector actions", "[ams][happy_hare]
 }
 
 TEST_CASE("Type A topology shows all actions", "[ams][happy_hare][device_actions]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
     helper.set_config_defaults_for_test();
     // selector_type_ defaults to "" (not VirtualSelector) = Type A
@@ -3150,7 +3278,8 @@ TEST_CASE("Type A topology shows all actions", "[ams][happy_hare][device_actions
 
 TEST_CASE("execute_device_action sends correct G-code for speed sliders",
           "[ams][happy_hare][device_actions]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
 
     SECTION("gear_from_buffer_speed") {
@@ -3192,7 +3321,8 @@ TEST_CASE("execute_device_action sends correct G-code for speed sliders",
 
 TEST_CASE("execute_device_action sends correct G-code for toolhead distances",
           "[ams][happy_hare][device_actions]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
 
     SECTION("toolhead_sensor_to_nozzle") {
@@ -3222,7 +3352,8 @@ TEST_CASE("execute_device_action sends correct G-code for toolhead distances",
 
 TEST_CASE("execute_device_action sends correct G-code for sync toggle",
           "[ams][happy_hare][device_actions]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
 
     SECTION("enable sync") {
@@ -3239,7 +3370,8 @@ TEST_CASE("execute_device_action sends correct G-code for sync toggle",
 }
 
 TEST_CASE("execute_device_action sends test_move G-code", "[ams][happy_hare][device_actions]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
 
     auto result = helper.execute_device_action("test_move", std::any());
@@ -3249,7 +3381,8 @@ TEST_CASE("execute_device_action sends test_move G-code", "[ams][happy_hare][dev
 
 TEST_CASE("execute_device_action motors_toggle uses MMU_HOME for enable",
           "[ams][happy_hare][device_actions]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
 
     SECTION("enable motors sends MMU_HOME") {
@@ -3267,7 +3400,8 @@ TEST_CASE("execute_device_action motors_toggle uses MMU_HOME for enable",
 
 TEST_CASE("execute_device_action servo_buzz uses MMU_SERVO without args",
           "[ams][happy_hare][device_actions]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
 
     auto result = helper.execute_device_action("servo_buzz", std::any());
@@ -3279,7 +3413,8 @@ TEST_CASE("execute_device_action servo_buzz uses MMU_SERVO without args",
 
 TEST_CASE("execute_device_action calibrate_servo is not a valid action",
           "[ams][happy_hare][device_actions]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
 
     auto result = helper.execute_device_action("calibrate_servo", std::any());
@@ -3288,7 +3423,8 @@ TEST_CASE("execute_device_action calibrate_servo is not a valid action",
 
 TEST_CASE("execute_device_action clog_detection saves override",
           "[ams][happy_hare][device_actions]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
     helper.set_config_defaults_for_test();
 
@@ -3303,7 +3439,8 @@ TEST_CASE("execute_device_action clog_detection saves override",
 
 TEST_CASE("user override persists and reapplies via in-memory cache",
           "[ams][happy_hare][device_actions]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
     helper.set_config_defaults_for_test();
 
@@ -3321,7 +3458,8 @@ TEST_CASE("user override persists and reapplies via in-memory cache",
 }
 
 TEST_CASE("user override for toolhead distance persists", "[ams][happy_hare][device_actions]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
     helper.set_config_defaults_for_test();
 
@@ -3337,7 +3475,8 @@ TEST_CASE("user override for toolhead distance persists", "[ams][happy_hare][dev
 }
 
 TEST_CASE("user override for sync_to_extruder persists", "[ams][happy_hare][device_actions]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
     helper.set_config_defaults_for_test();
 
@@ -3354,7 +3493,8 @@ TEST_CASE("user override for sync_to_extruder persists", "[ams][happy_hare][devi
 
 TEST_CASE("reapply_overrides batches into single MMU_TEST_CONFIG command",
           "[ams][happy_hare][device_actions]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
     helper.set_config_defaults_for_test();
 
@@ -3377,7 +3517,8 @@ TEST_CASE("reapply_overrides batches into single MMU_TEST_CONFIG command",
 // ============================================================================
 
 TEST_CASE("Happy Hare select_gate sends MMU_SELECT", "[ams][happy_hare]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
     helper.set_running(true);
 
@@ -3388,12 +3529,14 @@ TEST_CASE("Happy Hare select_gate sends MMU_SELECT", "[ams][happy_hare]") {
 }
 
 TEST_CASE("Happy Hare advertises gate-select capability", "[ams][happy_hare][capability]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     REQUIRE(helper.supports_gate_select());
 }
 
 TEST_CASE("Happy Hare select_gate rejects out-of-range gate", "[ams][happy_hare]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
     helper.set_running(true);
 
@@ -3404,7 +3547,8 @@ TEST_CASE("Happy Hare select_gate rejects out-of-range gate", "[ams][happy_hare]
 }
 
 TEST_CASE("Happy Hare select_gate fails when not running", "[ams][happy_hare]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
 
     AmsError result = helper.select_gate(0);
@@ -3418,7 +3562,8 @@ TEST_CASE("Happy Hare select_gate fails when not running", "[ams][happy_hare]") 
 // ============================================================================
 
 TEST_CASE("Happy Hare move_selector +1 jogs to next gate", "[ams][happy_hare][device_actions]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
     helper.set_running(true);
     helper.set_current_slot(1);
@@ -3431,7 +3576,8 @@ TEST_CASE("Happy Hare move_selector +1 jogs to next gate", "[ams][happy_hare][de
 
 TEST_CASE("Happy Hare move_selector -1 jogs to previous gate",
           "[ams][happy_hare][device_actions]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
     helper.set_running(true);
     helper.set_current_slot(1);
@@ -3443,7 +3589,8 @@ TEST_CASE("Happy Hare move_selector -1 jogs to previous gate",
 }
 
 TEST_CASE("Happy Hare move_selector clamps at lower bound", "[ams][happy_hare][device_actions]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
     helper.set_running(true);
     helper.set_current_slot(0);
@@ -3455,7 +3602,8 @@ TEST_CASE("Happy Hare move_selector clamps at lower bound", "[ams][happy_hare][d
 }
 
 TEST_CASE("Happy Hare move_selector clamps at upper bound", "[ams][happy_hare][device_actions]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
     helper.set_running(true);
     helper.set_current_slot(3); // last gate (0-based, count=4)
@@ -3468,7 +3616,8 @@ TEST_CASE("Happy Hare move_selector clamps at upper bound", "[ams][happy_hare][d
 
 TEST_CASE("Happy Hare move_selector treats no current slot as gate 0",
           "[ams][happy_hare][device_actions]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
     helper.set_running(true);
     helper.set_current_slot(-1); // none selected
@@ -3481,7 +3630,8 @@ TEST_CASE("Happy Hare move_selector treats no current slot as gate 0",
 }
 
 TEST_CASE("Happy Hare move_selector fails when not running", "[ams][happy_hare][device_actions]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
     // not started
 
@@ -3496,7 +3646,8 @@ TEST_CASE("Happy Hare move_selector fails when not running", "[ams][happy_hare][
 // ============================================================================
 
 TEST_CASE("Happy Hare check_gate sends per-gate MMU_CHECK_GATE", "[ams][happy_hare]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
     helper.set_running(true);
 
@@ -3507,7 +3658,8 @@ TEST_CASE("Happy Hare check_gate sends per-gate MMU_CHECK_GATE", "[ams][happy_ha
 }
 
 TEST_CASE("Happy Hare check_all_gates sends bare MMU_CHECK_GATE", "[ams][happy_hare]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
     helper.set_running(true);
 
@@ -3518,7 +3670,8 @@ TEST_CASE("Happy Hare check_all_gates sends bare MMU_CHECK_GATE", "[ams][happy_h
 }
 
 TEST_CASE("Happy Hare advertises gate-check capability", "[ams][happy_hare][capability]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     REQUIRE(helper.supports_gate_check());
 }
 
@@ -3527,7 +3680,8 @@ TEST_CASE("Happy Hare advertises gate-check capability", "[ams][happy_hare][capa
 // not UNLOADED. That is the whole reason the sidebar may grey Reset here and
 // nowhere else, so the capability has to answer true (prestonbrown/helixscreen#1523).
 TEST_CASE("Happy Hare declares that reset moves filament", "[ams][happy_hare][capability]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     REQUIRE(helper.reset_moves_filament());
     // The command the capability describes.
     helper.initialize_test_gates(4);
@@ -3537,7 +3691,8 @@ TEST_CASE("Happy Hare declares that reset moves filament", "[ams][happy_hare][ca
 }
 
 TEST_CASE("Happy Hare check_gate fails when not running", "[ams][happy_hare]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
 
     AmsError result = helper.check_gate(0);
@@ -3547,7 +3702,8 @@ TEST_CASE("Happy Hare check_gate fails when not running", "[ams][happy_hare]") {
 }
 
 TEST_CASE("Happy Hare check_all_gates fails when not running", "[ams][happy_hare]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
 
     AmsError result = helper.check_all_gates();
@@ -3562,7 +3718,8 @@ TEST_CASE("Happy Hare check_all_gates fails when not running", "[ams][happy_hare
 
 TEST_CASE("Happy Hare servo position actions send MMU_SERVO POS",
           "[ams][happy_hare][device_actions]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
 
     REQUIRE(helper.execute_device_action("servo_up", {}).success());
@@ -3589,7 +3746,8 @@ TEST_CASE("Happy Hare default actions include servo positions",
 
 TEST_CASE("Happy Hare runtime gear_sync toggles MMU_SYNC_GEAR_MOTOR",
           "[ams][happy_hare][device_actions]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
 
     REQUIRE(helper.execute_device_action("gear_sync", std::any(true)).success());
@@ -3624,7 +3782,8 @@ TEST_CASE("Happy Hare config sync action is relabeled, distinct from runtime",
 
 TEST_CASE("Happy Hare classify_error: runout pause is CRITICAL with recovery",
           "[ams][happy_hare][error-center]") {
-    AmsBackendHappyHareTestHelper hh;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> hh_reg;
+    AmsBackendHappyHareTestHelper& hh = *hh_reg;
     hh.initialize_test_gates(4);
 
     // Firmware reports a runout pause via reason_for_pause + action ERROR.
@@ -3651,7 +3810,8 @@ TEST_CASE("Happy Hare classify_error: runout pause is CRITICAL with recovery",
 
 TEST_CASE("Happy Hare classify_error: recover gcode reflects loaded state",
           "[ams][happy_hare][error-center]") {
-    AmsBackendHappyHareTestHelper hh;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> hh_reg;
+    AmsBackendHappyHareTestHelper& hh = *hh_reg;
     hh.initialize_test_gates(4);
     nlohmann::json mmu;
     mmu["action"] = "Error";
@@ -3673,7 +3833,8 @@ TEST_CASE("Happy Hare classify_error: recover gcode reflects loaded state",
 
 TEST_CASE("Happy Hare classify_error: non-!! line and non-paused defer to generic",
           "[ams][happy_hare][error-center]") {
-    AmsBackendHappyHareTestHelper hh;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> hh_reg;
+    AmsBackendHappyHareTestHelper& hh = *hh_reg;
     hh.initialize_test_gates(4);
     helix::ClassifyContext ctx; // not paused
     CHECK_FALSE(hh.classify_error("Error: generic klipper error", ctx).has_value());
@@ -3687,7 +3848,8 @@ TEST_CASE("Happy Hare classify_error: stale reason_for_pause does not fire when 
     // Regression: the recognized-keyword path must still require ctx.is_paused.
     // A non-empty reason_for_pause_ holding a recognized keyword ("clog") must
     // NOT produce a CRITICAL event when the print is not paused.
-    AmsBackendHappyHareTestHelper hh;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> hh_reg;
+    AmsBackendHappyHareTestHelper& hh = *hh_reg;
     hh.initialize_test_gates(4);
 
     // Populate reason_for_pause_ with a recognized keyword and put HH in ERROR.
@@ -3704,7 +3866,8 @@ TEST_CASE("Happy Hare classify_error: stale reason_for_pause does not fire when 
 
 TEST_CASE("Happy Hare toolchange_phase_template: ops declare ordered phases",
           "[ams][happy_hare][narration]") {
-    AmsBackendHappyHareTestHelper hh;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> hh_reg;
+    AmsBackendHappyHareTestHelper& hh = *hh_reg;
     auto swap = hh.toolchange_phase_template(StepOperationType::LOAD_SWAP);
     REQUIRE_FALSE(swap.empty());
     CHECK(swap.front().id == "heat");
@@ -3775,7 +3938,8 @@ TEST_CASE_METHOD(LVGLTestFixture,
 
 TEST_CASE("HappyHare override survives a gate-map update that omits identity",
           "[ams][happyhare][override]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
 
     SlotInfo info;
@@ -3797,7 +3961,8 @@ TEST_CASE("HappyHare override survives a gate-map update that omits identity",
 
 TEST_CASE("HappyHare clear_slot_override drops the retained identity",
           "[ams][happyhare][override]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
 
     SlotInfo info;
@@ -3814,7 +3979,8 @@ TEST_CASE("HappyHare clear_slot_override drops the retained identity",
 
 TEST_CASE("HappyHare persist_override records a deliberate pure black",
           "[ams][happyhare][override]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
 
     SlotInfo info;
@@ -3831,7 +3997,8 @@ TEST_CASE("HappyHare persist_override records a deliberate pure black",
 
 TEST_CASE("HappyHare persist_override does not record the no-color sentinel",
           "[ams][happyhare][override]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
 
     SlotInfo info;
@@ -3847,7 +4014,8 @@ TEST_CASE("HappyHare persist_override does not record the no-color sentinel",
 
 TEST_CASE("HappyHare persist_override wires nozzle/bed temps into the override",
           "[ams][happyhare][override]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
 
     SlotInfo info;
@@ -3949,7 +4117,8 @@ TEST_CASE("Happy Hare enable_bypass refuses unless the filament is parked",
 
 TEST_CASE("Happy Hare v4 takes machine fields from live status, not configfile",
           "[ams][happy_hare][1479]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
 
     // Exactly the shape a v4 machine reports: configfile carries the version and
@@ -3983,7 +4152,8 @@ TEST_CASE("Happy Hare v4 takes machine fields from live status, not configfile",
 
 TEST_CASE("Happy Hare v4 resolves the filament heater from live status",
           "[ams][happy_hare][1479]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
 
     nlohmann::json configfile_settings = {
@@ -4014,7 +4184,8 @@ TEST_CASE("Happy Hare v3 config still resolves when no live unit object exists",
     // The fallback half. A v3 machine publishes no unit_N sub-object, so the
     // resolver has to keep answering from configfile or this change would break
     // every existing install to fix the new one.
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
 
     nlohmann::json configfile_settings = {
@@ -4038,7 +4209,8 @@ TEST_CASE("Happy Hare v3 config still resolves when no live unit object exists",
 
 TEST_CASE("A passive enclosure reports no dryer even though drying_state is published",
           "[ams][happy_hare][v4][dryer][emu]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
 
     // Stock EMU: a sealed box and a sensor per lane, no heater anywhere. Happy Hare's
@@ -4057,7 +4229,8 @@ TEST_CASE("A passive enclosure reports no dryer even though drying_state is publ
 }
 
 TEST_CASE("A configured heater still reports a dryer", "[ams][happy_hare][v4][dryer]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
 
     // Known positive for the case above: same drying_state array, but a heater exists.
@@ -4071,7 +4244,8 @@ TEST_CASE("A configured heater still reports a dryer", "[ams][happy_hare][v4][dr
 TEST_CASE("A per-gate drying_state array reaches every gate's zone",
           "[ams][happy_hare][emu][zones]") {
     using namespace helix::printer;
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(2);
     helper.test_apply_heater_config(
         {{"mmu_machine",
@@ -4091,7 +4265,8 @@ TEST_CASE("A per-gate drying_state array reaches every gate's zone",
 TEST_CASE("A non-string drying_state entry still occupies its gate",
           "[ams][happy_hare][emu][zones]") {
     using namespace helix::printer;
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(3);
     helper.test_apply_heater_config(
         {{"mmu_machine",
@@ -4112,7 +4287,8 @@ TEST_CASE("A non-string drying_state entry still occupies its gate",
 
 TEST_CASE("Happy Hare retargets a running dryer but cannot move its clock",
           "[ams][happy_hare][dryer][capability]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.test_apply_heater_config(
         {{"mmu_machine", {{"filament_heater", "heater_generic MMU_heater"}}}});
 
@@ -4128,7 +4304,8 @@ TEST_CASE("Happy Hare retargets a running dryer but cannot move its clock",
 
 TEST_CASE("Per-gate heaters carry the same live-adjust answer as a shared one",
           "[ams][happy_hare][dryer][capability]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     // EMU-shaped config: a heater named per gate rather than one shared enclosure heater.
     // The command surface is identical, so the answer must not depend on the config form.
     helper.test_apply_heater_config(
@@ -4143,7 +4320,8 @@ TEST_CASE("Per-gate heaters carry the same live-adjust answer as a shared one",
 
 TEST_CASE("Retargeting a running dryer's temperature leaves the cycle running",
           "[ams][happy_hare][dryer][update]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.test_apply_heater_config(
         {{"mmu_machine", {{"filament_heater", "heater_generic MMU_heater"}}}});
     helper.clear_captured_gcodes();
@@ -4162,7 +4340,8 @@ TEST_CASE("Retargeting a running dryer's temperature leaves the cycle running",
 
 TEST_CASE("Changing a running dryer's duration restarts the cycle",
           "[ams][happy_hare][dryer][update]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.test_apply_heater_config(
         {{"mmu_machine", {{"filament_heater", "heater_generic MMU_heater"}}}});
     helper.clear_captured_gcodes();
@@ -4176,7 +4355,8 @@ TEST_CASE("Changing a running dryer's duration restarts the cycle",
 }
 
 TEST_CASE("An update that changes nothing sends nothing", "[ams][happy_hare][dryer][update]") {
-    AmsBackendHappyHareTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
+    AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.test_apply_heater_config(
         {{"mmu_machine", {{"filament_heater", "heater_generic MMU_heater"}}}});
     helper.clear_captured_gcodes();

@@ -13,6 +13,7 @@
 #include "moonraker_types.h"
 #include "printer_state.h"
 #include "test_helpers/ace_test_access.h"
+#include "test_helpers/registered_backend.h"
 
 #include <algorithm>
 #include <filesystem>
@@ -602,7 +603,8 @@ TEST_CASE("ACE override loaded at init is applied over firmware data",
     state.init_subjects(false);
     MoonrakerAPIMock api(client, state);
 
-    AmsBackendAce backend(&api, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAce> backend_reg(&api, nullptr);
+    AmsBackendAce& backend = *backend_reg;
     auto store = std::make_unique<helix::ams::FilamentSlotOverrideStore>(&api, "ace");
     FilamentSlotOverrideStoreTestAccess::set_cache_directory(*store, tmp.path);
     AceTestAccess::inject_override_store(backend, std::move(store));
@@ -690,7 +692,8 @@ TEST_CASE("ACE set_slot_info(persist=true) writes to store", "[ams][ace][filamen
     state.init_subjects(false);
     MoonrakerAPIMock api(client, state);
 
-    AmsBackendAce backend(&api, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAce> backend_reg(&api, nullptr);
+    AmsBackendAce& backend = *backend_reg;
     auto store = std::make_unique<helix::ams::FilamentSlotOverrideStore>(&api, "ace");
     FilamentSlotOverrideStoreTestAccess::set_cache_directory(*store, tmp.path);
     AceTestAccess::inject_override_store(backend, std::move(store));
@@ -743,7 +746,8 @@ TEST_CASE("ACE set_slot_info(persist=false) does NOT write to store",
     state.init_subjects(false);
     MoonrakerAPIMock api(client, state);
 
-    AmsBackendAce backend(&api, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAce> backend_reg(&api, nullptr);
+    AmsBackendAce& backend = *backend_reg;
     auto store = std::make_unique<helix::ams::FilamentSlotOverrideStore>(&api, "ace");
     FilamentSlotOverrideStoreTestAccess::set_cache_directory(*store, tmp.path);
     AceTestAccess::inject_override_store(backend, std::move(store));
@@ -783,7 +787,8 @@ TEST_CASE("ACE slot transition empty -> present clears override",
     state.init_subjects(false);
     MoonrakerAPIMock api(client, state);
 
-    AmsBackendAce backend(&api, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAce> backend_reg(&api, nullptr);
+    AmsBackendAce& backend = *backend_reg;
     auto store = std::make_unique<helix::ams::FilamentSlotOverrideStore>(&api, "ace");
     FilamentSlotOverrideStoreTestAccess::set_cache_directory(*store, tmp.path);
     AceTestAccess::inject_override_store(backend, std::move(store));
@@ -837,7 +842,8 @@ TEST_CASE("ACE slot transition loaded -> empty does NOT clear override",
     state.init_subjects(false);
     MoonrakerAPIMock api(client, state);
 
-    AmsBackendAce backend(&api, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAce> backend_reg(&api, nullptr);
+    AmsBackendAce& backend = *backend_reg;
     auto store = std::make_unique<helix::ams::FilamentSlotOverrideStore>(&api, "ace");
     FilamentSlotOverrideStoreTestAccess::set_cache_directory(*store, tmp.path);
     AceTestAccess::inject_override_store(backend, std::move(store));
@@ -871,7 +877,8 @@ TEST_CASE("ACE slot transition loaded -> empty does NOT clear override",
 
 TEST_CASE("ACE partial override only replaces specified fields",
           "[ams][ace][filament_slot_override]") {
-    AmsBackendAce backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAce> backend_reg(nullptr, nullptr);
+    AmsBackendAce& backend = *backend_reg;
 
     // Override with only `brand` set — every other field must fall through
     // to firmware data (or SlotInfo default). Seed override AFTER an initial
@@ -907,7 +914,8 @@ TEST_CASE("ACE clear_slot_override erases in-memory override and MR DB entry",
     state.init_subjects(false);
     MoonrakerAPIMock api(client, state);
 
-    AmsBackendAce backend(&api, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAce> backend_reg(&api, nullptr);
+    AmsBackendAce& backend = *backend_reg;
     auto store = std::make_unique<helix::ams::FilamentSlotOverrideStore>(&api, "ace");
     FilamentSlotOverrideStoreTestAccess::set_cache_directory(*store, tmp.path);
     AceTestAccess::inject_override_store(backend, std::move(store));
@@ -968,7 +976,8 @@ TEST_CASE("ACE clear_slot_override is a no-op when no override is present",
     state.init_subjects(false);
     MoonrakerAPIMock api(client, state);
 
-    AmsBackendAce backend(&api, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAce> backend_reg(&api, nullptr);
+    AmsBackendAce& backend = *backend_reg;
     auto store = std::make_unique<helix::ams::FilamentSlotOverrideStore>(&api, "ace");
     FilamentSlotOverrideStoreTestAccess::set_cache_directory(*store, tmp.path);
     AceTestAccess::inject_override_store(backend, std::move(store));
@@ -996,7 +1005,8 @@ TEST_CASE("ACE clear_slot_override is a no-op when no override is present",
 
 TEST_CASE("ACE parses native filament_hub schema (slots, dryer, current_filament)",
           "[ams][ace][native][parse]") {
-    AmsBackendAce backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAce> backend_reg(nullptr, nullptr);
+    AmsBackendAce& backend = *backend_reg;
 
     AceTestAccess::parse_ace(backend, make_native_filament_hub_payload());
 
@@ -1084,7 +1094,8 @@ TEST_CASE("ACE status-update path falls back to ace key when filament_hub absent
 
 TEST_CASE("ACE native current_filament empty leaves loaded state unmanaged",
           "[ams][ace][native][parse]") {
-    AmsBackendAce backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAce> backend_reg(nullptr, nullptr);
+    AmsBackendAce& backend = *backend_reg;
 
     // First load slot 2 via a payload that says current_filament "0-2".
     json p = make_native_filament_hub_payload();
@@ -1100,7 +1111,8 @@ TEST_CASE("ACE native current_filament empty leaves loaded state unmanaged",
 }
 
 TEST_CASE("ACE maps native runout slot status to EMPTY", "[ams][ace][native][parse]") {
-    AmsBackendAce backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAce> backend_reg(nullptr, nullptr);
+    AmsBackendAce& backend = *backend_reg;
 
     json p = make_native_filament_hub_payload();
     p["slots"][1]["status"] = "runout";
@@ -1381,7 +1393,8 @@ TEST_CASE_METHOD(LVGLTestFixture,
     api.rest_mock().mock_set_get_response("/server/ace/status", status_ok);
     // /slots falls through to the mock's built-in 4-slot canned response.
 
-    AmsBackendAce backend(&api, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAce> backend_reg(&api, nullptr);
+    AmsBackendAce& backend = *backend_reg;
 
     std::vector<std::string> events;
     backend.set_event_callback(
@@ -1427,7 +1440,8 @@ TEST_CASE_METHOD(LVGLTestFixture, "ACE surfaces an error when the data endpoints
     api.rest_mock().mock_set_get_response("/server/ace/status", not_found);
     api.rest_mock().mock_set_get_response("/server/ace/slots", not_found);
 
-    AmsBackendAce backend(&api, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAce> backend_reg(&api, nullptr);
+    AmsBackendAce& backend = *backend_reg;
 
     int error_events = 0;
     backend.set_event_callback([&error_events](const std::string& ev, const std::string&) {
@@ -1446,7 +1460,8 @@ TEST_CASE_METHOD(LVGLTestFixture, "ACE surfaces an error when the data endpoints
 
 TEST_CASE("ACE adjusts a running dryer only by stopping and restarting it",
           "[ams][ace][dryer][capability]") {
-    AmsBackendAce backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAce> backend_reg(nullptr, nullptr);
+    AmsBackendAce& backend = *backend_reg;
     auto d = backend.get_dryer_info();
     REQUIRE(d.supported);
     // ACE_START_DRYING and ACE_STOP_DRYING are the entire surface; there is no

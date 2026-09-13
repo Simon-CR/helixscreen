@@ -32,6 +32,7 @@
 #include "moonraker_api_mock.h"
 #include "moonraker_client_mock.h"
 #include "printer_state.h"
+#include "test_helpers/registered_backend.h"
 
 #include <cstdlib>
 #include <filesystem>
@@ -141,7 +142,8 @@ helix::SlotInfo blue_petg() {
 } // namespace
 
 TEST_CASE("A tool's spool metadata survives rediscovery", "[ams][toolchanger][slot_memory]") {
-    SlotMemoryHelper h(4);
+    helix::test::RegisteredBackend<SlotMemoryHelper> h_reg(4);
+    SlotMemoryHelper& h = *h_reg;
     REQUIRE(h.set_slot_info(1, blue_petg(), /*persist=*/true).success());
 
     // The reconnect path: AmsState calls set_discovered_tools() again, which
@@ -159,7 +161,8 @@ TEST_CASE("A tool's spool metadata survives rediscovery", "[ams][toolchanger][sl
 
 TEST_CASE("Rediscovery does not leak one tool's spool onto another",
           "[ams][toolchanger][slot_memory]") {
-    SlotMemoryHelper h(4);
+    helix::test::RegisteredBackend<SlotMemoryHelper> h_reg(4);
+    SlotMemoryHelper& h = *h_reg;
     REQUIRE(h.set_slot_info(1, blue_petg(), /*persist=*/true).success());
     h.set_tools(4);
 
@@ -171,7 +174,8 @@ TEST_CASE("Rediscovery does not leak one tool's spool onto another",
 }
 
 TEST_CASE("A status frame does not undo the user's edit", "[ams][toolchanger][slot_memory]") {
-    SlotMemoryHelper h(4);
+    helix::test::RegisteredBackend<SlotMemoryHelper> h_reg(4);
+    SlotMemoryHelper& h = *h_reg;
     REQUIRE(h.set_slot_info(2, blue_petg(), /*persist=*/true).success());
 
     // refresh_slot_statuses_locked() runs inside the parse and rewrites slot
@@ -184,7 +188,8 @@ TEST_CASE("A status frame does not undo the user's edit", "[ams][toolchanger][sl
 }
 
 TEST_CASE("persist=false is a preview, not a memory", "[ams][toolchanger][slot_memory]") {
-    SlotMemoryHelper h(4);
+    helix::test::RegisteredBackend<SlotMemoryHelper> h_reg(4);
+    SlotMemoryHelper& h = *h_reg;
     helix::SlotInfo info = blue_petg();
     REQUIRE(h.set_slot_info(1, info, /*persist=*/false).success());
 
@@ -200,7 +205,8 @@ TEST_CASE("An edit that also remaps a tool keeps both", "[ams][toolchanger][slot
     // set_slot_info() does double duty: metadata AND an ASSIGN_TOOL remap when
     // mapped_tool changed. The remap path returns early, so a persist placed
     // after it would silently drop the metadata on exactly this call.
-    SlotMemoryHelper h(4);
+    helix::test::RegisteredBackend<SlotMemoryHelper> h_reg(4);
+    SlotMemoryHelper& h = *h_reg;
 
     helix::SlotInfo info = blue_petg();
     info.mapped_tool = 3; // slot 1 should answer to T3

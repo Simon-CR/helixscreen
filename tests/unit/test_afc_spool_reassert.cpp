@@ -16,10 +16,11 @@
  */
 
 #include "../lvgl_test_fixture.h"
-#include "test_helpers/afc_test_access.h"
 #include "ams_backend_afc.h"
 #include "ams_types.h"
 #include "settings_manager.h"
+#include "test_helpers/afc_test_access.h"
+#include "test_helpers/registered_backend.h"
 
 #include <algorithm>
 #include <string>
@@ -115,7 +116,8 @@ TEST_CASE_METHOD(LVGLTestFixture, "AFC re-asserts retained binding on empty->loa
     SettingsManager::instance().init_subjects();
     SettingsManager::instance().set_ams_keep_spool_info_on_eject(true);
 
-    AfcReassertHelper afc;
+    helix::test::RegisteredBackend<AfcReassertHelper> afc_reg;
+    AfcReassertHelper& afc = *afc_reg;
     afc.set_override(0, spool_override(42));
 
     // Spool present and linked: firmware echoes our id. Even though a rising
@@ -157,7 +159,8 @@ TEST_CASE_METHOD(LVGLTestFixture, "AFC re-assert skipped when firmware reports a
     SettingsManager::instance().init_subjects();
     SettingsManager::instance().set_ams_keep_spool_info_on_eject(true);
 
-    AfcReassertHelper afc;
+    helix::test::RegisteredBackend<AfcReassertHelper> afc_reg;
+    AfcReassertHelper& afc = *afc_reg;
     afc.set_override(0, spool_override(42));
 
     afc.feed_stepper("lane1", nlohmann::json{{"status", "None"}, {"spool_id", nullptr}});
@@ -173,7 +176,8 @@ TEST_CASE_METHOD(LVGLTestFixture, "AFC re-assert never fires with retention off 
     settings.init_subjects();
     settings.set_ams_keep_spool_info_on_eject(false);
 
-    AfcReassertHelper afc;
+    helix::test::RegisteredBackend<AfcReassertHelper> afc_reg;
+    AfcReassertHelper& afc = *afc_reg;
     // Retention off holds by two overlapping locks: the merge's eject rule
     // (Rule 2) drops the in-memory record on the next frame after an eject
     // clear, and the re-assert gate independently refuses to push while the
@@ -200,7 +204,8 @@ TEST_CASE_METHOD(LVGLTestFixture,
     SettingsManager::instance().init_subjects();
     SettingsManager::instance().set_ams_keep_spool_info_on_eject(true);
 
-    AfcReassertHelper afc;
+    helix::test::RegisteredBackend<AfcReassertHelper> afc_reg;
+    AfcReassertHelper& afc = *afc_reg;
     afc.set_override(0, spool_override(42));
 
     // A spool bouncing in and out: two empty -> loaded transitions, at most

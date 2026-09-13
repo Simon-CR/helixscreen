@@ -19,6 +19,7 @@
 #include "printer_discovery.h"
 #include "printer_state.h"
 #include "test_helpers/ad5x_ifs_test_access.h"
+#include "test_helpers/registered_backend.h"
 #include "test_helpers/scoped_home_confirm_prompter.h"
 
 #include <algorithm>
@@ -224,7 +225,8 @@ static void seed_standard_colors(AmsBackendAd5xIfs& b) {
 // ==========================================================================
 
 TEST_CASE("AD5X IFS type identification", "[ams][ad5x_ifs]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
 
     REQUIRE(backend.get_type() == AmsType::AD5X_IFS);
     REQUIRE(backend.get_topology() == PathTopology::LINEAR);
@@ -232,7 +234,8 @@ TEST_CASE("AD5X IFS type identification", "[ams][ad5x_ifs]") {
 
 TEST_CASE("AD5X IFS: manages_active_spool() is true so the UI never auto-writes Spoolman",
           "[ams][ad5x][ifs][spoolman][1071]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     CHECK(backend.manages_active_spool() == true);
 }
 
@@ -241,7 +244,8 @@ TEST_CASE("AD5X IFS: manages_active_spool() is true so the UI never auto-writes 
 // ==========================================================================
 
 TEST_CASE("AD5X IFS parse_save_variables full JSON", "[ams][ad5x_ifs]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::set_has_ifs_vars(backend, true);
     Ad5xIfsTestAccess::parse_vars(backend, standard_variables());
 
@@ -280,7 +284,8 @@ TEST_CASE("AD5X IFS parse_save_variables full JSON", "[ams][ad5x_ifs]") {
 // ==========================================================================
 
 TEST_CASE("AD5X IFS no active tool", "[ams][ad5x_ifs]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
 
     auto vars = standard_variables();
     vars["less_waste_current_tool"] = -1;
@@ -298,7 +303,8 @@ TEST_CASE("AD5X IFS no active tool", "[ams][ad5x_ifs]") {
 // ==========================================================================
 
 TEST_CASE("AD5X IFS color hex parsing", "[ams][ad5x_ifs]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
 
     SECTION("lowercase hex works") {
         Ad5xIfsTestAccess::set_color(backend, 0, "ff0000");
@@ -331,7 +337,8 @@ TEST_CASE("AD5X IFS color hex parsing", "[ams][ad5x_ifs]") {
 // ==========================================================================
 
 TEST_CASE("AD5X IFS tool mapping reverse lookup", "[ams][ad5x_ifs]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::set_has_ifs_vars(backend, true);
 
     SECTION("standard 1:1 mapping") {
@@ -365,7 +372,8 @@ TEST_CASE("AD5X IFS tool mapping reverse lookup", "[ams][ad5x_ifs]") {
 // ==========================================================================
 
 TEST_CASE("AD5X IFS port sensor parsing", "[ams][ad5x_ifs]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
 
     // Set port 1 and 3 as having filament
     Ad5xIfsTestAccess::handle_status(backend, make_port_sensor(1, true));
@@ -386,7 +394,8 @@ TEST_CASE("AD5X IFS port sensor parsing", "[ams][ad5x_ifs]") {
 // ==========================================================================
 
 TEST_CASE("AD5X IFS head sensor parsing", "[ams][ad5x_ifs]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
 
     REQUIRE_FALSE(Ad5xIfsTestAccess::head_filament(backend));
 
@@ -402,7 +411,8 @@ TEST_CASE("AD5X IFS head sensor parsing", "[ams][ad5x_ifs]") {
 // ==========================================================================
 
 TEST_CASE("AD5X IFS native ZMOD motion sensor parsing", "[ams][ad5x_ifs]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
 
     REQUIRE_FALSE(Ad5xIfsTestAccess::head_filament(backend));
 
@@ -415,7 +425,8 @@ TEST_CASE("AD5X IFS native ZMOD motion sensor parsing", "[ams][ad5x_ifs]") {
 }
 
 TEST_CASE("AD5X IFS native ZMOD combined update (no per-port sensors)", "[ams][ad5x_ifs]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::set_has_ifs_vars(backend, true);
 
     // Simulate a native ZMOD IFS status update:
@@ -445,7 +456,8 @@ TEST_CASE("AD5X IFS native ZMOD combined update (no per-port sensors)", "[ams][a
 // ==========================================================================
 
 TEST_CASE("AD5X IFS combined status update", "[ams][ad5x_ifs]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::set_has_ifs_vars(backend, true);
 
     // Build a combined notification with save_variables + sensors
@@ -479,7 +491,8 @@ TEST_CASE("AD5X IFS combined status update", "[ams][ad5x_ifs]") {
 // ==========================================================================
 
 TEST_CASE("AD5X IFS get_system_info", "[ams][ad5x_ifs]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::set_has_ifs_vars(backend, true);
     Ad5xIfsTestAccess::handle_status(backend, make_save_variables(standard_variables()));
 
@@ -553,7 +566,8 @@ TEST_CASE("AD5X IFS get_tool_mapping translates 1-based wire lanes to 0-based sl
     // The AmsBackend contract is 0-based slot indices in both directions,
     // while the wire speaks 1-based lanes. An off-by-one here aims T0 at the
     // wrong lane on real hardware.
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::handle_status(backend,
                                      make_ifs_frame(json{{"0", 4}, {"1", 1}, {"2", 3}, {"3", 2}}));
 
@@ -561,7 +575,8 @@ TEST_CASE("AD5X IFS get_tool_mapping translates 1-based wire lanes to 0-based sl
 }
 
 TEST_CASE("AD5X IFS get_tool_mapping drops the trailing unmapped tools", "[ams][ad5x_ifs]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::handle_status(backend, make_ifs_frame(identity_tool_map()));
 
     auto mapping = backend.get_tool_mapping();
@@ -578,7 +593,8 @@ TEST_CASE("AD5X IFS get_tool_mapping keeps a mid-range hole", "[ams][ad5x_ifs]")
     // tool_to_slot[i] is indexed BY tool number, so a lane this backend cannot
     // address (a wider module publishing lane 6) stays a -1 hole rather than
     // collapsing T2 down into its place.
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::handle_status(backend,
                                      make_ifs_frame(json{{"0", 1}, {"1", 6}, {"2", 3}, {"3", 4}}));
 
@@ -587,7 +603,8 @@ TEST_CASE("AD5X IFS get_tool_mapping keeps a mid-range hole", "[ams][ad5x_ifs]")
 
 TEST_CASE("AD5X IFS tool_map replaces wholesale and ignores keys that name no tool",
           "[ams][ad5x_ifs]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::handle_status(backend, make_ifs_frame(identity_tool_map()));
 
     // JSON object keys are strings whatever Python held; a non-numeric key or
@@ -645,7 +662,8 @@ TEST_CASE("AD5X IFS set_tool_mapping propagates the dispatch error", "[ams][ad5x
     // reach the caller rather than report success for a verb that never left.
     // (A FIRMWARE refusal — aiming at an empty lane — arrives asynchronously
     // on notify_gcode_response and surfaces through the gcode error router.)
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::handle_status(backend, make_ifs_frame(identity_tool_map()));
 
     REQUIRE_FALSE(backend.set_tool_mapping(0, 0).success());
@@ -657,7 +675,8 @@ TEST_CASE("AD5X IFS set_tool_mapping without either contract stays a local write
     // or replays a mapping; a caller that ignores remap_ready() gets the
     // historical local-only behavior instead of a verb aimed at a module that
     // is not there.
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
 
     REQUIRE(backend.set_tool_mapping(15, 0).success());
     REQUIRE(Ad5xIfsTestAccess::tool_map(backend)[15] == 1); // port = slot + 1
@@ -667,7 +686,8 @@ TEST_CASE("AD5X IFS ZMOD plugin contract remaps without printer.ifs", "[ams][ad5
     // Regression guard for the ZMOD + lessWaste/bambufy population: the
     // plugin's save_variables table alone must keep remapping working, the
     // way it did before the printer.ifs adapter existed.
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::set_has_ifs_vars(backend, true);
     Ad5xIfsTestAccess::handle_status(backend, make_save_variables(standard_variables()));
 
@@ -680,7 +700,8 @@ TEST_CASE("AD5X IFS set_tool_mapping still addresses the full 0..15 tool range",
           "[ams][ad5x_ifs]") {
     // The ZMOD plugin's _IFS_VARS tool map is 16 wide and the user can still
     // pin a lane to T15.
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::set_has_ifs_vars(backend, true);
     Ad5xIfsTestAccess::handle_status(backend, make_save_variables(standard_variables()));
 
@@ -746,7 +767,8 @@ TEST_CASE("AD5X IFS reset_tool_mappings emits the firmware reset verb", "[ams][a
 }
 
 TEST_CASE("AD5X IFS tool_map echo refreshes the per-lane mapped tool", "[ams][ad5x_ifs]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::handle_status(backend, make_ifs_frame(identity_tool_map()));
     REQUIRE(backend.get_slot_info(1).mapped_tool == 1); // lane 2 carries T1
 
@@ -777,7 +799,8 @@ TEST_CASE("AD5X IFS required_status_objects asks for the module when present", "
 // ==========================================================================
 
 TEST_CASE("AD5X IFS bypass mode", "[ams][ad5x_ifs]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::set_has_ifs_vars(backend, true);
 
     SECTION("external=1 activates bypass") {
@@ -811,7 +834,8 @@ TEST_CASE("AD5X IFS bypass mode", "[ams][ad5x_ifs]") {
 // ==========================================================================
 
 TEST_CASE("AD5X IFS build_color_list_value format", "[ams][ad5x_ifs]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     seed_standard_colors(backend);
 
     std::string colors = Ad5xIfsTestAccess::build_colors(backend);
@@ -831,7 +855,8 @@ TEST_CASE("AD5X IFS build_color_list_value format", "[ams][ad5x_ifs]") {
 }
 
 TEST_CASE("AD5X IFS lessWaste list payload projects tool_map_ per tool", "[ams][ad5x_ifs]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     seed_standard_colors(backend);
     Ad5xIfsTestAccess::set_has_ifs_vars(backend, true);
 
@@ -849,7 +874,8 @@ TEST_CASE("AD5X IFS lessWaste list payload projects tool_map_ per tool", "[ams][
 }
 
 TEST_CASE("AD5X IFS bambufy list payload stays port-indexed 4-entry", "[ams][ad5x_ifs]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     seed_standard_colors(backend);
     Ad5xIfsTestAccess::set_var_prefix(backend, "bambufy");
 
@@ -866,7 +892,8 @@ TEST_CASE("AD5X IFS bambufy list payload stays port-indexed 4-entry", "[ams][ad5
 // ==========================================================================
 
 TEST_CASE("AD5X IFS build_tool_map_value format", "[ams][ad5x_ifs]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::set_has_ifs_vars(backend, true);
     Ad5xIfsTestAccess::parse_vars(backend, standard_variables());
 
@@ -879,7 +906,8 @@ TEST_CASE("AD5X IFS build_tool_map_value format", "[ams][ad5x_ifs]") {
 // ==========================================================================
 
 TEST_CASE("AD5X IFS set_slot_info persist=false", "[ams][ad5x_ifs]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     // First parse standard state so slots exist
     Ad5xIfsTestAccess::handle_status(backend, make_save_variables(standard_variables()));
 
@@ -908,7 +936,8 @@ TEST_CASE("AD5X IFS set_slot_info persist=false", "[ams][ad5x_ifs]") {
 // ==========================================================================
 
 TEST_CASE("AD5X IFS slot status mapping", "[ams][ad5x_ifs]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::set_has_ifs_vars(backend, true);
 
     SECTION("port with filament, not active → AVAILABLE") {
@@ -954,7 +983,8 @@ TEST_CASE("AD5X IFS slot status mapping", "[ams][ad5x_ifs]") {
 // ==========================================================================
 
 TEST_CASE("AD5X IFS action state tracking", "[ams][ad5x_ifs]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
 
     SECTION("load_filament sets LOADING action (precondition fails with null api)") {
         // load_filament will fail at check_preconditions with null api,
@@ -988,7 +1018,8 @@ TEST_CASE("AD5X IFS action state tracking", "[ams][ad5x_ifs]") {
 // ==========================================================================
 
 TEST_CASE("AD5X IFS path segments", "[ams][ad5x_ifs]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::set_has_ifs_vars(backend, true);
 
     SECTION("get_filament_segment: no filament anywhere → NONE") {
@@ -1068,7 +1099,8 @@ static json wrap_notification(const json& status) {
 // ==========================================================================
 
 TEST_CASE("AD5X IFS handles wrapped notify_status_update", "[ams][ad5x_ifs]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::set_has_ifs_vars(backend, true);
 
     SECTION("wrapped port sensor updates state") {
@@ -1145,7 +1177,8 @@ TEST_CASE("AD5X IFS handles wrapped notify_status_update", "[ams][ad5x_ifs]") {
 // ==========================================================================
 
 TEST_CASE("AD5X IFS action timeout resets stuck operations", "[ams][ad5x_ifs]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
 
     SECTION("LOADING surfaces ERROR after timeout") {
         Ad5xIfsTestAccess::set_action(backend, AmsAction::LOADING);
@@ -1190,7 +1223,8 @@ TEST_CASE("AD5X IFS PURGING gets a longer dedicated timeout budget (#1065 Bug 2)
     // A real purge runs far longer than the generic 90 s phase budget (raza616:
     // ~3 min whole-op from cold; Vger1700 hit the 90 s ERROR twice mid-purge).
     // PURGING gets its own longer budget so a healthy-but-slow purge isn't killed.
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
 
     SECTION("does not ERROR within the dedicated budget (past the old 90 s window)") {
         Ad5xIfsTestAccess::set_action(backend, AmsAction::PURGING);
@@ -1244,7 +1278,8 @@ TEST_CASE("AD5X IFS motion during PURGING resets the timeout clock (#1065 Bug 2)
 
 TEST_CASE("AD5X IFS indeterminate: a stalled progress feed trips the flag (#1065 row 14)",
           "[ams][ad5x_ifs][1065]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::set_head_filament(backend, false);
     Ad5xIfsTestAccess::begin_phase(backend, /*is_unload=*/false); // load -> HEATING
 
@@ -1267,7 +1302,8 @@ TEST_CASE("AD5X IFS indeterminate: a stalled progress feed trips the flag (#1065
 
 TEST_CASE("AD5X IFS indeterminate: a fresh progress signal clears the flag (#1065 row 14)",
           "[ams][ad5x_ifs][1065]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::set_head_filament(backend, false);
     Ad5xIfsTestAccess::begin_phase(backend, /*is_unload=*/false);
     Ad5xIfsTestAccess::handle_status(backend, make_extruder(150.0, 230.0));
@@ -1297,7 +1333,8 @@ TEST_CASE("AD5X IFS indeterminate: a fresh progress signal clears the flag (#106
 TEST_CASE(
     "AD5X IFS indeterminate: get_system_info() trips the flag on its own (#1065 watchdog path)",
     "[ams][ad5x_ifs][1065]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::set_head_filament(backend, false);
     Ad5xIfsTestAccess::begin_phase(backend, /*is_unload=*/false);
     Ad5xIfsTestAccess::handle_status(backend, make_extruder(150.0, 230.0));
@@ -1347,7 +1384,8 @@ TEST_CASE("AD5X IFS indeterminate: healthy heat never false-fires; frozen value 
 
 TEST_CASE("AD5X IFS indeterminate: flag clears when the operation completes (#1065 row 14)",
           "[ams][ad5x_ifs][1065]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::set_head_filament(backend, false);
     Ad5xIfsTestAccess::begin_phase(backend, /*is_unload=*/false);
     Ad5xIfsTestAccess::handle_status(backend, make_extruder(150.0, 230.0));
@@ -1370,7 +1408,8 @@ TEST_CASE("AD5X IFS indeterminate: flag clears when the operation completes (#10
 // ==========================================================================
 
 TEST_CASE("AD5X IFS variable prefix auto-detection", "[ams][ad5x_ifs]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::set_has_ifs_vars(backend, true);
 
     SECTION("defaults to less_waste prefix") {
@@ -1413,7 +1452,8 @@ TEST_CASE("AD5X IFS variable prefix auto-detection", "[ams][ad5x_ifs]") {
 // ==========================================================================
 
 TEST_CASE("AD5X IFS motion sensor completes load/unload", "[ams][ad5x_ifs]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
 
     SECTION("LOADING + motion sensor detected → IDLE") {
         Ad5xIfsTestAccess::set_action(backend, AmsAction::LOADING);
@@ -1439,7 +1479,8 @@ TEST_CASE("AD5X IFS motion sensor completes load/unload", "[ams][ad5x_ifs]") {
 // ==========================================================================
 
 TEST_CASE("AD5X IFS phase: unload sequence (temp + head sensor)", "[ams][ad5x_ifs][phase]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     // Filament present at the toolhead before unload begins.
     Ad5xIfsTestAccess::set_head_filament(backend, true);
 
@@ -1477,7 +1518,8 @@ TEST_CASE("AD5X IFS phase: unload sequence (temp + head sensor)", "[ams][ad5x_if
 }
 
 TEST_CASE("AD5X IFS phase: load sequence (temp + head sensor)", "[ams][ad5x_ifs][phase]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     // Fresh load: no filament at the toolhead initially.
     Ad5xIfsTestAccess::set_head_filament(backend, false);
 
@@ -1515,7 +1557,8 @@ TEST_CASE(
     // those fields, the steps render but the active one never highlights and the
     // detail line goes blank (mkleersn v0.99.87: "the 1-2-3 steps show but fail to
     // launch any of them").
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::set_head_filament(backend, false);
     Ad5xIfsTestAccess::begin_phase(backend, /*is_unload=*/false); // load -> HEATING, phase 0
 
@@ -1535,7 +1578,8 @@ TEST_CASE(
 
 TEST_CASE("AD5X IFS phase: RESPOND line sets target before any extruder frame",
           "[ams][ad5x_ifs][phase]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::set_head_filament(backend, true);
     Ad5xIfsTestAccess::begin_phase(backend, /*is_unload=*/true);
 
@@ -1578,7 +1622,8 @@ TEST_CASE("AD5X IFS phase: full unload with ZERO RESPOND lines (fork robustness)
           "[ams][ad5x_ifs][phase]") {
     // Proves the English RESPOND strings are NOT load-bearing: temp + head
     // sensor alone drive the entire HEATING → CUTTING → UNLOADING sequence.
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::set_head_filament(backend, true);
     Ad5xIfsTestAccess::begin_phase(backend, /*is_unload=*/true);
 
@@ -1600,7 +1645,8 @@ TEST_CASE("AD5X IFS phase: HEATING does not finalize before target at 90s",
     // which exceeds the 90s ACTION_TIMEOUT. HEATING must get a longer dedicated
     // budget so the timeout doesn't snap to IDLE mid-heat (which reproduced the
     // original "nothing happening" complaint). Later phases keep the short 90s.
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::set_head_filament(backend, true);
     Ad5xIfsTestAccess::begin_phase(backend, /*is_unload=*/true);
 
@@ -1629,7 +1675,8 @@ TEST_CASE("AD5X IFS phase: clock resets on phase transition (no immediate timeou
           "[ams][ad5x_ifs][phase]") {
     // A phase transition occurring at elapsed > 90s must not immediately time
     // out the new phase — the start clock is reset on transition.
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::set_head_filament(backend, true);
     Ad5xIfsTestAccess::begin_phase(backend, /*is_unload=*/true);
 
@@ -1675,7 +1722,8 @@ TEST_CASE("AD5X IFS phase: head drop during LOAD resets the timeout clock (#1065
     // verify a reset that happened earlier. We use set_action_age to plant a
     // stale clock, fire the head drop, then run_action_timeout (no overwrite)
     // — the timeout's behavior tells us whether the reset stuck.
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     // Swap context: another lane is currently seated, so the head reads
     // loaded at LOADING-phase start. The implicit unload will drive
     // head_filament_ true → false; starting false would make that transition
@@ -1714,7 +1762,8 @@ TEST_CASE("AD5X IFS phase: head drop during LOAD clears operation_indeterminate 
     // a genuine progress signal, so the indeterminate ("Working…") detector
     // must clear. Before the fix, a stalled progress feed could false-fire
     // even though the macro was actively cutting/retracting the old lane.
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     // Swap context: another lane is already seated at the head. The implicit
     // unload will drive head_filament_ true → false. Starting false would
     // miss the transition (was==detected==false) and never reach
@@ -1743,7 +1792,8 @@ TEST_CASE("AD5X IFS phase: head drop during UNLOAD still works as before (#1065 
     // Regression: the existing unload path uses seen_head_drop to advance
     // HEATING → CUTTING → UNLOADING. Bug B's fix must NOT change that — the
     // head drop's phase-advancement contract for UNLOAD ops is preserved.
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::set_head_filament(backend, true);
     Ad5xIfsTestAccess::begin_phase(backend, /*is_unload=*/true);
 
@@ -1760,7 +1810,8 @@ TEST_CASE("AD5X IFS phase: plain load (no swap) still uses 90s LOADING budget (#
     // is currently seated at dispatch. A plain load into an empty toolhead
     // must keep the 90s budget — otherwise a genuinely stuck load would hang
     // the UI for 180s before surfacing ERROR.
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::set_head_filament(backend, false);
     // No seated lane — swap_expected must NOT be set.
     Ad5xIfsTestAccess::begin_phase(backend, /*is_unload=*/false);
@@ -1786,7 +1837,8 @@ TEST_CASE("AD5X IFS phase: swap load (another lane seated) extends LOADING budge
     // check_preconditions). Instead we drive begin_phase directly + flip the
     // swap flag via the test accessor — exercising exactly the code path
     // check_action_timeout will consult.
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::set_head_filament(backend, false);
     // Seed another lane as currently seated — this is what load_filament
     // sees when dispatching and what triggers swap_expected.
@@ -1830,7 +1882,8 @@ TEST_CASE("AD5X IFS phase: zcolor quick-finish unload (head drop seen)", "[ams][
     // After the unload physically progresses past the cut (head drop), a fresh
     // GET_ZCOLOR with no extruder slot is the early terminal signal — finalize
     // to IDLE within ~1s instead of waiting out the 90s timeout backstop.
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::set_head_filament(backend, true);
     Ad5xIfsTestAccess::begin_phase(backend, /*is_unload=*/true);
 
@@ -1852,7 +1905,8 @@ TEST_CASE("AD5X IFS phase: zcolor does NOT finalize before head transition",
     // The early post-dispatch query (unload_filament schedules one immediately)
     // must NOT finalize before the op physically progresses past the cut. With
     // no head drop seen, progressed==false → stay in CUTTING.
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::set_head_filament(backend, true);
     Ad5xIfsTestAccess::begin_phase(backend, /*is_unload=*/true);
 
@@ -1866,7 +1920,8 @@ TEST_CASE("AD5X IFS phase: zcolor does NOT finalize before head transition",
 }
 
 TEST_CASE("AD5X IFS phase: zcolor quick-finish load (head rise seen)", "[ams][ad5x_ifs][phase]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::set_head_filament(backend, false);
     Ad5xIfsTestAccess::begin_phase(backend, /*is_unload=*/false);
 
@@ -1886,7 +1941,8 @@ TEST_CASE("AD5X IFS phase: zcolor quick-finish load (head rise seen)", "[ams][ad
 TEST_CASE("AD5X IFS phase: zcolor invalid response does not finalize", "[ams][ad5x_ifs][phase]") {
     // A junk read (saw_valid_response=false) must never finalize the op — even
     // after a head transition. apply_zcolor_result early-returns on it.
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::set_head_filament(backend, true);
     Ad5xIfsTestAccess::begin_phase(backend, /*is_unload=*/true);
 
@@ -1905,7 +1961,8 @@ TEST_CASE("AD5X IFS phase: inactive tracker preserves legacy snap-to-IDLE",
     // via set_action), a head transition must still snap directly to IDLE — the
     // legacy backward-compat path. This mirrors the existing "action state
     // tracking" cases but asserts the gating contract explicitly.
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     REQUIRE_FALSE(Ad5xIfsTestAccess::phase_active(backend));
 
     Ad5xIfsTestAccess::set_action(backend, AmsAction::UNLOADING);
@@ -1918,7 +1975,8 @@ TEST_CASE("AD5X IFS phase: inactive tracker preserves legacy snap-to-IDLE",
 // ==========================================================================
 
 TEST_CASE("AD5X IFS native ZMOD infers active slot from head sensor", "[ams][ad5x_ifs]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::set_has_ifs_vars(backend, true);
 
     // Seed colors_ + port_presence_ to simulate the post-GET_ZCOLOR / Adventurer5M
@@ -1948,7 +2006,8 @@ TEST_CASE("AD5X IFS native ZMOD infers active slot from head sensor", "[ams][ad5
 // ==========================================================================
 
 TEST_CASE("AD5X IFS has_ifs_vars detection", "[ams][ad5x_ifs]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
 
     SECTION("defaults to false") {
         REQUIRE_FALSE(Ad5xIfsTestAccess::has_ifs_vars(backend));
@@ -1989,7 +2048,8 @@ TEST_CASE("AD5X IFS has_ifs_vars reset when macro missing", "[ams][ad5x_ifs]") {
     // exists but _IFS_VARS gcode macro is not loaded. parse_save_variables() sets
     // has_ifs_vars_ true, but on_started() should reset it when the macro is absent.
     // This test verifies the parse step sets the flag (the reset happens in on_started).
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
 
     SECTION("pessimistic latch prevents flag before macro check") {
         // Latch starts true — parse_save_variables can't set has_ifs_vars_
@@ -2050,7 +2110,8 @@ TEST_CASE("AD5X IFS has_ifs_vars reset when macro missing", "[ams][ad5x_ifs]") {
 // plugin's last-known tool map and active-tool guess as truth on every boot.
 // Now those reads are gated on has_ifs_vars_ — i.e. plugin actively loaded.
 TEST_CASE("AD5X IFS stale save_variables ignored when plugin macro missing", "[ams][ad5x_ifs]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
 
     // Confirm latch defaults to "macro missing" — the on_started() initial
     // query never confirmed the macro exists.
@@ -2096,7 +2157,8 @@ TEST_CASE("AD5X IFS stale save_variables ignored when plugin macro missing", "[a
 // asserts the self-heal path: as soon as Klipper rejects the command, we
 // demote has_ifs_vars_ and latch the macro as missing.
 TEST_CASE("AD5X IFS self-heals on Unknown command:\"_IFS_VARS\" response", "[ams][ad5x_ifs]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
 
     // Seed the wrong-state: macro 'confirmed present' and has_ifs_vars_ true.
     Ad5xIfsTestAccess::set_ifs_macro_confirmed_missing(backend, false);
@@ -2121,7 +2183,8 @@ TEST_CASE("AD5X IFS self-heals on Unknown command:\"_IFS_VARS\" response", "[ams
 // ==========================================================================
 
 TEST_CASE("AD5X IFS parse_adventurer_json", "[ams][ad5x_ifs]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
 
     SECTION("standard 4-slot JSON with # prefixed hex colors") {
         std::string content = R"({
@@ -2270,7 +2333,8 @@ TEST_CASE("AD5X IFS parse_adventurer_json", "[ams][ad5x_ifs]") {
 // ==========================================================================
 
 TEST_CASE("AD5X IFS parse_adventurer_json skips dirty slots", "[ams][ad5x_ifs]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
 
     // Seed slot 0 with initial JSON data
     std::string initial = R"({
@@ -2306,7 +2370,8 @@ TEST_CASE("AD5X IFS parse_adventurer_json skips dirty slots", "[ams][ad5x_ifs]")
 }
 
 TEST_CASE("AD5X IFS parse_adventurer_json updates clean slots normally", "[ams][ad5x_ifs]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
 
     // Edit slot 0, then clear dirty to simulate completed persist
     SlotInfo edit;
@@ -2331,7 +2396,8 @@ TEST_CASE("AD5X IFS parse_adventurer_json updates clean slots normally", "[ams][
 }
 
 TEST_CASE("AD5X IFS set_slot_info persist=false sets dirty flag", "[ams][ad5x_ifs]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::handle_status(backend, make_save_variables(standard_variables()));
 
     REQUIRE_FALSE(Ad5xIfsTestAccess::dirty(backend, 1));
@@ -2345,7 +2411,8 @@ TEST_CASE("AD5X IFS set_slot_info persist=false sets dirty flag", "[ams][ad5x_if
 }
 
 TEST_CASE("AD5X IFS dirty flag protects against both parse paths", "[ams][ad5x_ifs]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
 
     // Seed via save_variables (lessWaste path)
     Ad5xIfsTestAccess::handle_status(backend, make_save_variables(standard_variables()));
@@ -2400,7 +2467,8 @@ TEST_CASE("AD5X IFS dirty flag protects against both parse paths", "[ams][ad5x_i
 // stand down once IFS_STATUS Ports has been parsed.
 TEST_CASE("AD5X IFS set_slot_info does not own presence once IFS_STATUS Ports has spoken",
           "[ams][ad5x_ifs]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
 
     // Native ZMOD: no lessWaste/bambufy per-port sensor exporter.
     REQUIRE_FALSE(Ad5xIfsTestAccess::has_per_port_sensors(backend));
@@ -2465,7 +2533,8 @@ TEST_CASE("AD5X IFS set_slot_info does not own presence once IFS_STATUS Ports ha
 
 TEST_CASE("AD5X IFS parse_adventurer_json does not own presence on native ZMOD",
           "[ams][ad5x_ifs]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
 
     // No per-port sensors — this is native ZMOD
     REQUIRE_FALSE(Ad5xIfsTestAccess::has_per_port_sensors(backend));
@@ -2533,7 +2602,8 @@ TEST_CASE("AD5X IFS parse_adventurer_json does not own presence on native ZMOD",
 
 TEST_CASE("AD5X IFS emptied channel is not resurrected by a JSON edit to another channel",
           "[ams][ad5x_ifs]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     REQUIRE_FALSE(Ad5xIfsTestAccess::has_per_port_sensors(backend));
 
     // 1. Establish channel 0 LOADED via GET_ZCOLOR (the silk sensor's truth).
@@ -2592,7 +2662,8 @@ TEST_CASE("AD5X IFS emptied channel is not resurrected by a JSON edit to another
 // SILENT is unsupported, parse_adventurer_json must resume the legacy inference.
 
 TEST_CASE("AD5X IFS pre-SILENT zmod falls back to JSON presence inference", "[ams][ad5x_ifs]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     REQUIRE_FALSE(Ad5xIfsTestAccess::has_per_port_sensors(backend));
 
     std::string content = R"({
@@ -2629,7 +2700,8 @@ TEST_CASE("AD5X IFS pre-SILENT zmod falls back to JSON presence inference", "[am
 // inference; it now rides on apply_zcolor_result's present->absent transition.
 
 TEST_CASE("AD5X IFS GET_ZCOLOR present->absent clears the slot override", "[ams][ad5x_ifs]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     REQUIRE_FALSE(Ad5xIfsTestAccess::has_per_port_sensors(backend));
 
     // Slot 0 present with a user override staged.
@@ -2671,7 +2743,8 @@ TEST_CASE("AD5X IFS GET_ZCOLOR present->absent clears the slot override", "[ams]
 // honored.
 TEST_CASE("AD5X IFS eject-settling: a lagging Ports read does not resurrect the lane (#1065)",
           "[ams][ad5x_ifs][1065]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     REQUIRE_FALSE(Ad5xIfsTestAccess::has_per_port_sensors(backend));
 
     // All four lanes present (establish via the presence helper so status is set).
@@ -2720,7 +2793,8 @@ TEST_CASE("AD5X IFS eject-settling: a lagging Ports read does not resurrect the 
 // into lane 3 completes (Chan=3).
 TEST_CASE("AD5X IFS stale FFMInfo.channel at an empty lane is not adopted as seated (#1065)",
           "[ams][ad5x_ifs][1065]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     REQUIRE_FALSE(Ad5xIfsTestAccess::has_per_port_sensors(backend));
 
     Ad5xIfsTestAccess::set_ffm_channel(backend, 4); // sticky pointer at now-empty lane 4
@@ -2752,7 +2826,8 @@ TEST_CASE("AD5X IFS stale FFMInfo.channel at an empty lane is not adopted as sea
 // clear_override_locked on the present->absent transition.)
 TEST_CASE("AD5X IFS: a lane going empty keeps its Spoolman link (AFC/HH parity)",
           "[ams][ad5x][ifs][spoolman][1071]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     REQUIRE_FALSE(Ad5xIfsTestAccess::has_per_port_sensors(backend));
 
     // Slot 0 present with a user Spoolman override staged.
@@ -2799,7 +2874,8 @@ TEST_CASE("AD5X IFS: a lane going empty keeps its Spoolman link (AFC/HH parity)"
 // the #981 external-edit clear never fires — the insert edge itself must unlock.
 TEST_CASE("AD5X IFS: physical insert refreshes material/color on an auto-tracked lane (#1065)",
           "[ams][ad5x][ifs][1065]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     REQUIRE_FALSE(Ad5xIfsTestAccess::has_per_port_sensors(backend));
 
     // Slot 0 loaded with PETG / red, establishing firmware baseline.
@@ -2855,7 +2931,8 @@ TEST_CASE("AD5X IFS: physical insert refreshes material/color on an auto-tracked
 // the insert edge must NOT unlock it — the bound spool's material/color stick.
 TEST_CASE("AD5X IFS: physical insert does NOT unlock a Spoolman-bound lane (#1065/#1071)",
           "[ams][ad5x][ifs][1065][1071]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
 
     {
         AmsBackendAd5xIfs::ZColorSilentResult r;
@@ -2904,7 +2981,8 @@ TEST_CASE("AD5X IFS: physical insert does NOT unlock a Spoolman-bound lane (#106
 // swallowing the change (color updated on screen, material stuck).
 TEST_CASE("AD5X IFS: type detector holds baseline through presence lag on insert (#1065)",
           "[ams][ad5x][ifs][1065]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
 
     // Establish a present-lane baseline of PETG.
     REQUIRE_FALSE(Ad5xIfsTestAccess::check_external_type_change(backend, 0, "PETG",
@@ -2927,7 +3005,8 @@ TEST_CASE("AD5X IFS: type detector holds baseline through presence lag on insert
 // #1065 Fix B, color counterpart: same presence-lag hold for the color detector.
 TEST_CASE("AD5X IFS: color detector holds baseline through presence lag on insert (#1065)",
           "[ams][ad5x][ifs][1065]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
 
     REQUIRE_FALSE(Ad5xIfsTestAccess::check_external_color_change(backend, 0, 0xFF0000,
                                                                  /*slot_has_filament=*/true));
@@ -2946,7 +3025,8 @@ TEST_CASE("AD5X IFS: color detector holds baseline through presence lag on inser
 // following insert is a genuine "" -> MATERIAL delta.
 TEST_CASE("AD5X IFS: eject still baselines material to empty so insert re-detects (#1065)",
           "[ams][ad5x][ifs][1065]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
 
     REQUIRE_FALSE(Ad5xIfsTestAccess::check_external_type_change(backend, 0, "PETG",
                                                                 /*slot_has_filament=*/true));
@@ -2972,7 +3052,8 @@ TEST_CASE("AD5X IFS: eject still baselines material to empty so insert re-detect
 // below cover the local-edit branch that still drives presence inference.
 
 TEST_CASE("AD5X IFS set_slot_info updates port_presence", "[ams][ad5x_ifs]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
 
     // Start with empty save_variables so no color data
     json vars = standard_variables();
@@ -3051,7 +3132,8 @@ TEST_CASE("AD5X IFS set_slot_info updates port_presence", "[ams][ad5x_ifs]") {
 
 TEST_CASE("AD5X IFS can_unload_from_toolhead keeps active slot unloadable after runout",
           "[ams][ad5x_ifs]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::set_has_ifs_vars(backend, true);
 
     // Load slot 0: active tool T0 (→ port 1 → slot 0), port + head sensors set.
@@ -3103,7 +3185,8 @@ TEST_CASE("AD5X IFS can_unload_from_toolhead with no active slot is never unload
     // prevent a caller passing -1 (or 0) from matching the -1 active-slot
     // sentinel; every slot then falls through to the base LOADED check, which is
     // false for an unloaded backend.
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
 
     auto vars = standard_variables();
     vars["less_waste_current_tool"] = -1;
@@ -3121,7 +3204,8 @@ TEST_CASE("AD5X IFS toolhead filament unloadable when firmware drops active slot
     // while filament is STILL seated in the toolhead (head sensor true). The
     // active-slot short-circuit can never fire (nothing matches -1), so the only
     // signal that there is removable filament is the head sensor itself.
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::set_has_ifs_vars(backend, true);
     // Native ZMOD: no per-port sensors.
     REQUIRE_FALSE(Ad5xIfsTestAccess::has_per_port_sensors(backend));
@@ -3152,7 +3236,8 @@ TEST_CASE("AD5X IFS no toolhead filament leaves slot non-unloadable (#995 regres
     // The mirror of the recovery case: no filament anywhere (head sensor false,
     // current_slot == -1) must keep Unload disabled. The head_filament gate must
     // not open when there is nothing seated in the toolhead.
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::set_has_ifs_vars(backend, true);
 
     {
@@ -3175,7 +3260,8 @@ TEST_CASE("AD5X IFS runout does not flip active slot display status to LOADED", 
     // Native ZMOD path (no per-port sensors), active slot, head sensor clear —
     // the slot must still report a non-LOADED status so the spool renders
     // empty/available.
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::set_has_ifs_vars(backend, true);
     seed_standard_colors(backend);
 
@@ -3381,7 +3467,8 @@ TEST_CASE("AD5X IFS IFS_STATUS Chan is seated authority over stale Extruder: Non
     // while port 4 is physically seated. IFS_STATUS Chan=4 must win, so the active
     // slot is 3 (port 4) — making Unload available ONLY on slot 3 and Eject on the
     // rest, not Unload-everywhere via the current_slot<0 recovery branch.
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
 
     // Identity tool map so find_first_tool_for_port(N) -> tool N-1.
     REQUIRE(backend.set_tool_mapping(0, 0).success());
@@ -3427,7 +3514,8 @@ TEST_CASE("AD5X IFS cold-lane eject does not pollute seated channel (#1065 Bug 3
     // loaded lane offered Eject and a tap would cold-grind seated filament.
     //
     // The seated channel must only follow a Chan whose lane actually has filament.
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
 
     // Identity tool map so find_first_tool_for_port(N) -> tool N-1.
     REQUIRE(backend.set_tool_mapping(0, 0).success());
@@ -3482,7 +3570,8 @@ TEST_CASE("AD5X IFS dialog slot-select does not steal the seated channel (#1065 
     // move the seated lane. (The GET_ZCOLOR "// Extruder:" line reads "None (3)"
     // while loaded-idle on this firmware — its paren also chases the dialog — so it
     // is NOT the authority; verified against the raw bundle.)
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
 
     // Identity tool map so find_first_tool_for_port(N) -> tool N-1.
     REQUIRE(backend.set_tool_mapping(0, 0).success());
@@ -3534,7 +3623,8 @@ TEST_CASE("AD5X IFS seated channel follows a moved FFMInfo.channel despite a sta
     // (mkleersn 07-07: loading a new channel correctly moved current_slot). This is
     // what proves the fix tracks real head changes rather than pinning to the
     // first-seen lane.
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     REQUIRE(backend.set_tool_mapping(0, 0).success());
     REQUIRE(backend.set_tool_mapping(1, 1).success());
     REQUIRE(backend.set_tool_mapping(2, 2).success());
@@ -3574,7 +3664,8 @@ TEST_CASE("AD5X IFS parse_adventurer_json reads FFMInfo.channel as the seated la
     // must read FFMInfo.channel and set the seated lane (recomputing current_slot),
     // so a plain file poll — with no IFS_STATUS frame at all — establishes which lane
     // is seated. FFMInfo.channel is 1-based (channel 2 -> slot 1).
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     REQUIRE(backend.set_tool_mapping(0, 0).success());
     REQUIRE(backend.set_tool_mapping(1, 1).success());
     REQUIRE(backend.set_tool_mapping(2, 2).success());
@@ -3617,7 +3708,8 @@ TEST_CASE("AD5X IFS stale FFMInfo.channel is dropped when the head switch reads 
     // (firmware kept it) and the toolhead switch reads EMPTY (nothing seated). The
     // follow-up IFS_STATUS carries the sticky Chan=3 with port 3 now absent.
     // Pre-fix, current_slot moved to 2 and lane 3 offered Unload ("shows loaded").
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     REQUIRE(backend.set_tool_mapping(0, 0).success());
     REQUIRE(backend.set_tool_mapping(1, 1).success());
     REQUIRE(backend.set_tool_mapping(2, 2).success());
@@ -3651,7 +3743,8 @@ TEST_CASE("AD5X IFS FFMInfo.channel poll is not adopted while the head switch is
           "[ams][ad5x_ifs][1065]") {
     // Same gate on the plain file-poll path (parse_adventurer_json): a stale
     // FFMInfo.channel=3 with the toolhead switch empty must not seat lane 3.
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     REQUIRE(backend.set_tool_mapping(0, 0).success());
     REQUIRE(backend.set_tool_mapping(1, 1).success());
     REQUIRE(backend.set_tool_mapping(2, 2).success());
@@ -3682,7 +3775,8 @@ TEST_CASE("AD5X IFS loaded-idle lane stays seated when the head switch is presen
     // filament_detected=false while idle (device-confirmed). That motion frame
     // clobbers the conflated head_filament_ to false — but the switch authority
     // still says present, so the head-gate must NOT drop the seated lane.
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     REQUIRE(backend.set_tool_mapping(0, 0).success());
     REQUIRE(backend.set_tool_mapping(1, 1).success());
     REQUIRE(backend.set_tool_mapping(2, 2).success());
@@ -3718,7 +3812,8 @@ TEST_CASE("AD5X IFS motion-only firmware (no switch) still adopts FFMInfo.channe
     // latches, so the head-gate cannot fire. A loaded lane whose motion sensor
     // false-negates while idle must remain seated — the fix must not regress
     // switch-less firmwares.
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     REQUIRE(backend.set_tool_mapping(0, 0).success());
     REQUIRE(backend.set_tool_mapping(1, 1).success());
     REQUIRE(backend.set_tool_mapping(2, 2).success());
@@ -3747,7 +3842,8 @@ TEST_CASE("AD5X IFS eject clears a stale seated pointer at the ejected lane (#10
     // Belt-and-suspenders: when a stale seated pointer (seated_chan_ / ffm_channel_)
     // targets the just-ejected lane, eject must zero BOTH so the Unload affordance
     // dies at once instead of persisting until the next head-gated poll.
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     REQUIRE(backend.set_tool_mapping(0, 0).success());
     REQUIRE(backend.set_tool_mapping(1, 1).success());
     REQUIRE(backend.set_tool_mapping(2, 2).success());
@@ -3791,7 +3887,8 @@ TEST_CASE("AD5X IFS eject clears a stale seated pointer at the ejected lane (#10
 TEST_CASE("AD5X IFS native Z-Mod derives head-loaded from GET_ZCOLOR Extruder summary "
           "(BUG-B Part A)",
           "[ams][ad5x][ifs][1065]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     REQUIRE(backend.set_tool_mapping(0, 0).success());
     REQUIRE(backend.set_tool_mapping(1, 1).success());
     REQUIRE(backend.set_tool_mapping(2, 2).success());
@@ -3847,7 +3944,8 @@ TEST_CASE("AD5X IFS Extruder:None does NOT clear head-loaded while the seated la
     // disappears — can_unload_from_toolhead's `head_filament_ && current_slot<0`
     // fallback can't fire) and wrongly re-enable Load (-> cold grind). The
     // derivation must RETAIN head-loaded as long as the seated lane reads present.
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     REQUIRE(backend.set_tool_mapping(0, 0).success());
 
     // Establish loaded: Extruder: 1, lane 1 present + seated.
@@ -3888,7 +3986,8 @@ TEST_CASE("AD5X IFS prefers the head sensor namespace that carries filament_dete
     // zmod_ifs_switch_sensor carries the real reading. Selecting the head sensor
     // key purely by presence would let the empty stock object win and the real
     // zmod reading be ignored, leaving head-loaded false with filament at the head.
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     REQUIRE_FALSE(Ad5xIfsTestAccess::head_filament(backend));
 
     json frame;
@@ -3954,7 +4053,8 @@ TEST_CASE("AD5X IFS Extruder-summary head derivation ignores frames without the 
     // A frame that carries only IFS_STATUS JSON (no "// Extruder:" line) has
     // extruder_slot absent for an unrelated reason — it must NOT clear a
     // previously-established head-loaded state. saw_extruder_summary gates this.
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     REQUIRE(backend.set_tool_mapping(0, 0).success());
 
     AmsBackendAd5xIfs::ZColorSilentResult loaded;
@@ -3989,7 +4089,8 @@ TEST_CASE("AD5X IFS routes native Z-Mod head switch sensor namespace to head_fil
     // "zmod_ifs_switch_sensor head_switch_sensor", not the stock
     // "filament_switch_sensor head_switch_sensor". handle_status_update must route
     // the zmod namespace to parse_head_sensor().
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
 
     REQUIRE_FALSE(Ad5xIfsTestAccess::head_filament(backend));
     Ad5xIfsTestAccess::handle_status(backend, make_zmod_head_sensor(true));
@@ -4001,7 +4102,8 @@ TEST_CASE("AD5X IFS routes native Z-Mod head switch sensor namespace to head_fil
 
 TEST_CASE("AD5X IFS routes native Z-Mod motion sensor namespace to head_filament_ (BUG-B Part B)",
           "[ams][ad5x][ifs][1065]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
 
     REQUIRE_FALSE(Ad5xIfsTestAccess::head_filament(backend));
     Ad5xIfsTestAccess::handle_status(backend, make_zmod_motion_sensor(true));
@@ -4021,7 +4123,8 @@ TEST_CASE("AD5X IFS toolhead-unload predicate stays false on a cold-seated lane 
     // the corrected gate (!toolhead_unload) keeps Load enabled. This pins the
     // backend predicate the gate reads; the UI gate itself lives in
     // ui_ams_context_menu.cpp and is verified by the program build.
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     REQUIRE(backend.set_tool_mapping(0, 0).success());
 
     // Lane 1 present + seated (Chan=1, Ports[0]=true) but NOTHING at the head
@@ -4053,7 +4156,8 @@ TEST_CASE(
     // comes back Chan=0 even with a lane physically at the head (bundle CGR6C7PA).
     // With no seated lane and head loaded, every lane wrongly labels as Unloadable.
     // We remember the last loaded lane and restore it provisionally on cold boot.
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     REQUIRE(backend.set_tool_mapping(0, 0).success());
     REQUIRE(backend.set_tool_mapping(1, 1).success());
     REQUIRE(backend.set_tool_mapping(2, 2).success());
@@ -4084,7 +4188,8 @@ TEST_CASE("AD5X IFS does not restore a seated lane whose port is now empty (#106
     // Corroboration: the filament in the remembered lane was pulled while powered
     // off. head_filament_ says SOMETHING is loaded, but it is not the remembered
     // lane (its port reads empty), so we must NOT claim it as seated.
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     REQUIRE(backend.set_tool_mapping(0, 0).success());
     REQUIRE(backend.set_tool_mapping(1, 1).success());
 
@@ -4107,7 +4212,8 @@ TEST_CASE("AD5X IFS remembers the seated lane on load and forgets it on unload (
           "[ams][ad5x_ifs]") {
     // The persisted marker is written when a load seats a channel (Chan>0 with the
     // lane present) and cleared when an unload empties the head (Chan==0, head off).
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     REQUIRE(backend.set_tool_mapping(2, 2).success()); // tool 2 -> port 3
 
     // Load channel 3 (slot 2): head rises, Chan=3, port 3 present.
@@ -4136,7 +4242,8 @@ TEST_CASE("AD5X IFS IFS_STATUS Chan is applied on prompt-fallback (old zmod)", "
     // (is_prompt_fallback). IFS_STATUS rides the same buffer as clean JSON
     // (respond_info, not a dialog), so its Chan must still drive the seated slot
     // even though the prompt-fallback flag is set and silent support is disabled.
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     REQUIRE(backend.set_tool_mapping(3, 3).success()); // tool 3 -> port 4
 
     Ad5xIfsTestAccess::set_head_filament(backend, true);
@@ -4168,7 +4275,8 @@ TEST_CASE("AD5X IFS native ZMOD: IFS_STATUS Chan resolves the loaded slot withou
     // was ALWAYS false even with filament demonstrably at the toolhead — the UI
     // showed "not loaded" and disabled Unload right after a successful load
     // (bundle UQG4RNUA: Chan=1, head sensor detected, current_slot stuck at -1).
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
 
     // Production native path: has_ifs_vars_ defaults false and NO set_tool_mapping
     // is ever called — that 1:1 map is exactly what the field device lacks.
@@ -4211,7 +4319,8 @@ TEST_CASE("AD5X IFS a confirmed SILENT device is NOT demoted by a later prompt "
     // latched zcolor_silent_supported_=false, demoting a capable device to the
     // resurrection-prone JSON-inference path. Once SILENT has been confirmed
     // (genuine summary/slot content seen), a later prompt must NOT demote it.
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     REQUIRE(Ad5xIfsTestAccess::zcolor_silent_supported(backend));
 
     // A genuine SILENT response with content confirms the device speaks SILENT.
@@ -4240,7 +4349,8 @@ TEST_CASE("AD5X IFS phase: IFS_STATUS Chan=0 after head drop finalizes unload to
     // During a tracked unload, after the head sensor drops, an IFS_STATUS with
     // Chan=0 (nothing seated) is the clean terminal signal — finalize to IDLE
     // even though extruder_slot is also absent. Works on prompt-fallback.
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::set_head_filament(backend, true);
     Ad5xIfsTestAccess::begin_phase(backend, /*is_unload=*/true);
 
@@ -4266,7 +4376,8 @@ TEST_CASE("AD5X IFS phase: head drop during unload advances past HEATING (no hea
     // false -> stuck in HEATING forever (only the 300s timeout recovered). A head
     // drop physically proves the cut/retract started, so it must mark
     // reached_target_once and advance the phase past HEATING.
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::set_head_filament(backend, true);
     Ad5xIfsTestAccess::begin_phase(backend, /*is_unload=*/true);
     REQUIRE(Ad5xIfsTestAccess::action(backend) == AmsAction::HEATING);
@@ -4279,7 +4390,8 @@ TEST_CASE("AD5X IFS phase: head drop during unload advances past HEATING (no hea
 }
 
 TEST_CASE("AD5X IFS apply_zcolor_result updates port_presence", "[ams][ad5x_ifs]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
 
     AmsBackendAd5xIfs::ZColorSilentResult r;
     r.saw_valid_response = true;
@@ -4298,7 +4410,8 @@ TEST_CASE("AD5X IFS apply_zcolor_result updates port_presence", "[ams][ad5x_ifs]
 }
 
 TEST_CASE("AD5X IFS apply_zcolor_result skips on prompt fallback", "[ams][ad5x_ifs]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     REQUIRE(Ad5xIfsTestAccess::zcolor_silent_supported(backend));
 
     AmsBackendAd5xIfs::ZColorSilentResult r;
@@ -4316,7 +4429,8 @@ TEST_CASE("AD5X IFS apply_zcolor_result skips when response has no valid content
     // Regression: a transient/malformed response with zero slot lines and no
     // summary line must NOT wipe port_presence. Pre-fix, an empty ZColorSilentResult
     // would clear all four slots to "not loaded".
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
 
     // Seed presence so we can detect an erroneous wipe.
     AmsBackendAd5xIfs::ZColorSilentResult seed;
@@ -4334,7 +4448,8 @@ TEST_CASE("AD5X IFS apply_zcolor_result skips when response has no valid content
 }
 
 TEST_CASE("AD5X IFS apply_zcolor_result updates colors and materials", "[ams][ad5x_ifs]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
 
     AmsBackendAd5xIfs::ZColorSilentResult r;
     r.saw_valid_response = true;
@@ -4362,7 +4477,8 @@ TEST_CASE("AD5X IFS apply_zcolor_result updates colors and materials", "[ams][ad
 // got an active-tool signal.
 TEST_CASE("AD5X IFS apply_zcolor_result derives active_tool from extruder_slot (stock ZMOD)",
           "[ams][ad5x_ifs]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
 
     // Establish an identity tool map so find_first_tool_for_port(N) -> tool N-1.
     // Default tool_map_ is all UNMAPPED_PORT, so without this find_first_tool_for_port
@@ -4428,7 +4544,8 @@ TEST_CASE("AD5X IFS apply_zcolor_result leaves active_tool alone when has_ifs_va
     // save_variables, which is authoritative for them. GET_ZCOLOR's view must
     // not race against it — verify by setting has_ifs_vars=true and checking
     // active_tool_ is unchanged after apply.
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
 
     // Seed the tool map BEFORE flipping has_ifs_vars=true. set_tool_mapping
     // tries to persist via write_ifs_var when has_ifs_vars is true, which
@@ -4456,7 +4573,8 @@ TEST_CASE("AD5X IFS apply_zcolor_result leaves active_tool alone when has_ifs_va
 TEST_CASE("AD5X IFS apply_zcolor_result skips color write on dirty slot", "[ams][ad5x_ifs]") {
     // Dirty slot means an unsaved user edit is pending — we must NOT overwrite
     // the local color with zmod's view, or we'd clobber the user's edit.
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
 
     // Seed slot 0 with a color we want preserved.
     AmsBackendAd5xIfs::ZColorSilentResult seed;
@@ -4480,7 +4598,8 @@ TEST_CASE("AD5X IFS apply_zcolor_result skips color write on dirty slot", "[ams]
 TEST_CASE("AD5X IFS apply_zcolor_result old-format preserves colors", "[ams][ad5x_ifs]") {
     // Pre-ad2802ab zmod: slot lines carry no /HEX. Presence should still
     // update, but existing colors must NOT be overwritten with empty strings.
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
 
     AmsBackendAd5xIfs::ZColorSilentResult seed;
     seed.saw_valid_response = true;
@@ -4530,7 +4649,8 @@ TEST_CASE("AD5X IFS parse_zcolor_silent sets saw_valid_response", "[ams][ad5x_if
 // ==========================================================================
 
 TEST_CASE("AD5X IFS get_supported_materials returns firmware whitelist", "[ams][ad5x_ifs]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
 
     auto supported = backend.get_supported_materials();
     REQUIRE(supported.has_value());
@@ -4547,7 +4667,8 @@ TEST_CASE("AD5X IFS get_supported_materials returns firmware whitelist", "[ams][
 }
 
 TEST_CASE("AD5X IFS normalize_material coerces input to whitelist", "[ams][ad5x_ifs]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
 
     SECTION("exact match passes through") {
         REQUIRE(backend.normalize_material("PLA") == "PLA");
@@ -4602,7 +4723,8 @@ TEST_CASE("AD5X IFS normalize_material coerces input to whitelist", "[ams][ad5x_
 TEST_CASE("AFC backend has no whitelist and passes material through unchanged",
           "[ams][whitelist]") {
     // AFC (like Happy Hare, ACE, CFS) treats material as a free-form label.
-    AmsBackendAfc backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAfc> backend_reg(nullptr, nullptr);
+    AmsBackendAfc& backend = *backend_reg;
 
     REQUIRE_FALSE(backend.get_supported_materials().has_value());
     REQUIRE(backend.normalize_material("PLA+") == "PLA+");
@@ -4623,7 +4745,8 @@ TEST_CASE("AFC backend has no whitelist and passes material through unchanged",
 
 TEST_CASE("AD5X IFS applies override brand over Adventurer5M.json data",
           "[ams][ad5x_ifs][filament_slot_override]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
 
     helix::ams::FilamentSlotOverride ovr;
     ovr.brand = "Polymaker";
@@ -4656,7 +4779,8 @@ TEST_CASE("AD5X IFS applies override brand over Adventurer5M.json data",
 
 TEST_CASE("AD5X IFS preserves firmware color when no override present",
           "[ams][ad5x_ifs][filament_slot_override]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
 
     // No overrides seeded — firmware data must flow through unchanged.
     std::string content = R"({
@@ -4678,7 +4802,8 @@ TEST_CASE("AD5X IFS preserves firmware color when no override present",
 
 TEST_CASE("AD5X IFS partial override only replaces specified fields",
           "[ams][ad5x_ifs][filament_slot_override]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
 
     // Seed an override that only sets brand. Every other field must fall
     // through to the firmware-reported value (or SlotInfo default).
@@ -4705,7 +4830,8 @@ TEST_CASE("AD5X IFS partial override only replaces specified fields",
 
 TEST_CASE("AD5X IFS override applies to multiple slots independently",
           "[ams][ad5x_ifs][filament_slot_override]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
 
     helix::ams::FilamentSlotOverride ovr0;
     ovr0.brand = "Polymaker";
@@ -4755,7 +4881,8 @@ TEST_CASE("AD5X IFS override applies to multiple slots independently",
 
 TEST_CASE("AD5X IFS override re-applied on every parse",
           "[ams][ad5x_ifs][filament_slot_override]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
 
     helix::ams::FilamentSlotOverride ovr;
     ovr.brand = "Polymaker";
@@ -4786,7 +4913,8 @@ TEST_CASE("AD5X IFS override re-applied on every parse",
 
 TEST_CASE("AD5X IFS override zero color_rgb does not replace firmware color",
           "[ams][ad5x_ifs][filament_slot_override]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
 
     // color_rgb=0 is the "no override" sentinel — must not clobber firmware.
     helix::ams::FilamentSlotOverride ovr;
@@ -4805,7 +4933,8 @@ TEST_CASE("AD5X IFS override zero color_rgb does not replace firmware color",
 
 TEST_CASE("AD5X IFS override negative weights do not replace firmware values",
           "[ams][ad5x_ifs][filament_slot_override]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
 
     // Seed an override with -1.0 weights (the "unknown" sentinel) — must not
     // overwrite whatever weights the firmware / SlotInfo default holds.
@@ -4838,7 +4967,8 @@ TEST_CASE("AD5X IFS set_slot_info takes effect when no override present",
     // spoolman_id / color_name through a persist=false "preview" write.
     // This test guards against a regression where the parse path
     // accidentally runs with stale overrides_ state and clobbers the edit.
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
 
     SlotInfo edit;
     edit.color_rgb = 0xAABBCC;
@@ -4873,7 +5003,8 @@ TEST_CASE("AD5X IFS set_slot_info(persist=true) stores override in memory and st
     state.init_subjects(false);
     MoonrakerAPIMock api(client, state);
 
-    AmsBackendAd5xIfs backend(&api, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(&api, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     // Native ZMOD path is skipped by marking has_ifs_vars_ true — this test
     // focuses on the override-store write, not the Klipper-facing side.
     Ad5xIfsTestAccess::set_has_ifs_vars(backend, true);
@@ -4929,7 +5060,8 @@ TEST_CASE("AD5X IFS set_slot_info(persist=false) does NOT write to store",
     state.init_subjects(false);
     MoonrakerAPIMock api(client, state);
 
-    AmsBackendAd5xIfs backend(&api, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(&api, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::set_has_ifs_vars(backend, true);
     auto store = std::make_unique<helix::ams::FilamentSlotOverrideStore>(&api, "ifs");
     FilamentSlotOverrideStoreTestAccess::set_cache_directory(*store, tmp.path);
@@ -4972,7 +5104,8 @@ TEST_CASE("AD5X IFS update_slot_weight preserves identity and does not write Adv
     state.init_subjects(false);
     MoonrakerAPIMock api(client, state);
 
-    AmsBackendAd5xIfs backend(&api, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(&api, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     seed_standard_colors(backend); // firmware truth: slot 0 = PLA / #FF0000
     auto store = std::make_unique<helix::ams::FilamentSlotOverrideStore>(&api, "ifs");
     FilamentSlotOverrideStoreTestAccess::set_cache_directory(*store, tmp.path);
@@ -5026,7 +5159,8 @@ TEST_CASE("AD5X IFS update_slot_weight on an un-overridden slot does not lock id
     state.init_subjects(false);
     MoonrakerAPIMock api(client, state);
 
-    AmsBackendAd5xIfs backend(&api, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(&api, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     seed_standard_colors(backend); // firmware truth: slot 1 = PETG / #00FF00
     auto store = std::make_unique<helix::ams::FilamentSlotOverrideStore>(&api, "ifs");
     FilamentSlotOverrideStoreTestAccess::set_cache_directory(*store, tmp.path);
@@ -5076,7 +5210,8 @@ TEST_CASE("AD5X IFS set_slot_info(persist=true) survives a matching firmware par
     state.init_subjects(false);
     MoonrakerAPIMock api(client, state);
 
-    AmsBackendAd5xIfs backend(&api, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(&api, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     auto store = std::make_unique<helix::ams::FilamentSlotOverrideStore>(&api, "ifs");
     FilamentSlotOverrideStoreTestAccess::set_cache_directory(*store, tmp.path);
     Ad5xIfsTestAccess::inject_override_store(backend, std::move(store));
@@ -5123,7 +5258,8 @@ TEST_CASE("AD5X IFS user-edited slot survives firmware FFMInfo revert (#965 regr
     state.init_subjects(false);
     MoonrakerAPIMock api(client, state);
 
-    AmsBackendAd5xIfs backend(&api, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(&api, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     auto store = std::make_unique<helix::ams::FilamentSlotOverrideStore>(&api, "ifs");
     FilamentSlotOverrideStoreTestAccess::set_cache_directory(*store, tmp.path);
     Ad5xIfsTestAccess::inject_override_store(backend, std::move(store));
@@ -5188,7 +5324,8 @@ TEST_CASE("AD5X IFS auto-mirror still tracks firmware for slots with no user loc
     state.init_subjects(false);
     MoonrakerAPIMock api(client, state);
 
-    AmsBackendAd5xIfs backend(&api, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(&api, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     auto store = std::make_unique<helix::ams::FilamentSlotOverrideStore>(&api, "ifs");
     FilamentSlotOverrideStoreTestAccess::set_cache_directory(*store, tmp.path);
     Ad5xIfsTestAccess::inject_override_store(backend, std::move(store));
@@ -5216,7 +5353,8 @@ TEST_CASE("AD5X IFS set_slot_info(persist=true) with no store still updates in-m
     // Backend constructed with no api/client AND no injected store — the
     // persist path must still stage the override in memory so the current
     // UI session sees the edit, even though there's nowhere to save it.
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
 
     SlotInfo edit;
     edit.brand = "Polymaker";
@@ -5246,7 +5384,8 @@ TEST_CASE("AD5X IFS set_slot_info(persist=true) with pre-existing override repla
     state.init_subjects(false);
     MoonrakerAPIMock api(client, state);
 
-    AmsBackendAd5xIfs backend(&api, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(&api, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::set_has_ifs_vars(backend, true);
     auto store = std::make_unique<helix::ams::FilamentSlotOverrideStore>(&api, "ifs");
     FilamentSlotOverrideStoreTestAccess::set_cache_directory(*store, tmp.path);
@@ -5300,7 +5439,8 @@ TEST_CASE("AD5X IFS external color change syncs lane_data, preserves brand metad
     state.init_subjects(false);
     MoonrakerAPIMock api(client, state);
 
-    AmsBackendAd5xIfs backend(&api, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(&api, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::set_has_ifs_vars(backend, true);
     auto store = std::make_unique<helix::ams::FilamentSlotOverrideStore>(&api, "ifs");
     FilamentSlotOverrideStoreTestAccess::set_cache_directory(*store, tmp.path);
@@ -5387,7 +5527,8 @@ TEST_CASE("AD5X IFS external color change with no override creates minimal lane_
     state.init_subjects(false);
     MoonrakerAPIMock api(client, state);
 
-    AmsBackendAd5xIfs backend(&api, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(&api, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::set_has_ifs_vars(backend, true);
     auto store = std::make_unique<helix::ams::FilamentSlotOverrideStore>(&api, "ifs");
     FilamentSlotOverrideStoreTestAccess::set_cache_directory(*store, tmp.path);
@@ -5449,7 +5590,8 @@ TEST_CASE("AD5X IFS GET_ZCOLOR eject keeps the override and lane_data (#1071)",
     state.init_subjects(false);
     MoonrakerAPIMock api(client, state);
 
-    AmsBackendAd5xIfs backend(&api, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(&api, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::set_has_ifs_vars(backend, true);
     auto store = std::make_unique<helix::ams::FilamentSlotOverrideStore>(&api, "ifs");
     FilamentSlotOverrideStoreTestAccess::set_cache_directory(*store, tmp.path);
@@ -5745,7 +5887,8 @@ TEST_CASE("AD5X IFS empty colors_[] on boot does NOT establish phantom baseline"
     state.init_subjects(false);
     MoonrakerAPIMock api(client, state);
 
-    AmsBackendAd5xIfs backend(&api, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(&api, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     auto store = std::make_unique<helix::ams::FilamentSlotOverrideStore>(&api, "ifs");
     FilamentSlotOverrideStoreTestAccess::set_cache_directory(*store, tmp.path);
     Ad5xIfsTestAccess::inject_override_store(backend, std::move(store));
@@ -5860,7 +6003,8 @@ TEST_CASE("AD5X IFS first firmware color observation does NOT clear override",
     state.init_subjects(false);
     MoonrakerAPIMock api(client, state);
 
-    AmsBackendAd5xIfs backend(&api, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(&api, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::set_has_ifs_vars(backend, true);
     auto store = std::make_unique<helix::ams::FilamentSlotOverrideStore>(&api, "ifs");
     FilamentSlotOverrideStoreTestAccess::set_cache_directory(*store, tmp.path);
@@ -5926,7 +6070,8 @@ TEST_CASE("AD5X IFS set_slot_info(persist=true) does not wipe override on color 
     state.init_subjects(false);
     MoonrakerAPIMock api(client, state);
 
-    AmsBackendAd5xIfs backend(&api, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(&api, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::set_has_ifs_vars(backend, true);
     auto store = std::make_unique<helix::ams::FilamentSlotOverrideStore>(&api, "ifs");
     FilamentSlotOverrideStoreTestAccess::set_cache_directory(*store, tmp.path);
@@ -5984,7 +6129,8 @@ TEST_CASE("AD5X IFS set_slot_info(persist=false) preview does not wipe existing 
     state.init_subjects(false);
     MoonrakerAPIMock api(client, state);
 
-    AmsBackendAd5xIfs backend(&api, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(&api, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::set_has_ifs_vars(backend, true);
     auto store = std::make_unique<helix::ams::FilamentSlotOverrideStore>(&api, "ifs");
     FilamentSlotOverrideStoreTestAccess::set_cache_directory(*store, tmp.path);
@@ -6029,7 +6175,8 @@ TEST_CASE("AD5X IFS set_slot_info(persist=false) preview does not wipe existing 
 
 TEST_CASE("AD5X IFS firmware color unchanged across parses does NOT clear",
           "[ams][ad5x_ifs][filament_slot_override]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
 
     helix::ams::FilamentSlotOverride ovr;
     ovr.brand = "Polymaker";
@@ -6056,7 +6203,8 @@ TEST_CASE("AD5X IFS firmware color change with no override creates a minimal one
     // skips save_async cleanly when override_store_ is null). This proves
     // the helper is null-safe and that lane_data publication doesn't gate
     // the in-memory sync.
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
 
     // parse_adventurer_json no longer owns presence (GET_ZCOLOR does); seed it so
     // the external-color-change sync path runs as it does in production after the
@@ -6099,7 +6247,8 @@ TEST_CASE("AD5X IFS nullopt firmware color does not update the baseline",
     // baseline. If it did, an intermittent empty poll would mask a real
     // subsequent swap (the next non-empty poll would look like a transition
     // from a phantom baseline) OR worse, clear on every unread poll.
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
 
     helix::ams::FilamentSlotOverride ovr;
     ovr.brand = "Polymaker";
@@ -6131,7 +6280,8 @@ TEST_CASE("AD5X IFS pure black (#000000) is a real reading, not a no-signal sent
     // dropped because the prior `observed_color == 0` skip conflated black
     // with "no reading". With std::optional, 0 is a real reading and an
     // edit FROM another color TO black must trigger sync_override_to_firmware_locked.
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
 
     SECTION("First observation = black establishes a black baseline") {
         Ad5xIfsTestAccess::check_external_color_change(backend, 0, 0x000000);
@@ -6182,7 +6332,8 @@ TEST_CASE("AD5X IFS clear_slot_override erases in-memory override and MR DB entr
     state.init_subjects(false);
     MoonrakerAPIMock api(client, state);
 
-    AmsBackendAd5xIfs backend(&api, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(&api, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::set_has_ifs_vars(backend, true);
     auto store = std::make_unique<helix::ams::FilamentSlotOverrideStore>(&api, "ifs");
     FilamentSlotOverrideStoreTestAccess::set_cache_directory(*store, tmp.path);
@@ -6250,7 +6401,8 @@ TEST_CASE("AD5X IFS clear_slot_override is safe when no override is present",
     state.init_subjects(false);
     MoonrakerAPIMock api(client, state);
 
-    AmsBackendAd5xIfs backend(&api, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(&api, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::set_has_ifs_vars(backend, true);
     auto store = std::make_unique<helix::ams::FilamentSlotOverrideStore>(&api, "ifs");
     FilamentSlotOverrideStoreTestAccess::set_cache_directory(*store, tmp.path);
@@ -6272,7 +6424,8 @@ TEST_CASE("AD5X IFS clear_slot_override is safe when no override is present",
 
 TEST_CASE("AD5X IFS clear_slot_override rejects out-of-range indices",
           "[ams][ad5x_ifs][filament_slot_override]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
 
     // Give slot 0 a real firmware entry and a staged override, so "did the
     // out-of-range call touch anything?" has something to be true of. Without
@@ -6321,7 +6474,8 @@ TEST_CASE("AD5X IFS clear_slot_override rejects out-of-range indices",
 
 TEST_CASE("AD5X IFS listener buffers RUN_ZCOLOR during in-flight query (no re-arm)",
           "[ams][ad5x_ifs][zcolor]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::set_zcolor_query_active(backend, true);
 
     uint32_t before = Ad5xIfsTestAccess::zcolor_schedule_count(backend);
@@ -6341,7 +6495,8 @@ TEST_CASE("AD5X IFS listener buffers RUN_ZCOLOR during in-flight query (no re-ar
 
 TEST_CASE("AD5X IFS listener fires schedule_zcolor_query on external RUN_ZCOLOR (no in-flight)",
           "[ams][ad5x_ifs][zcolor]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     // No in-flight query: the line is a genuine external state-change signal.
     Ad5xIfsTestAccess::set_zcolor_query_active(backend, false);
 
@@ -6361,7 +6516,8 @@ TEST_CASE("AD5X IFS listener fires schedule_zcolor_query on external RUN_ZCOLOR 
 // zcolor_schedule_armed_ gate coalesces the burst into one in-flight worker.
 TEST_CASE("AD5X IFS coalesces a burst of color-change triggers into one debounce worker",
           "[ams][ad5x_ifs][zcolor]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::set_zcolor_query_active(backend, false);
 
     const uint32_t sched_before = Ad5xIfsTestAccess::zcolor_schedule_count(backend);
@@ -6382,7 +6538,8 @@ TEST_CASE("AD5X IFS coalesces a burst of color-change triggers into one debounce
 }
 
 TEST_CASE("AD5X IFS listener ignores unrelated gcode lines", "[ams][ad5x_ifs][zcolor]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::set_zcolor_query_active(backend, false);
 
     uint32_t before = Ad5xIfsTestAccess::zcolor_schedule_count(backend);
@@ -6413,7 +6570,8 @@ TEST_CASE("AD5X IFS listener ignores unrelated gcode lines", "[ams][ad5x_ifs][zc
 
 TEST_CASE("AD5X IFS listener fires schedule_zcolor_query on external unload completion",
           "[ams][ad5x_ifs][zcolor]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     // No in-flight query: this is the genuine post-unload channel-commit line.
     Ad5xIfsTestAccess::set_zcolor_query_active(backend, false);
 
@@ -6429,7 +6587,8 @@ TEST_CASE("AD5X IFS listener fires schedule_zcolor_query on external unload comp
 
 TEST_CASE("AD5X IFS external-unload trigger tolerates the // console prefix",
           "[ams][ad5x_ifs][zcolor]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::set_zcolor_query_active(backend, false);
 
     uint32_t before = Ad5xIfsTestAccess::zcolor_schedule_count(backend);
@@ -6442,7 +6601,8 @@ TEST_CASE("AD5X IFS external-unload trigger tolerates the // console prefix",
 
 TEST_CASE("AD5X IFS dialog button-definition with IN_ZCOLOR does NOT re-read",
           "[ams][ad5x_ifs][zcolor]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::set_zcolor_query_active(backend, false);
 
     uint32_t before = Ad5xIfsTestAccess::zcolor_schedule_count(backend);
@@ -6458,7 +6618,8 @@ TEST_CASE("AD5X IFS dialog button-definition with IN_ZCOLOR does NOT re-read",
 
 TEST_CASE("AD5X IFS GET_ZCOLOR SILENT extruder line does NOT re-trigger (spam guard)",
           "[ams][ad5x_ifs][zcolor]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
 
     // Our own GET_ZCOLOR SILENT=1 is in flight: every response line (incl. the
     // "Extruder: ... | IFS:" header) must be buffered, not re-armed.
@@ -6493,7 +6654,8 @@ TEST_CASE("AD5X IFS GET_ZCOLOR SILENT extruder line does NOT re-trigger (spam gu
 
 TEST_CASE("AD5X IFS note_json_content reports changed only on different bytes",
           "[ams][ad5x_ifs][zcolor]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
 
     const std::string a = R"({"FFMInfo":{"ffmColor1":"#FF0000","ffmType1":"PLA"}})";
     const std::string b = R"({"FFMInfo":{"ffmColor1":"#00FF00","ffmType1":"PETG"}})";
@@ -6563,7 +6725,8 @@ TEST_CASE("AD5X IFS write_adventurer_json_local read-modify-writes the on-disk f
 })";
     Ad5xIfsTmpJsonFile tmp("rmw", seed);
 
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::set_local_adventurer_json_path(backend, tmp.path.string());
 
     // Stage new color + material on slot 0 (port 1) and trigger the write.
@@ -6593,7 +6756,8 @@ TEST_CASE("AD5X IFS write_adventurer_json_local creates FFMInfo if missing",
     // Adventurer5M.json without FFMInfo (zmod default-initialized empty file).
     Ad5xIfsTmpJsonFile tmp("missing_ffminfo", "{}");
 
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::set_local_adventurer_json_path(backend, tmp.path.string());
     Ad5xIfsTestAccess::set_color(backend, 1, "112233");
     Ad5xIfsTestAccess::set_material(backend, 1, "PETG");
@@ -6611,7 +6775,8 @@ TEST_CASE("AD5X IFS write_adventurer_json_local creates FFMInfo if missing",
 
 TEST_CASE("AD5X IFS write_adventurer_json_local rejects empty path",
           "[ams][ad5x_ifs][local_write]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     // local path not set — direct write must report failure so caller falls
     // back to Moonraker upload.
     auto err = Ad5xIfsTestAccess::write_adventurer_json_local(backend, 0);
@@ -6633,7 +6798,8 @@ TEST_CASE("AD5X IFS write_adventurer_json_local rejects unparseable existing fil
         // intentionally empty
     }
 
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::set_local_adventurer_json_path(backend, tmp.path.string());
     Ad5xIfsTestAccess::set_color(backend, 0, "FF0000");
 
@@ -6653,7 +6819,8 @@ TEST_CASE("AD5X IFS write_adventurer_json_local rejects unparseable existing fil
 TEST_CASE("AD5X IFS write_adventurer_json_local atomic — leaves no .tmp on success",
           "[ams][ad5x_ifs][local_write]") {
     Ad5xIfsTmpJsonFile tmp("atomic", R"({"FFMInfo":{"ffmColor1":"#000000","ffmType1":"PLA"}})");
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::set_local_adventurer_json_path(backend, tmp.path.string());
     Ad5xIfsTestAccess::set_color(backend, 2, "ABCDEF");
 
@@ -6678,7 +6845,8 @@ TEST_CASE("AD5X IFS write_adventurer_json_local atomic — leaves no .tmp on suc
 // authoritative; revert to the default 1:1 mapping.
 TEST_CASE("AD5X IFS #904 both prefixes conflict falls back to 1:1 tool map",
           "[ams][ad5x_ifs][issue_904]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::set_ifs_macro_confirmed_missing(backend, false);
 
     // TMTYD's exact data: bambufy_tools and less_waste_tools both non-default
@@ -6713,7 +6881,8 @@ TEST_CASE("AD5X IFS #904 both prefixes conflict falls back to 1:1 tool map",
 // fallback for users with a legitimately active plugin).
 TEST_CASE("AD5X IFS #904 single-prefix non-default tools is honored",
           "[ams][ad5x_ifs][issue_904]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::set_ifs_macro_confirmed_missing(backend, false);
 
     // Only bambufy_tools, with a custom mapping.
@@ -6733,7 +6902,8 @@ TEST_CASE("AD5X IFS #904 single-prefix non-default tools is honored",
 // Both-prefixes-but-equal: no conflict, apply the map normally. (Edge case:
 // a user with bambufy active whose less_waste_tools happens to match.)
 TEST_CASE("AD5X IFS #904 both prefixes agree — no fallback", "[ams][ad5x_ifs][issue_904]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::set_ifs_macro_confirmed_missing(backend, false);
 
     auto same = json::array({2, 1, 4, 3, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5});
@@ -6755,7 +6925,8 @@ TEST_CASE("AD5X IFS #904 both prefixes agree — no fallback", "[ams][ad5x_ifs][
 // the firmware whitelist (#904 root cause #2: PLA+ stomped to PLA on save).
 TEST_CASE("AD5X IFS #904 bambufy_custom_types merged into supported materials",
           "[ams][ad5x_ifs][issue_904]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
 
     json vars = json{
         {"bambufy_custom_types", json::array({"PLA+", "rPLA", "PETG-Pro", "PLA-CF"})},
@@ -6849,7 +7020,8 @@ TEST_CASE("AD5X IFS #904 user.cfg [zmod_ifs] filament_* parser", "[ams][ad5x_ifs
 // chosen type.
 TEST_CASE("AD5X IFS #904 PLA+ round-trips through set_slot_info after custom_types load",
           "[ams][ad5x_ifs][issue_904]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
 
     // Step 1: ingest TMTYD's bambufy_custom_types from save_variables.
     json vars = json{
@@ -6897,7 +7069,8 @@ TEST_CASE("AD5X IFS #904 PLA+ round-trips through set_slot_info after custom_typ
 
 TEST_CASE("AD5X IFS parse_filament_json populates per-material LEN/SPEED with fallback",
           "[ams][ad5x_ifs]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
 
     // default + PETG (explicit 650 tube) + PLA (no tube field → default tube).
     const std::string json = R"({
@@ -6928,7 +7101,8 @@ TEST_CASE("AD5X IFS parse_filament_json populates per-material LEN/SPEED with fa
 
 TEST_CASE("AD5X IFS parse_filament_json with no default uses 1000/1200 literal fallback",
           "[ams][ad5x_ifs]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
 
     // No "default" entry and the one material lacks both fields → everything
     // resolves to the literal 1000/1200.
@@ -7021,7 +7195,8 @@ TEST_CASE("AD5X IFS unload non-active slot with IFS_STATUS Chan ejects that lane
 }
 
 TEST_CASE("AD5X IFS reports lane-eject and force-eject support", "[ams][ad5x_ifs]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     // Cold eject is always available on AD5X IFS, including for an idle lane
     // that reports EMPTY (snapped-chunk recovery) — both caps must be true.
     REQUIRE(backend.supports_lane_eject());
@@ -7941,7 +8116,8 @@ TEST_CASE("AD5X IFS external CHANGE_ZCOLOR preserves the user brand override (#9
     state.init_subjects(false);
     MoonrakerAPIMock api(client, state);
 
-    AmsBackendAd5xIfs backend(&api, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(&api, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::set_running(backend, true);
     // Native-ZMOD path skipped (has_ifs_vars_ true) — same as the Task 10 test;
     // set_slot_info's persist write still succeeds. GET_ZCOLOR SILENT flagged
@@ -8768,7 +8944,8 @@ TEST_CASE("AD5X IFS load publishes busy state + EVENT_STATE_CHANGED on dispatch"
 
 TEST_CASE("AD5X IFS get_operation_step_model UNLOAD is the 3-phase synth sequence",
           "[ams][ad5x_ifs][stepmodel]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     auto model = backend.get_operation_step_model(StepOperationType::UNLOAD);
     REQUIRE(model.steps.size() == 3);
     CHECK(std::string(model.steps[0].label) == "Heat nozzle");
@@ -8786,7 +8963,8 @@ TEST_CASE("AD5X IFS get_operation_step_model UNLOAD is the 3-phase synth sequenc
 
 TEST_CASE("AD5X IFS get_operation_step_model LOAD is the 3-phase synth sequence",
           "[ams][ad5x_ifs][stepmodel]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     for (auto op : {StepOperationType::LOAD_FRESH, StepOperationType::LOAD_SWAP}) {
         auto model = backend.get_operation_step_model(op);
         REQUIRE(model.steps.size() == 3);
@@ -8804,7 +8982,8 @@ TEST_CASE("AD5X IFS get_operation_step_model LOAD is the 3-phase synth sequence"
 
 TEST_CASE("AD5X IFS get_operation_step_index_subject is the AmsState phase subject",
           "[ams][ad5x_ifs][stepmodel]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     for (auto op :
          {StepOperationType::LOAD_FRESH, StepOperationType::LOAD_SWAP, StepOperationType::UNLOAD}) {
         CHECK(backend.get_operation_step_index_subject(op) != nullptr);
@@ -8815,7 +8994,8 @@ TEST_CASE("AD5X IFS get_operation_step_index_subject is the AmsState phase subje
 
 TEST_CASE("AD5X IFS phase: operation_phase advances 0->1->2 during unload",
           "[ams][ad5x_ifs][phase]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::set_head_filament(backend, true);
 
     Ad5xIfsTestAccess::begin_phase(backend, /*is_unload=*/true);
@@ -8841,7 +9021,8 @@ TEST_CASE("AD5X IFS phase: operation_phase advances 0->1->2 during unload",
 
 TEST_CASE("AD5X IFS phase: operation_phase advances 0->1->2 during load",
           "[ams][ad5x_ifs][phase]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::set_head_filament(backend, false);
 
     Ad5xIfsTestAccess::begin_phase(backend, /*is_unload=*/false);
@@ -8866,7 +9047,8 @@ TEST_CASE("AD5X IFS phase: operation_phase advances 0->1->2 during load",
 // ==========================================================================
 
 TEST_CASE("AD5X IFS error-center: timeout sets ERROR not IDLE", "[ams][ad5x_ifs][error-center]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::set_head_filament(backend, true);
     Ad5xIfsTestAccess::begin_phase(backend, /*is_unload=*/true);
 
@@ -8881,7 +9063,8 @@ TEST_CASE("AD5X IFS error-center: timeout sets ERROR not IDLE", "[ams][ad5x_ifs]
 
 TEST_CASE("AD5X IFS error-center: current_error returns CRITICAL IFS event on ERROR",
           "[ams][ad5x_ifs][error-center]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::set_head_filament(backend, true);
     Ad5xIfsTestAccess::begin_phase(backend, /*is_unload=*/true);
 
@@ -8899,7 +9082,8 @@ TEST_CASE("AD5X IFS error-center: current_error returns CRITICAL IFS event on ER
 }
 
 TEST_CASE("AD5X IFS error-center: recover() clears ERROR state", "[ams][ad5x_ifs][error-center]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::set_head_filament(backend, true);
     Ad5xIfsTestAccess::begin_phase(backend, /*is_unload=*/true);
 
@@ -8915,7 +9099,8 @@ TEST_CASE("AD5X IFS error-center: recover() clears ERROR state", "[ams][ad5x_ifs
 
 TEST_CASE("AD5X IFS error-center: current_error returns nullopt when IDLE",
           "[ams][ad5x_ifs][error-center]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     REQUIRE(Ad5xIfsTestAccess::action(backend) == AmsAction::IDLE);
     REQUIRE_FALSE(backend.current_error().has_value());
 }
@@ -9037,7 +9222,8 @@ TEST_CASE("AD5X IFS eject_lane schedules a status re-read on success (FIX 2)", "
 
 TEST_CASE("AD5X IFS live authority blocks stale JSON color/type for a present slot (FIX 3)",
           "[ams][ad5x_ifs]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
 
     // Establish the live RS-485 authority via IFS_STATUS Ports (ifs_status_ports_seen_).
     // Slot 0 (port 1) is present; this is the authoritative presence + colour source.
@@ -9072,7 +9258,8 @@ TEST_CASE("AD5X IFS live authority blocks stale JSON color/type for a present sl
 TEST_CASE(
     "AD5X IFS pre-SILENT JSON still seeds color/type when no live authority (FIX 3 regression)",
     "[ams][ad5x_ifs]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     // No live authority: SILENT demoted and IFS_STATUS Ports never seen.
     Ad5xIfsTestAccess::set_zcolor_supported(backend, false);
 
@@ -9099,7 +9286,8 @@ TEST_CASE("AD5X IFS write_adventurer_json_local persists '?'/empty sentinels for
           "[ams][ad5x_ifs][local_write]") {
     Ad5xIfsTmpJsonFile tmp("clear_sentinel",
                            R"({"FFMInfo":{"ffmColor1":"#FF0000","ffmType1":"PLA"}})");
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::set_local_adventurer_json_path(backend, tmp.path.string());
 
     // Cleared slot: empty material, placeholder gray colour (the in-memory
@@ -9123,7 +9311,8 @@ TEST_CASE("AD5X IFS write_adventurer_json_local clears colour for an explicitly 
           "[ams][ad5x_ifs][local_write]") {
     Ad5xIfsTmpJsonFile tmp("clear_empty_color",
                            R"({"FFMInfo":{"ffmColor2":"#00FF00","ffmType2":"PETG"}})");
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::set_local_adventurer_json_path(backend, tmp.path.string());
 
     // Empty colour string and empty material -> both sentinels.
@@ -9145,7 +9334,8 @@ TEST_CASE("AD5X IFS write_adventurer_json_local writes real colour/type for a no
           "(FIX 4a regression)",
           "[ams][ad5x_ifs][local_write]") {
     Ad5xIfsTmpJsonFile tmp("normal_write", R"({"FFMInfo":{}})");
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::set_local_adventurer_json_path(backend, tmp.path.string());
 
     Ad5xIfsTestAccess::set_color(backend, 2, "AABBCC");
@@ -9176,7 +9366,8 @@ TEST_CASE("AD5X IFS write_adventurer_json_local writes zmod's default colour whe
           "set but the colour is empty",
           "[ams][ad5x_ifs][local_write]") {
     Ad5xIfsTmpJsonFile tmp("typed_empty_color", R"({"FFMInfo":{}})");
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::set_local_adventurer_json_path(backend, tmp.path.string());
 
     // Real material, no colour: the poisoned combination.
@@ -9198,7 +9389,8 @@ TEST_CASE("AD5X IFS write_adventurer_json_local writes zmod's default colour whe
           "set but the colour is the 808080 placeholder",
           "[ams][ad5x_ifs][local_write]") {
     Ad5xIfsTmpJsonFile tmp("typed_placeholder_color", R"({"FFMInfo":{}})");
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::set_local_adventurer_json_path(backend, tmp.path.string());
 
     // 808080 is our in-memory "no colour" placeholder; it must not reach the
@@ -9221,7 +9413,8 @@ TEST_CASE("AD5X IFS write_adventurer_json_local keeps the empty-slot sentinels w
           "set",
           "[ams][ad5x_ifs][local_write]") {
     Ad5xIfsTmpJsonFile tmp("empty_slot_sentinel", R"({"FFMInfo":{}})");
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::set_local_adventurer_json_path(backend, tmp.path.string());
 
     // No material at all: the firmware-native "no filament" pair must survive.
@@ -9250,7 +9443,8 @@ TEST_CASE("AD5X IFS write_adventurer_json_local keeps the empty-slot sentinels w
 TEST_CASE("AD5X IFS write_adventurer_json_local leaves a fully-specified slot alone",
           "[ams][ad5x_ifs][local_write]") {
     Ad5xIfsTmpJsonFile tmp("full_slot_unchanged", R"({"FFMInfo":{}})");
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::set_local_adventurer_json_path(backend, tmp.path.string());
 
     Ad5xIfsTestAccess::set_color(backend, 3, "FF7700");
@@ -9273,7 +9467,8 @@ TEST_CASE("AD5X IFS write_adventurer_json_local leaves a fully-specified slot al
 
 TEST_CASE("AD5X IFS phase: HEATING detail omits the target when none is known",
           "[ams][ad5x_ifs][phase]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::set_head_filament(backend, true);
 
     // No extruder frame and no RESPOND line have been seen, so there is no
@@ -9289,7 +9484,8 @@ TEST_CASE("AD5X IFS phase: HEATING detail omits the target when none is known",
 TEST_CASE("AD5X IFS phase: HEATING detail names the live temp but no target when only the temp is "
           "known",
           "[ams][ad5x_ifs][phase]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::set_head_filament(backend, true);
 
     // Heater off (target 0) but the nozzle still reads a real temperature.
@@ -9303,7 +9499,8 @@ TEST_CASE("AD5X IFS phase: HEATING detail names the live temp but no target when
 
 TEST_CASE("AD5X IFS phase: HEATING detail still names a real target when one is known",
           "[ams][ad5x_ifs][phase]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::set_head_filament(backend, true);
 
     // A pre-op extruder frame reports a live 220°C target at 62°C. begin_phase
@@ -9316,7 +9513,8 @@ TEST_CASE("AD5X IFS phase: HEATING detail still names a real target when one is 
 
 TEST_CASE("AD5X IFS parse_adventurer_json maps firmware '?' ffmType to empty material (FIX 4b)",
           "[ams][ad5x_ifs]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
 
     // Firmware-native unset sentinel for slot 0 (port 1): ffmType '?'.
     std::string content = R"({
@@ -9334,7 +9532,8 @@ TEST_CASE("AD5X IFS parse_adventurer_json maps firmware '?' ffmType to empty mat
 
 TEST_CASE("AD5X IFS parse_adventurer_json maps empty ffmType to empty material (FIX 4b)",
           "[ams][ad5x_ifs]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     std::string content = R"({"FFMInfo": {"ffmColor1": "", "ffmType1": ""}})";
     Ad5xIfsTestAccess::parse_adventurer_json(backend, content);
     CHECK(backend.get_slot_info(0).material.empty());
@@ -9624,7 +9823,8 @@ TEST_CASE("AMS base slot_unloads_to_toolhead defaults to the loaded hint (no AD5
           "[ams][ad5x_ifs]") {
     // Non-AD5X backends keep the legacy rule: toolhead unload iff the menu's
     // is_loaded snapshot says so. AD5X overrides; this guards the default.
-    AmsBackendAfc afc(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAfc> afc_reg(nullptr, nullptr);
+    AmsBackendAfc& afc = *afc_reg;
     CHECK(afc.slot_unloads_to_toolhead(0, /*loaded_hint=*/true));
     CHECK_FALSE(afc.slot_unloads_to_toolhead(0, /*loaded_hint=*/false));
 }
@@ -9766,7 +9966,8 @@ TEST_CASE_METHOD(Ad5xHomingGuardFixture, "eject_lane is not blocked by an active
 
 TEST_CASE("AD5X IFS: firmware type change refreshes a non-locked override (#981)",
           "[ams][ad5x_ifs][override][981]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     seed_standard_colors(backend); // slot 1: firmware PETG / #00FF00, baselines set
 
     // Auto-mirror left a non-locked override matching firmware-at-the-time.
@@ -9789,7 +9990,8 @@ TEST_CASE("AD5X IFS: firmware type change refreshes a non-locked override (#981)
 
 TEST_CASE("AD5X IFS: firmware type change does NOT clobber a user-locked material (#965)",
           "[ams][ad5x_ifs][override][965]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     seed_standard_colors(backend); // slot 1 firmware PETG
 
     // Genuine user edit — locked, must survive the post-print firmware revert.
@@ -9810,7 +10012,8 @@ TEST_CASE("AD5X IFS: firmware type change does NOT clobber a user-locked materia
 
 TEST_CASE("AD5X IFS: first material observation is a baseline, not an edit",
           "[ams][ad5x_ifs][override][981]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     // A pre-existing non-locked override must NOT be disturbed by the very
     // first firmware observation (startup): baseline only, no sync.
     helix::ams::FilamentSlotOverride ovr;
@@ -9838,7 +10041,8 @@ TEST_CASE("AD5X IFS: first material observation is a baseline, not an edit",
 TEST_CASE("AD5X IFS: insert after an empty lane refreshes a stale non-locked material "
           "(empty -> PETG) (#1065)",
           "[ams][ad5x_ifs][override][1065]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
 
     // A previous spool left a non-locked override baked with the OLD material.
     helix::ams::FilamentSlotOverride ovr;
@@ -9872,7 +10076,8 @@ TEST_CASE("AD5X IFS: insert after an empty lane refreshes a stale non-locked mat
 
 TEST_CASE("AD5X IFS: insert after an empty lane preserves a user-locked material (#965/#1065)",
           "[ams][ad5x_ifs][override][965][1065]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
 
     // A deliberate user choice — locked. It must survive the empty->insert path.
     helix::ams::FilamentSlotOverride ovr;
@@ -9900,7 +10105,8 @@ TEST_CASE("AD5X IFS: insert after an empty lane preserves a user-locked material
 TEST_CASE("AD5X IFS: an empty first material observation is a baseline, not a spurious sync "
           "(#1065)",
           "[ams][ad5x_ifs][override][1065]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
 
     // A pre-existing non-locked override must survive the FIRST (empty) firmware
     // observation untouched — baselining "" must not fire a sync that rewrites
@@ -9953,7 +10159,8 @@ TEST_CASE("AD5X IFS execute_gcode dispatches silent with the AMS timeout ceiling
     // Real MoonrakerAPI path: MoonrakerAPIMock does NOT override execute_gcode,
     // so the silent/timeout args reach the client mock's send capture.
     MoonrakerAPIMock api(client, state);
-    AmsBackendAd5xIfs backend(&api, &client);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(&api, &client);
+    AmsBackendAd5xIfs& backend = *backend_reg;
 
     SECTION("plain execute_gcode overload") {
         auto err = backend.execute_gcode("INSERT_PRUTOK_IFS PRUTOK=2");
@@ -10128,7 +10335,8 @@ struct Ad5xRunoutOpFixture : public Ad5xRunoutFixture {
 TEST_CASE_METHOD(Ad5xRunoutFixture,
                  "AD5X IFS runout: head drop while paused and idle raises the fault",
                  "[ams][ad5x_ifs][runout][1250]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::set_zcolor_supported(backend, false);
 
     // The drop happens mid-print, which is when a real runout happens.
@@ -10160,7 +10368,8 @@ TEST_CASE_METHOD(Ad5xRunoutFixture,
 
 TEST_CASE_METHOD(Ad5xRunoutFixture, "AD5X IFS runout: the confirm dwell is load-bearing",
                  "[ams][ad5x_ifs][runout][1250]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::set_zcolor_supported(backend, false);
 
     set_print_state(helix::PrintJobState::PAUSED);
@@ -10178,7 +10387,8 @@ TEST_CASE_METHOD(Ad5xRunoutFixture, "AD5X IFS runout: the confirm dwell is load-
 
 TEST_CASE_METHOD(Ad5xRunoutFixture, "AD5X IFS runout: not raised while the print is not paused",
                  "[ams][ad5x_ifs][runout][1250]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::set_zcolor_supported(backend, false);
 
     for (auto state : {helix::PrintJobState::PRINTING, helix::PrintJobState::STANDBY,
@@ -10199,7 +10409,8 @@ TEST_CASE_METHOD(Ad5xRunoutFixture,
     // the switch and ifs_motion_sensor, and the motion sensor is device-confirmed
     // to read filament_detected=false on a loaded-but-idle lane. Gating on
     // head_filament_ would fire a runout on a perfectly healthy paused print.
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::set_zcolor_supported(backend, false);
     set_print_state(helix::PrintJobState::PAUSED);
 
@@ -10220,7 +10431,8 @@ TEST_CASE_METHOD(Ad5xRunoutFixture,
 TEST_CASE_METHOD(Ad5xRunoutFixture,
                  "AD5X IFS runout: a head drop during a tracked load/unload is not a runout",
                  "[ams][ad5x_ifs][runout][phase][1250]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::set_zcolor_supported(backend, false);
     set_print_state(helix::PrintJobState::PAUSED);
 
@@ -10653,7 +10865,8 @@ TEST_CASE("AD5X IFS plugin visibility: which plugin, and is backup on",
 
 TEST_CASE("AD5X IFS runout: backup-slot match needs type AND colour AND presence",
           "[ams][ad5x_ifs][runout][1250]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     // Lane 0 is the one that ran out: PLA / FF0000.
     Ad5xIfsTestAccess::set_port_presence(backend, 0, true);
     Ad5xIfsTestAccess::set_material(backend, 0, "PLA");
@@ -10712,7 +10925,8 @@ TEST_CASE("AD5X IFS runout: backup-slot match needs type AND colour AND presence
 // fragments new, which the "no user-facing strings are missing from the
 // translation catalogs" gate in tests/shell/test_code_lint.bats fails on.
 TEST_CASE("AD5X IFS runout detail reads as whole sentences", "[ams][ad5x_ifs][runout][i18n]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::set_port_presence(backend, 0, true);
     Ad5xIfsTestAccess::set_material(backend, 0, "PLA");
     Ad5xIfsTestAccess::set_color(backend, 0, "FF0000");
@@ -10843,7 +11057,8 @@ TEST_CASE("AD5X IFS endless spool capabilities", "[ams][ad5x_ifs][endless_spool]
 
 TEST_CASE("AD5X IFS overrides the eligibility rule with type+colour+presence",
           "[ams][ad5x_ifs][endless_spool][eligibility][1250]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     // Lane 0: PLA / FF0000, present.
     Ad5xIfsTestAccess::set_port_presence(backend, 0, true);
     Ad5xIfsTestAccess::set_material(backend, 0, "PLA");
@@ -10914,7 +11129,8 @@ TEST_CASE("AD5X IFS overrides the eligibility rule with type+colour+presence",
 
 TEST_CASE("AD5X publishes its tool->port map as the firmware default routing",
           "[ams][ad5x][routing]") {
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::set_has_ifs_vars(backend, true);
     auto vars = standard_variables();
     // T0->port3, T1->port1, T2->port4, T3->port2, everything else unmapped (5).
@@ -10936,7 +11152,8 @@ TEST_CASE("AD5X without IFS vars falls back to lane-per-tool", "[ams][ad5x][rout
     // Native zMod never populates tool_map_ (has_ifs_vars_ stays false). Answering
     // an all-unmapped table there would strand every tool as AUTO, so the backend
     // must fall back rather than publish a table it does not have.
-    AmsBackendAd5xIfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
 
     auto routing = backend.firmware_default_routing();
 
