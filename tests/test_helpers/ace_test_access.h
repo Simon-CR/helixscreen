@@ -72,9 +72,8 @@ class AceTestAccess {
 
     // Expose the on_started() subscription-vs-REST decision (#1069). Returns
     // the slot-bearing object, or nullptr when the REST fallback should run.
-    static const nlohmann::json* select_slot_bearing_object(const nlohmann::json& status,
-                                                            std::string* key) {
-        return AmsBackendAce::select_slot_bearing_object(status, key);
+    static const nlohmann::json* select_ace_object(const nlohmann::json& status, std::string* key) {
+        return AmsBackendAce::select_ace_object(status, key);
     }
 
     // Drive the individual REST poll methods (private; async-defer their work

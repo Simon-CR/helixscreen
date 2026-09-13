@@ -12,6 +12,7 @@
 
 #include <atomic>
 #include <condition_variable>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -260,28 +261,71 @@ class AmsBackendAce : public AmsSubscriptionBackend {
     static std::optional<uint32_t> parse_slot_color(const nlohmann::json& color_val);
 
     /**
-     * @brief Pick the ace/filament_hub status object that actually carries slot
-     *        data (a non-empty "slots" array).
+     * @brief Read one slot's material, for both slot-bearing producers (the
+     *        WebSocket object path and the REST /slots poll read the same hub).
      *
-     * The on_started() query commits to the WebSocket subscription path only
-     * when the matched object carries slots. A manager-only object — e.g. the
-     * Kobra S1 fork's `ace` object exposes `ace_instances`/`current_index` but
-     * NO `slots` (the per-unit slot data lives in separate `ace_instance_N`
-     * objects) — must fall through to the REST bridge at /server/ace/ instead
-     * of parsing zero slots off the manager (#1069).
+     * `material` is the Kobra S1 fork/native live spelling, `type` the
+     * ValgACE spelling; material wins when both are stated. An empty or
+     * absent value states no reading.
      *
-     * @param status The `result.status` object from printer.objects.query
-     * @param matched_key Out: set to the picked key ("filament_hub"/"ace"/
-     *        "ace_instance_N") when a slot-bearing object is found; left
-     *        unchanged otherwise. May be null. Owned std::string so the key
-     *        stays valid regardless of the source json's lifetime (the
-     *        `ace_instance_N` keys are dynamic, not string literals).
-     * @return Pointer to the slot-bearing object (borrowed from @p status), or
-     *         nullptr if no filament_hub/ace/ace_instance_N carries a slots
-     *         array.
+     * @return The material, or nullopt when the slot states none
      */
-    static const nlohmann::json* select_slot_bearing_object(const nlohmann::json& status,
-                                                            std::string* matched_key);
+    static std::optional<std::string> read_slot_material(const nlohmann::json& slot_json);
+
+    /**
+     * @brief Pick the ace/filament_hub/ace_instance_N object to parse from a
+     *        status frame, by one preference order.
+     *
+     * Both selection passes share this so the key list cannot drift between
+     * them. The predicate varies by caller: with @p require_slots the object
+     * must carry a non-empty "slots" array — the on_started() query commits to
+     * the WebSocket subscription path only on real slot data, so a manager-only
+     * object (the Kobra S1 fork's `ace` exposes `ace_instances`/`current_index`
+     * but NO `slots`; the per-unit data lives in `ace_instance_N`) falls
+     * through to the REST bridge at /server/ace/ instead of parsing zero slots
+     * off the manager (#1069). Without it, any non-empty object qualifies —
+     * notify frames carry only CHANGED fields, so a legitimate delta (e.g. a
+     * native `filament_hub` restating `current_filament`) has no slots array;
+     * @p skip excludes an object the caller parses separately (the manager).
+     *
+     * @param status The `result.status` object from printer.objects.query, or
+     *        one notify_status_update frame's status object
+     * @param matched_key Out: set to the picked key ("filament_hub"/"ace"/
+     *        "ace_instance_N") when an object matches; left unchanged
+     *        otherwise. May be null. Owned std::string so the key stays valid
+     *        regardless of the source json's lifetime (the `ace_instance_N`
+     *        keys are dynamic, not string literals).
+     * @param require_slots Require a non-empty "slots" array on the pick
+     * @param skip Never pick this object (pointer into @p status; may be null)
+     * @return Pointer to the picked object (borrowed from @p status), or
+     *         nullptr when nothing matches
+     */
+    static const nlohmann::json* select_ace_object(const nlohmann::json& status,
+                                                   std::string* matched_key,
+                                                   bool require_slots = true,
+                                                   const nlohmann::json* skip = nullptr);
+
+    /**
+     * @brief The lowest-numbered `ace_instance_N` key whose value satisfies
+     *        @p predicate, so every walk over the fork's per-unit objects
+     *        picks the same one.
+     *
+     * The display is anchored to the lowest instance — on_started's
+     * slot-bearing pick populates it — so notify deltas must resolve to it
+     * too, not to whichever instance happened to carry the slots array whole
+     * in a given frame (#1107).
+     *
+     * @param status A query result.status object or one notify frame's status
+     * @param predicate Object filter; defaults to "non-empty object", the
+     *        notify-delta shape. Borrowed by select_ace_object with its own
+     *        mode-specific filter.
+     * @return Pointer to the key (borrowed from @p status), or null
+     */
+    static const std::string* lowest_ace_instance_key(
+        const nlohmann::json& status,
+        const std::function<bool(const nlohmann::json&)>& predicate = [](const nlohmann::json& o) {
+            return o.is_object() && !o.empty();
+        });
 
     /**
      * @brief Map an ACE slot status string to a SlotStatus.
@@ -293,6 +337,48 @@ class AmsBackendAce : public AmsSubscriptionBackend {
      * (including "unknown") -> UNKNOWN.
      */
     static SlotStatus slot_status_from_string(const std::string& status_str);
+
+    /**
+     * @brief The manager-shaped `ace` object in a status frame, when one is
+     *        present.
+     *
+     * The Kobra S1 fork splits its surface: each unit's slots live on
+     * `ace_instance_N`, while the top-level `ace` is a manager whose only
+     * seat signal is `current_index` (#1069). A slot-bearing `ace` (ValgACE)
+     * is NOT a manager — returning null for it keeps the caller from parsing
+     * the same object twice.
+     *
+     * @param status A printer.objects.query result.status object, or one
+     *        notify_status_update frame's status object
+     * @return Pointer to the manager object (borrowed from @p status), or
+     *         null when no manager-shaped `ace` is present
+     */
+    static const nlohmann::json* manager_ace_object(const nlohmann::json& status);
+
+    /// Fold one status-shaped object's dryer state into dryer_info_ under
+    /// either spelling: `dryer` (ValgACE/native) or `dryer_status` (Kobra S1
+    /// fork), each with either nested key set ({status, target_temp,
+    /// duration, remain_time} or {active, current_temp, remaining_minutes,
+    /// duration_minutes}). Also reads the top-level ambient `temp`, which a
+    /// stated dryer current temp overrides. Caller holds mutex_.
+    void apply_dryer_state_locked(const nlohmann::json& data);
+
+    /// Seat the loaded tool from the fork manager's `current_index` — the
+    /// global tool index across every unit, -1 = nothing loaded. This backend
+    /// displays one unit: below that unit's slot count the global index IS
+    /// the local slot (delegates to seat_from_local_index_locked); at or
+    /// beyond it the seat lives in a unit that is not displayed, so the tool
+    /// is stated and no slot is marked (the stamp helper guards
+    /// current_slot < 0). Caller holds mutex_.
+    /// @return true when current_slot/current_tool/filament_loaded changed
+    bool seat_from_global_index_locked(int current_index);
+
+    /// Seat the loaded tool from a LOCAL slot index (loaded_slot, the
+    /// ValgACE "loaded" scan, current_filament's parsed local index): -1
+    /// clears, otherwise the index is the slot and the tool. Caller holds
+    /// mutex_.
+    /// @return true when current_slot/current_tool/filament_loaded changed
+    bool seat_from_local_index_locked(int slot_index);
 
     // ========================================================================
     // Members
