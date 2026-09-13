@@ -28,7 +28,9 @@ namespace helix::ui {
  *
  * Entries are sourced by the caller from its own domain data. For the wizard,
  * `label` is the printer model name, `group` the manufacturer and `id` the
- * index into PrinterDetector's kinematics-filtered list.
+ * index into PrinterDetector's kinematics-filtered list. The widget catalog
+ * (#1016) additionally fills `description` so search reaches the one-line
+ * blurb shown under each widget's name.
  */
 struct SelectorEntry {
     /// Displayed and searched text (the model / widget name).
@@ -38,6 +40,9 @@ struct SelectorEntry {
     std::string group;
     /// Caller's handle delivered back on selection.
     int id = 0;
+    /// Secondary searched text (the entry's description). Empty = label and
+    /// group only, which is every wizard entry.
+    std::string description;
 };
 
 /**
@@ -60,10 +65,19 @@ struct SelectorGroup {
 std::string selector_bucket_of(const SelectorEntry& entry);
 
 /**
+ * @brief True when a query is empty or whitespace-only — the "show everything"
+ * state. Callers use it to decide between the grouped browse view and the
+ * filtered list; selector_entry_matches() treats such a query as matching all.
+ */
+bool selector_query_is_blank(const std::string& query);
+
+/**
  * @brief Case-insensitive substring match of a query against an entry.
  *
- * Matches the label OR the group, so typing a vendor name surfaces every
- * machine it makes. An empty (or whitespace-only) query matches everything.
+ * Matches the label, the group, or the description, so typing a vendor name
+ * surfaces every machine it makes and typing a trait ("webcam") surfaces the
+ * widget whose description carries it. An empty (or whitespace-only) query
+ * matches everything.
  */
 bool selector_entry_matches(const SelectorEntry& entry, const std::string& query);
 

@@ -1859,6 +1859,7 @@ translations:
   No video player installed - showing the timelapse library: No video player installed - showing the timelapse library
   ? "No webcam detected.\nA webcam is required for timelapse."
   : "No webcam detected.\nA webcam is required for timelapse."
+  No widgets found: No widgets found
   No width sensor detected: No width sensor detected
   None: None
   None (disable): None (disable)
@@ -2526,6 +2527,7 @@ translations:
   Search printers...: Search printers...
   Search spools...: Search spools...
   Search vendors...: Search vendors...
+  Search widgets...: Search widgets...
   Searching...: Searching...
   Secondary: Secondary
   Section Detail: Section Detail
@@ -3074,6 +3076,7 @@ translations:
   USB printer access denied — check permissions: USB printer access denied — check
     permissions
   Unavailable: Unavailable
+  Unavailable on this printer: Unavailable on this printer
   Understanding Results: Understanding Results
   ? "Uneven belt tension causes print artifacts like layer shifts, VFAs (vertical fine artifacts), and ringing.\n\nThis tool vibrates each belt path and measures the resonant frequency — matched frequencies mean balanced tension.\n\nFor CoreXY, Path A and B should be within a few Hz of each other."
   : "Uneven belt tension causes print artifacts like layer shifts, VFAs (vertical fine artifacts), and ringing.\n\nThis tool vibrates each belt path and measures the resonant frequency — matched frequencies mean balanced tension.\n\nFor CoreXY, Path A and B should be within a few Hz of each other."

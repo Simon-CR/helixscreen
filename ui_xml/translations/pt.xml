@@ -1705,6 +1705,7 @@
   <translation tag="No vendors found" pt="Nenhum fornecedor encontrado"/>
   <translation tag="No video player installed - showing the timelapse library" pt="Nenhum reprodutor de vídeo instalado – mostrando a biblioteca de timelapse"/>
   <translation tag="No webcam detected.&#10;A webcam is required for timelapse." pt="Nenhuma webcam detectada.&#10;Uma webcam é necessária para timelapse."/>
+  <translation tag="No widgets found" pt="Nenhum widget encontrado"/>
   <translation tag="No width sensor detected" pt="Nenhum sensor de largura detectado"/>
   <translation tag="None" pt="Nenhum"/>
   <translation tag="None (disable)" pt="Nenhum (desativar)"/>
@@ -2318,6 +2319,7 @@
   <translation tag="Search printers..." pt="Buscar impressoras..."/>
   <translation tag="Search spools..." pt="Procurar bobinas..."/>
   <translation tag="Search vendors..." pt="Buscar fornecedores..."/>
+  <translation tag="Search widgets..." pt="Buscar widgets..."/>
   <translation tag="Searching..." pt="Buscando..."/>
   <translation tag="Secondary" pt="Secundário"/>
   <translation tag="Section Detail" pt="Detalhe da Seção"/>
@@ -2784,6 +2786,7 @@
   <translation tag="USB drive removed" pt="Unidade USB removida"/>
   <translation tag="USB printer access denied — check permissions" pt="Acesso à impressora USB negado — verifique as permissões"/>
   <translation tag="Unavailable" pt="Indisponível"/>
+  <translation tag="Unavailable on this printer" pt="Não disponível nesta impressora"/>
   <translation tag="Understanding Results" pt="Entender resultados"/>
   <translation tag="Uneven belt tension causes print artifacts like layer shifts, VFAs (vertical fine artifacts), and ringing.&#10;&#10;This tool vibrates each belt path and measures the resonant frequency — matched frequencies mean balanced tension.&#10;&#10;For CoreXY, Path A and B should be within a few Hz of each other." pt="A tensão desigual da correia causa artefatos de impressão como deslocamentos de camada, VFAs (artefatos verticais finos) e ringing.&#10;&#10;Esta ferramenta vibra cada caminho de correia e mede a frequência de ressonância — frequências coincidentes significam tensão equilibrada.&#10;&#10;Para CoreXY, o Caminho A e B devem estar a poucos Hz um do outro."/>
   <translation tag="Uninstall" pt="Desinstalar"/>

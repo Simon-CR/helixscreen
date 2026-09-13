@@ -1705,6 +1705,7 @@
   <translation tag="No vendors found" de="Keine Hersteller gefunden"/>
   <translation tag="No video player installed - showing the timelapse library" de="Kein Videoplayer installiert – Zeitraffer-Bibliothek wird angezeigt"/>
   <translation tag="No webcam detected.&#10;A webcam is required for timelapse." de="Keine Webcam erkannt.&#10;Eine Webcam wird für Zeitraffer benötigt."/>
+  <translation tag="No widgets found" de="Keine Widgets gefunden"/>
   <translation tag="No width sensor detected" de="Kein Breitensensor erkannt"/>
   <translation tag="None" de="Keine"/>
   <translation tag="None (disable)" de="Keine (deaktivieren)"/>
@@ -2318,6 +2319,7 @@
   <translation tag="Search printers..." de="Drucker suchen..."/>
   <translation tag="Search spools..." de="Spulen suchen..."/>
   <translation tag="Search vendors..." de="Hersteller suchen..."/>
+  <translation tag="Search widgets..." de="Widgets suchen..."/>
   <translation tag="Searching..." de="Suche..."/>
   <translation tag="Secondary" de="Sekundär"/>
   <translation tag="Section Detail" de="Abschnittdetails"/>
@@ -2784,6 +2786,7 @@
   <translation tag="USB drive removed" de="USB-Laufwerk entfernt"/>
   <translation tag="USB printer access denied — check permissions" de="USB-Drucker-Zugriff verweigert — Berechtigungen prüfen"/>
   <translation tag="Unavailable" de="Nicht verfügbar"/>
+  <translation tag="Unavailable on this printer" de="Auf diesem Drucker nicht verfügbar"/>
   <translation tag="Understanding Results" de="Ergebnisse verstehen"/>
   <translation tag="Uneven belt tension causes print artifacts like layer shifts, VFAs (vertical fine artifacts), and ringing.&#10;&#10;This tool vibrates each belt path and measures the resonant frequency — matched frequencies mean balanced tension.&#10;&#10;For CoreXY, Path A and B should be within a few Hz of each other." de="Ungleichmäßige Riemenspannung verursacht Druckartefakte wie Schichtverschiebungen, VFAs (vertikale feine Artefakte) und Ringing.&#10;&#10;Dieses Werkzeug lässt jeden Riemenpfad vibrieren und misst die Resonanzfrequenz — übereinstimmende Frequenzen bedeuten ausgewogene Spannung.&#10;&#10;Bei CoreXY sollten Pfad A und B nur wenige Hz voneinander entfernt sein."/>
   <translation tag="Uninstall" de="Deinstallieren"/>

@@ -1881,6 +1881,7 @@ translations:
   No video player installed - showing the timelapse library: 'Видеоплеер не установлен – показана библиотека таймлапсов'
   ? "No webcam detected.\nA webcam is required for timelapse."
   : "Веб-камера не обнаружена.\nДля таймлапса необходима веб-камера."
+  No widgets found: Виджеты не найдены
   No width sensor detected: 'Датчик диаметра не обнаружен'
   None: Нет
   None (disable): Нет (отключить)
@@ -2552,6 +2553,7 @@ translations:
   Search printers...: Поиск принтеров...
   Search spools...: Поиск катушек...
   Search vendors...: Поиск производителей...
+  Search widgets...: Поиск виджетов...
   Searching...: Поиск...
   Secondary: Вторичный
   Section Detail: Детали раздела
@@ -3106,6 +3108,7 @@ translations:
   USB printer access denied — check permissions: Доступ к USB-принтеру запрещён —
     проверьте разрешения
   Unavailable: Недоступно
+  Unavailable on this printer: Недоступно на этом принтере
   Understanding Results: Понимание результатов
   ? "Uneven belt tension causes print artifacts like layer shifts, VFAs (vertical fine artifacts), and ringing.\n\nThis tool vibrates each belt path and measures the resonant frequency — matched frequencies mean balanced tension.\n\nFor CoreXY, Path A and B should be within a few Hz of each other."
   : "Неравномерное натяжение ремня вызывает дефекты печати, такие как смещения слоёв, VFA (вертикальные мелкие артефакты) и ringing.\n\nЭтот инструмент вибрирует каждый путь ремня и измеряет резонансную частоту — совпадающие частоты означают сбалансированное натяжение.\n\nДля CoreXY пути A и B должны отличаться на несколько Гц."

@@ -34,13 +34,18 @@ std::string selector_bucket_of(const SelectorEntry& entry) {
     return entry.group.empty() ? entry.label : entry.group;
 }
 
+bool selector_query_is_blank(const std::string& query) {
+    return trimmed(query).empty();
+}
+
 bool selector_entry_matches(const SelectorEntry& entry, const std::string& query) {
     const std::string normalized = to_lower(trimmed(query));
     if (normalized.empty()) {
         return true;
     }
     return to_lower(entry.label).find(normalized) != std::string::npos ||
-           to_lower(entry.group).find(normalized) != std::string::npos;
+           to_lower(entry.group).find(normalized) != std::string::npos ||
+           to_lower(entry.description).find(normalized) != std::string::npos;
 }
 
 std::vector<const SelectorEntry*> filter_selector_entries(const std::vector<SelectorEntry>& entries,

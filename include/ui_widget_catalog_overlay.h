@@ -7,6 +7,7 @@
 
 #include <functional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace helix {
@@ -23,6 +24,10 @@ using CatalogClosedCallback = std::function<void()>;
 /// Shows a half-width overlay listing the widget categories available for grid
 /// placement. Picking a category dives into a sub-page listing that category's
 /// widgets, using the same header/back contract as the settings sub-pages.
+/// A search box filters the whole registry (name, description, or category) into
+/// a flat results list; clearing it returns to the category list. Widgets whose
+/// hardware is missing on this printer are grouped under an "Unavailable on this
+/// printer" row instead of cluttering their categories.
 /// Widgets already placed are shown dimmed with a "Placed" badge.
 /// On selection, the callback fires and both levels close.
 class WidgetCatalogOverlay {
@@ -48,18 +53,38 @@ class WidgetCatalogOverlay {
     static lv_obj_t* active_category_root();
 
   private:
-    /// Push the sub-page listing one category's widgets on top of the catalog.
+    /// Push the sub-page listing one category's available widgets.
     static void show_category(WidgetCategory category);
+
+    /// Push the sub-page listing the widgets unavailable on this printer.
+    static void show_unavailable();
+
+    /// Shared dive machinery: create the sub-page XML, populate it with @p defs,
+    /// and push it on top of the catalog.
+    static void show_widget_page(const char* title, const char* title_tag,
+                                 const std::vector<const PanelWidgetDef*>& defs);
 
     /// Click dispatch for the top-level category rows.
     static void on_category_row_clicked(lv_event_t* e);
 
-    /// Populate the category list with one row per registered category
+    /// Click dispatch for the "Unavailable on this printer" row.
+    static void on_unavailable_row_clicked(lv_event_t* e);
+
+    /// Populate the category list with one row per category that has available
+    /// widgets, plus the unavailable row when hardware is missing here.
     static void populate_category_rows(lv_obj_t* group);
 
-    /// Populate a sub-page's scroll container with one row per widget in @p category
+    /// Populate a scroll container with one row per def in @p defs. Used by the
+    /// category pages, the unavailable page, and the search results (which pass
+    /// the whole registry).
     static void populate_rows(lv_obj_t* scroll, const PanelWidgetConfig& config,
-                              WidgetCategory category);
+                              const std::vector<const PanelWidgetDef*>& defs);
+
+    /// One clickable row for @p def: gate hint, placed badge, size badge, and
+    /// the select / mint-instance click wiring. Returns the row.
+    static lv_obj_t* create_widget_row(lv_obj_t* parent, const PanelWidgetDef& def,
+                                       const PanelWidgetConfig& config,
+                                       const std::unordered_map<std::string, int>& multi_placed);
 
     /// Create a single catalog row widget
     static lv_obj_t* create_row(lv_obj_t* parent, const char* name, const char* icon,

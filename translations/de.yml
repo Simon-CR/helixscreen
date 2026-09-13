@@ -1911,6 +1911,7 @@ translations:
   No video player installed - showing the timelapse library: 'Kein Videoplayer installiert – Zeitraffer-Bibliothek wird angezeigt'
   ? "No webcam detected.\nA webcam is required for timelapse."
   : "Keine Webcam erkannt.\nEine Webcam wird für Zeitraffer benötigt."
+  No widgets found: Keine Widgets gefunden
   No width sensor detected: 'Kein Breitensensor erkannt'
   None: Keine
   None (disable): Keine (deaktivieren)
@@ -2588,6 +2589,7 @@ translations:
   Search printers...: Drucker suchen...
   Search spools...: Spulen suchen...
   Search vendors...: Hersteller suchen...
+  Search widgets...: Widgets suchen...
   Searching...: Suche...
   Secondary: Sekundär
   Section Detail: Abschnittdetails
@@ -3153,6 +3155,7 @@ translations:
   USB printer access denied — check permissions: USB-Drucker-Zugriff verweigert —
     Berechtigungen prüfen
   Unavailable: Nicht verfügbar
+  Unavailable on this printer: Auf diesem Drucker nicht verfügbar
   Understanding Results: Ergebnisse verstehen
   ? "Uneven belt tension causes print artifacts like layer shifts, VFAs (vertical fine artifacts), and ringing.\n\nThis tool vibrates each belt path and measures the resonant frequency — matched frequencies mean balanced tension.\n\nFor CoreXY, Path A and B should be within a few Hz of each other."
   : "Ungleichmäßige Riemenspannung verursacht Druckartefakte wie Schichtverschiebungen, VFAs (vertikale feine Artefakte) und Ringing.\n\nDieses Werkzeug lässt jeden Riemenpfad vibrieren und misst die Resonanzfrequenz — übereinstimmende Frequenzen bedeuten ausgewogene Spannung.\n\nBei CoreXY sollten Pfad A und B nur wenige Hz voneinander entfernt sein."

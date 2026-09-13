@@ -1705,6 +1705,7 @@
   <translation tag="No vendors found" it="Nessun fornitore trovato"/>
   <translation tag="No video player installed - showing the timelapse library" it="Nessun lettore video installato – viene mostrata la libreria timelapse"/>
   <translation tag="No webcam detected.&#10;A webcam is required for timelapse." it="Nessuna webcam rilevata.&#10;Una webcam è necessaria per il timelapse."/>
+  <translation tag="No widgets found" it="Nessun widget trovato"/>
   <translation tag="No width sensor detected" it="Nessun sensore di larghezza rilevato"/>
   <translation tag="None" it="Nessuno"/>
   <translation tag="None (disable)" it="Nessuno (disabilita)"/>
@@ -2318,6 +2319,7 @@
   <translation tag="Search printers..." it="Cerca stampanti..."/>
   <translation tag="Search spools..." it="Cerca bobine..."/>
   <translation tag="Search vendors..." it="Cerca fornitori..."/>
+  <translation tag="Search widgets..." it="Cerca widget..."/>
   <translation tag="Searching..." it="Ricerca..."/>
   <translation tag="Secondary" it="Secondario"/>
   <translation tag="Section Detail" it="Dettaglio sezione"/>
@@ -2784,6 +2786,7 @@
   <translation tag="USB drive removed" it="Unità USB rimossa"/>
   <translation tag="USB printer access denied — check permissions" it="Accesso alla stampante USB negato — controlla i permessi"/>
   <translation tag="Unavailable" it="Non disponibile"/>
+  <translation tag="Unavailable on this printer" it="Non disponibile su questa stampante"/>
   <translation tag="Understanding Results" it="Capire i risultati"/>
   <translation tag="Uneven belt tension causes print artifacts like layer shifts, VFAs (vertical fine artifacts), and ringing.&#10;&#10;This tool vibrates each belt path and measures the resonant frequency — matched frequencies mean balanced tension.&#10;&#10;For CoreXY, Path A and B should be within a few Hz of each other." it="Una tensione non uniforme della cinghia causa artefatti di stampa come spostamenti di strato, VFA (artefatti verticali fini) e ringing.&#10;&#10;Questo strumento fa vibrare ciascun percorso della cinghia e misura la frequenza di risonanza — frequenze corrispondenti indicano una tensione bilanciata.&#10;&#10;Per CoreXY, il percorso A e B dovrebbero differire di pochi Hz."/>
   <translation tag="Uninstall" it="Disinstalla"/>
