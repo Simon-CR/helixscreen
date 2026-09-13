@@ -519,7 +519,7 @@ std::string connect_failure_message(WiFiResult result, const std::string& reason
 } // namespace helix
 
 void WiFiManager::connect(const std::string& ssid, const std::string& password,
-                          ConnectCallback on_complete) {
+                          ConnectCallback on_complete, bool is_hidden) {
     if (!backend_) {
         NOTIFY_ERROR("WiFi unavailable. Cannot connect to network.");
         if (on_complete) {
@@ -559,7 +559,7 @@ void WiFiManager::connect(const std::string& ssid, const std::string& password,
     spdlog::debug("[WiFiManager] Connect callback registered for '{}'", helix::redact::ssid(ssid));
 
     // Use backend's connect method
-    WiFiError result = backend_->connect_network(ssid, password);
+    WiFiError result = backend_->connect_network(ssid, password, is_hidden);
     if (!result.success()) {
         const std::string reason = result.user_msg.empty() ? result.technical_msg : result.user_msg;
         // The reason belongs in the toast too: "Failed to connect" alone

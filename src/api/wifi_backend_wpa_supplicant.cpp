@@ -1605,7 +1605,7 @@ void WifiBackendWpaSupplicant::reconcile_saved_networks() {
 }
 
 WiFiError WifiBackendWpaSupplicant::connect_network(const std::string& ssid,
-                                                    const std::string& password) {
+                                                    const std::string& password, bool) {
     if (!is_running()) {
         return WiFiError(WiFiResult::NOT_INITIALIZED, "Backend not started",
                          "WiFi system not ready");

@@ -1370,7 +1370,10 @@ void NetworkSettingsOverlay::handle_hidden_connect_clicked() {
                     }
                 }
             });
-        });
+        },
+        // The SSID was typed, not picked from the scan list: the backend must
+        // not match it against a scan cache.
+        /*is_hidden=*/true);
 }
 
 void NetworkSettingsOverlay::handle_security_changed(lv_event_t* e) {

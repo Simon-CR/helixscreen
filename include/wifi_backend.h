@@ -435,9 +435,14 @@ class WifiBackend {
      *
      * @param ssid Network name
      * @param password Password (empty string for open networks)
+     * @param is_hidden true when the SSID was typed by the user rather than
+     *        picked from the scan list — the network is by definition absent
+     *        from any scan cache, so a backend that matches SSIDs against one
+     *        must explicitly request a hidden association
      * @return WiFiError with detailed status information
      */
-    virtual WiFiError connect_network(const std::string& ssid, const std::string& password) = 0;
+    virtual WiFiError connect_network(const std::string& ssid, const std::string& password,
+                                      bool is_hidden = false) = 0;
 
     /**
      * @brief Disconnect from current network

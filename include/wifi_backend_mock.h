@@ -63,7 +63,8 @@ class WifiBackendMock : public WifiBackend {
 
     WiFiError trigger_scan() override;
     WiFiError get_scan_results(std::vector<WiFiNetwork>& networks) override;
-    WiFiError connect_network(const std::string& ssid, const std::string& password) override;
+    WiFiError connect_network(const std::string& ssid, const std::string& password,
+                              bool is_hidden) override;
     WiFiError disconnect_network() override;
     WiFiError set_radio_enabled(bool on) override;
     bool is_radio_enabled() const override;
@@ -76,6 +77,13 @@ class WifiBackendMock : public WifiBackend {
     // through the simulated async connect/disconnect flow.
     void set_connected_state(bool connected, const std::string& ssid = "",
                              const std::string& ip = "", int signal = 0);
+
+    /// Whether the most recent connect_network() request asked for a hidden
+    /// association. Lets tests observe the flag WiFiManager threaded through,
+    /// which the mock otherwise drops on the floor.
+    bool last_connect_hidden() const {
+        return last_connect_hidden_;
+    }
 
     /// Test helper — stands in for real interface resolution (which this
     /// backend never performs on its own) so tests can exercise callers that
@@ -146,5 +154,6 @@ class WifiBackendMock : public WifiBackend {
     // Connection simulation state
     std::string connecting_ssid_;
     std::string connecting_password_;
+    bool last_connect_hidden_ = false;
     std::function<void(bool, const std::string&)> connect_callback_;
 };
