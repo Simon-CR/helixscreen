@@ -716,9 +716,9 @@ float ui_gcode_viewer_get_load_progress(lv_obj_t* obj);
  * thumbnail over the viewer and swaps on readiness drives this from a timer
  * instead, then shows the viewer when it returns true.
  *
- * 2D only. The 3D path uploads VBOs during the draw pass and cannot progress
- * while hidden, so this reports ready immediately there and the caller reveals
- * as before.
+ * 2D only, and it returns false for a 3D viewer rather than claiming
+ * readiness: 3D uploads its VBOs during the draw pass, so it is never hidden
+ * and reveals from its own first-frame callback instead.
  *
  * @param obj Viewer widget
  * @return true when there is content worth swapping in.
