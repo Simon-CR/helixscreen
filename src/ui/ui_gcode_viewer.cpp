@@ -25,6 +25,7 @@
 #include "geometry_budget_manager.h"
 #include "lvgl/src/others/translation/lv_translation.h"
 #include "memory_utils.h"
+#include "print_status_preview_decision.h"
 #include "system/crash_handler.h"
 #include "system/telemetry_manager.h"
 #include "theme_manager.h"
@@ -603,6 +604,45 @@ static void apply_2d_renderer_colors(gcode_viewer_state_t* st) {
     }
 }
 
+/// Create the full-load 2D renderer if it does not exist yet.
+///
+/// Streaming mode builds this the moment its index opens. A full load has no
+/// such moment, so it is created on demand - and the draw pass used to be the
+/// only thing that demanded it. A preview that stays hidden until it has
+/// content never draws, so the offscreen pump has to be able to ask for it too.
+///
+/// @return false when there is no parsed file to render yet.
+static bool ensure_2d_renderer(gcode_viewer_state_t* st, int width, int height) {
+    if (st->layer_renderer_2d_) {
+        return true;
+    }
+    if (!st->gcode_file) {
+        spdlog::error("[GCode Viewer] 2D init but no gcode_file - streaming init failed?");
+        return false;
+    }
+    st->layer_renderer_2d_ = std::make_unique<helix::gcode::GCodeLayerRenderer>();
+    st->layer_renderer_2d_->set_gcode(st->gcode_file.get());
+    st->layer_renderer_2d_->set_canvas_size(width, height);
+    st->layer_renderer_2d_->set_framing(st->framing_);
+    st->layer_renderer_2d_->auto_fit();
+
+    apply_2d_renderer_colors(st);
+
+    // Push the decision either way. The renderer's own default is TRUE,
+    // so only ever calling set_ssao_enabled(true) meant "off" was never
+    // applied to it: decide_ssao_enabled() would log "enhanced shading
+    // off", the viewer would skip the call, and the renderer would carry
+    // on with its default. HELIX_SSAO=0 and the constrained-device tier
+    // were both inert, and the constrained devices paid for the SSAO
+    // pass, the full-canvas buffer, and antialiased rasterization (about
+    // 6x the aliased cost) that the tier exists to spare them.
+    st->layer_renderer_2d_->set_ssao_enabled(st->ssao_enabled_at_init_);
+    st->layer_renderer_2d_->set_antialias_enabled(st->antialias_enabled_at_init_);
+
+    spdlog::debug("[GCode Viewer] Initialized 2D layer renderer ({}x{})", width, height);
+    return true;
+}
+
 static void gcode_viewer_draw_cb(lv_event_t* e) {
     lv_obj_t* obj = lv_event_get_target_obj(e);
     lv_layer_t* layer = lv_event_get_layer(e);
@@ -643,37 +683,9 @@ static void gcode_viewer_draw_cb(lv_event_t* e) {
     // Dispatch to appropriate renderer based on mode
     if (st->is_using_2d_mode()) {
         // 2D Layer Renderer (orthographic top-down view)
-        if (!st->layer_renderer_2d_) {
-            // Lazy initialization of 2D renderer (non-streaming mode only)
-            // In streaming mode, layer_renderer_2d_ is already initialized in open_file_async
-            // callback
-            if (!st->gcode_file) {
-                spdlog::error(
-                    "[GCode Viewer] 2D lazy init but no gcode_file - streaming init failed?");
-                return;
-            }
-            st->layer_renderer_2d_ = std::make_unique<helix::gcode::GCodeLayerRenderer>();
-            st->layer_renderer_2d_->set_gcode(st->gcode_file.get());
-            int width = lv_area_get_width(&widget_coords);
-            int height = lv_area_get_height(&widget_coords);
-            st->layer_renderer_2d_->set_canvas_size(width, height);
-            st->layer_renderer_2d_->set_framing(st->framing_);
-            st->layer_renderer_2d_->auto_fit();
-
-            apply_2d_renderer_colors(st);
-
-            // Push the decision either way. The renderer's own default is TRUE,
-            // so only ever calling set_ssao_enabled(true) meant "off" was never
-            // applied to it: decide_ssao_enabled() would log "enhanced shading
-            // off", the viewer would skip the call, and the renderer would carry
-            // on with its default. HELIX_SSAO=0 and the constrained-device tier
-            // were both inert, and the constrained devices paid for the SSAO
-            // pass, the full-canvas buffer, and antialiased rasterization (about
-            // 6x the aliased cost) that the tier exists to spare them.
-            st->layer_renderer_2d_->set_ssao_enabled(st->ssao_enabled_at_init_);
-            st->layer_renderer_2d_->set_antialias_enabled(st->antialias_enabled_at_init_);
-
-            spdlog::debug("[GCode Viewer] Initialized 2D layer renderer ({}x{})", width, height);
+        if (!ensure_2d_renderer(st, lv_area_get_width(&widget_coords),
+                                lv_area_get_height(&widget_coords))) {
+            return;
         }
 
         // Use stored print progress layer (set via ui_gcode_viewer_set_print_progress)
@@ -2849,6 +2861,33 @@ float ui_gcode_viewer_get_load_progress(lv_obj_t* obj) {
     return st->streaming_controller_->get_index_progress();
 }
 
+bool ui_gcode_viewer_pump_offscreen_2d(lv_obj_t* obj) {
+    gcode_viewer_state_t* st = get_state(obj);
+    if (!st) {
+        return false;
+    }
+    // Only the 2D renderer builds off the draw pass. A 3D viewer cannot be
+    // pumped at all, and claiming readiness here would reveal one that has not
+    // uploaded yet - it stays visible under the thumbnail and reveals from its
+    // own first-frame callback instead.
+    if (!st->is_using_2d_mode()) {
+        return false;
+    }
+    lv_obj_t* parent = lv_obj_get_parent(obj);
+    const auto [w, h] =
+        helix::ui::preview_build_size(lv_obj_get_width(obj), lv_obj_get_height(obj),
+                                      parent ? lv_obj_get_content_width(parent) : 0,
+                                      parent ? lv_obj_get_content_height(parent) : 0);
+    if (w <= 0 || h <= 0) {
+        // Nothing is laid out yet; the next tick will have real dimensions.
+        return false;
+    }
+    if (!ensure_2d_renderer(st, w, h)) {
+        return false;
+    }
+    return st->layer_renderer_2d_->pump_offscreen_build(w, h);
+}
+
 // ==============================================
 // Object Picking
 // ==============================================
@@ -3231,6 +3270,10 @@ std::set<int> ui_gcode_viewer_get_tools_used(lv_obj_t*) {
 }
 
 bool ui_gcode_viewer_adopt_palette_if_empty(lv_obj_t*, std::vector<std::string>&) {
+    return false;
+}
+
+bool ui_gcode_viewer_pump_offscreen_2d(lv_obj_t*) {
     return false;
 }
 

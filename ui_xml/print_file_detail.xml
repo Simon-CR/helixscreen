@@ -46,15 +46,19 @@
                  width="100%" flex_grow="1" style_radius="#border_radius" style_pad_all="0" style_clip_corner="true">
           <!-- Shared preview stack (thumbnail / 2D / 3D + rotate hint) - the same
                component print status uses, see components/preview_stack.xml.
-               The thumbnail stays on top of the viewer until the viewer has real
-               content on its canvas - the 2D ghost copy, or the first complete 3D
-               frame - so its hide condition keys off detail_viewer_first_frame
-               rather than the render mode; print status swaps on mode instead. -->
+               Here the two swap: the viewer stays hidden until it has real
+               content on its canvas - the 2D ghost copy, or the first complete
+               3D frame - and the thumbnail carries the wait, so both conditions
+               key off detail_viewer_first_frame. A viewer left visible under an
+               opaque thumbnail would be composited every frame for pixels
+               nobody sees, which is the whole cost on a slow panel. Print
+               status swaps on mode instead: it shows its render progressively
+               as the print advances rather than waiting for a finished one. -->
           <preview_stack name="detail_preview_clear_area"
                          gradient_name="gradient_bg" viewer_name="detail_gcode_viewer" thumbnail_name="detail_thumbnail"
                          hint_name="detail_rotate_hint" thumbnail_src="selected_detail_thumbnail"
                          thumbnail_offset_y="#preview_offset_y" gradient_hidden="detail_gcode_viewer_mode eq 1"
-                         viewer_hidden="detail_gcode_viewer_mode eq 0" thumbnail_hidden="detail_viewer_first_frame eq 1"
+                         viewer_hidden="detail_viewer_hidden eq 1" thumbnail_hidden="detail_viewer_first_frame eq 1"
                          hint_hidden="detail_gcode_viewer_mode ne 1"/>
           <!-- Loading overlay - shown while G-code is downloading/indexing.
                Determinate whenever the streaming indexer can report: a large

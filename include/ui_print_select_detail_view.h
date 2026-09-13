@@ -587,6 +587,15 @@ class PrintSelectDetailView : public OverlayBase {
     // (which sits on top of the viewer in z-order) stays visible until this
     // flips, covering the gray viewer during the load-to-render gap.
     lv_subject_t detail_viewer_first_frame_{};
+
+    /// Whether the viewer widget is hidden, per preview_viewer_hidden(). Bound
+    /// by print_file_detail.xml; kept in step by refresh_viewer_visibility().
+    lv_subject_t detail_viewer_hidden_{};
+
+    /// Recompute detail_viewer_hidden from the render mode and first-frame
+    /// state. Call after either changes - they are written from several places
+    /// and the rule must not be restated at any of them.
+    void refresh_viewer_visibility();
     // 1 = show slicer-intended colors instead of loaded AMS slot colors.
     // View-local, resets to 0 (actual) on every show().
     lv_subject_t detail_prefer_sliced_colors_{};
