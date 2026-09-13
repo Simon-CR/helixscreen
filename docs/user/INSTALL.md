@@ -62,10 +62,19 @@ The one-liner above works on every supported platform, but each printer family h
 
 ## Remote Screen Setup (Run on a Separate Device)
 
-HelixScreen does **not** have to run on your printer. You can install it on any supported Linux device and have it drive a display while it talks to your printer's Moonraker over the network. This is ideal when the printer sits on the floor and you want the screen at your desk, or when your printer's stock panel can't be replaced (some QIDI models).
+HelixScreen does **not** have to run on your printer. You can install it on any supported Linux device and have it drive a display while it talks to your printer's Moonraker over the network.
 
-Common setups:
-- A spare Raspberry Pi (3/4/5, Zero 2 W, CM4) with a touchscreen, sitting at your desk
+This is the setup to choose when:
+
+- Your printer has no built-in screen - a Voron, RatRig, or any Klipper printer whose host has no panel of its own
+- The printer lives somewhere you don't - another room, a garage, a workshop
+- You run more than one printer and want a single screen for all of them: with [multi-printer support](guide/beta-features.md) (beta) enabled, the printer manager switches between every printer you've added
+- Your printer's stock panel can't be replaced (some QIDI models)
+
+Common screen devices:
+
+- A spare Raspberry Pi (3/4/5, Zero 2 W, CM4) with a touchscreen
+- A repurposed Klipper pad or a small self-built touchscreen PC
 - A mini PC or x86 box with an HDMI touchscreen
 - Your desktop, running the app in a window (macOS or Linux) for monitoring
 
