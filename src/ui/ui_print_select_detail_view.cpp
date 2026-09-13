@@ -33,6 +33,7 @@
 #include "memory_utils.h"
 #include "moonraker_types.h"
 #include "observer_factory.h"
+#include "print_status_preview_decision.h"
 #include "runtime_config.h"
 #include "settings_manager.h"
 #include "theme_manager.h"
@@ -162,6 +163,7 @@ void PrintSelectDetailView::init_subjects() {
     // Whether the viewer has rendered its first frame (0=no, 1=yes). The
     // thumbnail stays on top until this flips to hide the gray gap.
     UI_MANAGED_SUBJECT_INT(detail_viewer_first_frame_, 0, "detail_viewer_first_frame", subjects_);
+    UI_MANAGED_SUBJECT_INT(detail_viewer_hidden_, 1, "detail_viewer_hidden", subjects_);
 
     // Preview color mode: 0 = actual (loaded slot colors), 1 = sliced (slicer intent)
     UI_MANAGED_SUBJECT_INT(detail_prefer_sliced_colors_, 0, "detail_prefer_sliced_colors",
@@ -778,6 +780,7 @@ void PrintSelectDetailView::on_deactivating(DeactivateReason) {
     // Reset viewer mode to thumbnail so next open starts clean
     show_gcode_viewer(false);
     lv_subject_set_int(&detail_viewer_first_frame_, 0);
+    refresh_viewer_visibility();
     gcode_loaded_ = false;
     // Readiness drops with the view — headless_scan_done_ goes false too, so
     // the publish below resolves to 0 and the skeleton latch re-arms. show()
@@ -1072,9 +1075,41 @@ void PrintSelectDetailView::start_progress_timer() {
         250, this);
 }
 
+void PrintSelectDetailView::refresh_viewer_visibility() {
+    const int mode = lv_subject_get_int(&detail_gcode_viewer_mode_);
+    const bool first_frame = lv_subject_get_int(&detail_viewer_first_frame_) != 0;
+    lv_subject_set_int(&detail_viewer_hidden_,
+                       helix::ui::preview_viewer_hidden(mode, first_frame) ? 1 : 0);
+}
+
 void PrintSelectDetailView::poll_load_progress() {
-    if (!gcode_viewer_ || lv_subject_get_int(&detail_gcode_loading_) == 0) {
+    if (!gcode_viewer_) {
         cancel_progress_timer();
+        return;
+    }
+
+    const bool loading = lv_subject_get_int(&detail_gcode_loading_) != 0;
+    const bool revealed = lv_subject_get_int(&detail_viewer_first_frame_) != 0;
+    const bool is_2d = lv_subject_get_int(&detail_gcode_viewer_mode_) == helix::ui::PREVIEW_MODE_2D;
+
+    // A hidden 2D viewer is not drawn, so nothing would drive its build. Pump
+    // it here and reveal on readiness. 3D is untouched: it stays visible under
+    // the thumbnail because it uploads during the draw pass, and reveals from
+    // its own first-frame callback.
+    if (is_2d && !revealed && ui_gcode_viewer_pump_offscreen_2d(gcode_viewer_)) {
+        spdlog::debug("[DetailView] Preview has content - revealing viewer");
+        lv_subject_set_int(&detail_viewer_first_frame_, 1);
+        refresh_viewer_visibility();
+        cancel_progress_timer();
+        return;
+    }
+
+    if (!loading) {
+        // Indexing is done. Keep ticking only while a hidden 2D viewer still
+        // needs pumping; otherwise there is nothing left for this timer to do.
+        if (revealed || !is_2d) {
+            cancel_progress_timer();
+        }
         return;
     }
 
@@ -1119,6 +1154,7 @@ void PrintSelectDetailView::show_gcode_viewer(bool show) {
         mode = is_2d ? 2 : 1;
     }
     lv_subject_set_int(&detail_gcode_viewer_mode_, mode);
+    refresh_viewer_visibility();
 
     // Returning to thumbnail mode must also drop the first-frame latch — that
     // latch is what keeps the thumbnail hidden once the viewer has painted
@@ -1127,6 +1163,7 @@ void PrintSelectDetailView::show_gcode_viewer(bool show) {
     // that, mid-view) hides BOTH layers and the preview goes blank.
     if (mode == 0) {
         lv_subject_set_int(&detail_viewer_first_frame_, 0);
+        refresh_viewer_visibility();
     }
 
     // The 3D render is the preview when the viewer is active, so the
@@ -1143,7 +1180,16 @@ void PrintSelectDetailView::show_gcode_viewer(bool show) {
     // Hide loading spinner now that viewer state is resolved
     lv_subject_set_int(&detail_gcode_loading_, 0);
     lv_subject_set_int(&detail_gcode_progress_, 0);
-    cancel_progress_timer();
+
+    // A viewer that is not revealed yet is hidden, so no draw drives its build.
+    // Keep the tick alive to pump it; poll_load_progress() stops itself on the
+    // reveal.
+    if (mode == helix::ui::PREVIEW_MODE_2D &&
+        lv_subject_get_int(&detail_viewer_first_frame_) == 0) {
+        start_progress_timer();
+    } else {
+        cancel_progress_timer();
+    }
 
     spdlog::trace("[DetailView] G-code viewer mode: {} ({})", mode, mode == 0 ? "thumbnail" : "3D");
 }
@@ -1964,6 +2010,7 @@ void PrintSelectDetailView::load_gcode_for_preview() {
     // Reset first-frame flag: the thumbnail stays on top until the viewer
     // renders, then the first-frame callback flips this to reveal it.
     lv_subject_set_int(&detail_viewer_first_frame_, 0);
+    refresh_viewer_visibility();
 
     // Register one-shot callback: fires after the viewer's first complete
     // render, at which point we hide the thumbnail (revealing the viewer).
@@ -1973,6 +2020,7 @@ void PrintSelectDetailView::load_gcode_for_preview() {
             auto* self = static_cast<PrintSelectDetailView*>(user_data);
             spdlog::debug("[DetailView] First frame rendered — revealing viewer");
             lv_subject_set_int(&self->detail_viewer_first_frame_, 1);
+            self->refresh_viewer_visibility();
         },
         this);
 

@@ -26,6 +26,7 @@
 #include "geometry_budget_manager.h"
 #include "lvgl/src/others/translation/lv_translation.h"
 #include "memory_utils.h"
+#include "print_status_preview_decision.h"
 #include "system/crash_handler.h"
 #include "system/telemetry_manager.h"
 #include "theme_manager.h"
@@ -2892,6 +2893,38 @@ float ui_gcode_viewer_get_load_progress(lv_obj_t* obj) {
     return st->streaming_controller_->get_index_progress();
 }
 
+bool ui_gcode_viewer_pump_offscreen_2d(lv_obj_t* obj) {
+    gcode_viewer_state_t* st = get_state(obj);
+    if (!st) {
+        return false;
+    }
+    // Only the 2D renderer builds off the draw pass. A 3D viewer cannot be
+    // pumped at all, and claiming readiness here would reveal one that has not
+    // uploaded yet - it stays visible under the thumbnail and reveals from its
+    // own first-frame callback instead.
+    if (!st->is_using_2d_mode()) {
+        return false;
+    }
+    lv_obj_t* parent = lv_obj_get_parent(obj);
+    const auto [w, h] =
+        helix::ui::preview_build_size(lv_obj_get_width(obj), lv_obj_get_height(obj),
+                                      parent ? lv_obj_get_content_width(parent) : 0,
+                                      parent ? lv_obj_get_content_height(parent) : 0);
+    if (w <= 0 || h <= 0) {
+        // Nothing is laid out yet; the next tick will have real dimensions.
+        return false;
+    }
+    if (!st->layer_renderer_2d_) {
+        if (!st->gcode_file) {
+            // Streaming builds its own renderer when the index opens; a full
+            // load has no parsed file yet, so there is nothing to build from.
+            return false;
+        }
+        create_2d_renderer_for_file(st, w, h);
+    }
+    return st->layer_renderer_2d_->pump_offscreen_build(w, h);
+}
+
 // ==============================================
 // Object Picking
 // ==============================================
@@ -3302,6 +3335,9 @@ bool ui_gcode_viewer_get_scheduled_pauses(lv_obj_t*,
     return false;
 }
 } // namespace helix
+bool ui_gcode_viewer_pump_offscreen_2d(lv_obj_t*) {
+    return false;
+}
 
 float ui_gcode_viewer_get_load_progress(lv_obj_t*) {
     return 0.0f;
