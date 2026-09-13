@@ -777,5 +777,7 @@ TEST_CASE("Nothing a stored record migrates is ever evidence that a lane is occu
     const auto sources = sources_from_record(rec, wire);
 
     CHECK_FALSE(sources.sensed.has_value());
-    CHECK_FALSE(helix::ams::resolve(sources).present);
+    // A stored record is a declaration, never a sensor reading, so it leaves
+    // presence unobserved rather than asserting the lane is empty.
+    CHECK_FALSE(helix::ams::resolve(sources).present.has_value());
 }

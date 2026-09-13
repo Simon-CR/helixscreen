@@ -55,6 +55,12 @@ ResolvedLane resolve(const LaneSources& sources) {
     // contradicts itself, and first_non_blank ranks an explicit name above one
     // derived from the value. Nothing else in the identity block is overridden
     // this way: brand, spool name and catalog identity belong to the spool.
+    //
+    // The name is set even when the pick carried none, and engaged-empty rather
+    // than left unobserved: a pick with no name is a statement that the old name
+    // no longer describes the swatch, so it has to reach the lane and clear it.
+    // Leaving it unobserved would let the spool's name stand beside a colour it
+    // contradicts.
     if (sources.local_user.has_value() && sources.local_user->color_rgb.has_value()) {
         out.color_rgb = *sources.local_user->color_rgb;
         out.color_name = sources.local_user->color_name.value_or(std::string{});

@@ -2507,10 +2507,9 @@ class AmsBackend {
     /// name, endless-spool group, error, environment, remaining length, temps,
     /// indices - are left exactly as the backend set them.
     ///
-    /// A lane no source has written is left alone entirely. resolve() answers
-    /// for such a lane with its own defaults, and writing those would paint
-    /// grey over the values the backend just built rather than report anything
-    /// observed.
+    /// Only what a source actually observed is written, so a lane nothing has
+    /// been filed against leaves @p slot exactly as the backend built it, and
+    /// so does any single field no source speaks to.
     ///
     /// @warning **The caller must already hold the backend's own mutex_.** This
     ///          performs no I/O and never calls back into a backend, so a lock

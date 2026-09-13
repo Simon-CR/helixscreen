@@ -17,7 +17,7 @@ namespace {
 int declared_spool_id(const LaneSources& sources) {
     LaneSources declared = sources;
     declared.drop(ObservationSource::VendorCache);
-    return resolve(declared).spoolman_id;
+    return resolve(declared).spoolman_id.value_or(0);
 }
 
 } // namespace

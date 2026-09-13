@@ -63,9 +63,10 @@ TEST_CASE_METHOD(HelixTestFixture, "Loading a namespace populates each lane's so
     CHECK(lane1.vendor_cache->color_rgb == 0xED2C2Cu);
     CHECK_FALSE(lane1.local_user.has_value());
 
-    // Neither lane is occupied: nothing stored is a presence signal.
-    CHECK_FALSE(resolved_lane(lane_id_for(0, 0)).present);
-    CHECK_FALSE(resolved_lane(lane_id_for(0, 1)).present);
+    // Nothing stored is a presence signal, so neither lane carries a presence
+    // reading at all. Migration must not invent one in either direction.
+    CHECK_FALSE(resolved_lane(lane_id_for(0, 0)).present.has_value());
+    CHECK_FALSE(resolved_lane(lane_id_for(0, 1)).present.has_value());
 }
 
 TEST_CASE_METHOD(HelixTestFixture,

@@ -15,19 +15,38 @@ SlotStatus narrow_status(SlotStatus backend_status, bool present) {
 }
 
 void apply_resolved(SlotInfo& slot, const ResolvedLane& resolved) {
-    slot.status = narrow_status(slot.status, resolved.present);
+    // A field no source observed is not written. The backend built this struct
+    // out of what its firmware actually says, and several backends report
+    // values the lane model has no producer for at all - Snapmaker's
+    // print_task_config material and brand, a tool changer's tool name, a
+    // weight the consumption tracker keeps. Writing an unobserved field would
+    // replace those with blanks nobody stated.
+    if (resolved.present.has_value()) {
+        slot.status = narrow_status(slot.status, *resolved.present);
+    }
 
-    slot.color_rgb = resolved.color_rgb;
-    slot.color_name = resolved.color_name;
-    slot.material = resolved.material;
-    slot.brand = resolved.brand;
-    slot.spool_name = resolved.spool_name;
-    slot.catalog_id = resolved.catalog_id;
-    slot.product_name = resolved.product_name;
-    slot.spoolman_id = resolved.spoolman_id;
-    slot.spoolman_vendor_id = resolved.spoolman_vendor_id;
-    slot.remaining_weight_g = resolved.remaining_weight_g;
-    slot.total_weight_g = resolved.total_weight_g;
+    if (resolved.color_rgb.has_value())
+        slot.color_rgb = *resolved.color_rgb;
+    if (resolved.color_name.has_value())
+        slot.color_name = *resolved.color_name;
+    if (resolved.material.has_value())
+        slot.material = *resolved.material;
+    if (resolved.brand.has_value())
+        slot.brand = *resolved.brand;
+    if (resolved.spool_name.has_value())
+        slot.spool_name = *resolved.spool_name;
+    if (resolved.catalog_id.has_value())
+        slot.catalog_id = *resolved.catalog_id;
+    if (resolved.product_name.has_value())
+        slot.product_name = *resolved.product_name;
+    if (resolved.spoolman_id.has_value())
+        slot.spoolman_id = *resolved.spoolman_id;
+    if (resolved.spoolman_vendor_id.has_value())
+        slot.spoolman_vendor_id = *resolved.spoolman_vendor_id;
+    if (resolved.remaining_weight_g.has_value())
+        slot.remaining_weight_g = *resolved.remaining_weight_g;
+    if (resolved.total_weight_g.has_value())
+        slot.total_weight_g = *resolved.total_weight_g;
 }
 
 ResolvedLane resolved_lane(LaneId lane) {

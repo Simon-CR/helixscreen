@@ -344,11 +344,7 @@ helix::ams::BindingVerdict AmsBackend::reconcile_lane_binding(int slot_index,
 }
 
 void AmsBackend::apply_resolved_lane(SlotInfo& slot, int slot_index) {
-    const helix::ams::LaneSources sources = helix::ams::lane_sources(lane_id(slot_index));
-    if (!sources.any_record()) {
-        return;
-    }
-    helix::ams::apply_resolved(slot, helix::ams::resolve(sources));
+    helix::ams::apply_resolved(slot, helix::ams::resolved_lane(lane_id(slot_index)));
 }
 
 std::string AmsBackend::normalize_material(const std::string& material) const {

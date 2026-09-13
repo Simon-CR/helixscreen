@@ -20,10 +20,12 @@ namespace helix::ams {
 
 /// Lay a resolved lane onto the SlotInfo a backend has just built.
 ///
-/// The fields SlotInfo carries that the resolver does not own (tool mapping,
-/// extruder name, endless-spool group, error, environment, remaining length,
-/// temps, indices) are left exactly as the backend set them. Pure: no clock,
-/// no globals, no I/O.
+/// Only the fields a source actually observed are written; an unobserved field
+/// leaves the backend's own value standing, and presence narrows the status
+/// only when a sensor has spoken. The fields SlotInfo carries that the resolver
+/// does not own (tool mapping, extruder name, endless-spool group, error,
+/// environment, remaining length, temps, indices) are left exactly as the
+/// backend set them. Pure: no clock, no globals, no I/O.
 void apply_resolved(SlotInfo& slot, const ResolvedLane& resolved);
 
 /// This lane's resolved values. Never calls into a backend: backends call it

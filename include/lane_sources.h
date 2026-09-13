@@ -34,18 +34,6 @@ struct LaneSources {
         record_for(*this, obs.source) = obs;
     }
 
-    /// True when any source holds a record on this lane.
-    ///
-    /// The question a reader asks before laying resolve() over values somebody
-    /// else built: resolve() answers for an unwritten lane with its defaults -
-    /// grey, blank, no spool, no weights - and those defaults are
-    /// indistinguishable from a lane nothing has observed. A caller that writes
-    /// them anyway paints that emptiness over whatever it was given.
-    [[nodiscard]] bool any_record() const {
-        return sensed.has_value() || spoolman.has_value() || local_user.has_value() ||
-               vendor_cache.has_value() || metered.has_value();
-    }
-
     /// Drop one source's record entirely. This covers a clear that discards
     /// what that source knew; it does not cover `src/ui/ui_ams_edit_overlay.cpp`'s
     /// unlink, which keeps identity across the clear and needs a record demoted

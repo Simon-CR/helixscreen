@@ -6,26 +6,35 @@
 #include "lane_sources.h"
 
 #include <cstdint>
+#include <optional>
 #include <string>
 
 namespace helix::ams {
 
 /// What a lane currently shows. Computed from LaneSources, never stored back.
+///
+/// Every field is optional for the same reason Observation's are: a field no
+/// source observed and a field observed to be blank are different answers, and
+/// a sentinel standing in for the first is indistinguishable from the second.
+/// A reader laying this over values somebody else built must be able to tell
+/// them apart, or "nobody said" silently overwrites "the machine says PLA".
+/// An engaged field holding an empty string or a zero is a reading: somebody
+/// looked and found nothing there.
 struct ResolvedLane {
-    bool present = false;
+    std::optional<bool> present;
 
-    uint32_t color_rgb = AMS_DEFAULT_SLOT_COLOR;
-    std::string color_name;
-    std::string material;
-    std::string brand;
-    std::string spool_name;
-    std::string catalog_id;
-    std::string product_name;
-    int spoolman_id = 0;
-    int spoolman_vendor_id = 0;
+    std::optional<uint32_t> color_rgb;
+    std::optional<std::string> color_name;
+    std::optional<std::string> material;
+    std::optional<std::string> brand;
+    std::optional<std::string> spool_name;
+    std::optional<std::string> catalog_id;
+    std::optional<std::string> product_name;
+    std::optional<int> spoolman_id;
+    std::optional<int> spoolman_vendor_id;
 
-    float remaining_weight_g = -1.0F;
-    float total_weight_g = -1.0F;
+    std::optional<float> remaining_weight_g;
+    std::optional<float> total_weight_g;
 };
 
 /// Apply the precedence table to a lane's sources. Pure: same inputs, same

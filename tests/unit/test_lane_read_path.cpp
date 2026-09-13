@@ -86,15 +86,13 @@ void check_fields_match(const SlotInfo& got, const SlotInfo& want) {
 
 TEST_CASE_METHOD(HelixTestFixture, "A lane no source has written is left as the backend built it",
                  "[lane][readpath]") {
-    // resolve() answers for an unwritten lane with its own defaults: grey, no
-    // material, no spool, weights at -1. Those are indistinguishable from a
-    // lane nobody has observed, so laying them over a freshly parsed SlotInfo
-    // would paint blank across values the backend does report. Reachable on
-    // shipping hardware: a tool changer files no identity at all, and ACE and
-    // AD5X file two fields out of eleven.
+    // resolve() reports nothing observed for an unwritten lane, so every field
+    // is left as the backend built it. Reachable on shipping hardware: a tool
+    // changer files no identity at all, and ACE and AD5X file two fields out
+    // of eleven.
     RegisteredBackend<ProbeBackend> harness(4);
     REQUIRE(harness->backend_index() == 0);
-    REQUIRE(helix::ams::lane_sources(harness.lane(1)).any_record() == false);
+    REQUIRE_FALSE(helix::ams::lane_sources(harness.lane(1)).sensed.has_value());
 
     const SlotInfo built = firmware_built_slot();
     SlotInfo slot = built;
@@ -105,10 +103,10 @@ TEST_CASE_METHOD(HelixTestFixture, "A lane no source has written is left as the 
 
 TEST_CASE_METHOD(HelixTestFixture, "A lane with one record resolves onto the backend's slot",
                  "[lane][readpath]") {
-    // The counterpart of the case above: once a source has spoken, the model
-    // is the authority and the backend's values give way to it. Both halves
-    // are needed — a method that never wrote anything would pass the no-op
-    // case on its own.
+    // The counterpart of the case above: on a field a source HAS spoken to,
+    // the model is the authority and the backend's value gives way. Both
+    // halves are needed, since a method that never wrote anything would pass
+    // the leave-it-alone case on its own.
     RegisteredBackend<ProbeBackend> harness(4);
 
     Observation sensed(ObservationSource::Sensed);
@@ -126,10 +124,10 @@ TEST_CASE_METHOD(HelixTestFixture, "A lane with one record resolves onto the bac
     CHECK(slot.material == "ABS");
     CHECK(slot.color_rgb == 0x1B6AC9);
     CHECK(slot.status == SlotStatus::AVAILABLE);
-    // Nothing filed these, so the resolver's defaults reach the slot. That is
-    // the whole-slot replacement this method performs, not a field merge.
-    CHECK(slot.brand.empty());
-    CHECK(slot.spoolman_id == 0);
+    // No source spoke to these, so the backend's own values stand. The method
+    // merges per field; it does not replace the slot.
+    CHECK(slot.brand == "Kingroon");
+    CHECK(slot.spoolman_id == 7);
 }
 
 TEST_CASE_METHOD(HelixTestFixture, "A sensed absence narrows the status the backend stamped",

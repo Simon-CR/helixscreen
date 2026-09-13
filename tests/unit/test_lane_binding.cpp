@@ -325,8 +325,11 @@ TEST_CASE_METHOD(HelixTestFixture, "a broken binding takes both declaring record
     // record that named a spool nobody swapped in.
     const auto resolved = resolve(after);
     CHECK(resolved.spoolman_id == 7);
-    CHECK(resolved.brand.empty());
-    CHECK(resolved.color_rgb != 0x00FF00u);
+    // Unobserved, not blank. The dropped records were the only ones that ever
+    // spoke to brand and colour, so nothing states them now, and a backend
+    // that reports its own keeps them.
+    CHECK_FALSE(resolved.brand.has_value());
+    CHECK_FALSE(resolved.color_rgb.has_value());
 }
 
 TEST_CASE_METHOD(HelixTestFixture, "a user's hand-typed colour goes with the binding it described",
@@ -537,7 +540,10 @@ TEST_CASE_METHOD(LVGLTestFixture, "AFC honours the retention setting when a lane
 
     feed_afc_lane(*harness, "lane2", {{"prep", false}, {"load", false}, {"spool_id", nullptr}});
     CHECK_FALSE(lane_sources(harness.lane(1)).local_user.has_value());
-    CHECK(resolve(lane_sources(harness.lane(1))).spoolman_id == 0);
+    // Nobody declares a spool on this lane any more. Unobserved rather than
+    // zero: AFC's own record reset the id when firmware wrote None, so there
+    // is no reading at all, which is a stronger statement than a zero.
+    CHECK_FALSE(resolve(lane_sources(harness.lane(1))).spoolman_id.has_value());
 
     settings.set_ams_keep_spool_info_on_eject(true);
 }

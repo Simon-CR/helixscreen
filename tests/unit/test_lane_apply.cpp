@@ -151,10 +151,58 @@ TEST_CASE_METHOD(HelixTestFixture, "resolved_lane reflects what was ingested for
     CHECK(r.material == "PETG");
 }
 
-TEST_CASE_METHOD(HelixTestFixture, "an unwritten lane resolves to an empty, default reading",
+TEST_CASE_METHOD(HelixTestFixture, "an unwritten lane resolves to nothing observed",
                  "[lane][apply]") {
+    // Not "empty and grey". Nobody has looked at this lane, and the difference
+    // is what lets apply_resolved leave a backend's own values in place.
     const ResolvedLane r = resolved_lane(5);
-    CHECK(r.present == false);
-    CHECK(r.material.empty());
-    CHECK(r.color_rgb == helix::AMS_DEFAULT_SLOT_COLOR);
+    CHECK_FALSE(r.present.has_value());
+    CHECK_FALSE(r.material.has_value());
+    CHECK_FALSE(r.color_rgb.has_value());
+}
+
+TEST_CASE("A field no source observed leaves the backend's own value standing", "[lane][apply]") {
+    // The backend parsed material, brand and colour out of its own firmware
+    // and no lane source speaks to any of them. Snapmaker's print_task_config
+    // is exactly this shape: it states material, brand and colour, and files
+    // no record on purpose, because it is a write surface rather than a sensor.
+    SlotInfo slot;
+    slot.status = SlotStatus::AVAILABLE;
+    slot.material = "PLA";
+    slot.brand = "Snapmaker";
+    slot.color_rgb = 0xED2C2C;
+    slot.spool_name = "T0";
+    slot.remaining_weight_g = 612.0F;
+
+    // Only presence was observed, which is what a lane on a live printer holds
+    // when nothing has declared an identity for it.
+    ResolvedLane r;
+    r.present = true;
+
+    apply_resolved(slot, r);
+
+    CHECK(slot.material == "PLA");
+    CHECK(slot.brand == "Snapmaker");
+    CHECK(slot.color_rgb == 0xED2C2C);
+    CHECK(slot.spool_name == "T0");
+    CHECK(slot.remaining_weight_g == Catch::Approx(612.0F));
+    CHECK(slot.status == SlotStatus::AVAILABLE);
+}
+
+TEST_CASE("A lane with no presence reading keeps the status its backend stamped", "[lane][apply]") {
+    // Presence narrows the status only when a sensor has spoken. AFC files a
+    // sensed record only when a frame carries a presence signal, and ACE only
+    // when the frame states a status, so a lane holding identity and no sensor
+    // reading is ordinary. Narrowing on an unobserved presence would stamp
+    // EMPTY over a lane the backend knows is loaded.
+    SlotInfo slot;
+    slot.status = SlotStatus::LOADED;
+
+    ResolvedLane r;
+    r.material = "PETG";
+
+    apply_resolved(slot, r);
+
+    CHECK(slot.status == SlotStatus::LOADED);
+    CHECK(slot.material == "PETG");
 }
