@@ -1163,6 +1163,7 @@ void FilamentSlotOverrideStore::reload_async(ReloadCallback cb) {
 
 std::unordered_map<int, FilamentSlotOverride> FilamentSlotOverrideStore::load_blocking_impl() {
     std::unordered_map<int, FilamentSlotOverride> result;
+    lane_data_records_.clear();
     if (!api_)
         return result;
 
@@ -1258,8 +1259,9 @@ std::unordered_map<int, FilamentSlotOverride> FilamentSlotOverrideStore::load_bl
                      anomalies.key_inner_mismatch, anomalies.unparseable, anomalies.duplicate_slot);
     }
 
-    for (auto& [slot, entry] : parse_namespace_document(received_copy, key_style_, backend_id_)) {
-        result[slot] = std::move(entry.record);
+    lane_data_records_ = parse_namespace_document(received_copy, key_style_, backend_id_);
+    for (const auto& [slot, entry] : lane_data_records_) {
+        result[slot] = entry.record;
     }
 
     // One-shot heal: records written before orca_match_type existed (or whose

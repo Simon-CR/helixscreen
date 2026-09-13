@@ -18,6 +18,7 @@
 
 #include "i_moonraker_api.h"
 #include "i_moonraker_client.h"
+#include "lane_legacy_migration.h"
 #include "lane_source_store.h"
 #include "lane_translation.h"
 #include "lvgl/src/others/translation/lv_translation.h"
@@ -88,6 +89,8 @@ void AmsBackendAce::on_started() {
         // in under mutex_. Holding mutex_ during the swap ensures the parse
         // path sees a coherent map rather than a torn write.
         auto loaded = override_store_->load_blocking();
+        helix::ams::ingest_legacy_records(*override_store_, helix::ams::LegacyLockKeys::LaneData,
+                                          backend_index());
         const auto loaded_count = loaded.size();
         {
             std::lock_guard<std::mutex> lock(mutex_);

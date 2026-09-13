@@ -178,6 +178,18 @@ class FilamentSlotOverrideStore {
         return backend_id_;
     }
 
+    /// The lane_data records this store's last load_blocking() parsed, each
+    /// paired with the raw document it came from. Migration classification
+    /// needs the document rather than the parsed struct: from_lane_data_record
+    /// defaults a missing helix_locked_* key to the field's own presence, so
+    /// one layer up a legacy record is indistinguishable from a user-authored
+    /// one. Empty before the first load, and empty after a load that fell back
+    /// to the on-disk cache — that path has no wire document to classify
+    /// against.
+    [[nodiscard]] const std::unordered_map<int, LaneDataRecord>& last_lane_data_records() const {
+        return lane_data_records_;
+    }
+
   private:
     // Test-only access to mutate load_timeout_ without exposing a public
     // setter. Per L065, prefer friend-class over test-only public methods.
@@ -210,6 +222,10 @@ class FilamentSlotOverrideStore {
     // truth. The cache exists only so the UI can show last-known metadata
     // when Moonraker is unreachable at backend init.
     std::filesystem::path cache_dir_;
+    // Backing store for last_lane_data_records(). Cleared at the top of every
+    // load_blocking_impl() and populated only on the lane_data parse path, so
+    // a cache-fallback load leaves it empty rather than stale.
+    std::unordered_map<int, LaneDataRecord> lane_data_records_;
     // Absolute path to the cache JSON file. Computed from cache_dir_ (or
     // get_user_config_dir() if empty). One file serves all backends; each
     // backend's slots live under doc[backend_id]["slots"].

@@ -12,6 +12,7 @@
 #include "filament_slot_override_store.h"
 #include "json_utils.h"
 #include "klipper_extruder_naming.h"
+#include "lane_legacy_migration.h"
 #include "lane_source_store.h"
 #include "lane_translation.h"
 #include "lvgl/src/others/translation/lv_translation.h"
@@ -318,6 +319,8 @@ void AmsBackendSnapmaker::on_started() {
     override_store_ = std::make_unique<helix::ams::FilamentSlotOverrideStore>(
         api_, "snapmaker", helix::ams::lane_key_style_for(get_type()));
     auto loaded = override_store_->load_blocking();
+    helix::ams::ingest_legacy_records(*override_store_, helix::ams::LegacyLockKeys::LaneData,
+                                      backend_index());
     const auto loaded_count = loaded.size();
     {
         std::lock_guard<std::mutex> lock(mutex_);

@@ -14,6 +14,7 @@
 #include "ams_fault_event.h"
 #include "config.h"
 #include "i_moonraker_api.h"
+#include "lane_legacy_migration.h"
 #include "lane_source_store.h"
 #include "lane_translation.h"
 #include "lvgl/src/others/translation/lv_translation.h"
@@ -279,6 +280,8 @@ void AmsBackendAfc::on_started() {
         override_store_ = std::make_unique<helix::ams::FilamentSlotOverrideStore>(
             api_, "afc", helix::ams::lane_key_style_for(get_type()), OVERRIDE_NAMESPACE);
         auto loaded = override_store_->load_blocking();
+        helix::ams::ingest_legacy_records(*override_store_, helix::ams::LegacyLockKeys::LaneData,
+                                          backend_index());
         const auto loaded_count = loaded.size();
         {
             std::lock_guard<std::mutex> lock(mutex_);

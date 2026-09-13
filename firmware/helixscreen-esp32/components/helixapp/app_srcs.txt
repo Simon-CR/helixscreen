@@ -138,6 +138,7 @@ src/printer/lane_resolver.cpp
 src/printer/lane_apply.cpp
 src/printer/lane_source_store.cpp
 src/printer/lane_translation.cpp
+src/printer/lane_legacy_migration.cpp
 src/printer/bed_dimensions.cpp
 src/printer/chamber_heater_backend_dragonbreath.cpp
 src/printer/chamber_heater_backend_generic.cpp

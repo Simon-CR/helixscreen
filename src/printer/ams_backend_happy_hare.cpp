@@ -11,6 +11,7 @@
 #include "humidity_sensor_types.h"
 #include "i_moonraker_api.h"
 #include "json_utils.h"
+#include "lane_legacy_migration.h"
 #include "lane_source_store.h"
 #include "lane_translation.h"
 #include "operation_patterns.h" // helix::contains_ci
@@ -153,6 +154,10 @@ void AmsBackendHappyHare::on_started() {
         std::lock_guard<std::mutex> lock(mutex_);
         override_store_ = std::move(loaded.store);
         overrides_ = std::move(loaded.overrides);
+    }
+    if (override_store_) {
+        helix::ams::ingest_legacy_records(*override_store_, helix::ams::LegacyLockKeys::LaneData,
+                                          backend_index());
     }
 
     // Query configfile to determine tip method (cutter vs tip-forming).
