@@ -96,6 +96,14 @@ void AmsBackendAce::on_started() {
         spdlog::info("[ACE] Loaded {} slot overrides from filament_slot store", loaded_count);
     }
 
+    // start() refuses to run without a client, but a directly-constructed
+    // backend (tests) reaches here with none and the query below would
+    // dereference null (#1650).
+    if (!client_) {
+        spdlog::debug("[ACE] No Moonraker client — skipping initial status query");
+        return;
+    }
+
     auto token = lifetime_.token();
 
     // Query all known Klipper object names directly (works if driver has
@@ -103,7 +111,7 @@ void AmsBackendAce::on_started() {
     // `filament_hub`; community ValgACE/BunnyACE/DuckACE register it as `ace`;
     // the Kobra S1 mainline-Python fork registers each unit as
     // `ace_instance_N` (#1107). printer.objects.query tolerates unknown
-    // objects (absent from the result) and select_slot_bearing_object handles
+    // objects (absent from the result) and select_ace_object handles
     // absent keys, so over-querying is safe.
     json objects_to_query = json::object();
     objects_to_query["filament_hub"] = nullptr;
@@ -130,8 +138,7 @@ void AmsBackendAce::on_started() {
                 const json* ace_data = nullptr;
                 std::string matched_key;
                 if (response.contains("result") && response["result"].contains("status")) {
-                    ace_data =
-                        select_slot_bearing_object(response["result"]["status"], &matched_key);
+                    ace_data = select_ace_object(response["result"]["status"], &matched_key);
                 }
 
                 if (ace_data) {
@@ -141,6 +148,13 @@ void AmsBackendAce::on_started() {
                                  matched_key);
 
                     parse_ace_object(*ace_data);
+                    // A manager-shaped `ace` can ride the same response and
+                    // states the seat (current_index); parse it AFTER the
+                    // slot-bearing object so the seat stamps onto populated
+                    // slots (#1069).
+                    if (const json* manager = manager_ace_object(response["result"]["status"])) {
+                        parse_ace_object(*manager);
+                    }
                     info_fetched_.store(true);
                     emit_event(EVENT_STATE_CHANGED);
 
@@ -184,33 +198,39 @@ void AmsBackendAce::handle_status_update(const json& notification) {
 
     // Native Anycubic GoKlipper publishes under `filament_hub`; community
     // ValgACE under `ace`; the Kobra S1 mainline-Python fork under
-    // `ace_instance_N` (#1107). Preference order: filament_hub, ace, then the
-    // lowest-numbered ace_instance_N.
+    // `ace_instance_N` with a manager-shaped `ace` beside it (#1069, #1107).
+    //
+    // A frame carrying any `ace_instance_N` key is the fork: the display is
+    // anchored to the LOWEST instance (the one on_started's slot-bearing pick
+    // populated), so that instance's delta wins even when it carries no slots
+    // array while a higher instance's delta does — otherwise a multi-unit rig
+    // would write another unit's inventory into the displayed one. The manager
+    // is parsed after the primary, so the seat (current_index) lands on slots
+    // that are already populated.
+    //
+    // Otherwise a slot-bearing object is parsed first; notify frames carry
+    // only CHANGED fields, so a delta with no slots array at all falls back to
+    // the first non-empty object (the manager is excluded there via `skip`).
+    const json* manager = manager_ace_object(*status);
     const json* ace_data = nullptr;
-    if (status->contains("filament_hub") && (*status)["filament_hub"].is_object() &&
-        !(*status)["filament_hub"].empty()) {
-        ace_data = &(*status)["filament_hub"];
-    } else if (status->contains("ace") && (*status)["ace"].is_object() &&
-               !(*status)["ace"].empty()) {
-        ace_data = &(*status)["ace"];
+    if (const std::string* instance_key = lowest_ace_instance_key(*status)) {
+        ace_data = &(*status)[*instance_key];
     } else {
-        const std::string* best_key = nullptr;
-        for (auto it = status->begin(); it != status->end(); ++it) {
-            if (it.key().rfind("ace_instance", 0) == 0 && it.value().is_object() &&
-                !it.value().empty()) {
-                if (best_key == nullptr || it.key() < *best_key) {
-                    best_key = &it.key();
-                }
-            }
-        }
-        if (best_key) {
-            ace_data = &(*status)[*best_key];
+        ace_data = select_ace_object(*status, nullptr, /*require_slots=*/true);
+        if (!ace_data) {
+            ace_data = select_ace_object(*status, nullptr, /*require_slots=*/false, manager);
         }
     }
-    if (!ace_data)
+
+    if (!ace_data && !manager)
         return;
 
-    parse_ace_object(*ace_data);
+    if (ace_data) {
+        parse_ace_object(*ace_data);
+    }
+    if (manager) {
+        parse_ace_object(*manager);
+    }
     emit_event(EVENT_STATE_CHANGED);
 }
 
@@ -329,9 +349,7 @@ AmsError AmsBackendAce::do_load_filament(int slot_index) {
                 {
                     std::lock_guard<std::mutex> lock(mutex_);
                     system_info_.action = AmsAction::IDLE;
-                    system_info_.current_slot = slot_index;
-                    system_info_.current_tool = slot_index;
-                    system_info_.filament_loaded = true;
+                    seat_from_local_index_locked(slot_index);
 
                     // Same derivation the parse paths use, so the next status
                     // frame re-applies this stamp instead of erasing it.
@@ -387,11 +405,8 @@ AmsError AmsBackendAce::do_unload_filament(int /*slot_index*/) {
                 spdlog::info("[ACE] Unload gcode completed");
                 {
                     std::lock_guard<std::mutex> lock(mutex_);
-
                     system_info_.action = AmsAction::IDLE;
-                    system_info_.current_slot = -1;
-                    system_info_.current_tool = -1;
-                    system_info_.filament_loaded = false;
+                    seat_from_local_index_locked(-1);
 
                     // Releases the stamp back to the status the parse wrote,
                     // rather than assuming AVAILABLE for a slot firmware may
@@ -720,6 +735,97 @@ void AmsBackendAce::apply_seated_slot_stamp_locked() {
     slot->status = SlotStatus::LOADED;
 }
 
+void AmsBackendAce::apply_dryer_state_locked(const json& data) {
+    // Caller holds mutex_. One rule for both producers: the WebSocket object
+    // path and the REST /status path parse the same hub, so a dryer spelling
+    // one accepts and the other drops is a silent fork in the model.
+    //
+    // ACE states its temperature top-level (`temp`, the hub's ambient reading
+    // near the dryer) — the only reading the Klipper-object spellings carry —
+    // so it applies even on a frame with no dryer object. A bridge that ALSO
+    // states a current temp inside the dryer object is the more specific
+    // reading and wins.
+    if (data.contains("temp") && data["temp"].is_number()) {
+        dryer_info_.current_temp_c = data["temp"].get<float>();
+    }
+
+    const json* dryer = nullptr;
+    if (data.contains("dryer") && data["dryer"].is_object()) {
+        dryer = &data["dryer"];
+    } else if (data.contains("dryer_status") && data["dryer_status"].is_object()) {
+        dryer = &data["dryer_status"];
+    }
+
+    if (dryer != nullptr) {
+        // Klipper-object spelling (ValgACE, native, Kobra S1 fork):
+        // {status, target_temp, duration, remain_time}
+        if (dryer->contains("status") && (*dryer)["status"].is_string()) {
+            const std::string ds = (*dryer)["status"].get<std::string>();
+            dryer_info_.active = (ds != "stop" && ds != "idle" && !ds.empty());
+        }
+        if (dryer->contains("target_temp") && (*dryer)["target_temp"].is_number()) {
+            dryer_info_.target_temp_c = (*dryer)["target_temp"].get<float>();
+        }
+        if (dryer->contains("duration") && (*dryer)["duration"].is_number()) {
+            dryer_info_.duration_min = (*dryer)["duration"].get<int>();
+        }
+        if (dryer->contains("remain_time") && (*dryer)["remain_time"].is_number()) {
+            dryer_info_.remaining_min = (*dryer)["remain_time"].get<int>();
+        }
+
+        // REST-bridge spelling: {active, current_temp, remaining_minutes,
+        // duration_minutes}
+        if (dryer->contains("active") && (*dryer)["active"].is_boolean()) {
+            dryer_info_.active = (*dryer)["active"].get<bool>();
+        }
+        if (dryer->contains("current_temp") && (*dryer)["current_temp"].is_number()) {
+            dryer_info_.current_temp_c = (*dryer)["current_temp"].get<float>();
+        }
+        if (dryer->contains("remaining_minutes") &&
+            (*dryer)["remaining_minutes"].is_number_integer()) {
+            dryer_info_.remaining_min = (*dryer)["remaining_minutes"].get<int>();
+        }
+        if (dryer->contains("duration_minutes") &&
+            (*dryer)["duration_minutes"].is_number_integer()) {
+            dryer_info_.duration_min = (*dryer)["duration_minutes"].get<int>();
+        }
+    }
+}
+
+bool AmsBackendAce::seat_from_global_index_locked(int current_index) {
+    // Caller holds mutex_.
+    if (current_index >= 0) {
+        const int slot_count =
+            system_info_.units.empty() ? 0 : static_cast<int>(system_info_.units[0].slots.size());
+        if (current_index >= slot_count) {
+            // Loaded in a unit this backend does not display: state the tool,
+            // mark no slot. Idempotent — the REST poll restates the index
+            // every cycle.
+            const bool changed = system_info_.current_tool != current_index ||
+                                 !system_info_.filament_loaded || system_info_.current_slot != -1;
+            system_info_.filament_loaded = true;
+            system_info_.current_tool = current_index;
+            system_info_.current_slot = -1;
+            return changed;
+        }
+    }
+    return seat_from_local_index_locked(current_index);
+}
+
+bool AmsBackendAce::seat_from_local_index_locked(int slot_index) {
+    // Caller holds mutex_.
+    const int prev_slot = system_info_.current_slot;
+    const int prev_tool = system_info_.current_tool;
+    const bool prev_loaded = system_info_.filament_loaded;
+
+    system_info_.filament_loaded = (slot_index >= 0);
+    system_info_.current_slot = slot_index;
+    system_info_.current_tool = slot_index;
+
+    return system_info_.current_slot != prev_slot || system_info_.current_tool != prev_tool ||
+           system_info_.filament_loaded != prev_loaded;
+}
+
 void AmsBackendAce::parse_ace_object(const json& data) {
     std::lock_guard<std::mutex> lock(mutex_);
 
@@ -742,21 +848,11 @@ void AmsBackendAce::parse_ace_object(const json& data) {
         system_info_.version = data["firmware"].get<std::string>();
     }
 
-    // Parse status string -> AmsAction
+    // Parse status string -> AmsAction. The shared vocabulary table is the
+    // one AFC and Happy Hare read; ACE's own words (loading/unloading/error,
+    // "ready", "drying") resolve to the same actions through it.
     if (data.contains("status") && data["status"].is_string()) {
-        std::string status_str = data["status"].get<std::string>();
-        AmsAction action = AmsAction::IDLE;
-
-        if (status_str == "loading") {
-            action = AmsAction::LOADING;
-        } else if (status_str == "unloading") {
-            action = AmsAction::UNLOADING;
-        } else if (status_str == "error") {
-            action = AmsAction::ERROR;
-        }
-        // "ready", "drying", etc. -> IDLE
-
-        system_info_.action = action;
+        system_info_.action = ams_action_from_string(data["status"].get<std::string>());
     }
 
     // Parse slots array
@@ -833,13 +929,10 @@ void AmsBackendAce::parse_ace_object(const json& data) {
                     }
                 }
 
-                // Parse material type (e.g., "PLA", "PETG")
-                std::optional<std::string> observed_material;
-                if (slot_json.contains("type") && slot_json["type"].is_string()) {
-                    slot.material = slot_json["type"].get<std::string>();
-                    if (!slot.material.empty()) {
-                        observed_material = slot.material;
-                    }
+                // Parse material (e.g., "PLA", "PETG") — see read_slot_material.
+                std::optional<std::string> observed_material = read_slot_material(slot_json);
+                if (observed_material) {
+                    slot.material = *observed_material;
                 }
 
                 // Parse SKU if present
@@ -903,44 +996,10 @@ void AmsBackendAce::parse_ace_object(const json& data) {
         }
     }
 
-    // Parse dryer state from combined object
-    if (data.contains("dryer") && data["dryer"].is_object()) {
-        const auto& dryer = data["dryer"];
-
-        // ValgACE format: {status, target_temp, duration, remain_time}
-        if (dryer.contains("status") && dryer["status"].is_string()) {
-            std::string ds = dryer["status"].get<std::string>();
-            dryer_info_.active = (ds != "stop" && ds != "idle" && !ds.empty());
-        }
-        if (dryer.contains("target_temp") && dryer["target_temp"].is_number()) {
-            dryer_info_.target_temp_c = dryer["target_temp"].get<float>();
-        }
-        if (dryer.contains("duration") && dryer["duration"].is_number()) {
-            dryer_info_.duration_min = dryer["duration"].get<int>();
-        }
-        if (dryer.contains("remain_time") && dryer["remain_time"].is_number()) {
-            dryer_info_.remaining_min = dryer["remain_time"].get<int>();
-        }
-
-        // Also accept REST-bridge format keys for compatibility
-        if (dryer.contains("active") && dryer["active"].is_boolean()) {
-            dryer_info_.active = dryer["active"].get<bool>();
-        }
-        if (dryer.contains("current_temp") && dryer["current_temp"].is_number()) {
-            dryer_info_.current_temp_c = dryer["current_temp"].get<float>();
-        }
-        if (dryer.contains("remaining_minutes") && dryer["remaining_minutes"].is_number_integer()) {
-            dryer_info_.remaining_min = dryer["remaining_minutes"].get<int>();
-        }
-        if (dryer.contains("duration_minutes") && dryer["duration_minutes"].is_number_integer()) {
-            dryer_info_.duration_min = dryer["duration_minutes"].get<int>();
-        }
-    }
-
-    // Parse temperature from top-level (ACE ambient temp near dryer)
-    if (data.contains("temp") && data["temp"].is_number()) {
-        dryer_info_.current_temp_c = data["temp"].get<float>();
-    }
+    // Parse dryer state — either outer-key spelling (`dryer` or
+    // `dryer_status`), either nested key set, plus the top-level ambient
+    // `temp`. See apply_dryer_state_locked.
+    apply_dryer_state_locked(data);
 
     // Populate per-unit environment data for the environment overlay.
     // ACE reports ambient temperature; humidity is not available (left at 0).
@@ -963,7 +1022,6 @@ void AmsBackendAce::parse_ace_object(const json& data) {
     // Derive loaded slot state from slot statuses
     // ValgACE doesn't have a top-level "loaded_slot" — infer from slot status
     // If any slot is "loaded", that's the active one
-    bool found_loaded = false;
     if (!system_info_.units.empty()) {
         for (int i = 0; i < static_cast<int>(system_info_.units[0].slots.size()); ++i) {
             // Check the raw JSON for "loaded" status specifically
@@ -972,10 +1030,7 @@ void AmsBackendAce::parse_ace_object(const json& data) {
                 const auto& sj = data["slots"][static_cast<size_t>(i)];
                 if (sj.contains("status") && sj["status"].is_string() &&
                     sj["status"].get<std::string>() == "loaded") {
-                    system_info_.current_slot = i;
-                    system_info_.current_tool = i;
-                    system_info_.filament_loaded = true;
-                    found_loaded = true;
+                    seat_from_local_index_locked(i);
                     break;
                 }
             }
@@ -984,11 +1039,7 @@ void AmsBackendAce::parse_ace_object(const json& data) {
 
     // Also handle explicit loaded_slot if present (future compatibility)
     if (data.contains("loaded_slot") && data["loaded_slot"].is_number_integer()) {
-        int slot = data["loaded_slot"].get<int>();
-        system_info_.current_slot = slot;
-        system_info_.current_tool = slot;
-        system_info_.filament_loaded = (slot >= 0);
-        found_loaded = (slot >= 0);
+        seat_from_local_index_locked(data["loaded_slot"].get<int>());
     }
 
     // Native Anycubic GoKlipper reports the loaded slot as a
@@ -1003,10 +1054,7 @@ void AmsBackendAce::parse_ace_object(const json& data) {
             try {
                 int local_index = std::stoi(cf.substr(dash + 1));
                 if (local_index >= 0) {
-                    system_info_.current_slot = local_index;
-                    system_info_.current_tool = local_index;
-                    system_info_.filament_loaded = true;
-                    found_loaded = true;
+                    seat_from_local_index_locked(local_index);
                 }
             } catch (const std::exception& e) {
                 spdlog::debug("[ACE] Failed to parse current_filament '{}': {}", cf, e.what());
@@ -1014,69 +1062,91 @@ void AmsBackendAce::parse_ace_object(const json& data) {
         }
     }
 
-    if (!found_loaded && !data.contains("loaded_slot")) {
-        // No slot is in "loaded" state and no explicit loaded_slot field
-        // Keep existing loaded state unless status indicates otherwise
-        if (data.contains("status") && data["status"].is_string()) {
-            std::string s = data["status"].get<std::string>();
-            if (s == "ready" && system_info_.action == AmsAction::IDLE) {
-                // "ready" with no loaded slot means nothing loaded
-                // But only reset if we haven't seen loaded state from other sources
-            }
-        }
+    // Kobra S1 fork: the manager object states the seat ONLY as
+    // `current_index`, the global tool index, and states it even when
+    // nothing is loaded (-1) — so it must clear the seat too, or a TR/unload
+    // would leave the previous slot reading loaded forever. Fourth and last
+    // explicit signal; last one wins (#1069).
+    if (data.contains("current_index") && data["current_index"].is_number_integer()) {
+        seat_from_global_index_locked(data["current_index"].get<int>());
     }
 
-    // All three seated signals (the ValgACE "loaded" scan, loaded_slot, and
-    // native current_filament) have now had their say and arbitrated to one
-    // slot; publish that as the slot's own status.
+    // All four seated signals (the ValgACE "loaded" scan, loaded_slot, native
+    // current_filament, and the fork manager's current_index) have now had
+    // their say and arbitrated to one slot; publish that as the slot's own
+    // status.
     apply_seated_slot_stamp_locked();
 }
 
-const json* AmsBackendAce::select_slot_bearing_object(const json& status,
-                                                      std::string* matched_key) {
-    // Commit to the subscription path ONLY when the object actually carries
-    // slot data (a non-empty "slots" array — the exact key parse_ace_object
-    // reads). A manager-only object (Kobra S1 fork's `ace`: ace_instances /
-    // current_index, no slots) has no slots array and must fall through to the
-    // REST bridge so the whole /server/ace/* surface gets queried (#1069).
-    auto has_slot_data = [](const json& obj) {
-        return obj.is_object() && obj.contains("slots") && obj["slots"].is_array() &&
-               !obj["slots"].empty();
+const json* AmsBackendAce::select_ace_object(const json& status, std::string* matched_key,
+                                             bool require_slots, const json* skip) {
+    // One predicate for both selection passes (see the header doc): the
+    // subscription-commit pass requires real slot data (a non-empty "slots"
+    // array — the exact key parse_ace_object reads — so a manager-only object,
+    // the Kobra S1 fork's `ace` with ace_instances/current_index and no slots,
+    // falls through to the REST bridge, #1069), while a notify delta needs
+    // only a non-empty object the caller has not claimed for itself.
+    auto matches = [&](const json& obj) {
+        if (!obj.is_object() || obj.empty() || &obj == skip) {
+            return false;
+        }
+        return !require_slots ||
+               (obj.contains("slots") && obj["slots"].is_array() && !obj["slots"].empty());
     };
 
     // Preference order: filament_hub (native GoKlipper), then ace (community
     // ValgACE/BunnyACE), then ace_instance_N (Kobra S1 mainline-Python fork —
-    // #1107) in ascending name order. The object path is used only if the
-    // matched object carries a slots array; otherwise the caller falls through
-    // to the REST bridge.
-    if (status.contains("filament_hub") && has_slot_data(status["filament_hub"])) {
+    // #1107), so the choice is deterministic.
+    if (status.contains("filament_hub") && matches(status["filament_hub"])) {
         if (matched_key)
             *matched_key = "filament_hub";
         return &status["filament_hub"];
     }
-    if (status.contains("ace") && has_slot_data(status["ace"])) {
+    if (status.contains("ace") && matches(status["ace"])) {
         if (matched_key)
             *matched_key = "ace";
         return &status["ace"];
     }
-    // Kobra S1 fork registers each unit as `ace_instance_N`. Pick the
-    // lowest-numbered slot-bearing instance so the choice is deterministic.
-    if (status.is_object()) {
-        const std::string* best_key = nullptr;
-        for (auto it = status.begin(); it != status.end(); ++it) {
-            if (it.key().rfind("ace_instance", 0) == 0 && has_slot_data(it.value())) {
-                if (best_key == nullptr || it.key() < *best_key) {
-                    best_key = &it.key();
-                }
-            }
-        }
-        if (best_key) {
-            if (matched_key)
-                *matched_key = *best_key;
-            return &status[*best_key];
-        }
+    if (const std::string* instance_key = lowest_ace_instance_key(status, matches)) {
+        if (matched_key)
+            *matched_key = *instance_key;
+        return &status[*instance_key];
     }
     return nullptr;
+}
+
+const std::string*
+AmsBackendAce::lowest_ace_instance_key(const json& status,
+                                       const std::function<bool(const json&)>& predicate) {
+    if (!status.is_object()) {
+        return nullptr;
+    }
+    const std::string* best_key = nullptr;
+    for (auto it = status.begin(); it != status.end(); ++it) {
+        if (it.key().rfind("ace_instance", 0) == 0 && predicate(it.value()) &&
+            (best_key == nullptr || it.key() < *best_key)) {
+            best_key = &it.key();
+        }
+    }
+    return best_key;
+}
+
+const json* AmsBackendAce::manager_ace_object(const json& status) {
+    // The fork's manager carries current_index and nothing parseable beyond
+    // it; anything else shaped like this (an `ace` with no slots and no
+    // current_index) has nothing the seat logic could read, so it is not
+    // worth a parse pass.
+    if (!status.is_object() || !status.contains("ace") || !status["ace"].is_object()) {
+        return nullptr;
+    }
+    const json& ace = status["ace"];
+    if (ace.contains("slots") && ace["slots"].is_array() && !ace["slots"].empty()) {
+        return nullptr; // slot-bearing ValgACE `ace` — the primary, not a manager
+    }
+    if (!ace.contains("current_index") || !ace["current_index"].is_number_integer()) {
+        return nullptr;
+    }
+    return &ace;
 }
 
 SlotStatus AmsBackendAce::slot_status_from_string(const std::string& status_str) {
@@ -1093,6 +1163,22 @@ SlotStatus AmsBackendAce::slot_status_from_string(const std::string& status_str)
         return SlotStatus::AVAILABLE;
     }
     return SlotStatus::UNKNOWN;
+}
+
+std::optional<std::string> AmsBackendAce::read_slot_material(const json& slot_json) {
+    auto get_str = [&slot_json](const char* key) -> std::optional<std::string> {
+        if (slot_json.contains(key) && slot_json[key].is_string()) {
+            auto value = slot_json[key].get<std::string>();
+            if (!value.empty()) {
+                return value;
+            }
+        }
+        return std::nullopt;
+    };
+    if (auto material = get_str("material")) {
+        return material;
+    }
+    return get_str("type");
 }
 
 std::optional<uint32_t> AmsBackendAce::parse_slot_color(const json& color_val) {
@@ -1398,59 +1484,47 @@ bool AmsBackendAce::parse_status_response(const json& data) {
     }
 
     if (data.contains("loaded_slot") && data["loaded_slot"].is_number_integer()) {
-        int slot = data["loaded_slot"].get<int>();
-        if (slot != system_info_.current_slot) {
-            system_info_.current_slot = slot;
-            system_info_.current_tool = slot;
-            changed = true;
-        }
-
-        bool loaded = (slot >= 0);
-        if (loaded != system_info_.filament_loaded) {
-            system_info_.filament_loaded = loaded;
-            changed = true;
-        }
+        changed |= seat_from_local_index_locked(data["loaded_slot"].get<int>());
     }
 
+    // The fork's /status states the seat through the manager's
+    // current_index instead of loaded_slot — same semantics, global tool
+    // index with -1 meaning nothing loaded (#1069).
+    if (data.contains("ace_manager") && data["ace_manager"].is_object() &&
+        data["ace_manager"].contains("current_index") &&
+        data["ace_manager"]["current_index"].is_number_integer()) {
+        changed |= seat_from_global_index_locked(data["ace_manager"]["current_index"].get<int>());
+    }
+
+    // The ValgACE bridge names the action field `action`; the fork names it
+    // `status` ("ready"/etc.) with the same loading/unloading/error
+    // vocabulary the object path maps (#1069).
+    std::string action_str;
     if (data.contains("action") && data["action"].is_string()) {
-        std::string action_str = data["action"].get<std::string>();
-        AmsAction action = AmsAction::IDLE;
-
-        if (action_str == "loading") {
-            action = AmsAction::LOADING;
-        } else if (action_str == "unloading") {
-            action = AmsAction::UNLOADING;
-        } else if (action_str == "error") {
-            action = AmsAction::ERROR;
-        } else if (action_str == "drying") {
-            action = AmsAction::IDLE;
-        }
-
-        if (action != system_info_.action) {
+        action_str = data["action"].get<std::string>();
+    } else if (data.contains("status") && data["status"].is_string()) {
+        action_str = data["status"].get<std::string>();
+    }
+    // The ValgACE bridge names the action field `action`; the fork names it
+    // `status` ("ready"/etc.) with the same loading/unloading/error
+    // vocabulary the object path maps (#1069). A bridge `action` is
+    // authoritative; the fork's fallback reads the UNIT's status, which can
+    // stay "ready" through a toolchange (do_load_filament sets LOADING
+    // optimistically for exactly that case), so an IDLE resolved from it
+    // must not demote an in-flight local load/unload.
+    const bool action_from_unit_status = !data.contains("action");
+    if (!action_str.empty()) {
+        const AmsAction action = ams_action_from_string(action_str);
+        const bool demotes_in_flight_op = action_from_unit_status && action == AmsAction::IDLE &&
+                                          (system_info_.action == AmsAction::LOADING ||
+                                           system_info_.action == AmsAction::UNLOADING);
+        if (!demotes_in_flight_op && action != system_info_.action) {
             system_info_.action = action;
             changed = true;
         }
     }
 
-    if (data.contains("dryer") && data["dryer"].is_object()) {
-        const auto& dryer = data["dryer"];
-
-        if (dryer.contains("active") && dryer["active"].is_boolean()) {
-            dryer_info_.active = dryer["active"].get<bool>();
-        }
-        if (dryer.contains("current_temp") && dryer["current_temp"].is_number()) {
-            dryer_info_.current_temp_c = dryer["current_temp"].get<float>();
-        }
-        if (dryer.contains("target_temp") && dryer["target_temp"].is_number()) {
-            dryer_info_.target_temp_c = dryer["target_temp"].get<float>();
-        }
-        if (dryer.contains("remaining_minutes") && dryer["remaining_minutes"].is_number_integer()) {
-            dryer_info_.remaining_min = dryer["remaining_minutes"].get<int>();
-        }
-        if (dryer.contains("duration_minutes") && dryer["duration_minutes"].is_number_integer()) {
-            dryer_info_.duration_min = dryer["duration_minutes"].get<int>();
-        }
-    }
+    apply_dryer_state_locked(data);
 
     // /status owns loaded_slot but never touches the slot vector; /slots owns
     // the slot vector but carries no seated field. Both ends re-derive the
@@ -1533,17 +1607,10 @@ bool AmsBackendAce::parse_slots_response(const json& data) {
             }
         }
 
-        // Material: prefer `material`, fall back to `type` (this fork's /slots
-        // returns `type`, like the object path). Mirror parse_ace_object.
-        std::string material;
-        if (slot_json.contains("material") && slot_json["material"].is_string()) {
-            material = slot_json["material"].get<std::string>();
-        }
-        if (material.empty() && slot_json.contains("type") && slot_json["type"].is_string()) {
-            material = slot_json["type"].get<std::string>();
-        }
-        if (!material.empty() && material != slot.material) {
-            slot.material = material;
+        // Material — see read_slot_material (one reader for both producers).
+        const std::optional<std::string> material = read_slot_material(slot_json);
+        if (material && *material != slot.material) {
+            slot.material = *material;
             changed = true;
         }
 
@@ -1561,9 +1628,7 @@ bool AmsBackendAce::parse_slots_response(const json& data) {
 
         helix::ams::Observation cache(helix::ams::ObservationSource::VendorCache);
         cache.color_rgb = observed_color;
-        if (!material.empty()) {
-            cache.material = material;
-        }
+        cache.material = material;
         helix::ams::ingest(lane_id(idx), cache);
 
         if (slot_json.contains("temp_min") && slot_json["temp_min"].is_number_integer()) {
