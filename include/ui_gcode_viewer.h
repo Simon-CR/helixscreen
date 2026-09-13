@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include "gcode_pause_scan.h"
+
 #include <lvgl/lvgl.h>
 
 #ifdef __cplusplus
@@ -674,6 +676,27 @@ std::vector<std::string> ui_gcode_viewer_get_tool_palette(lv_obj_t* obj);
  *         names no tools and carries no palette.
  */
 std::set<int> ui_gcode_viewer_get_tools_used(lv_obj_t* obj);
+
+/**
+ * @brief The scheduled pauses of the loaded file, with its progress axis.
+ *
+ * Mode-independent like the tool queries: the streaming layer-index scan and
+ * the full-load parse loop both collect the pauses on the pass they already
+ * make over the file (see gcode_pause_scan.h). @p out_axis reports which
+ * function of the file its progress bar fills on, so the caller can place each
+ * pause on the axis the bar actually uses.
+ *
+ * @param obj        Viewer widget
+ * @param out_pauses Receives the pauses (cleared when none/not loaded)
+ * @param out_axis   Receives the file's progress axis
+ * @return true when a scan result exists (empty pauses = pause-free file);
+ *         false when nothing is loaded, so callers degrade to no markers.
+ */
+namespace helix {
+bool ui_gcode_viewer_get_scheduled_pauses(lv_obj_t* obj,
+                                          std::vector<helix::gcode::ScheduledPause>& out_pauses,
+                                          helix::gcode::ProgressAxis& out_axis);
+} // namespace helix
 
 /**
  * @brief Adopt the viewer's recovered palette into @p colors when @p colors is

@@ -380,6 +380,25 @@ class PrinterState {
     lv_subject_t* get_print_progress_text_subject() {
         return print_domain_.get_print_progress_text_subject();
     } // "N%" for the display value
+
+    // Scheduled-pause markers (prestonbrown/helixscreen#1509) - delegated to
+    // PrinterPrintState component. See there for the absent-by-default rule.
+    void set_scheduled_pauses(std::vector<helix::gcode::ScheduledPause> pauses,
+                              helix::gcode::ProgressAxis axis, const std::string& source_filename) {
+        print_domain_.set_scheduled_pauses(std::move(pauses), axis, source_filename);
+    }
+    [[nodiscard]] const std::vector<helix::gcode::ScheduledPause>& get_scheduled_pauses() const {
+        return print_domain_.get_scheduled_pauses();
+    }
+    [[nodiscard]] helix::gcode::ProgressAxis get_pause_marker_axis() const {
+        return print_domain_.get_pause_marker_axis();
+    }
+    [[nodiscard]] bool pause_markers_match_current_file() const {
+        return print_domain_.pause_markers_match_current_file();
+    }
+    lv_subject_t* get_pause_markers_version_subject() {
+        return print_domain_.get_pause_markers_version_subject();
+    }
     lv_subject_t* get_print_filename_subject() {
         return print_domain_.get_print_filename_subject();
     }

@@ -19,6 +19,7 @@
 #include "ui_overlay_temp_graph.h"
 #include "ui_panel_common.h"
 #include "ui_panel_print_select.h"
+#include "ui_pause_markers.h"
 #include "ui_print_start_controller.h"
 #include "ui_subject_registry.h"
 #include "ui_temperature_utils.h"
@@ -1041,6 +1042,9 @@ lv_obj_t* PrintStatusPanel::create(lv_obj_t* parent) {
         // Force update by setting to 1 first, then 0.
         lv_bar_set_value(progress_bar_, 1, LV_ANIM_OFF);
         lv_bar_set_value(progress_bar_, 0, LV_ANIM_OFF);
+        // Scheduled-pause ticks (prestonbrown/helixscreen#1509); the fill
+        // itself stays on the XML bind_value to print_progress_display.
+        helix::ui::attach_bar_pause_markers(progress_bar_, printer_state_);
         spdlog::debug("[{}]   ✓ Progress bar", get_name());
     } else {
         spdlog::error("[{}]   ✗ Progress bar NOT FOUND", get_name());
@@ -1713,6 +1717,19 @@ void PrintStatusPanel::load_gcode_file(const char* file_path) {
             // treats the viewer as current on re-entry. (The thumbnail marker is
             // recorded independently by the thumbnail path.)
             self->gcode_displayed_file_ = self->printer_state_.get_effective_print_filename();
+
+            // Hand the scan's scheduled pauses to print state, where both
+            // progress surfaces read them. Published under the name this load
+            // was FOR: if the print switched while the scan ran, the list will
+            // not match the new print and the markers stay hidden.
+            {
+                std::vector<helix::gcode::ScheduledPause> pauses;
+                helix::gcode::ProgressAxis axis = helix::gcode::ProgressAxis::BytePosition;
+                if (helix::ui_gcode_viewer_get_scheduled_pauses(viewer, pauses, axis)) {
+                    self->printer_state_.set_scheduled_pauses(std::move(pauses), axis,
+                                                              self->gcode_scan_filename_);
+                }
+            }
 
             // Override extrusion colors with AMS filament colors.
             // For multi-tool prints, applies per-tool AMS slot colors.
@@ -3561,6 +3578,7 @@ void PrintStatusPanel::apply_esp_psram_thumbnail() {
 
 void PrintStatusPanel::load_gcode_for_viewing(const std::string& filename) {
     spdlog::debug("[{}] Loading G-code for viewing: {}", get_name(), filename);
+    gcode_scan_filename_ = filename;
 
     // Skip if no viewer widget
     if (!gcode_viewer_) {

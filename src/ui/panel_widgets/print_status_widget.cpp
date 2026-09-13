@@ -10,6 +10,7 @@
 #include "ui_overlay_temp_graph.h"
 #include "ui_panel_print_select.h"
 #include "ui_panel_print_status.h"
+#include "ui_pause_markers.h"
 #include "ui_progress_arc.h"
 #include "ui_temperature_utils.h"
 #include "ui_update_queue.h"
@@ -270,11 +271,17 @@ void PrintStatusWidget::attach(lv_obj_t* widget_obj, lv_obj_t* parent_screen) {
     compact_row_last_ = lv_obj_find_by_name(widget_obj_, "compact_row_last");
 
     // Hand the detailed-layout arc widget to the formatter (may be nullptr if not in DOM yet)
-    if (s_formatter_) {
-        lv_obj_t* arc = lv_obj_find_by_name(widget_obj_, "detailed_progress_arc");
-        if (arc)
-            s_formatter_->attach_arc(arc);
+    lv_obj_t* detailed_arc = lv_obj_find_by_name(widget_obj_, "detailed_progress_arc");
+    if (s_formatter_ && detailed_arc) {
+        s_formatter_->attach_arc(detailed_arc);
     }
+
+    // Scheduled-pause ticks on both progress surfaces of this card: the arc in
+    // the detailed active view and the linear bar in the library active view.
+    // The fill itself stays on the XML bind_value to print_progress_display.
+    helix::ui::attach_arc_pause_markers(detailed_arc, printer_state_);
+    helix::ui::attach_bar_pause_markers(lv_obj_find_by_name(widget_obj_, "print_progress_bar"),
+                                        printer_state_);
 
     // Nozzle reads the tool-pin-aware proxy subjects rather than the raw
     // active-extruder ones, so the icon tracks whichever tool the card is
