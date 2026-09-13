@@ -306,6 +306,13 @@ bool AdvancedPanel::macro_job_holds_machine() const {
 void AdvancedPanel::handle_helix_macros_install_clicked() {
     spdlog::debug("[{}] Helper macros install clicked", get_name());
 
+#if defined(HELIX_PLATFORM_ESP32)
+    // Helper-macro install/update is excluded from the v1 Core+AMS cut;
+    // MacroManager is a link stub on this build.
+    helix::ui::show_feature_unavailable_toast();
+    return;
+#endif
+
     if (!api_) {
         ToastManager::instance().show(ToastSeverity::ERROR, lv_tr("Not connected to printer"),
                                       2000);
@@ -343,6 +350,13 @@ void AdvancedPanel::handle_helix_macros_install_clicked() {
 
 void AdvancedPanel::handle_helix_macros_update_clicked() {
     spdlog::debug("[{}] Helper macros update clicked", get_name());
+
+#if defined(HELIX_PLATFORM_ESP32)
+    // Helper-macro install/update is excluded from the v1 Core+AMS cut;
+    // MacroManager is a link stub on this build.
+    helix::ui::show_feature_unavailable_toast();
+    return;
+#endif
 
     if (!api_) {
         ToastManager::instance().show(ToastSeverity::ERROR, lv_tr("Not connected to printer"),

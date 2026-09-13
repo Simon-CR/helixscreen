@@ -54,6 +54,7 @@
 #include "color_sensor_manager.h"
 #include "esp_attr.h"
 #include "esp_log.h"
+#include "macro_manager.h"
 #include "shaper_csv_parser.h"
 #include "timelapse_state.h"
 #include "touch_calibration_wrapper.h"
@@ -326,5 +327,28 @@ bool get_last_raw_touch(Point&) {
 // called from the DRM/fbdev backends, both excluded), so persisting one would
 // write config nothing reads back.
 void save_touch_range(const TouchRangeSettings&) {}
+
+// ===========================================================================
+// MacroManager — helper-macro install/update subsystem
+// (src/printer/macro_manager.cpp, not in the v1 Core+AMS cut).
+// ===========================================================================
+// evaluate_status runs at boot from PrinterState::set_hardware on every
+// build; UNKNOWN keeps the plugin-status subject at HelixMacrosStatus::Unknown
+// here. The install/update entry points in ui_panel_advanced.cpp are gated to
+// a feature-unavailable toast on this platform, so the file-operation and
+// restart methods never run and their callbacks never fire.
+MacroManager::MacroManager(IMoonrakerAPI&, const PrinterDiscovery&) {}
+
+MacroManager::~MacroManager() {}
+
+MacroInstallStatus MacroManager::evaluate_status(const PrinterDiscovery&) {
+    return MacroInstallStatus::UNKNOWN;
+}
+
+void MacroManager::install_files(SuccessCallback, ErrorCallback) {}
+
+void MacroManager::update_files(SuccessCallback, ErrorCallback) {}
+
+void MacroManager::request_restart(SuccessCallback, ErrorCallback) {}
 
 } // namespace helix

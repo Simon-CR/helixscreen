@@ -9,43 +9,8 @@
 
 namespace helix::ui {
 
-namespace {
-
-std::string to_lower(const std::string& s) {
-    std::string lower;
-    lower.reserve(s.size());
-    for (unsigned char c : s) {
-        lower.push_back(static_cast<char>(std::tolower(c)));
-    }
-    return lower;
-}
-
-std::string trimmed(const std::string& s) {
-    const auto begin = s.find_first_not_of(" \t\n\r\f\v");
-    if (begin == std::string::npos) {
-        return "";
-    }
-    return s.substr(begin, s.find_last_not_of(" \t\n\r\f\v") - begin + 1);
-}
-
-} // namespace
-
 std::string selector_bucket_of(const SelectorEntry& entry) {
     return entry.group.empty() ? entry.label : entry.group;
-}
-
-bool selector_query_is_blank(const std::string& query) {
-    return trimmed(query).empty();
-}
-
-bool selector_entry_matches(const SelectorEntry& entry, const std::string& query) {
-    const std::string normalized = to_lower(trimmed(query));
-    if (normalized.empty()) {
-        return true;
-    }
-    return to_lower(entry.label).find(normalized) != std::string::npos ||
-           to_lower(entry.group).find(normalized) != std::string::npos ||
-           to_lower(entry.description).find(normalized) != std::string::npos;
 }
 
 std::vector<const SelectorEntry*> filter_selector_entries(const std::vector<SelectorEntry>& entries,
