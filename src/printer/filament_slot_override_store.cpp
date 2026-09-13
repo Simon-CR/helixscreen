@@ -1843,6 +1843,25 @@ LoadedOverrideStore make_loaded_override_store(IMoonrakerAPI* api, std::string b
     return result;
 }
 
+bool clear_persisted_override(FilamentSlotOverrideStore* store,
+                              std::unordered_map<int, FilamentSlotOverride>& overrides,
+                              int slot_index, const std::string& log_tag) {
+    auto it = overrides.find(slot_index);
+    if (it == overrides.end()) {
+        return false;
+    }
+    overrides.erase(it);
+    if (store) {
+        store->clear_async(slot_index, [log_tag, slot_index](bool ok, std::string err) {
+            if (!ok) {
+                spdlog::warn("{} override clear persist failed for slot {}: {}", log_tag,
+                             slot_index, err);
+            }
+        });
+    }
+    return true;
+}
+
 MergeResult merge_override(SlotInfo& slot, const FilamentSlotOverride& o,
                            const MergeOptions& options) {
     // Rule 1 — external re-bind. Another well-behaved writer (Mainsail, the

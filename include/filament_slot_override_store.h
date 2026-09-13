@@ -340,6 +340,26 @@ bool mirror_firmware_to_lane_data(FilamentSlotOverrideStore* store,
                                   const std::string& firmware_material, bool slot_has_filament,
                                   MirrorPolicy policy, const std::string& log_tag);
 
+/// Discard a slot's stored override, in memory and on the printer.
+///
+/// The persisted half of a lane invalidation. Dropping a lane's declaring
+/// sources settles what the UI paints now; without this the same record is
+/// read back off the printer by ingest_legacy_records() at the next backend
+/// start and the identity returns. `overrides` also feeds AFC's spool-id
+/// re-assert, which would otherwise push an id for a spool that was swapped
+/// away.
+///
+/// No-op when the slot has no entry, which is also what keeps this from
+/// issuing a second DELETE for a record another path already cleared. Caller
+/// MUST hold the backend's mutex protecting `overrides`; `store` may be null
+/// (a test fixture with no Moonraker API), leaving the in-memory erase alone
+/// to happen. `log_tag` attributes the warn on a failed persist.
+///
+/// Returns true iff an entry was erased.
+bool clear_persisted_override(FilamentSlotOverrideStore* store,
+                              std::unordered_map<int, FilamentSlotOverride>& overrides,
+                              int slot_index, const std::string& log_tag);
+
 /// Publish (or clear) the external / bypass spool as an extra lane one past
 /// the last physical slot, so slicers (OrcaSlicer's MoonrakerPrinterAgent)
 /// can select it as the "next tool over" (T4 beside T0-T3). The record rides

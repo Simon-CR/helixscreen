@@ -120,6 +120,19 @@ void ingest(LaneId lane, const Observation& obs);
 /// A lane that is not a lane is warned about and dropped.
 void commit_slot_edit(LaneId lane, const Observation& obs);
 
+/// Remove one source's record from a lane, leaving every other source alone.
+///
+/// The counterpart to the two funnels rather than a third one: it puts no
+/// value anywhere, so nothing it does can land on a lane as a reading. What it
+/// can do is DESTROY a record a person made. A LocalUser record is a human's
+/// own declaration and this deletes it outright, with no undo and nothing
+/// kept; call it only where the statement that record makes has been shown to
+/// be about something that is no longer there.
+///
+/// A lane that is not a lane is dropped, silently: unlike the funnels, nothing
+/// is lost by a drop that names no lane.
+void drop_lane_source(LaneId lane, ObservationSource source);
+
 /// This lane's records, by value. An unwritten lane reads as nothing observed.
 [[nodiscard]] LaneSources lane_sources(LaneId lane);
 
@@ -143,7 +156,9 @@ void reset_lane_sources();
 ///
 /// write() is private with exactly two friends: ingest() and commit_slot_edit().
 /// Those two are the only code that can reach a lane's records; a third friend
-/// would be a third writer.
+/// would be a third writer. clear() and drop_source() are public beside them
+/// because neither files anything: a record removed is not a value asserted,
+/// so the two funnels stay the only way a reading arrives on a lane.
 class LaneSourceStore {
   public:
     static LaneSourceStore& instance();
@@ -154,6 +169,10 @@ class LaneSourceStore {
     /// Discard every lane's records. Not a writer - it files nothing, so it
     /// needs none of the friendship write() is guarded by.
     void clear();
+
+    /// Discard one lane's record for one source. Not a writer either, for the
+    /// same reason; drop_lane_source() is the free function callers use.
+    void drop_source(LaneId lane, ObservationSource source);
 
     LaneSourceStore(const LaneSourceStore&) = delete;
     LaneSourceStore& operator=(const LaneSourceStore&) = delete;

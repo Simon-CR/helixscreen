@@ -1302,6 +1302,19 @@ void AmsBackendCfs::handle_status_update(const nlohmann::json& notification) {
                     if (slot.spoolman_id > 0)
                         cache.spoolman_id = slot.spoolman_id;
                     helix::ams::ingest(lane, cache);
+
+                    // Whether the identity declared on this bay still names
+                    // what is in it. The id is new_info's, which is the flat
+                    // schema's own parse; the stock schema states none and
+                    // leaves this at 0, where the re-bind arm cannot fire.
+                    // Nor can the eject arm: printer_reports_spool_ids() is
+                    // false here, so a bay reading 0 is the everyday reading
+                    // and never an eject.
+                    if (reconcile_lane_binding(slot.global_index, slot.spoolman_id) !=
+                        helix::ams::BindingVerdict::Holds) {
+                        helix::ams::clear_persisted_override(override_store_.get(), overrides_,
+                                                             slot.global_index, backend_log_tag());
+                    }
                 }
             }
 

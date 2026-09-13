@@ -2663,6 +2663,20 @@ void AmsBackendAfc::parse_afc_stepper(int slot_index, const std::string& lane_na
     ams::ingest(lane, firmware.cache);
     ams::ingest(lane, firmware.metered);
 
+    // Does the identity declared on this lane still describe what is in it?
+    // The id compared comes from `firmware`, never from `slot`, for the same
+    // reason the ingests above do: `slot` carries the stored record's id back
+    // after the override merge, so comparing against it would compare a record
+    // with itself and no binding could ever look broken. The own-write
+    // expectation is consulted inside reconcile_lane_binding(), so a frame
+    // still naming the id we just overwrote suppresses the re-bind.
+    if (reconcile_lane_binding(slot_index, firmware.cache.spoolman_id.value_or(0)) !=
+        ams::BindingVerdict::Holds) {
+        helix::ams::clear_persisted_override(
+            override_store_.get(), overrides_,
+            slot.global_index >= 0 ? slot.global_index : slot.slot_index, "[AMS AFC]");
+    }
+
     // Presence is the one reading AFC can stop having: prep, load and
     // tool_loaded are real sensors, and a frame naming none of them is not a
     // sensor reporting an empty lane. A record is written whole, so filing one
@@ -4220,6 +4234,16 @@ void AmsBackendAfc::parse_lane_data(const nlohmann::json& lane_data) {
         // the weight comment at the end of this loop is why no weight is read
         // from it on any AFC version.
         ams::ingest(lane_id(i), firmware.cache);
+
+        // The same binding check parse_afc_stepper() runs. Both parsers state
+        // a spool id, so both must invalidate on one: which of them ran last
+        // is not allowed to decide whether a stale binding still paints.
+        if (reconcile_lane_binding(i, firmware.cache.spoolman_id.value_or(0)) !=
+            ams::BindingVerdict::Holds) {
+            helix::ams::clear_persisted_override(
+                override_store_.get(), overrides_,
+                slot.global_index >= 0 ? slot.global_index : slot.slot_index, "[AMS AFC]");
+        }
 
         // Re-supply the user's attached identity on top of firmware truth, the
         // same way parse_afc_stepper() does. Without this, which parser ran last

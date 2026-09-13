@@ -6,6 +6,7 @@
 #include "ams_backend_afc.h"
 #include "ams_backend_happy_hare.h"
 #include "ams_state.h"
+#include "settings_manager.h"
 #ifdef HELIX_ENABLE_MOCKS
 #include "ams_backend_mock.h"
 #include "app_globals.h"
@@ -39,6 +40,7 @@
 #include <cctype>
 #include <cstdlib>
 #include <string_view>
+#include <tuple>
 
 namespace helix {
 
@@ -315,6 +317,18 @@ std::pair<int, int> AmsBackend::own_write_expectation(int slot_index, int firmwa
     // this poll, keep the entry for the next one. firmware_id <= 0: no
     // signal; the echo may still be in flight, so the entry survives.
     return {old_id, new_id};
+}
+
+helix::ams::BindingVerdict AmsBackend::reconcile_lane_binding(int slot_index,
+                                                              int firmware_spool_id) {
+    helix::ams::BindingReading reading;
+    reading.firmware_spool_id = firmware_spool_id;
+    reading.printer_reports_spool_ids = printer_reports_spool_ids();
+    reading.keep_spool_info_on_eject =
+        helix::SettingsManager::instance().get_ams_keep_spool_info_on_eject();
+    std::tie(reading.own_write_old_id, reading.own_write_new_id) =
+        own_write_expectation(slot_index, firmware_spool_id);
+    return helix::ams::reconcile_binding(lane_id(slot_index), reading);
 }
 
 std::string AmsBackend::normalize_material(const std::string& material) const {

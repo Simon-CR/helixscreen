@@ -983,6 +983,26 @@ void AmsBackendHappyHare::parse_mmu_state(const nlohmann::json& mmu_data) {
                 apply_overrides(entry->info, static_cast<int>(i));
             }
         }
+        // The gate map is the one thing Happy Hare states about a gate's
+        // binding, so this is where a binding that has stopped holding is
+        // found. The id compared is the gate's own accumulated reading rather
+        // than entry->info, which carries the stored record's id back after
+        // the override merge just above.
+        for (size_t i = 0; i < spool_ids.size(); ++i) {
+            const int gate = static_cast<int>(i);
+            if (!slots_.get(gate)) {
+                continue;
+            }
+            // find(), not reading_for(): looking a gate up must not create a
+            // cache record for one that has none.
+            auto it = gate_readings_.find(gate);
+            const int firmware_id =
+                it != gate_readings_.end() ? it->second.spoolman_id.value_or(0) : 0;
+            if (reconcile_lane_binding(gate, firmware_id) != ams::BindingVerdict::Holds) {
+                helix::ams::clear_persisted_override(override_store_.get(), overrides_, gate,
+                                                     "[AMS HH]");
+            }
+        }
         spdlog::trace("[AMS HappyHare] Parsed gate_spool_id for {} gates", spool_ids.size());
     }
 

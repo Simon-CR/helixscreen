@@ -20,6 +20,7 @@
 #include "display_numbering.h"
 #include "error_event.h"
 #include "firmware_routing.h"
+#include "lane_binding.h"
 #include "lane_source_store.h"
 #include "tool_mapping_origin.h"
 #include "toolchanger_addon.h"
@@ -2466,6 +2467,25 @@ class AmsBackend {
     ///   - firmware_id <= 0: no signal (Rule 1 cannot fire on it); the entry
     ///     survives because the echo may still be in flight.
     std::pair<int, int> own_write_expectation(int slot_index, int firmware_id);
+
+    /// Check this lane's declared binding against the spool id firmware just
+    /// stated, dropping the declaring records when it no longer holds.
+    ///
+    /// @p firmware_spool_id must be firmware's OWN standing word for the lane
+    /// and never a SlotInfo field, which carries the stored record's id back
+    /// after an override merge; 0 means firmware names no spool. The backend's
+    /// capability and the retention setting are read here, and the own-write
+    /// expectation is consulted here, so a frame that is our own write coming
+    /// back suppresses the re-bind verdict rather than acting on it.
+    ///
+    /// @warning **The caller must already hold the backend's own mutex_**, the
+    ///          same precondition own_write_expectation() carries: this calls
+    ///          it. The mutexes are not recursive.
+    ///
+    /// Returns the verdict so a caller holding a persisted copy of the same
+    /// record can clear that too; the lane sources alone do not outlive a
+    /// restart.
+    helix::ams::BindingVerdict reconcile_lane_binding(int slot_index, int firmware_spool_id);
 
     /// Pending per-slot own-write expectation: {id firmware reported before
     /// the write, id we wrote}. Guarded by the subclass's mutex_ (above).
