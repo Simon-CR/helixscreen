@@ -75,28 +75,61 @@ $(define_body "$name")"
     done
 }
 
+# Shared shape of the two gates below: the hook key rides a $(call ...)
+# argument list whose earlier arguments are themselves $(VAR) references, so
+# a [^)]*\) match dies at the first embedded close paren and extracts an
+# empty key for every real call - which reads exactly like a pass. Matching
+# runs to end-of-line instead, and the loop reads from a here-string in the
+# test shell: a `false` inside a `| while` subshell only survives when it is
+# the pipeline's last command, so every failure but the final one was lost.
+hook_keys_in_cross_mk() {
+    # $1: the call name whose argument list to walk
+    grep -E "\\\$\(call $1," "$CROSS_MK" | awk -F',' -v callname="$1" '
+        {
+            # Field 1 ends at the first comma; the key is one past the
+            # three fixed arguments (target, dir, bin/target, dir).
+            nf = split($0, f, ",")
+            want = (callname == "deploy-common") ? 5 : 4
+            if (nf < want) next
+            key = f[want]
+            sub(/\)$/, "", key)   # strip one trailing paren: the call closer, never a $(N) closer
+            gsub(/^[ \t]+|[ \t]+$/, "", key)
+            # A definition forwarder passes the enclosing define argument through.
+            if (key == "" || key ~ /^\$\(/) next
+            print key
+        }' | sort -u
+}
+
 @test "a keyed deploy-common call names a hook file that exists" {
-    # A key with no matching file deploys nothing and says nothing.
-    grep -oE 'call deploy-common,[^)]*\)' "$CROSS_MK" | while read -r call; do
-        key="$(echo "$call" | awk -F',' 'NF>=5 {gsub(/\)$/,"",$5); print $5}')"
+    # A key with no matching file deploys nothing and says nothing. No keyed
+    # deploy-common call exists today (the Pi deploys ship no platform hook;
+    # keyed targets call deploy-platform-hooks directly), so this gate is
+    # armed but idle - the extraction above makes a future keyed call with a
+    # missing file fail, rather than extract an empty key and pass.
+    local failed=0
+    while IFS= read -r key; do
         [ -n "$key" ] || continue
         [ -f "$HOOKS_DIR/hooks-$key.sh" ] || {
             echo "deploy-common names hook key '$key' but $HOOKS_DIR/hooks-$key.sh does not exist"
-            false
+            failed=1
         }
-    done
+    done <<< "$(hook_keys_in_cross_mk deploy-common)"
+    [ "$failed" -eq 0 ]
 }
 
 @test "every direct deploy-platform-hooks call names a hook file that exists" {
-    grep -oE 'call deploy-platform-hooks,[^)]*\)' "$CROSS_MK" | while read -r call; do
-        key="$(echo "$call" | awk -F',' '{gsub(/\)$/,"",$4); print $4}')"
-        # The deploy-common forwarder passes $(4) through; skip the definition.
-        case "$key" in ''|'$(4)') continue ;; esac
+    local checked=0 failed=0
+    while IFS= read -r key; do
+        [ -n "$key" ] || continue
+        checked=$((checked + 1))
         [ -f "$HOOKS_DIR/hooks-$key.sh" ] || {
             echo "deploy-platform-hooks names hook key '$key' but $HOOKS_DIR/hooks-$key.sh does not exist"
-            false
+            failed=1
         }
-    done
+    done <<< "$(hook_keys_in_cross_mk deploy-platform-hooks)"
+    # A scan that checked no key has verified nothing.
+    [ "$checked" -ge 1 ]
+    [ "$failed" -eq 0 ]
 }
 
 @test "the deploy define verifies the hooks file landed on the device" {

@@ -25,10 +25,12 @@
 #      `snprintf(..., display_slot)`) reaches the same display text and is the
 #      same violation.
 #
-# Shape 2 is matched on a single physical line: the arithmetic and the
-# formatting call that consumes it must appear together. Shape 3 is matched
-# across lines: an assignment candidate is remembered, then checked against
-# every formatting call for a few lines afterward.
+# Shape 2 is matched on a single physical line: the formatting-call token
+# and the offset must share the line, but nothing bridges the gap between
+# them, because that gap routinely contains nested close parens (sizeof(buf),
+# lv_tr(...)) that a paren-scoped [^)]* bridge cannot cross. Shape 3 is
+# matched across lines: an assignment candidate is remembered, then checked
+# against every formatting call for a few lines afterward.
 #
 # What must stay quiet:
 #   - Anything inside an spdlog:: call - a developer diagnostic, not a label
@@ -101,10 +103,14 @@ lint_files() {
 # rather than `\s` for the same reason RTTI's gate uses it: `\s` is a GNU
 # extension mawk (Debian's default awk) does not support.
 code_offenders() {
-    local pat="$1"
-    shift
-    TOOL_LABEL_PAT="$pat" TOOL_LABEL_OPTOUT="$OPTOUT" awk '
-        BEGIN { pat = ENVIRON["TOOL_LABEL_PAT"]; optout = ENVIRON["TOOL_LABEL_OPTOUT"] }
+    local pat="$1" pat2="$2"
+    shift 2
+    TOOL_LABEL_PAT="$pat" TOOL_LABEL_PAT2="$pat2" TOOL_LABEL_OPTOUT="$OPTOUT" awk '
+        BEGIN {
+            pat = ENVIRON["TOOL_LABEL_PAT"]
+            pat2 = ENVIRON["TOOL_LABEL_PAT2"]
+            optout = ENVIRON["TOOL_LABEL_OPTOUT"]
+        }
         FNR == 1 { in_block = 0 }
         index($0, optout) > 0 { next }
         {
@@ -130,7 +136,7 @@ code_offenders() {
                 if (e == 0) { in_block = 1; break }
                 line = substr(rest, e + 2)
             }
-            if (code ~ pat) print FILENAME ":" FNR ": " $0
+            if (code ~ pat && (pat2 == "" || code ~ pat2)) print FILENAME ":" FNR ": " $0
         }
     ' "$@"
 }
@@ -148,16 +154,21 @@ lane_offset_identifiers() {
     printf '%s' 'slot_index|lane|unit_index|slot|gate|tool|port|backup|mapped_'
 }
 
-# Shape 2: identifier + 1 (any spacing), the identifier one of
-# lane_offset_identifiers(), inside a formatting call's argument list.
-# `[^)]*` stops at the call's own close paren so an unrelated `+ 1` later on
-# the line, past a nested call, is not swept in; `([^0-9A-Za-z_]|$)` closes
-# the "1" against a following digit so `+ 10`/`+ 15` do not match — mawk has
-# no `\b` word-boundary extension to lean on instead.
-lane_number_pattern() {
+# A formatting call token. Shared between shape 2 (same line as the offset)
+# and shape 3 (reads the assignment variable). lv_label_set_text_fmt and
+# lv_snprintf are formatting calls in this tree and belong on the list.
+formatting_call_pattern() {
+    printf '%s' '(fmt::format|std::to_string|snprintf|sprintf|lv_label_set_text_fmt|lv_snprintf)\('
+}
+
+# Shape 2's offset half: identifier + 1 (any spacing), the identifier one of
+# lane_offset_identifiers(). `([^0-9A-Za-z_]|$)` closes the "1" against a
+# following digit so `+ 10`/`+ 15` do not match - mawk has no `\b`
+# word-boundary extension to lean on instead.
+lane_offset_pattern() {
     local idents
     idents="$(lane_offset_identifiers)"
-    printf '(fmt::format|std::to_string|snprintf|sprintf)\\([^)]*(%s)[A-Za-z0-9_]*[[:space:]]*\\+[[:space:]]*1([^0-9A-Za-z_]|$)' "$idents"
+    printf '(%s)[A-Za-z0-9_]*[[:space:]]*\\+[[:space:]]*1([^0-9A-Za-z_]|$)' "$idents"
 }
 
 # Shape 3: the same `+ 1` assigned to a plain variable on its own line, that
@@ -182,7 +193,7 @@ assign_then_format_offenders() {
             window = ENVIRON["TOOL_LABEL_WINDOW"] + 0
             assign_pat = "=[[:space:]]*[A-Za-z0-9_]*(" identpat ")[A-Za-z0-9_]*" \
                          "[[:space:]]*\\+[[:space:]]*1[[:space:]]*;"
-            call_pat = "(fmt::format|std::to_string|snprintf|sprintf)\\("
+            call_pat = "(fmt::format|std::to_string|snprintf|sprintf|lv_label_set_text_fmt|lv_snprintf)\\("
         }
         FNR == 1 {
             in_block = 0
@@ -265,18 +276,30 @@ EOF
 main() {
     local f
     local -a shape1_files=() shape2_files=()
+    local scanned=0
     while IFS= read -r f; do
         [ -n "$f" ] || continue
+        scanned=$((scanned + 1))
         is_shape1_excluded "$f" || shape1_files+=("$f")
         is_shape2_excluded "$f" || shape2_files+=("$f")
     done < <(lint_files)
 
+    # Fail closed: a scan that reached no files (missing SCAN_ROOT, empty
+    # tree) has verified nothing and must not read as a pass. Counted before
+    # the exclusions - a scan whose every file is legitimately allowlisted is
+    # a verified pass, not an empty one.
+    if [ "$scanned" -eq 0 ]; then
+        echo "check_tool_labels: scanned no files (SCAN_ROOT='${SCAN_ROOT:-<unset>}' or empty tree); failing closed"
+        return 1
+    fi
+
     local shape1_hits="" shape2_hits="" shape3_hits=""
     if [ "${#shape1_files[@]}" -gt 0 ]; then
-        shape1_hits=$(code_offenders "$(tool_label_pattern)" "${shape1_files[@]}")
+        shape1_hits=$(code_offenders "$(tool_label_pattern)" "" "${shape1_files[@]}")
     fi
     if [ "${#shape2_files[@]}" -gt 0 ]; then
-        shape2_hits=$(code_offenders "$(lane_number_pattern)" "${shape2_files[@]}")
+        shape2_hits=$(code_offenders "$(formatting_call_pattern)" "$(lane_offset_pattern)" \
+                          "${shape2_files[@]}")
         shape3_hits=$(assign_then_format_offenders 20 "${shape2_files[@]}")
     fi
 
