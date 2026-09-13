@@ -255,6 +255,7 @@ translations:
   BLUETOOTH SCANNERS: Bluetooth スキャナー
   Back: 戻る
   'Backtrace: {} frames': 'バックトレース: {} フレーム'
+  Backup lane name contains invalid characters: 'バックアップレーン名に無効な文字が含まれています'
   Backup spool switching state unknown: バックアップスプール切り替えの状態は不明です
   Barcode Scanner: バーコードスキャナー
   Base: 基準
@@ -334,6 +335,7 @@ translations:
   Buffer tube problem: バッファーチューブの問題
   'Build Volume: ': '造形サイズ: '
   Bundle Uploaded: バンドルをアップロードしました
+  Busy: 'ビジー状態'
   Button taps and navigation sounds: ボタンタップとナビゲーション音
   Buzz Servo: 'サーボを小刻みに動かす'
   Bypass: バイパス
@@ -347,6 +349,7 @@ translations:
   Bypass failed: バイパスに失敗しました
   ? Bypass is active, but this print uses AMS slots. The printer may refuse to load a slot while bypass filament is in the toolhead. Remove the filament and turn bypass off before printing. Start anyway?
   : バイパスが有効ですが、この印刷はAMSスロットを使用します。バイパスのフィラメントがツールヘッドにある間は、プリンターがスロットの装填を拒否する場合があります。印刷前にフィラメントを取り除き、バイパスをオフにしてください。それでも印刷を開始しますか？
+  Bypass mode is not currently active: 'バイパスモードは現在アクティブではありません'
   Bypass toggle failed: バイパス切替に失敗しました
   C: C
   CALIBRATION: キャリブレーション
@@ -464,6 +467,7 @@ translations:
   Changes apply immediately. Adjust during print for tuning.: 変更は即座に適用されます。印刷中に調整して最適化できます。
   Changes are temporary and reset on printer reboot: 変更は一時的で、プリンター再起動時にリセットされます
   Changes can be reversed anytime using the Macro Viewer.: 変更はいつでも Macro Viewer を使って元に戻せます。
+  Check AFC configuration: 'AFC 設定を確認してください'
   Check Again: 再確認
   Check Klipper console for details: 詳細は Klipper コンソールを確認してください
   Check extruder temperature and try again. Manual removal may be required.: エクストルーダーの温度を確認してもう一度お試しください。手動での取り出しが必要な場合があります。
@@ -543,6 +547,7 @@ translations:
   Color: 色
   Color Mismatch: 色の不一致
   Color Sensors: カラーセンサー
+  Command Failed: 'コマンドに失敗しました'
   Command failed: コマンドに失敗しました
   Communication Test: '通信テスト'
   Compact: コンパクト
@@ -563,6 +568,7 @@ translations:
   Config-defined (read-only): 設定で定義済み（読み取り専用）
   Configuration added successfully.: 設定が正常に追加されました。
   Configuration already present.: 設定は既に存在します。
+  Configuration not available: '設定は利用できません'
   Configuration saved - restarting: 設定を保存しました - 再起動中
   Configure: 設定
   Configure Fan Widget: ファンウィジェットを設定
@@ -607,6 +613,7 @@ translations:
   Connecting...: 接続中...
   Connection: 接続
   Connection Failed: 接続に失敗しました
+  Connection Lost: '接続が切断されました'
   Connection Request: '接続リクエスト'
   Connection Stability: 接続の安定性
   Connection failed: 接続に失敗しました
@@ -660,6 +667,7 @@ translations:
   Could not update filaments: フィラメントを更新できませんでした
   Could not verify Spoolman status. Moonraker may still be restarting.: Spoolman のステータスを確認できませんでした。Moonraker
     がまだ再起動中の可能性があります。
+  Couldn't save the material name: '材料名を保存できませんでした'
   Couldn't update Spoolman — saved locally: Spoolman を更新できませんでした — ローカルに保存しました
   Cover open: カバーが開いています
   Crash Report: クラッシュレポート
@@ -716,6 +724,7 @@ translations:
   Date (oldest): 日付（古い順）
   Day: 日
   Debug: デバッグ
+  Default: 'デフォルト'
   Default border thickness: デフォルトの境界線の太さ
   'Default: %d-%d°C nozzle, %d°C bed': 'デフォルト: ノズル %d〜%d°C、ベッド %d°C'
   'Default: %d-%d°C nozzle, %d°C bed, %d°C chamber': ''
@@ -855,8 +864,10 @@ translations:
   Enable/disable quiet operation mode: '静音動作モードの有効／無効'
   Enabled: 有効
   Encoder: エンコーダー
+  Encoder Error: 'エンコーダーエラー'
   Ended: 終了
   Endless spool failover cleared for every slot: 'すべてのスロットのエンドレススプール設定を消去しました'
+  Endless spool is turned off on this MMU: 'この MMU ではエンドレススプールが無効です'
   Enhanced {} operation in PRINT_START: PRINT_START 内の {} 操作を強化しました
   Enhanced {} operations in PRINT_START: PRINT_START 内の {} 操作を強化しました
   Enhancement Complete!: 改善完了！
@@ -867,6 +878,8 @@ translations:
   Enter New PIN: 新しい PIN を入力
   Enter PIN: PIN を入力
   Enter WiFi Password: WiFi パスワードを入力
+  Enter a length between 100 and {:.0f}mm: '長さは 100〜{:.0f}mm にしてください'
+  Enter a multiplier between 0.5 and 2.0: '倍率は 0.5〜2.0 にしてください'
   Enter a name for this profile: "このプロファイルの名前を入力"
   'Enter a name for your custom theme:': 'カスタムテーマの名前を入力してください:'
   Enter a name to save this profile: このプロファイルを保存する名前を入力
@@ -905,6 +918,7 @@ translations:
   Ethernet: イーサネット
   Events appear here after sessions and prints: セッションと印刷の後にイベントがここに表示されます
   Every extruder's temperature at once: 全エクストルーダーの温度を一覧表示
+  Everything else was saved. Rename the material using letters, digits, spaces, and + - _ . ( ) /: 'その他はすべて保存されました。材料名は英字・数字・スペース・+ - _ . ( ) / で構成される名前に変更してください'
   Excellent Accuracy: 非常に高精度
   'Exception: {}': '例外: {}'
   Exclude: 除外
@@ -914,6 +928,8 @@ translations:
   Execute printer macros: プリンターマクロを実行
   Exhaust Fan: 排気ファン
   Exit Code: 終了コード
+  Expected boolean: '真偽値が必要です'
+  Expected float: '小数値が必要です'
   Explore how the selected palette shapes text, controls, and status colors.: 選択したパレットがテキスト、コントロール、ステータスカラーにどのように影響するかを確認できます。
   Explore palette and preview: パレットを確認してプレビュー
   External: 外部
@@ -929,6 +945,7 @@ translations:
   Extrude may still be running — response timed out: 押出がまだ実行中の可能性があります — 応答タイムアウト
   Extrude/retract feedrate (Saved): 押し出し/引き戻し速度（保存済み）
   Extruder: エクストルーダー
+  Extruder Cold: 'エクストルーダーが冷えています'
   Extruder Load Speed: 'エクストルーダーのロード速度'
   Extruder MPC Calibration: エクストルーダー MPCキャリブレーション
   Extruder PID Tuning: エクストルーダー PID チューニング
@@ -1072,6 +1089,7 @@ translations:
   Filament Grade Mismatch: フィラメントグレード不一致
   Filament Humidity: フィラメント湿度
   Filament In The Toolhead: ツールヘッドにフィラメントがあります
+  Filament Jam: 'フィラメントの詰まり'
   Filament Mapping: フィラメントマッピング
   Filament Runout: フィラメント切れ
   Filament Sensor: フィラメントセンサー
@@ -1093,10 +1111,12 @@ translations:
   Filament feeder: フィラメントフィーダー
   Filament is clear of the toolhead. Pull it out the rest of the way.: フィラメントはツールヘッドから出ました。残りを手で引き抜いてください。
   Filament is dragging: フィラメントに抵抗がかかっています
+  Filament is loaded at the toolhead. Unload it before enabling bypass.: 'ツールヘッドにフィラメントが装填されています。バイパスを有効にする前に取り出してください。'
   Filament is loose: フィラメントが緩んでいます
   Filament is pulling tight: フィラメントが引っ張られています
   ? Filament is still at the nozzle after unloading. The cut or retract may not have completed. Clear the toolhead before loading another spool.
   : アンロード後もフィラメントがノズルに残っています。カットまたは引き戻しが完了していない可能性があります。別のスプールを装填する前にツールヘッドを空にしてください。
+  Filament is still loaded. Unload it before enabling bypass.: 'フィラメントがまだ装填されています。バイパスを有効にする前に取り出してください。'
   Filament is still present after the cut — the blade may be dull or misaligned: 切断後もフィラメントが残っています。刃が摩耗しているか、位置がずれている可能性があります
   Filament jam detected: フィラメントの詰まりを検出しました
   Filament jammed at the extruder gear: エクストルーダーギアでフィラメントが詰まりました
@@ -1271,6 +1291,7 @@ translations:
   Home printer first?: 先にプリンターをホーミングしますか？
   Home selector: セレクターをホーミング
   Homing AFC system...: AFCシステムをホーミング中...
+  Homing Failed: 'ホーミングに失敗しました'
   Homing X...: X軸をホーミング中...
   Homing XY...: XY軸をホーミング中...
   Homing Y...: Y軸をホーミング中...
@@ -1375,12 +1396,19 @@ translations:
   Interface size. Applies after restart.: インターフェースの大きさ。再起動後に適用されます。
   'Internal error: API not available': '内部エラー: API を利用できません'
   'Internal error: no scan result': '内部エラー: スキャン結果がありません'
+  Invalid Slot: '無効なスロット'
+  Invalid Tool: '無効なツール'
+  Invalid duration: '時間の値が無効です'
   Invalid number: 無効な番号
   Invalid parameter: 無効なパラメータ
   Invalid port number: 無効なポート番号
   'Invalid sheet template index: {} (have {})': '無効なシートテンプレートインデックス: {} (現在 {})'
   Invalid status response from printer: プリンターからの無効なステータス応答
+  Invalid temperature: '温度の値が無効です'
   Invalid tool number: 無効なツール番号
+  Invalid tool/slot: '無効なツール/スロットです'
+  Invalid value: '無効な値です'
+  Invalid value type: '値の型が無効です'
   Issue description: 問題の説明
   It can be un-archived in Spoolman's web UI.: Spoolman の Web 画面でアーカイブを解除できます。
   It is jammed between the hub sensor and the hub gear. Open the CFS and clear the hub before retrying: ハブセンサーとハブギアの間で詰まっています。CFS を開けてハブを取り除いてから再試行してください
@@ -1438,6 +1466,7 @@ translations:
   Labels: ラベル
   Labels Per Sheet: シートあたりのラベル数
   Lane: レーン
+  Lane name contains invalid characters: 'レーン名に無効な文字が含まれています'
   Lane tests and motor resets: 'レーンテストとモーターリセット'
   Lanes: レーン
   Language: 言語
@@ -1470,6 +1499,7 @@ translations:
   Listening: 聞き取り中
   Live view from your webcam: ウェブカメラのライブ表示
   Load: 装填
+  Load Failed: '装填に失敗しました'
   Load Filament: フィラメントを装填
   Load a filament first before trying to unload: 排出する前にまずフィラメントを装填してください
   Load a new spool in this slot, or turn on auto-refill to switch to a matching one: このスロットに新しいスプールをセットするか、自動補充を有効にして一致するスプールに切り替えてください
@@ -1576,6 +1606,7 @@ translations:
   Manually clear the jam and retry the operation: 詰まりを手動で取り除いてから、もう一度お試しください
   Manually pull the filament back through the connector: コネクターからフィラメントを手で引き戻してください
   Map to closest colors with matching material: 一致する素材で最も近い色に割り当て
+  Mapping Error: 'マッピングエラー'
   Marginal: やや不良
   Master volume level: マスター音量
   Match: 一致度
@@ -1614,6 +1645,7 @@ translations:
   Minimal: ミニマル
   Minimum: 最小
   Minutes: 分
+  Missing value: '値が入力されていません'
   Mode: モード
   Modified: 変更日時
   'Monitor prints in progress — time remaining, current layer, and progress. Tap to pause, resume, or cancel the active job.': 印刷の進行状況を監視します — 残り時間、現在のレイヤー、進捗。タップすれば進行中のジョブを一時停止、再開、キャンセルできます。
@@ -1689,6 +1721,7 @@ translations:
   Next belt: 次のベルト
   Niimbot (Bluetooth): Niimbot (Bluetooth)
   'No': いいえ
+  No AMS Detected: 'AMS が検出されません'
   No API connection: API 接続なし
   No Bluetooth printer selected — pick one in settings: Bluetooth プリンターが選択されていません
     — 設定で選択してください
@@ -1731,6 +1764,7 @@ translations:
   No file loaded: ファイルが読み込まれていません
   No file to reprint: 再印刷するファイルがありません
   No files available for printing: 印刷可能なファイルがありません
+  No hub configured: 'Hub が設定されていません'
   No humidity sensor detected: '湿度センサーが検出されません'
   No images found on USB drive: USBドライブに画像が見つかりません
   No jobs in queue: キューにジョブがありません
@@ -1768,6 +1802,7 @@ translations:
   No temperature sensors detected: '温度センサーが検出されません'
   No timelapse videos found: タイムラプス動画が見つかりません
   No vendors found: ベンダーが見つかりません
+  No verified bypass command for this CFS firmware: 'この CFS ファームウェアには検証済みのバイパスコマンドがありません'
   No video player installed - showing the timelapse library: '動画プレーヤーがありません – タイムラプス一覧を表示します'
   ? "No webcam detected.\nA webcam is required for timelapse."
   : "ウェブカメラが検出されませんでした。\nタイムラプスにはウェブカメラが必要です。"
@@ -1776,8 +1811,11 @@ translations:
   None: なし
   None (disable): なし (無効)
   Normal: 標準
+  Not Connected: '接続されていません'
   Not Enough Filament: フィラメントが不足しています
+  Not Initialized: '初期化されていません'
   Not Now: 今はしない
+  Not Supported: 'サポートされていません'
   Not available here. Update from a terminal.: ここでは利用できません。ターミナルから更新してください。
   Not available on Android: Androidでは利用できません
   Not calibrated: キャリブレーション未実施
@@ -1796,6 +1834,7 @@ translations:
   Nothing loaded: 装填されていません
   Nothing starred yet. Tap the star on a filament to add it here.: 'まだ何も登録されていません。フィラメントの星をタップしてここに追加してください。'
   Nothing to remap: リマップするものがありません
+  'Nothing to unload: no filament at the nozzle': '取り出すものがありません: ノズルにフィラメントがありません'
   Notification: 通知
   Notifications: 通知
   Notify when print finishes: 印刷完了時に通知
@@ -2060,9 +2099,6 @@ translations:
   Printer Type: プリンタータイプ
   Printer accepted job but isn't printing — check cover, paper, and label type (firmware status=0x{:02X} error=0x{:02X}): プリンターはジョブを受け付けましたが印刷していません
     — カバー、用紙、ラベルの種類を確認してください (firmware status=0x{:02X} error=0x{:02X})
-  Printer caps bed at %d°C: プリンターのベッド上限は %d°C です
-  Printer caps chamber at %d°C: プリンターのチャンバー上限は %d°C です
-  Printer caps nozzle at %d°C: プリンターのノズル上限は %d°C です
   Printer connection unavailable: プリンターとの接続が利用できません
   Printer database format error: プリンターデータベースの形式エラー
   Printer database is corrupt: プリンターデータベースが破損しています
@@ -2116,6 +2152,13 @@ translations:
   Profiles: プロファイル
   Progress, file, and time remaining: 進行状況、ファイル、残り時間
   Prompt before running this macro: このマクロの実行前に確認する
+  Provide a boolean {}: '{} を真偽値で入力してください'
+  Provide a bowden length value: 'ボーデンチューブの長さを入力してください'
+  Provide a numeric value: '数値を入力してください'
+  Provide a numeric {}: '{} を数値で入力してください'
+  Provide a speed multiplier value: '速度の倍率を入力してください'
+  Provide a {}: '{} を入力してください'
+  Provide {}: '{} を入力してください'
   Pulling filament back: フィラメントを引き戻し中
   Purge: パージ
   Purge & Wipe: 'パージとワイプ'
@@ -2280,6 +2323,7 @@ translations:
   Restoring position: 位置を復元中
   Resume: 再開
   Resume Print: 印刷を再開
+  Resume Requires Restart: '再開には再起動が必要です'
   Resume interrupted print?: 中断した印刷を再開しますか？
   Resume macro not configured: 再開マクロが未設定です
   Resume preparation failed: 再開準備に失敗しました
@@ -2427,6 +2471,8 @@ translations:
   Select a valid number: 有効な番号を選択してください
   Select a valid number (1-{}): 有効な番号を選択してください（1-{}）
   Select a valid tool: 有効なツールを選択してください
+  Select a valid {}: '有効な{}を選択してください'
+  Select a {}: '{}を選択してください'
   Select fan: ファンを選択
   Select gate: 'ゲートを選択'
   Select macro for first button: 最初のボタンのマクロを選択
@@ -2453,6 +2499,7 @@ translations:
   Send this crash report to help improve HelixScreen.: HelixScreen の改善にこのクラッシュレポートを送信してください。
   Sending...: 送信中...
   Sensor: センサー
+  Sensor Error: 'センサーエラー'
   Sensor Response: センサー応答
   Sensor Source: センサーソース
   Sensor Temperature: センサー温度
@@ -2473,8 +2520,10 @@ translations:
   Set and watch the bed temperature: ベッド温度の設定と監視
   Set and watch the chamber temperature: チャンバー温度の設定と監視
   Set and watch the nozzle temperature: ノズル温度の設定と監視
+  Set duration between 1 and {} minutes: '時間は 1〜{} 分にしてください'
   Set local timezone for time display: 時刻表示用のローカルタイムゾーンを設定
   Set logging verbosity for troubleshooting: トラブルシューティング用のログの詳細レベルを設定
+  Set temperature between {}°C and {}°C: '温度は {}〜{}°C にしてください'
   ? Set the filament type and colour by hand for this slot. If the tag should be readable, re-seat the spool with its label facing the reader once the box is idle
   : このスロットのフィラメントの種類と色を手動で設定してください。タグが読み取れるはずの場合は、ボックスが停止しているときにラベルをリーダー側に向けてスプールを入れ直してください
   Set up: セットアップ
@@ -2525,6 +2574,8 @@ translations:
   Slicer: スライサー
   Slot: スロット
   Slot 1: スロット1
+  Slot Blocked: 'スロットがブロックされています'
+  Slot Not Available: 'スロットは利用できません'
   Slot colors, materials, and levels: スロットの色、素材、残量
   Slots: スロット
   Small labels help keep controls calm and focused.: 小さなラベルはコントロールを落ち着いた集中した状態に保ちます。
@@ -2554,6 +2605,7 @@ translations:
   'Spool #': 'スプール #'
   'Spool #{}': 'スプール #{}'
   Spool Info: スプール情報
+  Spool Not Found: 'スプールが見つかりません'
   Spool Weight (g): スプール重量（g）
   Spool archived: スプールをアーカイブしました
   Spool created successfully: スプールを作成しました
@@ -2562,6 +2614,7 @@ translations:
   Spool saved: スプールを保存しました
   Spool wt (g): スプール重量 (g)
   Spoolman: Spoolman
+  Spoolman Not Available: 'Spoolman は利用できません'
   Spoolman Server: Spoolman サーバー
   Spoolman connected!: Spoolman に接続しました！
   Spoolman found! Configuring...: Spoolman を検出しました！設定中...
@@ -2646,6 +2699,7 @@ translations:
   System busy — try again: システムがビジー状態です — もう一度お試しください
   System default: システムデフォルト
   System detected: システムを検出しました
+  System is {}: 'システムの状態: {}'
   TANGLE: 絡み
   TD-1 filament color detection: TD-1 フィラメント色検出
   TEMPERATURE SENSORS: 温度センサー
@@ -2770,6 +2824,9 @@ translations:
   'These tools have incompatible materials loaded:': 'これらのツールには互換性のない素材がロードされています:'
   'These tools have no filament loaded:': 'これらのツールにフィラメントが装填されていません:'
   'These tools have no matching filament loaded:': 'これらのツールに一致するフィラメントが装填されていません:'
+  This AFC system does not support bypass mode: 'この AFC システムはバイパスモードに対応していません'
+  This CFS firmware exposes no external spool slot: 'この CFS ファームウェアには外部スプール用スロットがありません'
+  This Happy Hare system does not support bypass mode: 'この Happy Hare システムはバイパスモードに対応していません'
   This calibration uses the paper friction method to set your Z-offset.: このキャリブレーションは紙の摩擦方式を使用して
     Z-offset を設定します。
   This cannot be undone.: この操作は元に戻せません。
@@ -2785,6 +2842,7 @@ translations:
   This filament system does not report buffer or flow data.: このフィラメントシステムはバッファーやフローのデータを報告しません。
   This file was sliced for {} but {} is loaded.: このファイルは {} 用にスライスされていますが、{} がロードされています。
   This file was sliced for {}, but {} is loaded. It will print slower and hotter than the loaded spool needs.: このファイルは {} 用にスライスされていますが、{} がロードされています。装填中のスプールが必要とするより遅く高温で印刷されます。
+  This firmware can only switch slots by loading them: 'このファームウェアはスロットを装填して切り替えることしかできません'
   ? This installs the HelixScreen helper macros on the printer and adds them to printer.cfg. A print is running, so Klipper restarts after it finishes.
   : 'HelixScreen のヘルパーマクロをプリンターにインストールし、printer.cfg に追加します。印刷中のため、Klipper は印刷完了後に再起動されます。'
   This installs the HelixScreen helper macros on the printer, adds them to printer.cfg, and restarts Klipper.: 'HelixScreen のヘルパーマクロをプリンターにインストールし、printer.cfg に追加して、Klipper を再起動します。'
@@ -2803,6 +2861,7 @@ translations:
   This replaces the printer's helper macros with the current version and restarts Klipper.: 'プリンターのヘルパーマクロを現在のバージョンに置き換え、Klipper を再起動します。'
   ? This replaces the printer's helper macros with the current version. A print is running, so Klipper restarts after it finishes.
   : 'プリンターのヘルパーマクロを現在のバージョンに置き換えます。印刷中のため、Klipper は印刷完了後に再起動されます。'
+  This system does not support bypass mode: 'このシステムはバイパスモードに対応していません'
   This tool probes each bed screw and tells you how much to adjust.: このツールは各ベッドネジをプローブし、どのくらい調整が必要かを教えます。
   ? This will apply the Z-offset to your endstop and restart Klipper to save the configuration.
     The printer will briefly disconnect.
@@ -2842,8 +2901,10 @@ translations:
   Timelapse render failed: タイムラプスのレンダリングに失敗しました
   'Timelapse render failed: {}': 'タイムラプスのレンダリングに失敗しました: {}'
   Timelapse rendered successfully: タイムラプスのレンダリングが完了しました
+  Timeout: 'タイムアウト'
   Timezone: タイムゾーン
   Tip Forming: 'チップ形成'
+  Tip Forming Failed: '先端形成に失敗しました'
   Tip shaping configuration: 'チップ形状の設定'
   'Tip:': 'ヒント:'
   Tips: 'ヒント'
@@ -2860,6 +2921,7 @@ translations:
   Too humid: 湿度が高すぎます
   Too soft - pluck harder: 弱すぎます - もっと強くはじいてください
   Tool: ツール
+  Tool Change Failed: 'ツール変更に失敗しました'
   Tool Changer: ツールチェンジャー
   Tool Switcher: 'ツール切り替え'
   'Tool change failed: {}': 'ツール変更に失敗しました: {}'
@@ -2899,6 +2961,7 @@ translations:
   Turn Off WiFi?: WiFiをオフにしますか？
   Turn On: オンにする
   Turn On LEDs: 'LEDを点灯'
+  Turn endless spool on, then set the backup gate: 'エンドレススプールを有効にしてから、バックアップゲートを設定してください'
   Turn on LEDs when printer starts: プリンター起動時に LED を点灯
   Turn the extruder heater off after a load or unload finishes: 装填または排出の完了後にエクストルーダーヒーターをオフにします
   Turn the picture to match how the screen is mounted. Applies after restart.: 画面の取り付け向きに合わせて表示を回転します。再起動後に適用されます。
@@ -2931,17 +2994,21 @@ translations:
   'Unit ': 'ユニット '
   'Units: %d   Boxes: %d   Dryers: %d': ''
   Unknown: 不明
+  Unknown Error: '不明なエラー'
   Unknown Event: 不明なイベント
   Unknown Spool: 不明なスプール
   Unknown Step: 不明なステップ
   Unknown error: 不明なエラー
   Unload: 排出
   Unload Distance: 'アンロード距離'
+  Unload Failed: '取り出しに失敗しました'
   Unload Filament: フィラメントを排出
   Unload failed: 排出に失敗しました
   Unload filament: 'フィラメントをアンロード'
+  Unload from toolhead first: '先にツールヘッドから取り出してください'
   Unload macro not configured: アンロードマクロが未設定です
   Unload may still be running — response timed out: 排出がまだ実行中の可能性があります — 応答タイムアウト
+  Unload the CFS filament before enabling bypass: 'バイパスを有効にする前に CFS のフィラメントを取り出してください'
   Unloading: アンロード中
   Unloading Start Speed: 'アンロード開始速度'
   Unloading before bypass...: バイパス前にアンロード中...
@@ -2975,6 +3042,7 @@ translations:
   Uptime: 稼働時間
   Use Android native keyboard for text input: テキスト入力に Android ネイティブキーボードを使用
   Use G10/G11 firmware retraction: G10/G11 ファームウェアリトラクションを使用
+  Use Unload before Eject: '先に「アンロード」してから「排出」してください'
   Use printer type to select image: プリンタータイプで画像を選択
   VM Peak: VM ピーク
   VM Size: VM サイズ
@@ -3016,6 +3084,8 @@ translations:
   WLED Preset: WLED プリセット
   WPA/WPA2: 'WPA/WPA2'
   WPA3: 'WPA3'
+  Wait for config to load: '設定の読み込みを待ってください'
+  Wait for current operation to complete or use cancel: '現在の操作が完了するまで待つか、キャンセルしてください'
   Wait for the current filament operation to finish: 現在のフィラメント操作が完了するまでお待ちください
   Wait for the current operation to complete: 現在の操作が完了するまでお待ちください
   Wait for the current operation to complete or cancel it first: 現在の操作が完了するまで待つか、先にキャンセルしてください
@@ -3076,6 +3146,7 @@ translations:
   Working...: 処理中...
   Write failed at chunk {}: チャンク {} で書き込みに失敗しました
   Wrong PIN: PIN が違います
+  Wrong State: '状態が不正です'
   Wrong media: 不正なメディア
   X: X
   X Axis: X軸

@@ -276,6 +276,7 @@ translations:
   BLUETOOTH SCANNERS: BLUETOOTH-СКАНЕРЫ
   Back: Назад
   'Backtrace: {} frames': 'Трассировка: {} кадров'
+  Backup lane name contains invalid characters: 'Имя резервного канала содержит недопустимые символы'
   Backup spool switching state unknown: 'Резервная катушка: состояние неизвестно'
   Barcode Scanner: Сканер штрих-кодов
   Base: Опорный
@@ -358,6 +359,7 @@ translations:
   Buffer tube problem: Проблема с буферной трубкой
   'Build Volume: ': 'Область печати: '
   Bundle Uploaded: Пакет отправлен
+  Busy: 'Занят'
   Button taps and navigation sounds: Звуки нажатий и навигации
   Buzz Servo: 'Дёрнуть сервопривод'
   Bypass: Обход
@@ -371,6 +373,7 @@ translations:
   Bypass failed: Ошибка байпаса
   ? Bypass is active, but this print uses AMS slots. The printer may refuse to load a slot while bypass filament is in the toolhead. Remove the filament and turn bypass off before printing. Start anyway?
   : Активен байпас, но эта печать использует слоты AMS. Принтер может отказаться загружать слот, пока филамент байпаса находится в печатающей головке. Извлеките филамент и выключите байпас перед печатью. Всё равно начать?
+  Bypass mode is not currently active: 'Режим обхода сейчас не активен'
   Bypass toggle failed: Не удалось переключить байпас
   C: К
   CALIBRATION: КАЛИБРОВКА
@@ -508,6 +511,7 @@ translations:
     при перезагрузке принтера
   Changes can be reversed anytime using the Macro Viewer.: Изменения можно отменить
     в любое время через Macro Viewer.
+  Check AFC configuration: 'Проверьте конфигурацию AFC'
   Check Again: Проверить снова
   Check Klipper console for details: Подробности смотрите в консоли Klipper
   Check extruder temperature and try again. Manual removal may be required.: Проверьте температуру экструдера и повторите попытку. Может потребоваться удалить филамент вручную.
@@ -595,6 +599,7 @@ translations:
   Color: Цвет
   Color Mismatch: Несоответствие цвета
   Color Sensors: Датчики цвета
+  Command Failed: 'Ошибка команды'
   Command failed: Ошибка команды
   Communication Test: 'Проверка связи'
   Compact: Компактный
@@ -615,6 +620,7 @@ translations:
   Config-defined (read-only): Определено в конфигурации (только чтение)
   Configuration added successfully.: Конфигурация успешно добавлена.
   Configuration already present.: Конфигурация уже присутствует.
+  Configuration not available: 'Конфигурация недоступна'
   Configuration saved - restarting: Конфигурация сохранена - перезапуск
   Configure: Настроить
   Configure Fan Widget: Настроить виджет вентилятора
@@ -663,6 +669,7 @@ translations:
   Connecting...: Подключение...
   Connection: Соединение
   Connection Failed: Ошибка подключения
+  Connection Lost: 'Соединение потеряно'
   Connection Request: 'Запрос на подключение'
   Connection Stability: Стабильность подключения
   Connection failed: Ошибка подключения
@@ -720,6 +727,7 @@ translations:
   Could not update filaments: Не удалось обновить филаменты
   Could not verify Spoolman status. Moonraker may still be restarting.: Не удалось
     проверить статус Spoolman. Moonraker может ещё перезапускаться.
+  Couldn't save the material name: 'Не удалось сохранить название материала'
   Couldn't update Spoolman — saved locally: Не удалось обновить Spoolman — сохранено
     локально
   Cover open: Крышка открыта
@@ -777,6 +785,7 @@ translations:
   Date (oldest): Дата (старые)
   Day: День
   Debug: Отладка
+  Default: 'По умолчанию'
   Default border thickness: Толщина границы по умолчанию
   'Default: %d-%d°C nozzle, %d°C bed': 'По умолчанию: сопло %d-%d°C, стол %d°C'
   'Default: %d-%d°C nozzle, %d°C bed, %d°C chamber': ''
@@ -920,8 +929,10 @@ translations:
   Enable/disable quiet operation mode: 'Включить/выключить тихий режим работы'
   Enabled: Включено
   Encoder: Энкодер
+  Encoder Error: 'Ошибка энкодера'
   Ended: Завершено
   Endless spool failover cleared for every slot: 'Резервные катушки очищены для всех слотов'
+  Endless spool is turned off on this MMU: 'Бесконечная катушка отключена на этом MMU'
   Enhanced {} operation in PRINT_START: Улучшена {} операция в PRINT_START
   Enhanced {} operations in PRINT_START: Улучшено {} операций в PRINT_START
   Enhancement Complete!: Улучшение завершено!
@@ -932,6 +943,8 @@ translations:
   Enter New PIN: Введите новый PIN
   Enter PIN: Введите PIN
   Enter WiFi Password: Введите пароль WiFi
+  Enter a length between 100 and {:.0f}mm: 'Введите длину от 100 до {:.0f}мм'
+  Enter a multiplier between 0.5 and 2.0: 'Введите множитель от 0,5 до 2,0'
   Enter a name for this profile: "Введите имя для этого профиля"
   'Enter a name for your custom theme:': 'Введите название для вашей темы:'
   Enter a name to save this profile: Введите имя для сохранения профиля
@@ -973,6 +986,7 @@ translations:
   Events appear here after sessions and prints: События появятся здесь после сессий
     и печатей
   Every extruder's temperature at once: Температура всех экструдеров
+  Everything else was saved. Rename the material using letters, digits, spaces, and + - _ . ( ) /: 'Всё остальное сохранено. Переименуйте материал, используя буквы, цифры, пробелы и + - _ . ( ) /'
   Excellent Accuracy: Отличная точность
   'Exception: {}': 'Исключение: {}'
   Exclude: Исключить
@@ -982,6 +996,8 @@ translations:
   Execute printer macros: Выполнить макросы принтера
   Exhaust Fan: Вытяжной вентилятор
   Exit Code: Код выхода
+  Expected boolean: 'Ожидалось логическое значение'
+  Expected float: 'Ожидалось дробное число'
   Explore how the selected palette shapes text, controls, and status colors.: Изучите,
     как выбранная палитра влияет на текст, элементы управления и цвета статуса.
   Explore palette and preview: Изучить палитру и предпросмотр
@@ -999,6 +1015,7 @@ translations:
     — время ожидания истекло
   Extrude/retract feedrate (Saved): Скорость экструзии/ретракции (Сохранено)
   Extruder: Экструдер
+  Extruder Cold: 'Экструдер не прогрет'
   Extruder Load Speed: 'Скорость загрузки экструдера'
   Extruder MPC Calibration: Калибровка MPC экструдера
   Extruder PID Tuning: Настройка PID экструдера
@@ -1149,6 +1166,7 @@ translations:
   Filament Grade Mismatch: Несоответствие марки филамента
   Filament Humidity: Влажность филамента
   Filament In The Toolhead: Филамент в печатающей головке
+  Filament Jam: 'Затор филамента'
   Filament Mapping: Назначение филамента
   Filament Runout: Окончание филамента
   Filament Sensor: Датчик филамента
@@ -1171,10 +1189,12 @@ translations:
   Filament feeder: Фидер филамента
   Filament is clear of the toolhead. Pull it out the rest of the way.: Филамент вышел из печатающей головки. Вытяните его до конца.
   Filament is dragging: Филамент идёт с натягом
+  Filament is loaded at the toolhead. Unload it before enabling bypass.: 'Филамент загружен в печатающую головку. Выгрузите его перед включением обхода.'
   Filament is loose: Филамент ослаблен
   Filament is pulling tight: Филамент натянут
   ? Filament is still at the nozzle after unloading. The cut or retract may not have completed. Clear the toolhead before loading another spool.
   : После выгрузки филамент всё ещё находится у сопла. Отрезание или втягивание могло не завершиться. Очистите печатающую головку перед загрузкой другой катушки.
+  Filament is still loaded. Unload it before enabling bypass.: 'Филамент всё ещё загружен. Выгрузите его перед включением обхода.'
   Filament is still present after the cut — the blade may be dull or misaligned: После реза филамент остался. Возможно, лезвие затупилось или смещено
   Filament jam detected: Обнаружен затор филамента
   Filament jammed at the extruder gear: Филамент застрял в шестерне экструдера
@@ -1355,6 +1375,7 @@ translations:
   Home printer first?: Сначала запарковать принтер?
   Home selector: Парковать селектор
   Homing AFC system...: Парковка системы AFC...
+  Homing Failed: 'Ошибка парковки'
   Homing X...: Парковка X...
   Homing XY...: Парковка XY...
   Homing Y...: Парковка Y...
@@ -1475,13 +1496,20 @@ translations:
   Interface size. Applies after restart.: Размер интерфейса. Применяется после перезапуска.
   'Internal error: API not available': 'Внутренняя ошибка: API недоступен'
   'Internal error: no scan result': 'Внутренняя ошибка: нет результата сканирования'
+  Invalid Slot: 'Неверный слот'
+  Invalid Tool: 'Неверный инструмент'
+  Invalid duration: 'Неверная длительность'
   Invalid number: Неверный номер
   Invalid parameter: Неверный параметр
   Invalid port number: Неверный номер порта
   'Invalid sheet template index: {} (have {})': 'Недопустимый индекс шаблона листа:
     {} (имеется {})'
   Invalid status response from printer: Недопустимый ответ статуса от принтера
+  Invalid temperature: 'Неверная температура'
   Invalid tool number: Неверный номер инструмента
+  Invalid tool/slot: 'Неверный инструмент/слот'
+  Invalid value: 'Неверное значение'
+  Invalid value type: 'Неверный тип значения'
   Issue description: Описание проблемы
   It can be un-archived in Spoolman's web UI.: Это можно восстановить из архива в веб-интерфейсе Spoolman.
   It is jammed between the hub sensor and the hub gear. Open the CFS and clear the hub before retrying: Он зажат между датчиком хаба и его шестернёй. Откройте CFS, освободите хаб и повторите
@@ -1545,6 +1573,7 @@ translations:
   Labels: Этикетки
   Labels Per Sheet: Этикеток на листе
   Lane: Канал
+  Lane name contains invalid characters: 'Имя канала содержит недопустимые символы'
   Lane tests and motor resets: 'Тесты каналов и сброс моторов'
   Lanes: Каналы
   Language: Язык
@@ -1580,6 +1609,7 @@ translations:
   Listening: Прослушивание
   Live view from your webcam: Прямая трансляция с веб-камеры
   Load: Загрузить
+  Load Failed: 'Не удалось загрузить'
   Load Filament: Загрузить филамент
   Load a filament first before trying to unload: Сначала загрузите филамент, прежде чем пытаться его выгрузить
   Load a new spool in this slot, or turn on auto-refill to switch to a matching one: Установите новую катушку в этот слот или включите автопополнение для переключения на подходящую
@@ -1693,6 +1723,7 @@ translations:
   Manually pull the filament back through the connector: Вытяните филамент вручную через разъём
   Map to closest colors with matching material: Подобрать ближайшие цвета с подходящим
     материалом
+  Mapping Error: 'Ошибка привязки'
   Marginal: Допустимо
   Master volume level: Основной уровень громкости
   Match: Совпадение
@@ -1731,6 +1762,7 @@ translations:
   Minimal: Минимальный
   Minimum: Минимум
   Minutes: Минуты
+  Missing value: 'Отсутствует значение'
   Mode: Режим
   Modified: Изменён
   'Monitor prints in progress — time remaining, current layer, and progress. Tap to pause, resume, or cancel the active job.': 'Отслеживайте выполняющиеся печати — оставшееся время, текущий слой и прогресс. Нажмите, чтобы приостановить, возобновить или отменить активное задание.'
@@ -1809,6 +1841,7 @@ translations:
   Next belt: Следующий ремень
   Niimbot (Bluetooth): Niimbot (Bluetooth)
   'No': Нет
+  No AMS Detected: 'AMS не обнаружен'
   No API connection: Нет соединения с API
   No Bluetooth printer selected — pick one in settings: Bluetooth-принтер не выбран
     — выберите его в настройках
@@ -1854,6 +1887,7 @@ translations:
   No file loaded: Файл не загружен
   No file to reprint: Нет файла для повторной печати
   No files available for printing: Нет файлов для печати
+  No hub configured: 'Hub не настроен'
   No humidity sensor detected: 'Датчик влажности не обнаружен'
   No images found on USB drive: Изображения на USB-накопителе не найдены
   No jobs in queue: Очередь пуста
@@ -1893,6 +1927,7 @@ translations:
   No temperature sensors detected: 'Датчики температуры не обнаружены'
   No timelapse videos found: Таймлапс-видео не найдены
   No vendors found: Производители не найдены
+  No verified bypass command for this CFS firmware: 'Нет проверенной команды обхода для этой прошивки CFS'
   No video player installed - showing the timelapse library: 'Видеоплеер не установлен – показана библиотека таймлапсов'
   ? "No webcam detected.\nA webcam is required for timelapse."
   : "Веб-камера не обнаружена.\nДля таймлапса необходима веб-камера."
@@ -1901,8 +1936,11 @@ translations:
   None: Нет
   None (disable): Нет (отключить)
   Normal: Обычная
+  Not Connected: 'Не подключено'
   Not Enough Filament: Недостаточно филамента
+  Not Initialized: 'Не инициализировано'
   Not Now: Не сейчас
+  Not Supported: 'Не поддерживается'
   Not available here. Update from a terminal.: Здесь недоступно. Обновите через терминал.
   Not available on Android: Недоступно на Android
   Not calibrated: Не откалиброван
@@ -1921,6 +1959,7 @@ translations:
   Nothing loaded: Ничего не загружено
   Nothing starred yet. Tap the star on a filament to add it here.: 'Пока ничего не отмечено. Нажмите звезду у филамента, чтобы добавить его сюда.'
   Nothing to remap: Нечего переназначать
+  'Nothing to unload: no filament at the nozzle': 'Выгружать нечего: в сопле нет филамента'
   Notification: Уведомление
   Notifications: Уведомления
   Notify when print finishes: Уведомить о завершении печати
@@ -2196,9 +2235,6 @@ translations:
   Printer accepted job but isn't printing — check cover, paper, and label type (firmware status=0x{:02X} error=0x{:02X}): Принтер
     принял задание, но не печатает — проверьте крышку, бумагу и тип этикеток (статус
     прошивки=0x{:02X} ошибка=0x{:02X})
-  Printer caps bed at %d°C: Стол принтера ограничен %d°C
-  Printer caps chamber at %d°C: Камера принтера ограничена %d°C
-  Printer caps nozzle at %d°C: Сопло принтера ограничено %d°C
   Printer connection unavailable: Подключение к принтеру недоступно
   Printer database format error: Ошибка формата базы данных принтеров
   Printer database is corrupt: База данных принтеров повреждена
@@ -2257,6 +2293,13 @@ translations:
   Profiles: Профили
   Progress, file, and time remaining: Прогресс, файл и остаток времени
   Prompt before running this macro: Спрашивать перед запуском этого макроса
+  Provide a boolean {}: 'Укажите логическое значение для {}'
+  Provide a bowden length value: 'Укажите длину трубки боудена'
+  Provide a numeric value: 'Укажите числовое значение'
+  Provide a numeric {}: 'Укажите числовое значение для {}'
+  Provide a speed multiplier value: 'Укажите множитель скорости'
+  Provide a {}: 'Укажите {}'
+  Provide {}: 'Укажите {}'
   Pulling filament back: Откат филамента
   Purge: Продуть
   Purge & Wipe: 'Продувка и очистка'
@@ -2429,6 +2472,7 @@ translations:
   Restoring position: Восстановление позиции
   Resume: Продолжить
   Resume Print: Продолжить печать
+  Resume Requires Restart: 'Для возобновления нужен перезапуск'
   Resume interrupted print?: Продолжить прерванную печать?
   Resume macro not configured: Макрос возобновления не настроен
   Resume preparation failed: Не удалось подготовиться к возобновлению
@@ -2591,6 +2635,8 @@ translations:
   Select a valid number: Выберите корректный номер
   Select a valid number (1-{}): Выберите корректный номер (1-{})
   Select a valid tool: Выберите корректный инструмент
+  Select a valid {}: 'Выберите допустимое значение для {}'
+  Select a {}: 'Выберите {}'
   Select fan: Выберите вентилятор
   Select gate: 'Выбор шлюза'
   Select macro for first button: Выберите макрос для первой кнопки
@@ -2621,6 +2667,7 @@ translations:
     чтобы помочь улучшить HelixScreen.
   Sending...: Отправка...
   Sensor: Датчик
+  Sensor Error: 'Ошибка датчика'
   Sensor Response: Отклик датчика
   Sensor Source: Источник датчика
   Sensor Temperature: Температура датчика
@@ -2642,9 +2689,11 @@ translations:
   Set and watch the bed temperature: Установка и контроль температуры стола
   Set and watch the chamber temperature: Установка и контроль температуры камеры
   Set and watch the nozzle temperature: Установка и контроль температуры сопла
+  Set duration between 1 and {} minutes: 'Установите длительность от 1 до {} минут'
   Set local timezone for time display: Установить часовой пояс для отображения времени
   Set logging verbosity for troubleshooting: Установить уровень детализации журнала
     для устранения неполадок
+  Set temperature between {}°C and {}°C: 'Установите температуру от {}°C до {}°C'
   ? Set the filament type and colour by hand for this slot. If the tag should be readable, re-seat the spool with its label facing the reader once the box is idle
   : Задайте тип и цвет филамента для этого слота вручную. Если метка должна читаться, переустановите катушку этикеткой к считывателю, когда блок простаивает
   Set up: Настроить
@@ -2703,6 +2752,8 @@ translations:
   Slicer: Слайсер
   Slot: Слот
   Slot 1: Слот 1
+  Slot Blocked: 'Слот заблокирован'
+  Slot Not Available: 'Слот недоступен'
   Slot colors, materials, and levels: Цвета, материалы и уровни слотов
   Slots: Слоты
   Small labels help keep controls calm and focused.: Мелкие надписи помогают сохранять
@@ -2736,6 +2787,7 @@ translations:
   'Spool #': Катушка №
   'Spool #{}': 'Катушка #{}'
   Spool Info: Информация о катушке
+  Spool Not Found: 'Катушка не найдена'
   Spool Weight (g): Вес катушки (г)
   Spool archived: Катушка архивирована
   Spool created successfully: Катушка успешно создана
@@ -2744,6 +2796,7 @@ translations:
   Spool saved: Катушка сохранена
   Spool wt (g): Вес катушки (г)
   Spoolman: Spoolman
+  Spoolman Not Available: 'Spoolman недоступен'
   Spoolman Server: Сервер Spoolman
   Spoolman connected!: Spoolman подключен!
   Spoolman found! Configuring...: Spoolman найден! Настройка...
@@ -2836,6 +2889,7 @@ translations:
   System busy — try again: Система занята — попробуйте снова
   System default: Системное по умолчанию
   System detected: Обнаружена система
+  System is {}: 'Состояние системы: {}'
   TANGLE: СПУТЫВАНИЕ
   TD-1 filament color detection: Определение цвета филамента TD-1
   TEMPERATURE SENSORS: ДАТЧИКИ ТЕМПЕРАТУРЫ
@@ -2974,6 +3028,9 @@ translations:
   'These tools have no filament loaded:': 'В эти инструменты не загружен филамент:'
   'These tools have no matching filament loaded:': 'В этих инструментах нет подходящего
     филамента:'
+  This AFC system does not support bypass mode: 'Эта система AFC не поддерживает режим обхода'
+  This CFS firmware exposes no external spool slot: 'Эта прошивка CFS не предоставляет слот для внешней катушки'
+  This Happy Hare system does not support bypass mode: 'Эта система Happy Hare не поддерживает режим обхода'
   This calibration uses the paper friction method to set your Z-offset.: Эта калибровка
     использует метод трения бумаги об сопло для установки Z-смещения.
   This cannot be undone.: Это действие нельзя отменить.
@@ -2990,6 +3047,7 @@ translations:
   This file was sliced for {} but {} is loaded.: Файл нарезан для {}, но загружен
     {}.
   This file was sliced for {}, but {} is loaded. It will print slower and hotter than the loaded spool needs.: Файл нарезан для {}, но загружен {}. Печать будет медленнее и горячее, чем требуется загруженной катушке.
+  This firmware can only switch slots by loading them: 'Эта прошивка может переключать слоты только загрузкой'
   ? This installs the HelixScreen helper macros on the printer and adds them to printer.cfg. A print is running, so Klipper restarts after it finishes.
   : 'Это установит вспомогательные макросы HelixScreen на принтер и добавит их в printer.cfg. Идёт печать, поэтому Klipper перезапустится после её завершения.'
   This installs the HelixScreen helper macros on the printer, adds them to printer.cfg, and restarts Klipper.: 'Это установит вспомогательные макросы HelixScreen на принтер, добавит их в printer.cfg и перезапустит Klipper.'
@@ -3010,6 +3068,7 @@ translations:
   This replaces the printer's helper macros with the current version and restarts Klipper.: 'Это заменит вспомогательные макросы принтера текущей версией и перезапустит Klipper.'
   ? This replaces the printer's helper macros with the current version. A print is running, so Klipper restarts after it finishes.
   : 'Это заменит вспомогательные макросы принтера текущей версией. Идёт печать, поэтому Klipper перезапустится после её завершения.'
+  This system does not support bypass mode: 'Эта система не поддерживает режим обхода'
   This tool probes each bed screw and tells you how much to adjust.: Этот инструмент
     проверяет каждый винт стола и показывает, насколько его нужно отрегулировать.
   ? This will apply the Z-offset to your endstop and restart Klipper to save the configuration.
@@ -3058,8 +3117,10 @@ translations:
   Timelapse render failed: Не удалось отрендерить таймлапс
   'Timelapse render failed: {}': 'Не удалось отрендерить таймлапс: {}'
   Timelapse rendered successfully: Таймлапс успешно отрендерен
+  Timeout: 'Время ожидания истекло'
   Timezone: Часовой пояс
   Tip Forming: 'Формирование кончика'
+  Tip Forming Failed: 'Не удалось сформировать кончик'
   Tip shaping configuration: 'Настройка формирования кончика'
   'Tip:': 'Совет:'
   Tips: 'Советы'
@@ -3076,6 +3137,7 @@ translations:
   Too humid: Слишком влажно
   Too soft - pluck harder: Слишком слабо - щипните сильнее
   Tool: Инструмент
+  Tool Change Failed: 'Ошибка смены инструмента'
   Tool Changer: Сменщик инструментов
   Tool Switcher: 'Переключатель инструментов'
   'Tool change failed: {}': 'Ошибка смены инструмента: {}'
@@ -3116,6 +3178,7 @@ translations:
   Turn Off WiFi?: Выключить WiFi?
   Turn On: Включить
   Turn On LEDs: 'Включить LED'
+  Turn endless spool on, then set the backup gate: 'Включите бесконечную катушку, затем задайте резервный шлюз'
   Turn on LEDs when printer starts: Включать LED при запуске принтера
   Turn the extruder heater off after a load or unload finishes: Выключать нагреватель экструдера после загрузки или выгрузки
   Turn the picture to match how the screen is mounted. Applies after restart.: Поворачивает изображение в соответствии с положением экрана. Применяется после перезапуска.
@@ -3151,18 +3214,22 @@ translations:
   'Unit ': 'Узел '
   'Units: %d   Boxes: %d   Dryers: %d': ''
   Unknown: Неизвестно
+  Unknown Error: 'Неизвестная ошибка'
   Unknown Event: Неизвестное событие
   Unknown Spool: Неизвестная катушка
   Unknown Step: Неизвестный шаг
   Unknown error: Неизвестная ошибка
   Unload: Выгрузить
   Unload Distance: 'Расстояние выгрузки'
+  Unload Failed: 'Не удалось выгрузить'
   Unload Filament: Выгрузить филамент
   Unload failed: Ошибка выгрузки
   Unload filament: 'Выгрузка филамента'
+  Unload from toolhead first: 'Сначала выгрузите из печатающей головки'
   Unload macro not configured: Макрос выгрузки не настроен
   Unload may still be running — response timed out: Выгрузка может ещё выполняться
     — время ожидания истекло
+  Unload the CFS filament before enabling bypass: 'Выгрузите филамент CFS перед включением обхода'
   Unloading: Выгрузка
   Unloading Start Speed: 'Начальная скорость выгрузки'
   Unloading before bypass...: Выгрузка перед байпасом...
@@ -3197,6 +3264,7 @@ translations:
   Use Android native keyboard for text input: Использовать нативную клавиатуру Android
     для ввода текста
   Use G10/G11 firmware retraction: Использовать аппаратный ретракт G10/G11
+  Use Unload before Eject: 'Используйте «Выгрузить» перед «Извлечь»'
   Use printer type to select image: Использовать тип принтера для выбора изображения
   VM Peak: Пик VM
   VM Size: Размер VM
@@ -3238,6 +3306,8 @@ translations:
   WLED Preset: Пресет WLED
   WPA/WPA2: 'WPA/WPA2'
   WPA3: 'WPA3'
+  Wait for config to load: 'Дождитесь загрузки конфигурации'
+  Wait for current operation to complete or use cancel: 'Дождитесь завершения текущей операции или используйте отмену'
   Wait for the current filament operation to finish: Дождитесь завершения текущей операции с филаментом
   Wait for the current operation to complete: Дождитесь завершения текущей операции
   Wait for the current operation to complete or cancel it first: Дождитесь завершения текущей операции или сначала отмените её
@@ -3303,6 +3373,7 @@ translations:
   Working...: Выполнение...
   Write failed at chunk {}: Не удалось записать в блоке {}
   Wrong PIN: Неверный PIN
+  Wrong State: 'Неверное состояние'
   Wrong media: Неверный носитель
   X: X
   X Axis: Ось X
