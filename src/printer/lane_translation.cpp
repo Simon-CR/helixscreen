@@ -108,6 +108,24 @@ template <typename Fn> void for_each_field(Fn&& fn) {
 /// True when this row's translation does not carry the field.
 template <typename Member> constexpr bool skipped = std::is_null_pointer_v<Member>;
 
+struct LockKeyNames {
+    const char* color;
+    const char* material;
+};
+
+constexpr LockKeyNames lock_key_names(LegacyLockKeys keys) {
+    return keys == LegacyLockKeys::LocalCache
+               ? LockKeyNames{"user_locked_color", "user_locked_material"}
+               : LockKeyNames{"helix_locked_color", "helix_locked_material"};
+}
+
+/// True only when @p key is present on @p wire and says true. An absent, null
+/// or false key is not a declaration of authorship, whatever the parsed
+/// struct defaulted it to.
+bool locked(const nlohmann::json& wire, const char* key) {
+    return wire.contains(key) && helix::json_util::safe_bool(wire, key, false);
+}
+
 } // namespace
 
 Observation user_edit_observation(const SlotInfo& original, const SlotInfo& edited) {
@@ -148,7 +166,7 @@ Observation user_edit_observation(const SlotInfo& original, const SlotInfo& edit
 }
 
 ObservationSource classify_declaration(const FilamentSlotOverride& record,
-                                       const nlohmann::json& wire) {
+                                       const nlohmann::json& wire, LegacyLockKeys keys) {
     if (record.spoolman_id > 0) {
         return ObservationSource::Spoolman;
     }
@@ -158,16 +176,15 @@ ObservationSource classify_declaration(const FilamentSlotOverride& record,
     // declaration. safe_bool supplies the truthiness rule the parser itself
     // uses, so a non-boolean lock value classifies the same way here as it
     // did on load, rather than disagreeing with the parser on the same key.
-    const auto locked = [&wire](const char* key) {
-        return wire.contains(key) && helix::json_util::safe_bool(wire, key, false);
-    };
-    return (locked("helix_locked_color") || locked("helix_locked_material"))
+    const LockKeyNames lock = lock_key_names(keys);
+    return (locked(wire, lock.color) || locked(wire, lock.material))
                ? ObservationSource::LocalUser
                : ObservationSource::VendorCache;
 }
 
-Observation declared_from_record(const FilamentSlotOverride& record, const nlohmann::json& wire) {
-    Observation obs(classify_declaration(record, wire));
+Observation declared_from_record(const FilamentSlotOverride& record, const nlohmann::json& wire,
+                                 LegacyLockKeys keys) {
+    Observation obs(classify_declaration(record, wire, keys));
 
     // A stored record has no before-value, so what it carries is what it
     // declares. Every field defaults to something value-shaped (empty string,
@@ -195,6 +212,101 @@ Observation declared_from_record(const FilamentSlotOverride& record, const nlohm
         }
     });
     return obs;
+}
+
+LaneSources sources_from_record(const FilamentSlotOverride& record, const nlohmann::json& wire,
+                                LegacyLockKeys keys) {
+    LaneSources sources;
+
+    // A weight is a measurement, never a declaration, whether the lane is
+    // linked or not: the meter and Spoolman both refresh it independently of
+    // who owns the rest of the record's identity.
+    if (is_declarable_weight(record.remaining_weight_g) ||
+        is_declarable_weight(record.total_weight_g)) {
+        Observation metered(ObservationSource::Metered);
+        if (is_declarable_weight(record.remaining_weight_g)) {
+            metered.remaining_weight_g = record.remaining_weight_g;
+        }
+        if (is_declarable_weight(record.total_weight_g)) {
+            metered.total_weight_g = record.total_weight_g;
+        }
+        sources.apply(metered);
+    }
+
+    if (record.spoolman_id > 0) {
+        // The rest of a linked lane's identity is wholly the server's; its
+        // lock flags record that a colour rode in on the binding, not that a
+        // person chose it, so they are not consulted here either. The weight
+        // fields are stripped back off: they were already filed above, and
+        // declared_from_record's uniform per-field walk would otherwise
+        // refile them under Spoolman too.
+        Observation server = declared_from_record(record, wire, keys);
+        server.remaining_weight_g.reset();
+        server.total_weight_g.reset();
+        sources.apply(server);
+        return sources;
+    }
+
+    // Colour and material each carry their own lock key, so one record can
+    // declare one field and merely cache the other.
+    const LockKeyNames lock = lock_key_names(keys);
+    const bool color_locked = locked(wire, lock.color);
+    const bool material_locked = locked(wire, lock.material);
+
+    Observation user(ObservationSource::LocalUser);
+    Observation cache(ObservationSource::VendorCache);
+    bool have_user = false;
+    bool have_cache = false;
+
+    if (record.color_set && is_declarable_color(record.color_rgb)) {
+        Observation& target = color_locked ? user : cache;
+        target.color_rgb = record.color_rgb;
+        if (!record.color_name.empty()) {
+            target.color_name = record.color_name;
+        }
+        (color_locked ? have_user : have_cache) = true;
+    }
+    if (!record.material.empty()) {
+        Observation& target = material_locked ? user : cache;
+        target.material = record.material;
+        (material_locked ? have_user : have_cache) = true;
+    }
+
+    // Firmware has no concept of a catalog product, so a value here is always
+    // a user pick regardless of what the lock keys say.
+    if (!record.catalog_id.empty() || !record.product_name.empty()) {
+        if (!record.catalog_id.empty()) {
+            user.catalog_id = record.catalog_id;
+        }
+        if (!record.product_name.empty()) {
+            user.product_name = record.product_name;
+        }
+        have_user = true;
+    }
+
+    // Brand, spool name and vendor id carry no authorship signal. A cache
+    // never outranks the thing it caches, so a wrong guess here is corrected
+    // by the next declaration instead of pinned forever.
+    if (!record.brand.empty() || !record.spool_name.empty() || record.spoolman_vendor_id > 0) {
+        if (!record.brand.empty()) {
+            cache.brand = record.brand;
+        }
+        if (!record.spool_name.empty()) {
+            cache.spool_name = record.spool_name;
+        }
+        if (record.spoolman_vendor_id > 0) {
+            cache.spoolman_vendor_id = record.spoolman_vendor_id;
+        }
+        have_cache = true;
+    }
+
+    if (have_user) {
+        sources.apply(user);
+    }
+    if (have_cache) {
+        sources.apply(cache);
+    }
+    return sources;
 }
 
 bool is_declarable_color(uint32_t rgb) {
