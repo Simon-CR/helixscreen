@@ -72,3 +72,16 @@ write_manifest() {
     run bash "$GATE" --root "$FIXTURE"
     [ "$status" -eq 1 ] || fail "empty needed-set must fail, got $status: $output"
 }
+
+@test "regen_text_fonts fails when the charset extractor fails" {
+    # paste always exits 0, so a piped capture hides a failed scan: the bake
+    # then skips on the empty set and the script still prints Done over stale
+    # fonts. python3 has exactly one call in the script, so a failing shim
+    # isolates the extractor, and the script exits before any bake or font
+    # download runs.
+    mock_command_fail "python3"
+    run bash scripts/regen_text_fonts.sh
+    [ "$status" -ne 0 ]
+    grep -q "cjk_charset.py failed" <<<"$output"
+    refute_sh 'grep -q "Done!" <<<"'"$output"'"'
+}
