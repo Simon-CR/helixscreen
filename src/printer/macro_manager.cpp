@@ -221,7 +221,9 @@ void MacroManager::install_files(SuccessCallback on_success, ErrorCallback on_er
     spdlog::info("[HelixMacroManager] Staging macro files...");
 
     // upload_macro_file() lands both callbacks on the main thread, so this
-    // continuation (and everything it chains into) runs there.
+    // continuation runs there. Every chain that follows hops its own terminal
+    // callbacks to main too (see the queue pin test), because the caller's
+    // continuation touches LVGL-adjacent state.
     upload_macro_file(
         [this, on_success, on_error]() {
             spdlog::info("[HelixMacroManager] Macro file uploaded, adding include...");
@@ -356,9 +358,11 @@ void MacroManager::add_include_to_config(SuccessCallback on_success, ErrorCallba
             std::string include_line = "[include " + std::string(HELIX_MACROS_FILENAME) + "]";
             if (content.find(include_line) != std::string::npos) {
                 spdlog::info("[HelixMacroManager] Include line already present in printer.cfg");
-                if (on_success) {
-                    on_success();
-                }
+                token.defer("MacroManager::include_already_present", [on_success]() {
+                    if (on_success) {
+                        on_success();
+                    }
+                });
                 return;
             }
 
@@ -475,9 +479,11 @@ void MacroManager::remove_include_from_config(SuccessCallback on_success, ErrorC
             size_t pos = content.find(include_line);
             if (pos == std::string::npos) {
                 spdlog::info("[HelixMacroManager] Include line not found in printer.cfg");
-                if (on_success) {
-                    on_success();
-                }
+                token.defer("MacroManager::include_not_found", [on_success]() {
+                    if (on_success) {
+                        on_success();
+                    }
+                });
                 return;
             }
 
@@ -497,53 +503,66 @@ void MacroManager::remove_include_from_config(SuccessCallback on_success, ErrorC
                           line_end);
 
             // Defer the upload kick-off to main thread (needs api_)
-            token.defer("MacroManager::remove_include_upload",
-                        [this, on_success, on_error,
-                         modified_content = std::move(modified_content)]() mutable {
-                            // Upload modified printer.cfg
-                            api_.transfers().upload_file_with_name(
-                                "config", "", "printer.cfg", modified_content,
-                                // Upload success
-                                [on_success]() {
-                                    spdlog::info("[HelixMacroManager] Successfully removed "
-                                                 "include from printer.cfg");
-                                    if (on_success) {
-                                        on_success();
-                                    }
-                                },
-                                // Upload error
-                                [on_error](const MoonrakerError& err) {
-                                    spdlog::error("[HelixMacroManager] Failed to upload modified "
-                                                  "printer.cfg: {}",
-                                                  err.message);
-                                    if (on_error) {
-                                        on_error(err);
-                                    }
-                                });
-                        });
+            token.defer("MacroManager::remove_include_upload", [this, on_success, on_error,
+                                                                modified_content = std::move(
+                                                                    modified_content)]() mutable {
+                // Upload modified printer.cfg
+                api_.transfers().upload_file_with_name(
+                    "config", "", "printer.cfg", modified_content,
+                    lifetime_.bg_cb("MacroManager::remove_include_done",
+                                    [on_success]() {
+                                        spdlog::info("[HelixMacroManager] Successfully removed "
+                                                     "include from printer.cfg");
+                                        if (on_success) {
+                                            on_success();
+                                        }
+                                    }),
+                    lifetime_.bg_cb("MacroManager::remove_include_failed",
+                                    [on_error](const MoonrakerError& err) {
+                                        spdlog::error(
+                                            "[HelixMacroManager] Failed to upload modified "
+                                            "printer.cfg: {}",
+                                            err.message);
+                                        if (on_error) {
+                                            on_error(err);
+                                        }
+                                    }));
+            });
         },
-        // Download error
-        [on_error](const MoonrakerError& err) {
-            spdlog::error("[HelixMacroManager] Failed to download printer.cfg: {}", err.message);
-            if (on_error) {
-                on_error(err);
-            }
-        });
+        // Download error - fires on the HTTP lane; hop the caller's continuation.
+        lifetime_.bg_cb("MacroManager::remove_include_download_failed",
+                        [on_error](const MoonrakerError& err) {
+                            spdlog::error("[HelixMacroManager] Failed to download printer.cfg: {}",
+                                          err.message);
+                            if (on_error) {
+                                on_error(err);
+                            }
+                        }));
 }
 
 void MacroManager::delete_macro_file(SuccessCallback on_success, ErrorCallback on_error) {
-    // Use IMoonrakerAPI to delete the file
-    api_.files().delete_file(std::string("config/") + HELIX_MACROS_FILENAME, on_success,
-                             [on_success, on_error](const MoonrakerError& err) {
-                                 // File might not exist - that's OK for uninstall
-                                 if (err.type == MoonrakerErrorType::FILE_NOT_FOUND) {
-                                     spdlog::debug(
-                                         "[HelixMacroManager] Macro file already deleted");
-                                     on_success(); // Continue with success path
-                                 } else {
-                                     on_error(err);
-                                 }
-                             });
+    // Use IMoonrakerAPI to delete the file. Both completions hop to main like
+    // every other terminal callback in this class.
+    api_.files().delete_file(
+        std::string("config/") + HELIX_MACROS_FILENAME,
+        lifetime_.bg_cb("MacroManager::delete_done",
+                        [on_success]() {
+                            if (on_success) {
+                                on_success();
+                            }
+                        }),
+        lifetime_.bg_cb("MacroManager::delete_failed",
+                        [on_success, on_error](const MoonrakerError& err) {
+                            // File might not exist - that's OK for uninstall
+                            if (err.type == MoonrakerErrorType::FILE_NOT_FOUND) {
+                                spdlog::debug("[HelixMacroManager] Macro file already deleted");
+                                if (on_success) {
+                                    on_success(); // Continue with success path
+                                }
+                            } else if (on_error) {
+                                on_error(err);
+                            }
+                        }));
 }
 
 } // namespace helix

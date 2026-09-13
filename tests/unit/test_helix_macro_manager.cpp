@@ -564,6 +564,24 @@ TEST_CASE_METHOD(MacroStageFixture,
         CHECK(staged);
     }
 
+    SECTION("install_files with the include already present") {
+        // The fast path: download finds the include, skips backup and splice.
+        // Its completion fires from the download callback, which runs INSIDE
+        // the first drain (as the second hop of the chain) - so the wrap is
+        // pinned by drain granularity: one pass may run the download, but the
+        // completion must land on a LATER pass, not inline inside it.
+        api_.set_config_files(
+            {{"printer.cfg", std::string("[include helix_macros.cfg]\n") + PRINTER_CFG}});
+        bool staged = false;
+        manager_.install_files([&] { staged = true; }, [](const MoonrakerError&) {});
+        CHECK_FALSE(staged);
+        helix::ui::UpdateQueue::instance().drain(); // runs the upload + download hops
+        CHECK_FALSE(staged);                        // the completion itself must still be queued
+        settle();
+        CHECK(staged);
+        CHECK(backup_count() == 0); // the fast path rewrites nothing
+    }
+
     SECTION("request_restart") {
         bool done = false;
         manager_.request_restart([&] { done = true; }, [](const MoonrakerError&) {});
