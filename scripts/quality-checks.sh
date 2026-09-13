@@ -1612,6 +1612,45 @@ echo ""
 # ====================================================================
 # Namespace: HelixScreen declarations live under helix::
 # ====================================================================
+# ====================================================================
+# Bats Inert Assertions
+# ====================================================================
+# A mid-body [[ ]] is not a failure on bash 3.2, which is what macOS ships and
+# what build.yml and nightly.yml run: only the LAST statement of a @test body
+# decides the result, so every assertion above it passes whatever it evaluates
+# to. This branch carries 270 such sites out of 848 examined, so a third of the
+# shell suite's assertions cannot fail their test on that platform.
+#
+# A ratchet, not a wall. The debt predates the gate and gating at zero would
+# mean converting 270 sites before anything else could land. The number must
+# never go up; lower it when a file moves to the contains/lacks helpers in
+# tests/shell/helpers.bash.
+qc_bats_inert() {
+  local EXIT_CODE=0
+SECTION_START=$(date +%s)
+echo -n "ð«¥ Checking bats assertions bash 3.2 swallows..."
+
+if [ -f "scripts/check_bats_inert_assertions.py" ]; then
+  if python3 scripts/check_bats_inert_assertions.py --max-allowed 270 >/tmp/bats_inert.out 2>&1; then
+    section_time $SECTION_START
+    echo ""
+    cat /tmp/bats_inert.out
+  else
+    section_time $SECTION_START
+    echo ""
+    cat /tmp/bats_inert.out
+    EXIT_CODE=1
+  fi
+else
+  section_time $SECTION_START
+  echo ""
+  echo "â ï¸  check_bats_inert_assertions.py not found - skipping"
+fi
+
+echo ""
+  return $EXIT_CODE
+}
+
 qc_namespace() {
   local EXIT_CODE=0
 SECTION_START=$(date +%s)
@@ -1649,8 +1688,14 @@ if [ -f "scripts/check_namespace_compliance.py" ]; then
   # display_rotation_degrees, beside the global inline rotation helpers already
   # counted there, and ui_gcode_viewer_clear_tool_colors and
   # ui_gcode_viewer_get_tool_colors (declaration + definition each), two more of
-  # the same global ui_gcode_viewer_* C-API family.
-  if python3 scripts/check_namespace_compliance.py --max-allowed 2334 --summary >/tmp/namespace_check.out 2>&1; then
+  # the same global ui_gcode_viewer_* C-API family. 2334 -> 2347 is drift that
+  # accumulated while this gate could not run at all: the wiring below is
+  # guarded on scripts/check_namespace_compliance.py, and that script was not
+  # on this branch, so every run took the not-found path and reported a skip.
+  # The baseline above was maintained by hand against a gate that never
+  # executed. The script is present now; 2347 is what the tree actually
+  # measures, and it goes down from here.
+  if python3 scripts/check_namespace_compliance.py --max-allowed 2347 --summary >/tmp/namespace_check.out 2>&1; then
     section_time $SECTION_START
     echo ""
     tail -1 /tmp/namespace_check.out
@@ -2930,7 +2975,7 @@ echo ""
   return $EXIT_CODE
 }
 
-QC_ALL="qc_phase1 qc_xml_const qc_xml_attr qc_dup_names qc_xml_linter qc_xml_subtests qc_hidden_tests qc_overlay_width qc_icon_names qc_design_pixels qc_phase2 qc_icon_font qc_mdi_codepoints qc_code_style qc_mem_safety qc_null_safety qc_l081 qc_net_pii qc_decl_ui qc_namespace qc_spdlog_only qc_design_tokens qc_test_mirrors qc_test_tautology qc_test_widget_registry qc_doc_refs qc_lvgl_event_codes qc_translation_fmt qc_base_locale qc_translation_coverage qc_shellcheck qc_installer_reachability qc_patch_drift qc_workflow_submodules"
+QC_ALL="qc_phase1 qc_xml_const qc_xml_attr qc_dup_names qc_xml_linter qc_xml_subtests qc_hidden_tests qc_overlay_width qc_icon_names qc_design_pixels qc_phase2 qc_icon_font qc_mdi_codepoints qc_code_style qc_mem_safety qc_null_safety qc_l081 qc_net_pii qc_decl_ui qc_namespace qc_spdlog_only qc_design_tokens qc_test_mirrors qc_test_tautology qc_test_widget_registry qc_doc_refs qc_lvgl_event_codes qc_translation_fmt qc_base_locale qc_translation_coverage qc_shellcheck qc_installer_reachability qc_patch_drift qc_workflow_submodules qc_bats_inert"
 
 QC_PARALLEL=""
 for fn in $QC_ALL; do
@@ -2972,6 +3017,10 @@ qc_trigger_re() {
     qc_translation_coverage)
                         echo '^ui_xml/|^src/|^translations/|^scripts/translation_sync\.py$|^scripts/translations/' ;;
     qc_shellcheck)      echo '\.(sh|bats)$' ;;
+    # The gate reads every .bats file, so any of them can change the count;
+    # helpers.bash because contains/lacks are the fix it points at, and the
+    # script itself because editing the detector changes what it finds.
+    qc_bats_inert)      echo '\.bats$|^tests/shell/helpers\.bash$|^scripts/check_bats_inert_assertions\.py$' ;;
     qc_installer_reachability)
                         echo '^scripts/lib/installer/|^scripts/install-dev\.sh$|^scripts/bundle-(un)?installer\.sh$|^scripts/check_installer_step_reachability\.py$' ;;
     qc_patch_drift)     echo '^patches/|mk/patches\.mk|check_patch_drift\.py' ;;
