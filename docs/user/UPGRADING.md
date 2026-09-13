@@ -8,7 +8,7 @@ This guide helps you upgrade HelixScreen to a newer version.
 
 ## Quick Upgrade
 
-On any host with direct internet access:
+The preferred ways to update are inside the app itself (**Settings > Help & About > About > Check for Updates**) or the Mainsail/Fluidd update manager. From the command line instead, on any host with direct internet access:
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/prestonbrown/helixscreen/main/scripts/install.sh | sh -s -- --update
@@ -35,7 +35,7 @@ The easiest solution is to delete your config file and let the wizard create a n
 sudo rm ~/helixscreen/config/settings.json
 sudo systemctl restart helixscreen
 ```
-> If HelixScreen was installed without a Klipper ecosystem present, the config is at the fallback location `/opt/helixscreen/config/settings.json` instead.
+> If HelixScreen runs as root (the `/opt/helixscreen` install), the config is at `/opt/helixscreen/config/settings.json` instead.
 
 **Adventurer 5M (Forge-X):**
 ```bash
@@ -48,6 +48,7 @@ rm /opt/helixscreen/config/settings.json
 rm /root/printer_software/helixscreen/config/settings.json
 /etc/init.d/S80helixscreen restart
 ```
+(Klipper Mod v00.06 and newer installs to `/opt/helixscreen`, so its settings file is `/opt/helixscreen/config/settings.json`.)
 
 **Creality K1 (Simple AF):**
 ```bash
@@ -62,8 +63,9 @@ After restarting, the wizard will guide you through setup again. Your printer se
 If you can access the settings panel before the wizard appears:
 
 1. Navigate to **Settings** (gear icon in sidebar)
-2. Scroll down to **Factory Reset**
-3. Tap **Factory Reset** and confirm
+2. Tap **System**
+3. Scroll down to **Factory Reset**
+4. Tap **Factory Reset** and confirm
 
 This clears all HelixScreen settings and restarts the wizard.
 
@@ -106,16 +108,16 @@ curl -sSL https://raw.githubusercontent.com/prestonbrown/helixscreen/main/script
 The command above keeps your existing `settings.json`. To reinstall a specific version **and** reset HelixScreen's settings to defaults at the same time, use `--clean` instead of `--update`:
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/prestonbrown/helixscreen/main/scripts/install.sh | sh -s -- --clean --version v1.2.0
+curl -sSL https://raw.githubusercontent.com/prestonbrown/helixscreen/main/scripts/install.sh | sh -s -- --clean --yes --version v1.2.0
 ```
 
-`--clean` removes HelixScreen's settings and caches (it asks for confirmation first), then installs the version you specified. Your Klipper config, Moonraker settings, print history, and G-code files are **not** affected.
+`--yes` is required because a piped command cannot ask for confirmation; if you download the script and run it interactively over SSH, you get the confirmation prompt instead. `--clean` removes HelixScreen's settings and caches, then installs the version you specified. Your Klipper config, Moonraker settings, print history, and G-code files are **not** affected.
 
 ---
 
 ## Checking Your Version
 
-**On the touchscreen:** Settings → scroll down → Version row shows current version
+**On the touchscreen:** **Settings > Help & About > About** shows the current version
 
 **Via SSH:** run `<install-path>/bin/helix-screen --version`. The binary's location varies by platform; each printer's install guide lists its path.
 

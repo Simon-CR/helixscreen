@@ -27,6 +27,8 @@ The installer automatically detects which firmware you're running and configures
 | **Forge-X** | GuppyScreen | `/opt/helixscreen/` | `S90helixscreen` |
 | **Klipper Mod** | KlipperScreen | `/root/printer_software/helixscreen/` | `S80helixscreen` |
 
+> Klipper Mod **v00.06 and newer** installs to `/opt/helixscreen/` (still `S80helixscreen`); `/root/printer_software/helixscreen/` is the v00.05-and-older location.
+
 On Klipper Mod, swapping KlipperScreen for HelixScreen frees a substantial chunk of the AD5M's limited RAM; see [Memory Constraints](#memory-constraints) below.
 
 ### Forge-X: Set Up GUPPY Mode First
@@ -200,10 +202,10 @@ After reboot, HelixScreen will start automatically on the touchscreen. Use the t
 
 ## What the Installer Does
 
-Before proceeding, the installer validates that Klipper and Moonraker are running; if either is missing, you'll get a clear error message explaining what's needed.
+Before proceeding, the installer checks that Klipper and Moonraker appear to be running and warns if either is missing; a piped install (`curl ... | sh`) continues after the warning, while an interactive one asks you to confirm.
 
 **On Forge-X:**
-- Verifies Forge-X is installed and sets display mode to `GUPPY`
+- Sets Forge-X's display mode to `GUPPY` if it is not already (Forge-X itself must be installed and configured first; see [Prerequisites](#prerequisites))
 - Stops and disables GuppyScreen (`chmod -x` on init scripts)
 - Disables stock Flashforge UI in `/opt/auto_run.sh`
 - Patches `/opt/config/mod/.shell/screen.sh` to skip backlight commands when HelixScreen is running (prevents Forge-X's delayed_gcode from dimming the screen)
@@ -227,21 +229,21 @@ AD5M uses SysV init (BusyBox), not systemd. The service script name depends on y
 **Forge-X:**
 ```bash
 /etc/init.d/S90helixscreen start|stop|restart|status
-tail -100 /opt/helixscreen/logs/launcher.log       # launcher / crash capture
-grep helix-screen /var/log/messages | tail -100    # structured app log
+tail -100 /opt/helixscreen/logs/launcher.log    # launcher / crash capture
+tail -100 /data/helixscreen/logs/helix.log      # structured app log
 ```
 
 **Klipper Mod:**
 ```bash
 /etc/init.d/S80helixscreen start|stop|restart|status
-tail -100 /opt/helixscreen/logs/launcher.log
-grep helix-screen /var/log/messages | tail -100
+tail -100 /root/printer_software/helixscreen/logs/launcher.log
+tail -100 /data/helixscreen/logs/helix.log
 ```
 
 There are two log streams; collect both when reporting an issue:
 
-- **Launcher / crash capture** (startup, crash output): `/opt/helixscreen/logs/launcher.log`
-- **Structured app log:** the AD5M's syslog is persistent in `/var/log/messages` (unlike the BusyBox in-memory `logread` on some other printers), so `grep helix-screen /var/log/messages` is the command
+- **Launcher / crash capture** (startup, crash output): `/opt/helixscreen/logs/launcher.log` on Forge-X, `/root/printer_software/helixscreen/logs/launcher.log` on Klipper Mod
+- **Structured app log:** `/data/helixscreen/logs/helix.log` on both firmwares. The app writes this file directly to flash; the system syslog only captures the earliest startup output, before the app's own logging takes over
 
 ### Disabling the Previous UI Manually
 
@@ -312,10 +314,12 @@ The bundled installer's `--uninstall` removes HelixScreen and restores your prev
 
 ```bash
 # Forge-X:
-/opt/helixscreen/install.sh --uninstall
+cp /opt/helixscreen/install.sh /tmp/install.sh && sh /tmp/install.sh --uninstall
 # Klipper Mod:
-/root/printer_software/helixscreen/install.sh --uninstall
+cp /root/printer_software/helixscreen/install.sh /tmp/install.sh && sh /tmp/install.sh --uninstall
 ```
+
+> **Why copy it out?** The installer refuses to run `--uninstall` from inside the install directory: it would delete the script that is running it. Copying it to `/tmp` first avoids that.
 
 On Forge-X, the uninstaller reverses everything listed in [What the Installer Does](#what-the-installer-does), including unpatching `screen.sh` and restoring backlight control.
 
@@ -380,12 +384,12 @@ The AD5M has limited RAM (~108MB total, with only ~24MB free after Klipper, Moon
 **Measured memory comparison (VmRSS):**
 | Component | KlipperScreen | HelixScreen |
 |-----------|---------------|-------------|
-| Screen UI | ~50 MB (Python + X Server) | **~10 MB** (C++) |
+| Screen UI | ~50 MB (Python + X Server) | **~15 MB** (C++) |
 | **Total** | ~50 MB | **~10 MB** |
 
-On Klipper Mod systems, switching from KlipperScreen to HelixScreen frees approximately **40 MB** of RAM, a significant improvement on a memory-constrained device!
+On Klipper Mod systems, switching from KlipperScreen to HelixScreen frees approximately **35 MB** of RAM, a significant improvement on a memory-constrained device!
 
-> **Note:** The 10 MB footprint includes the full LVGL widget tree, draw buffers for UI elements (gradients, color pickers, AMS spool icons), and runtime state for all panels. Images are loaded on-demand, not pre-cached.
+> **Note:** The ~15 MB footprint includes the full LVGL widget tree, draw buffers for UI elements (gradients, color pickers, AMS spool icons), and runtime state for all panels. Images are loaded on-demand, not pre-cached.
 
 If you experience memory issues:
 - Reduce print history retention in Moonraker

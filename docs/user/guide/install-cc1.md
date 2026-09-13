@@ -51,30 +51,32 @@ curl -sSL https://raw.githubusercontent.com/prestonbrown/helixscreen/main/script
 COSMOS's `config-manager` tool lets you switch between installed UIs without uninstalling HelixScreen:
 
 ```bash
-config-manager ui screen_ui grumpyscreen   # or atomscreen, guppyscreen, helixscreen
+config-manager ui screen_ui grumpyscreen   # or atomscreen, guppyscreen - any of the three launches HelixScreen via its wrapper
 /etc/init.d/gui-switcher restart
 ```
 
 ## What the Installer Does on This Printer
 
-The installer auto-detects COSMOS, installs HelixScreen to `/user-resource/helixscreen/`, and registers it with `gui-switcher` as the selected touch UI. It stops the currently active UI (grumpyscreen, atomscreen, or guppyscreen) and starts HelixScreen in its place.
+The installer auto-detects COSMOS, installs HelixScreen to `/user-resource/helixscreen/`, and registers it with `gui-switcher` through an allowlist wrapper (see Quirks below). It stops the currently active UI (grumpyscreen, atomscreen, or guppyscreen) and starts HelixScreen in its place.
 
 - Install directory: `/user-resource/helixscreen/` (`/` is read-only squashfs on COSMOS)
-- Init script: `/etc/init.d/helixscreen` (LSB-style, PIDFILE=`/var/run/gui.pid` for gui-switcher compatibility)
+- Init script: `/etc/init.d/helixscreen`; the watchdog also publishes its PID at `/var/run/gui.pid` so `gui-switcher` can stop it
 
 ## Service Control and Logs
 
 ```bash
 /etc/init.d/helixscreen restart
 
-# Structured app log (COSMOS uses BusyBox in-memory syslog)
-logread | grep helix-screen | tail -100
+# Structured app log (written to disk; the in-memory syslog only has early startup)
+tail -100 /user-resource/helixscreen/logs/helix.log
 
 # Launcher / crash capture (startup, crash output)
 tail -100 /user-resource/helixscreen/logs/launcher.log
 ```
 
 ## Updating
+
+Check the installed version on the touchscreen (**Settings > Help & About > About**), or from SSH with `/user-resource/helixscreen/bin/helix-screen --version`.
 
 Re-run the installer with `--update`; it preserves your settings:
 
@@ -94,7 +96,7 @@ The uninstaller reverses the `gui-switcher` registration, including the allowlis
 
 ## Quirks and Notes
 
-- **Moonraker listens on port `80`** on COSMOS directly (no nginx); HelixScreen's `cc1` preset is configured for this
+- **Moonraker listens on port `80`** on COSMOS directly (no nginx). Enter `80` as the port at the wizard's connection step; the `7125` default does not apply on this printer
 - **Factory white-balance calibration**: the `cc1` preset ships with per-channel panel gain so colors look neutral out of the box on the Centauri Carbon's 4.3" panel. No manual tuning needed
 - **The `config-manager` allowlist**: COSMOS's `config-manager` has a fixed allowlist for the `screen_ui` slot. The installer handles this automatically via an init-script wrapper so HelixScreen can be selected without patching COSMOS itself; the uninstaller fully reverses it
 
