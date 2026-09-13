@@ -116,31 +116,33 @@ std::string lane_range_label(LaneNoun noun, int first_index, int last_index) {
 }
 
 std::string lane_count_label(LaneNoun noun, int count) {
-    const char* form = nullptr;
+    // Wide enough for the longest form: ru "Печатающие головки" is 35 bytes.
+    // Each lv_tr() sits inside its snprintf so the format-specifier gate sees
+    // the pair - a format held in a variable between the two is invisible to
+    // it. No default: a new enumerator must fail to compile here, not pass a
+    // null format to snprintf.
+    char buf[64];
     switch (noun) {
     case LaneNoun::Lane:
-        form = lv_tr("%d lanes");
-        break;
+        snprintf(buf, sizeof(buf), lv_tr("%d lanes"), count);
+        return buf;
     case LaneNoun::Gate:
-        form = lv_tr("%d gates");
-        break;
+        snprintf(buf, sizeof(buf), lv_tr("%d gates"), count);
+        return buf;
     case LaneNoun::Tool:
-        form = lv_tr("%d tools");
-        break;
+        snprintf(buf, sizeof(buf), lv_tr("%d tools"), count);
+        return buf;
     case LaneNoun::Feeder:
-        form = lv_tr("%d feeders");
-        break;
+        snprintf(buf, sizeof(buf), lv_tr("%d feeders"), count);
+        return buf;
     case LaneNoun::Toolhead:
-        form = lv_tr("%d toolheads");
-        break;
+        snprintf(buf, sizeof(buf), lv_tr("%d toolheads"), count);
+        return buf;
     case LaneNoun::Slot:
-        form = lv_tr("%d slots");
-        break;
+        snprintf(buf, sizeof(buf), lv_tr("%d slots"), count);
+        return buf;
     }
-    // Wide enough for the longest form: ru "Печатающие головки" is 35 bytes.
-    char buf[64];
-    snprintf(buf, sizeof(buf), form, count);
-    return buf;
+    return {};
 }
 
 LaneNoun active_lane_noun() {
