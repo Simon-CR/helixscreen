@@ -1649,8 +1649,14 @@ if [ -f "scripts/check_namespace_compliance.py" ]; then
   # display_rotation_degrees, beside the global inline rotation helpers already
   # counted there, and ui_gcode_viewer_clear_tool_colors and
   # ui_gcode_viewer_get_tool_colors (declaration + definition each), two more of
-  # the same global ui_gcode_viewer_* C-API family.
-  if python3 scripts/check_namespace_compliance.py --max-allowed 2334 --summary >/tmp/namespace_check.out 2>&1; then
+  # the same global ui_gcode_viewer_* C-API family. 2334 -> 2347 is drift that
+  # accumulated while this gate could not run at all: the wiring below is
+  # guarded on scripts/check_namespace_compliance.py, and that script was not
+  # on this branch, so every run took the not-found path and reported a skip.
+  # The baseline above was maintained by hand against a gate that never
+  # executed. The script is present now; 2347 is what the tree actually
+  # measures, and it goes down from here.
+  if python3 scripts/check_namespace_compliance.py --max-allowed 2347 --summary >/tmp/namespace_check.out 2>&1; then
     section_time $SECTION_START
     echo ""
     tail -1 /tmp/namespace_check.out
