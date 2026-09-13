@@ -1,5 +1,5 @@
 diff --git a/cpputil/hthreadpool.h b/cpputil/hthreadpool.h
-index 8df9871..224cf12 100644
+index 8df9871..87b0cec 100644
 --- a/cpputil/hthreadpool.h
 +++ b/cpputil/hthreadpool.h
 @@ -109,8 +109,16 @@ public:
@@ -56,7 +56,7 @@ index 8df9871..224cf12 100644
              while (status != STOP) {
                  while (status == PAUSE) {
                      std::this_thread::yield();
-@@ -177,14 +200,24 @@ protected:
+@@ -177,14 +200,27 @@ protected:
                      ++idle_thread_num;
                  }
              }
@@ -67,9 +67,12 @@ index 8df9871..224cf12 100644
 +            thread = new std::thread(std::move(worker));
 +        } catch (...) {
 +            // The reservation must not outlive a spawn that produced no
-+            // worker.
++            // worker. Answer false like the cap path: commit() ignores the
++            // return and queues the task regardless, and a rethrown EAGAIN
++            // walks out through commit() into LVGL callbacks that have no
++            // handler between (prestonbrown/helixscreen#724).
 +            --cur_thread_num;
-+            throw;
++            return false;
 +        }
          addThread(thread);
          return true;
