@@ -724,11 +724,14 @@ TEST_CASE("A remembered record carrying a brand is not dropped by its own parser
 
     const auto sources = sources_from_record(rec, wire, LegacyLockKeys::LocalCache);
 
-    // No lock key names material, so it is the cache's; brand carries no
-    // authorship signal either way and is always the cache's.
+    // The record names no declared set, so its brand answers to the lock flag
+    // it does carry: a true one is the evidence a person edited this record, so
+    // the brand is theirs. No lock key names material, so material is the
+    // cache's.
+    REQUIRE(sources.local_user.has_value());
+    REQUIRE(sources.local_user->brand.has_value());
+    CHECK(*sources.local_user->brand == "Kingroon");
     REQUIRE(sources.remembered.has_value());
-    REQUIRE(sources.remembered->brand.has_value());
-    CHECK(*sources.remembered->brand == "Kingroon");
     REQUIRE(sources.remembered->material.has_value());
     CHECK(*sources.remembered->material == "PETG");
 }

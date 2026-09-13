@@ -89,6 +89,28 @@ classify_declaration(const FilamentSlotOverride& record, const nlohmann::json& w
                                               const nlohmann::json& wire,
                                               LegacyLockKeys keys = LegacyLockKeys::LaneData);
 
+/// The declared set a user's edit records: every field the edit supplied whose
+/// authorship has no lock flag of its own.
+///
+/// Colour and material are deliberately absent. FilamentSlotOverride's
+/// user_locked_color / user_locked_material are their declared bits, and those
+/// flags are load-bearing past authorship - a reader of the shared lane_data
+/// namespace keys on their presence to recognise a record as HelixScreen's.
+/// sources_from_record reads each field from whichever of the two homes it
+/// uses, so no caller has to know which is which.
+[[nodiscard]] DeclaredFields declared_fields_supplied(const FilamentSlotOverride& record);
+
+/// @p declared as the JSON array of field names both documents persist, under
+/// `helix_declared` in lane_data and `declared` in the local cache.
+///
+/// Names, not bit positions: the roster's order is an implementation detail
+/// that a stored record must not depend on.
+[[nodiscard]] nlohmann::json declared_field_names(const DeclaredFields& declared);
+
+/// The inverse. A name with no field on this build is ignored rather than
+/// refused, so a record written by a newer build still loads.
+[[nodiscard]] DeclaredFields declared_fields_from_names(const nlohmann::json& names);
+
 /// What a lane-shaped record's colour string says.
 enum class ColorReadingKind {
     Observed,  ///< A colour, in ColorReading::rgb.

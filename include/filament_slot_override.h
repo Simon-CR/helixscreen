@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
 #include <string>
 
@@ -14,6 +15,44 @@ struct SlotInfo;
 } // namespace helix
 
 namespace helix::ams {
+
+// Which of a stored record's fields the user declared, one bit per row of the
+// field roster in lane_translation.cpp.
+//
+// Authorship rides the roster's axis so a newly editable field needs no flag
+// of its own: it gains a bit here by appearing on the roster, and the reader
+// that routes it already walks that list. The bits are positional, but the
+// wire is keyed by field NAME, so a stored record survives a reordering of the
+// roster.
+//
+// Colour and material are the two fields whose authorship does NOT live here:
+// each owns a lock flag below, which a reader of the shared lane_data
+// namespace also keys on to recognise a HelixScreen record. helix::ams::
+// declared_fields_supplied() is the one producer, and lane_translation.cpp is
+// the one place that knows which of the two homes a given field uses.
+class DeclaredFields {
+  public:
+    /// Rows the bitmask can address. The roster static_asserts against it.
+    static constexpr size_t CAPACITY = 16;
+
+    [[nodiscard]] bool test(size_t index) const {
+        return index < CAPACITY && (bits_ & (uint16_t{1} << index)) != 0;
+    }
+    void set(size_t index) {
+        if (index < CAPACITY) {
+            bits_ |= static_cast<uint16_t>(uint16_t{1} << index);
+        }
+    }
+    [[nodiscard]] bool any() const {
+        return bits_ != 0;
+    }
+    [[nodiscard]] bool operator==(const DeclaredFields& other) const {
+        return bits_ == other.bits_;
+    }
+
+  private:
+    uint16_t bits_ = 0;
+};
 
 struct FilamentSlotOverride {
     // User metadata
@@ -79,6 +118,17 @@ struct FilamentSlotOverride {
     // attribute to either auto-mirror or user edit.
     bool user_locked_color = false;
     bool user_locked_material = false;
+    // Authorship for the identity fields that have no lock flag of their own:
+    // brand, spool name and Spoolman vendor id. A field in this set was the
+    // user's word, so the reader files it as a declaration rather than as
+    // something the store merely remembered, and a later firmware frame
+    // stating the same field does not displace it.
+    //
+    // Persistence: `helix_declared` in the lane_data record, `declared` in the
+    // local cache, both an array of field names. Emitted even when empty, so a
+    // reader can tell "this record declares nothing" from "this record predates
+    // the key" and apply the legacy rule only to the latter.
+    DeclaredFields declared;
     // Recommended print temperatures, written into the lane_data record so
     // OrcaSlicer 2.3.2+ can sync them onto the filament preset. Source order
     // (highest to lowest priority): explicit user entry > Spoolman spool's

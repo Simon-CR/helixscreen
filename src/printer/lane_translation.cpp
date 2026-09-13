@@ -8,6 +8,8 @@
 
 #include <cctype>
 #include <cmath>
+#include <cstddef>
+#include <string_view>
 #include <tuple>
 #include <type_traits>
 #include <utility>
@@ -45,20 +47,36 @@ enum class FieldKind {
     Weight,     ///< Negative is the "unknown" sentinel.
 };
 
+/// Where a stored record keeps the answer to "did the user declare this?".
+enum class Authorship {
+    /// Nothing consults a bit for this field: either no translation carries
+    /// it, or its source follows from something other than authorship.
+    Unattributed,
+    /// FilamentSlotOverride::user_locked_color / _material. A reader of the
+    /// shared lane_data namespace keys on these two wire keys to recognise a
+    /// record as ours, so they are load-bearing past authorship and each stays
+    /// the one home for its own field.
+    LockFlag,
+    /// FilamentSlotOverride::declared, addressed by this row's position.
+    DeclaredSet,
+};
+
 /// One field, named once for every translation that carries it. A nullptr
 /// member says that translation does not claim the field, with the reason on
 /// the row.
-template <FieldKind K, typename SlotMember, typename RecordMember, typename ObsMember>
+template <FieldKind K, Authorship A, typename SlotMember, typename RecordMember, typename ObsMember>
 struct FieldRow {
     static constexpr FieldKind kind = K;
-    SlotMember slot;     ///< SlotInfo member the edit path reads
-    RecordMember record; ///< FilamentSlotOverride member the record path reads
-    ObsMember obs;       ///< where both file the value
+    static constexpr Authorship authorship = A;
+    std::string_view name; ///< the field's name on the wire, in `helix_declared`
+    SlotMember slot;       ///< SlotInfo member the edit path reads
+    RecordMember record;   ///< FilamentSlotOverride member the record path reads
+    ObsMember obs;         ///< where both file the value
 };
 
-template <FieldKind K, typename S, typename R, typename O>
-constexpr auto field(S slot, R record, O obs) {
-    return FieldRow<K, S, R, O>{slot, record, obs};
+template <FieldKind K, Authorship A = Authorship::Unattributed, typename S, typename R, typename O>
+constexpr auto field(std::string_view name, S slot, R record, O obs) {
+    return FieldRow<K, A, S, R, O>{name, slot, record, obs};
 }
 
 /// Every Observation field, once. This is the field list both translations
@@ -66,44 +84,89 @@ constexpr auto field(S slot, R record, O obs) {
 /// two places that agree only by convention.
 constexpr auto FIELD_ROSTER = std::make_tuple(
     // Presence is sensed, never declared, so neither translation carries it.
-    field<FieldKind::Untranslated>(nullptr, nullptr, &Observation::present),
-    field<FieldKind::Color>(&SlotInfo::color_rgb, &FilamentSlotOverride::color_rgb,
-                            &Observation::color_rgb),
-    field<FieldKind::Text>(&SlotInfo::color_name, &FilamentSlotOverride::color_name,
+    field<FieldKind::Untranslated>("present", nullptr, nullptr, &Observation::present),
+    field<FieldKind::Color, Authorship::LockFlag>("color_rgb", &SlotInfo::color_rgb,
+                                                  &FilamentSlotOverride::color_rgb,
+                                                  &Observation::color_rgb),
+    // color_name has no authorship of its own: it is the colour's own text and
+    // the record path files it only alongside a colour it can file.
+    field<FieldKind::Text>("color_name", &SlotInfo::color_name, &FilamentSlotOverride::color_name,
                            &Observation::color_name),
-    field<FieldKind::Text>(&SlotInfo::material, &FilamentSlotOverride::material,
-                           &Observation::material),
-    field<FieldKind::Text>(&SlotInfo::brand, &FilamentSlotOverride::brand, &Observation::brand),
-    field<FieldKind::Text>(&SlotInfo::spool_name, &FilamentSlotOverride::spool_name,
-                           &Observation::spool_name),
+    field<FieldKind::Text, Authorship::LockFlag>(
+        "material", &SlotInfo::material, &FilamentSlotOverride::material, &Observation::material),
+    field<FieldKind::Text, Authorship::DeclaredSet>(
+        "brand", &SlotInfo::brand, &FilamentSlotOverride::brand, &Observation::brand),
+    field<FieldKind::Text, Authorship::DeclaredSet>("spool_name", &SlotInfo::spool_name,
+                                                    &FilamentSlotOverride::spool_name,
+                                                    &Observation::spool_name),
     // The edit path refuses catalog_id and product_name by the rule
     // AmsEditOverlay::is_dirty() applies to them: the spool-edit view
     // auto-highlights a product and Save copies whatever is highlighted, so
     // both arrive on commits no person touched them in.
-    field<FieldKind::Text>(nullptr, &FilamentSlotOverride::catalog_id, &Observation::catalog_id),
-    field<FieldKind::Text>(nullptr, &FilamentSlotOverride::product_name,
+    //
+    // Neither needs an authorship bit: firmware has no concept of a catalog
+    // product, so a value in either can only be a user pick and the record
+    // path files it as one outright.
+    field<FieldKind::Text>("catalog_id", nullptr, &FilamentSlotOverride::catalog_id,
+                           &Observation::catalog_id),
+    field<FieldKind::Text>("product_name", nullptr, &FilamentSlotOverride::product_name,
                            &Observation::product_name),
     // A binding change is a whole statement the edit path answers before it
-    // walks any field, so spoolman_id is not one of the fields it walks.
-    field<FieldKind::PositiveId>(nullptr, &FilamentSlotOverride::spoolman_id,
+    // walks any field, so spoolman_id is not one of the fields it walks. The
+    // record path answers it the same way, ahead of any per-field routing, so
+    // it carries no authorship bit either.
+    field<FieldKind::PositiveId>("spoolman_id", nullptr, &FilamentSlotOverride::spoolman_id,
                                  &Observation::spoolman_id),
-    field<FieldKind::PositiveId>(&SlotInfo::spoolman_vendor_id,
-                                 &FilamentSlotOverride::spoolman_vendor_id,
-                                 &Observation::spoolman_vendor_id),
-    field<FieldKind::Weight>(&SlotInfo::remaining_weight_g,
+    field<FieldKind::PositiveId, Authorship::DeclaredSet>(
+        "spoolman_vendor_id", &SlotInfo::spoolman_vendor_id,
+        &FilamentSlotOverride::spoolman_vendor_id, &Observation::spoolman_vendor_id),
+    // A weight is a measurement wherever it came from, so the record path
+    // files both as Metered without asking who wrote them.
+    field<FieldKind::Weight>("remaining_weight_g", &SlotInfo::remaining_weight_g,
                              &FilamentSlotOverride::remaining_weight_g,
                              &Observation::remaining_weight_g),
-    field<FieldKind::Weight>(&SlotInfo::total_weight_g, &FilamentSlotOverride::total_weight_g,
-                             &Observation::total_weight_g));
+    field<FieldKind::Weight>("total_weight_g", &SlotInfo::total_weight_g,
+                             &FilamentSlotOverride::total_weight_g, &Observation::total_weight_g));
 
 static_assert(std::tuple_size_v<decltype(FIELD_ROSTER)> ==
                   std::tuple_size_v<decltype(std::declval<Observation&>().fields())>,
               "every Observation field needs a row above: a field with no row is dropped by "
               "both translations while the store amends it, with nothing red");
 
+static_assert(std::tuple_size_v<decltype(FIELD_ROSTER)> <= DeclaredFields::CAPACITY,
+              "DeclaredFields addresses a roster row per bit, so the roster may not outgrow it");
+
 template <typename Fn> void for_each_field(Fn&& fn) {
     std::apply([&fn](const auto&... rows) { (fn(rows), ...); }, FIELD_ROSTER);
 }
+
+/// As above, also handing each row its own position, which is the bit
+/// DeclaredFields keeps that row's authorship in. A fold over the comma
+/// operator evaluates left to right, so the counter tracks the roster order.
+template <typename Fn> void for_each_field_indexed(Fn&& fn) {
+    std::apply(
+        [&fn](const auto&... rows) {
+            size_t index = 0;
+            ((fn(rows, index), ++index), ...);
+        },
+        FIELD_ROSTER);
+}
+
+/// The roster position of the row named @p name, for the two fields whose
+/// authorship the record path has to reach by name rather than by walking.
+template <size_t I = 0> constexpr size_t index_of(std::string_view name) {
+    if constexpr (I < std::tuple_size_v<decltype(FIELD_ROSTER)>) {
+        return std::get<I>(FIELD_ROSTER).name == name ? I : index_of<I + 1>(name);
+    } else {
+        return std::tuple_size_v<decltype(FIELD_ROSTER)>;
+    }
+}
+
+constexpr size_t COLOR_INDEX = index_of("color_rgb");
+constexpr size_t MATERIAL_INDEX = index_of("material");
+static_assert(COLOR_INDEX < std::tuple_size_v<decltype(FIELD_ROSTER)>, "colour row went missing");
+static_assert(MATERIAL_INDEX < std::tuple_size_v<decltype(FIELD_ROSTER)>,
+              "material row went missing");
 
 /// True when this row's translation does not carry the field.
 template <typename Member> constexpr bool skipped = std::is_null_pointer_v<Member>;
@@ -124,6 +187,12 @@ constexpr LockKeyNames lock_key_names(LegacyLockKeys keys) {
 /// struct defaulted it to.
 bool locked(const nlohmann::json& wire, const char* key) {
     return wire.contains(key) && helix::json_util::safe_bool(wire, key, false);
+}
+
+/// Same split as lock_key_names, for the declared set: lane_data is shared, so
+/// the key carries the helix_ prefix there and the bare name in our own cache.
+constexpr const char* declared_key_name(LegacyLockKeys keys) {
+    return keys == LegacyLockKeys::LocalCache ? "declared" : "helix_declared";
 }
 
 } // namespace
@@ -258,6 +327,31 @@ LaneSources sources_from_record(const FilamentSlotOverride& record, const nlohma
     const bool color_locked = locked(wire, lock.color);
     const bool material_locked = locked(wire, lock.material);
 
+    // A record written by an older build carries no declared key, and its
+    // brand, spool name and vendor id count as declared only when a lock flag
+    // on the same record is true. That flag is the
+    // evidence a person edited the record at all: the auto-mirror writes both
+    // flags false and can populate neither of those three fields, so a record
+    // holding a brand beside a true lock got it from an edit. Reading every
+    // value a legacy record happens to hold as a declaration would instead pin
+    // a mirrored firmware brand as the user's word, and no later firmware
+    // correction could ever land on it.
+    const bool has_declared = wire.contains(declared_key_name(keys));
+    const bool legacy_declared = color_locked || material_locked;
+
+    // Whether the user declared the field at roster position `index`. The two
+    // fields that own a lock flag answer from the wire, same as they always
+    // have; the rest answer from the declared set.
+    const auto declared_field = [&](size_t index) {
+        if (index == COLOR_INDEX) {
+            return color_locked;
+        }
+        if (index == MATERIAL_INDEX) {
+            return material_locked;
+        }
+        return has_declared ? record.declared.test(index) : legacy_declared;
+    };
+
     // Everything this record merely REMEMBERS, as opposed to declares, is
     // filed as Remembered rather than VendorCache. VendorCache is what the
     // machine states on the current frame, and a backend replaces that record
@@ -276,11 +370,29 @@ LaneSources sources_from_record(const FilamentSlotOverride& record, const nlohma
         }
         (color_locked ? have_user : have_remembered) = true;
     }
-    if (!record.material.empty()) {
-        Observation& target = material_locked ? user : remembered;
-        target.material = record.material;
-        (material_locked ? have_user : have_remembered) = true;
-    }
+    // Every remaining field whose source turns on who wrote it. The colour is
+    // not among them: its row is walked above, together with the colour name
+    // that only travels when there is a colour to travel with.
+    for_each_field_indexed([&](const auto& f, size_t index) {
+        using Row = std::decay_t<decltype(f)>;
+        if constexpr (Row::authorship != Authorship::Unattributed &&
+                      Row::kind != FieldKind::Color) {
+            const auto& value = record.*(f.record);
+            bool carried = false;
+            if constexpr (Row::kind == FieldKind::Text) {
+                carried = !value.empty();
+            } else {
+                carried = value > 0;
+            }
+            if (!carried) {
+                return;
+            }
+            const bool is_declared = declared_field(index);
+            Observation& target = is_declared ? user : remembered;
+            target.*(f.obs) = value;
+            (is_declared ? have_user : have_remembered) = true;
+        }
+    });
 
     // Firmware has no concept of a catalog product, so a value here is always
     // a user pick regardless of what the lock keys say.
@@ -294,23 +406,6 @@ LaneSources sources_from_record(const FilamentSlotOverride& record, const nlohma
         have_user = true;
     }
 
-    // Brand, spool name and vendor id carry no authorship signal, so they are
-    // remembered rather than declared. Remembered is the weakest rung, so a
-    // wrong guess here is corrected by the next declaration, or by the machine
-    // stating the field itself, instead of being pinned forever.
-    if (!record.brand.empty() || !record.spool_name.empty() || record.spoolman_vendor_id > 0) {
-        if (!record.brand.empty()) {
-            remembered.brand = record.brand;
-        }
-        if (!record.spool_name.empty()) {
-            remembered.spool_name = record.spool_name;
-        }
-        if (record.spoolman_vendor_id > 0) {
-            remembered.spoolman_vendor_id = record.spoolman_vendor_id;
-        }
-        have_remembered = true;
-    }
-
     if (have_user) {
         sources.apply(user);
     }
@@ -318,6 +413,64 @@ LaneSources sources_from_record(const FilamentSlotOverride& record, const nlohma
         sources.apply(remembered);
     }
     return sources;
+}
+
+DeclaredFields declared_fields_supplied(const FilamentSlotOverride& record) {
+    DeclaredFields declared;
+    for_each_field_indexed([&](const auto& f, size_t index) {
+        using Row = std::decay_t<decltype(f)>;
+        if constexpr (Row::authorship == Authorship::DeclaredSet) {
+            const auto& value = record.*(f.record);
+            if constexpr (Row::kind == FieldKind::Text) {
+                if (!value.empty()) {
+                    declared.set(index);
+                }
+            } else {
+                if (value > 0) {
+                    declared.set(index);
+                }
+            }
+        }
+    });
+    return declared;
+}
+
+nlohmann::json declared_field_names(const DeclaredFields& declared) {
+    // Only the fields that keep their authorship in the set are named. A field
+    // whose authorship lives on a lock flag is already on the wire under that
+    // flag's own key, and naming it here would put one answer in two places.
+    nlohmann::json names = nlohmann::json::array();
+    for_each_field_indexed([&](const auto& f, size_t index) {
+        using Row = std::decay_t<decltype(f)>;
+        if constexpr (Row::authorship == Authorship::DeclaredSet) {
+            if (declared.test(index)) {
+                names.push_back(std::string(f.name));
+            }
+        }
+    });
+    return names;
+}
+
+DeclaredFields declared_fields_from_names(const nlohmann::json& names) {
+    DeclaredFields declared;
+    if (!names.is_array()) {
+        return declared;
+    }
+    for (const auto& entry : names) {
+        if (!entry.is_string()) {
+            continue;
+        }
+        const std::string name = entry.get<std::string>();
+        // A name this build has no row for is a field a newer one declares.
+        // Dropping it loses only authorship this build could not act on
+        // anyway, where refusing the whole record would lose the rest of it.
+        for_each_field_indexed([&](const auto& f, size_t index) {
+            if (f.name == name) {
+                declared.set(index);
+            }
+        });
+    }
+    return declared;
 }
 
 bool is_declarable_color(uint32_t rgb) {

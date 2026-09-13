@@ -145,6 +145,11 @@ nlohmann::json to_lane_data_record(int slot_index, const FilamentSlotOverride& o
     // extra booleans per slot cost nothing on its side.
     j["helix_locked_color"] = o.user_locked_color;
     j["helix_locked_material"] = o.user_locked_material;
+    // Authorship for the identity fields that own no lock flag. Always emitted,
+    // for the same reason the two flags are: an empty array says this record
+    // declares none of them, which a reader must be able to tell apart from a
+    // record written before the key existed.
+    j["helix_declared"] = declared_field_names(o.declared);
     if (!o.brand.empty()) {
         j["vendor"] = o.brand;      // legacy key, ours
         j["vendor_name"] = o.brand; // the shared lane_data spelling, established by
@@ -465,6 +470,12 @@ std::optional<std::pair<int, FilamentSlotOverride>> from_lane_data_record(const 
     o.user_locked_color = helix::json_util::safe_bool(j, "helix_locked_color", o.color_set);
     o.user_locked_material =
         helix::json_util::safe_bool(j, "helix_locked_material", !o.material.empty());
+    // A record with no key declares nothing here. The legacy rule for what a
+    // keyless record's identity fields count as lives in sources_from_record,
+    // which can still see whether the key was on the wire; this struct cannot.
+    if (j.contains("helix_declared")) {
+        o.declared = declared_fields_from_names(j["helix_declared"]);
+    }
     // Prefer our own `vendor` key; fall back to `vendor_name`, the shared
     // lane_data spelling that Happy Hare established (mmu_server
     // push_lane_data) and AFC adopted in AFCProject/AFC-Klipper-Add-On#833, so
@@ -554,6 +565,7 @@ nlohmann::json to_json(const FilamentSlotOverride& o) {
         {"product_name", o.product_name},
         {"user_locked_color", o.user_locked_color},
         {"user_locked_material", o.user_locked_material},
+        {"declared", declared_field_names(o.declared)},
         {"bed_temp", o.bed_temp},
         {"nozzle_temp", o.nozzle_temp},
         {"updated_at", format_iso8601(o.updated_at)},
@@ -595,6 +607,12 @@ FilamentSlotOverride from_json(const nlohmann::json& j) {
     o.user_locked_color = helix::json_util::safe_bool(j, "user_locked_color", o.color_set);
     o.user_locked_material =
         helix::json_util::safe_bool(j, "user_locked_material", !o.material.empty());
+    // Same split as from_lane_data_record: absent means the record says
+    // nothing, and what a keyless record's identity counts as is the reader's
+    // rule, not this struct's.
+    if (j.contains("declared")) {
+        o.declared = declared_fields_from_names(j["declared"]);
+    }
     o.bed_temp = helix::json_util::safe_int(j, "bed_temp", 0);
     o.nozzle_temp = helix::json_util::safe_int(j, "nozzle_temp", 0);
     if (j.contains("updated_at") && j["updated_at"].is_string()) {
@@ -656,6 +674,12 @@ FilamentSlotOverride override_from_user_edit(const SlotInfo& info, const std::st
     // here" value is the mirror's to fill from a later firmware report.
     ovr.user_locked_color = ovr.color_set;
     ovr.user_locked_material = !material.empty();
+    // The identity fields the edit supplied, under the same rule: brand, spool
+    // name and vendor id are the user's word here, and a reload files them as
+    // a declaration rather than as something the store merely remembered. The
+    // auto-mirror can populate none of the three, so nothing but an edit
+    // reaches this.
+    ovr.declared = declared_fields_supplied(ovr);
     // SlotInfo carries the user's edit OR the bound Spoolman spool's filament
     // profile; the material-DB fallback for fields left at 0 is applied at
     // emit time inside resolved_temps().
