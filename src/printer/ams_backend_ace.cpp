@@ -1791,6 +1791,10 @@ void AmsBackendAce::clear_override_locked(int slot_index, SlotInfo& slot) {
     // (firmware doesn't populate them). Color and material come from the
     // parse and are left alone so the new spool's firmware data surfaces.
     overrides_.erase(slot_index);
+    // The lane's own records go with it: the erase above and this are one
+    // clear in two stores, and a clear that reached only one would leave
+    // resolve() still reporting the identity just removed.
+    helix::ams::reset_lane_to_machine_readings(lane_id(slot_index));
 
     slot.brand.clear();
     slot.spool_name.clear();

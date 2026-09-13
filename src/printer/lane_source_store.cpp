@@ -152,6 +152,12 @@ void drop_lane_source(LaneId lane, ObservationSource source) {
     LaneSourceStore::instance().drop_source(lane, source);
 }
 
+void reset_lane_to_machine_readings(LaneId lane) {
+    drop_lane_source(lane, ObservationSource::Spoolman);
+    drop_lane_source(lane, ObservationSource::LocalUser);
+    drop_lane_source(lane, ObservationSource::Metered);
+}
+
 LaneSources lane_sources(LaneId lane) {
     return LaneSourceStore::instance().get(lane);
 }

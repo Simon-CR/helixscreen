@@ -2693,6 +2693,7 @@ void AmsBackendHappyHare::clear_slot_override(int slot_index) {
     {
         std::lock_guard<std::mutex> lock(mutex_);
         overrides_.erase(slot_index);
+        helix::ams::reset_lane_to_machine_readings(lane_id(slot_index));
 
         // Reset the override-exclusive fields on the live slot too: Happy Hare's
         // gate map has no concept of brand / spool_name / total weight / colour

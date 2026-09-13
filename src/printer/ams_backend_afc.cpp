@@ -4987,6 +4987,7 @@ void AmsBackendAfc::clear_slot_override(int slot_index) {
     {
         std::lock_guard<std::mutex> lock(mutex_);
         overrides_.erase(slot_index);
+        helix::ams::reset_lane_to_machine_readings(lane_id(slot_index));
 
         // Also reset the override-exclusive fields on the live slot, so the
         // clear shows up in the very next get_slot_info(). AFC has no concept

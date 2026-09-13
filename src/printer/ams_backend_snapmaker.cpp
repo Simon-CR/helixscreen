@@ -2041,8 +2041,7 @@ void AmsBackendSnapmaker::check_hardware_event_clear(SlotInfo& slot, int slot_in
 void AmsBackendSnapmaker::clear_override_locked(int slot_index, SlotInfo& slot) {
     // Caller must hold mutex_. Erases the in-memory override, resets STRICTLY
     // override-exclusive fields on the live SlotInfo so the cleared state is
-    // visible in the very next get_slot_info() read (apply_overrides is a
-    // no-op for this slot afterwards).
+    // visible in the very next get_slot_info() read.
     //
     // Snapmaker field policy: brand / spool_name / total_weight_g come from
     // the RFID tag in handle_status_update — we must NOT zero those here or
@@ -2051,6 +2050,10 @@ void AmsBackendSnapmaker::clear_override_locked(int slot_index, SlotInfo& slot) 
     // (color_name is not firmware-populated for Snapmaker — RFID has no
     // color-name field — so it's override-exclusive and gets cleared.)
     overrides_.erase(slot_index);
+    // The lane's own records go with it: the erase above and this are one
+    // clear in two stores, and a clear that reached only one would leave
+    // resolve() still reporting the identity just removed.
+    helix::ams::reset_lane_to_machine_readings(lane_id(slot_index));
 
     slot.spoolman_id = 0;
     slot.spoolman_vendor_id = 0;

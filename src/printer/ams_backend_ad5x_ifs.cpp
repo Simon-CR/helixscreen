@@ -1493,11 +1493,15 @@ bool AmsBackendAd5xIfs::sync_override_to_firmware_locked(int slot_index, uint32_
 void AmsBackendAd5xIfs::clear_override_locked(int slot_index, SlotInfo& slot) {
     // Caller must hold mutex_. Erases the in-memory override, resets
     // override-exclusive fields on the live SlotInfo (so the next
-    // get_slot_info sees cleared state — apply_overrides is a no-op for this
-    // slot after erase), and fires the async store delete. Firmware-sourced
+    // get_slot_info sees cleared state), and fires the async store delete.
+    // Firmware-sourced
     // fields (color_rgb, material, mapped_tool, status) are left alone —
     // update_slot_from_state has already refreshed them.
     overrides_.erase(slot_index);
+    // The lane's own records go with it: the erase above and this are one
+    // clear in two stores, and a clear that reached only one would leave
+    // resolve() still reporting the identity just removed.
+    helix::ams::reset_lane_to_machine_readings(lane_id(slot_index));
 
     slot.brand.clear();
     slot.spool_name.clear();
@@ -2962,8 +2966,8 @@ AmsError AmsBackendAd5xIfs::set_slot_info(int slot_index, const SlotInfo& info, 
     return AmsErrorHelper::success();
 }
 
-void AmsBackendAd5xIfs::update_slot_weight(int slot_index, float remaining_weight_g,
-                                           float total_weight_g, bool persist) {
+void AmsBackendAd5xIfs::update_slot_weight_impl(int slot_index, float remaining_weight_g,
+                                                float total_weight_g, bool persist) {
     if (slot_index < 0 || slot_index >= NUM_PORTS) {
         spdlog::warn("{} update_slot_weight: invalid slot {}", backend_log_tag(), slot_index);
         return;

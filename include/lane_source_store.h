@@ -133,6 +133,23 @@ void commit_slot_edit(LaneId lane, const Observation& obs);
 /// is lost by a drop that names no lane.
 void drop_lane_source(LaneId lane, ObservationSource source);
 
+/// Reset a lane to what the machine itself reports, dropping every record that
+/// came from somewhere else: the user's own declaration, a Spoolman binding,
+/// and our meter's estimate. Sensed and VendorCache survive, because those are
+/// firmware's own readings and a clear is not a statement about them.
+///
+/// The counterpart to a backend erasing its stored override. That erase and
+/// this call are one operation in two stores: an override removed from one
+/// while its records stand in the other means resolve() keeps returning the
+/// identity the user just cleared, and the clear does not stick.
+///
+/// Not the same operation as reconcile_binding()'s drop, which takes only the
+/// two DECLARING sources: a broken binding says nothing about a weight, where a
+/// cleared record takes the weight with it exactly as it takes the brand.
+///
+/// A lane that is not a lane is dropped, silently, like drop_lane_source().
+void reset_lane_to_machine_readings(LaneId lane);
+
 /// This lane's records, by value. An unwritten lane reads as nothing observed.
 [[nodiscard]] LaneSources lane_sources(LaneId lane);
 

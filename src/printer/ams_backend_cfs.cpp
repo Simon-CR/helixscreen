@@ -3948,8 +3948,7 @@ bool AmsBackendCfs::clear_stale_override_on_removal_locked(SlotInfo& slot, int s
 void AmsBackendCfs::clear_override_locked(int slot_index, SlotInfo& slot) {
     // Caller must hold mutex_. Erases the in-memory override, resets STRICTLY
     // override-exclusive fields on the live SlotInfo so the cleared state is
-    // visible in the very next get_slot_info() read (apply_overrides is a
-    // no-op for this slot afterwards).
+    // visible in the very next get_slot_info() read.
     //
     // CFS field policy: brand / color_name / total_weight_g come from the
     // RFID material database (FilamentCatalog::resolve_code lookup in
@@ -3958,6 +3957,10 @@ void AmsBackendCfs::clear_override_locked(int slot_index, SlotInfo& slot) {
     // we must NOT re-zero those fields. The override's copies disappear with
     // the erase; firmware's copies stay. Matches Snapmaker policy.
     overrides_.erase(slot_index);
+    // The lane's own records go with it: the erase above and this are one
+    // clear in two stores, and a clear that reached only one would leave
+    // resolve() still reporting the identity just removed.
+    helix::ams::reset_lane_to_machine_readings(lane_id(slot_index));
 
     slot.spool_name.clear();
     slot.spoolman_id = 0;

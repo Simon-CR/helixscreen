@@ -1560,18 +1560,31 @@ class AmsBackend {
      * firmware store (#981, AD5X native ZMOD: a 60 s weight persist rewrote
      * ffmType and reverted the user's material).
      *
-     * The default routes through set_slot_info() — correct for backends where
-     * weight and identity share one persist path with no clobber risk. Backends
-     * that write identity to a firmware-owned store override this to persist
-     * weight alone (see AmsBackendAd5xIfs).
+     * Backends implement update_slot_weight_impl(); this wrapper is
+     * deliberately not virtual so no backend can take the weight without the
+     * lane record. Weight arrives from the consumption tracker and from
+     * Spoolman, neither of which is a backend, so this is the only place it
+     * reaches the lane model.
      *
      * @param slot_index Slot to update (0-based)
      * @param remaining_weight_g New remaining weight in grams (>= 0)
      * @param total_weight_g Total weight in grams, or < 0 to leave unchanged
      * @param persist If true, persist to the slot's durable store; else in-memory only
      */
-    virtual void update_slot_weight(int slot_index, float remaining_weight_g, float total_weight_g,
-                                    bool persist) {
+    void update_slot_weight(int slot_index, float remaining_weight_g, float total_weight_g,
+                            bool persist);
+
+    /**
+     * @brief The backend half of update_slot_weight().
+     *
+     * Reached only through that wrapper, which files the meter reading before
+     * returning. The default routes through set_slot_info() — correct for
+     * backends where weight and identity share one persist path with no
+     * clobber risk. Backends that write identity to a firmware-owned store
+     * override this to persist weight alone (see AmsBackendAd5xIfs).
+     */
+    virtual void update_slot_weight_impl(int slot_index, float remaining_weight_g,
+                                         float total_weight_g, bool persist) {
         SlotInfo info = get_slot_info(slot_index);
         info.remaining_weight_g = remaining_weight_g;
         if (total_weight_g >= 0.0f)

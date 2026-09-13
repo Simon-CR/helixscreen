@@ -343,6 +343,31 @@ helix::ams::BindingVerdict AmsBackend::reconcile_lane_binding(int slot_index,
     return helix::ams::reconcile_binding(lane_id(slot_index), reading);
 }
 
+void AmsBackend::update_slot_weight(int slot_index, float remaining_weight_g, float total_weight_g,
+                                    bool persist) {
+    // File the reading before the backend stores it, so a backend that refuses
+    // the write still leaves the meter's own number on the lane rather than a
+    // record that disagrees with every store.
+    //
+    // Only what this call states is filed. A total below zero is the caller
+    // saying it has no total to report, and the record says so rather than
+    // carrying an old one forward: an unobserved total leaves whatever the
+    // backend holds standing, which is the same "leave it unchanged" the
+    // parameter asks for.
+    helix::ams::Observation metered(helix::ams::ObservationSource::Metered);
+    if (remaining_weight_g >= 0.0F) {
+        metered.remaining_weight_g = remaining_weight_g;
+    }
+    if (total_weight_g >= 0.0F) {
+        metered.total_weight_g = total_weight_g;
+    }
+    if (metered.remaining_weight_g.has_value() || metered.total_weight_g.has_value()) {
+        helix::ams::ingest(lane_id(slot_index), metered);
+    }
+
+    update_slot_weight_impl(slot_index, remaining_weight_g, total_weight_g, persist);
+}
+
 void AmsBackend::apply_resolved_lane(SlotInfo& slot, int slot_index) {
     helix::ams::apply_resolved(slot, helix::ams::resolved_lane(lane_id(slot_index)));
 }
