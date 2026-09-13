@@ -8,6 +8,8 @@
 #include <spdlog/spdlog.h>
 
 #include <algorithm>
+#include <chrono>
+#include <ctime>
 #include <fstream>
 #include <regex>
 #include <sstream>
@@ -87,6 +89,46 @@ std::vector<std::string> parse_macro_names(const std::string& content) {
     return names;
 }
 
+/**
+ * @brief Infer the installed pack version from which rung macros exist
+ * @param hardware Discovery snapshot with the printer's macro names
+ *
+ * The installed pack exposes no queryable version, so infer it from which
+ * macros exist - each rung is the newest macro whose presence brackets the
+ * install. Adding a macro to the pack means adding a rung here (and a
+ * matching version bump in helix_macros.cfg).
+ */
+std::optional<std::string> parse_installed_version(const PrinterDiscovery& hardware) {
+    if (hardware.has_helix_macro("HELIX_UNLOAD_FILAMENT")) {
+        return "2.1.0";
+    }
+
+    if (hardware.has_helix_macro("HELIX_READY")) {
+        return "2.0.0";
+    }
+
+    // Check for legacy v1.x macros
+    if (hardware.has_helix_macro("HELIX_START_PRINT")) {
+        return "1.0.0";
+    }
+
+    return std::nullopt;
+}
+
+/**
+ * @brief Timestamped sibling name for a printer.cfg backup
+ *
+ * The upload overwrites printer.cfg wholesale, so the pre-edit content must
+ * be recoverable from the printer itself; a timestamp keeps every install's
+ * backup distinct.
+ */
+std::string printer_cfg_backup_name() {
+    const std::time_t now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+    char stamp[24] = {};
+    std::strftime(stamp, sizeof(stamp), "%Y%m%d-%H%M%S", std::localtime(&now));
+    return std::string("printer.cfg.helixbak-") + stamp;
+}
+
 } // anonymous namespace
 
 // ============================================================================
@@ -103,11 +145,22 @@ bool MacroManager::is_installed() const {
 }
 
 MacroInstallStatus MacroManager::get_status() const {
-    if (!hardware_.has_helix_macros()) {
+    return evaluate_status(hardware_);
+}
+
+MacroInstallStatus MacroManager::evaluate_status(const PrinterDiscovery& hardware) {
+    // No objects list consumed yet: the printer has not told us anything,
+    // and "no helix macros found" in that vacuum would be a claim, not an
+    // observation.
+    if (!hardware.objects_reported()) {
+        return MacroInstallStatus::UNKNOWN;
+    }
+
+    if (!hardware.has_helix_macros()) {
         return MacroInstallStatus::NOT_INSTALLED;
     }
 
-    auto installed_version = parse_installed_version();
+    auto installed_version = parse_installed_version(hardware);
     if (!installed_version) {
         // Has macros but can't determine version - assume installed
         return MacroInstallStatus::INSTALLED;
@@ -120,15 +173,43 @@ MacroInstallStatus MacroManager::get_status() const {
         return MacroInstallStatus::INSTALLED;
     }
 
-    if (*installed_version < local_version) {
+    if (version_less(*installed_version, local_version)) {
         return MacroInstallStatus::OUTDATED;
     }
 
     return MacroInstallStatus::INSTALLED;
 }
 
+bool MacroManager::version_less(const std::string& a, const std::string& b) {
+    auto next_component = [](const std::string& v, size_t& pos) {
+        if (pos == std::string::npos) {
+            return 0L;
+        }
+        size_t end = v.find('.', pos);
+        std::string part = v.substr(pos, end == std::string::npos ? end : end - pos);
+        pos = end == std::string::npos ? end : end + 1;
+        // Non-numeric components fall back to 0 rather than aborting the parse
+        long value = 0;
+        try {
+            value = std::stol(part);
+        } catch (const std::exception&) {
+        }
+        return value;
+    };
+
+    size_t pa = 0, pb = 0;
+    while (pa != std::string::npos || pb != std::string::npos) {
+        long ca = next_component(a, pa);
+        long cb = next_component(b, pb);
+        if (ca != cb) {
+            return ca < cb;
+        }
+    }
+    return false;
+}
+
 std::string MacroManager::get_installed_version() const {
-    auto version = parse_installed_version();
+    auto version = parse_installed_version(hardware_);
     return version.value_or("");
 }
 
@@ -136,8 +217,8 @@ bool MacroManager::update_available() const {
     return get_status() == MacroInstallStatus::OUTDATED;
 }
 
-void MacroManager::install(SuccessCallback on_success, ErrorCallback on_error) {
-    spdlog::info("[HelixMacroManager] Starting macro installation...");
+void MacroManager::install_files(SuccessCallback on_success, ErrorCallback on_error) {
+    spdlog::info("[HelixMacroManager] Staging macro files...");
 
     auto token = lifetime_.token();
 
@@ -146,46 +227,25 @@ void MacroManager::install(SuccessCallback on_success, ErrorCallback on_error) {
         [this, token, on_success, on_error]() {
             // L081 Mechanism C: defer chained this-> work to main thread
             // (upload cb fires on HTTP bg thread).
-            token.defer("MacroManager::install_step2", [this, token, on_success, on_error]() {
+            token.defer("MacroManager::install_step2", [this, on_success, on_error]() {
                 spdlog::info("[HelixMacroManager] Macro file uploaded, adding include...");
 
-                // Step 2: Add include to printer.cfg
-                add_include_to_config(
-                    [this, token, on_success, on_error]() {
-                        token.defer("MacroManager::install_step3", [this, on_success, on_error]() {
-                            spdlog::info("[HelixMacroManager] Include added, "
-                                         "restarting Klipper...");
-
-                            // Step 3: Restart Klipper
-                            restart_klipper(
-                                [on_success]() {
-                                    spdlog::info("[HelixMacroManager] "
-                                                 "Installation complete!");
-                                    on_success();
-                                },
-                                on_error);
-                        });
-                    },
-                    on_error);
+                // Step 2: Back up printer.cfg and add the include
+                add_include_to_config(on_success, on_error);
             });
         },
         on_error);
 }
 
-void MacroManager::update(SuccessCallback on_success, ErrorCallback on_error) {
-    spdlog::info("[HelixMacroManager] Starting macro update...");
+void MacroManager::update_files(SuccessCallback on_success, ErrorCallback on_error) {
+    spdlog::info("[HelixMacroManager] Staging macro update (file upload only)...");
 
-    auto token = lifetime_.token();
+    upload_macro_file(on_success, on_error);
+}
 
-    // Just upload the new file and restart
-    upload_macro_file(
-        [this, token, on_success, on_error]() {
-            // L081 Mechanism C: defer chained this-> work to main thread
-            // (upload cb fires on HTTP bg thread).
-            token.defer("MacroManager::update_restart",
-                        [this, on_success, on_error]() { restart_klipper(on_success, on_error); });
-        },
-        on_error);
+void MacroManager::request_restart(SuccessCallback on_success, ErrorCallback on_error) {
+    spdlog::info("[HelixMacroManager] Requesting Klipper restart...");
+    api_.restart_klipper(on_success, on_error);
 }
 
 void MacroManager::uninstall(SuccessCallback on_success, ErrorCallback on_error) {
@@ -205,7 +265,7 @@ void MacroManager::uninstall(SuccessCallback on_success, ErrorCallback on_error)
                         token.defer("MacroManager::uninstall_step3",
                                     [this, on_success, on_error]() {
                                         // Step 3: Restart Klipper
-                                        restart_klipper(on_success, on_error);
+                                        request_restart(on_success, on_error);
                                     });
                     },
                     on_error);
@@ -321,25 +381,40 @@ void MacroManager::add_include_to_config(SuccessCallback on_success, ErrorCallba
             }
 
             // Defer the upload kick-off to main thread (needs api_)
+            const std::string backup_name = printer_cfg_backup_name();
             token.defer("MacroManager::add_include_upload",
-                        [this, on_success, on_error,
+                        [this, on_success, on_error, backup_name, original_content = content,
                          modified_content = std::move(modified_content)]() mutable {
-                            // Upload modified printer.cfg
+                            // Back up the original first: if the backup upload
+                            // fails, the overwrite must not happen.
                             api_.transfers().upload_file_with_name(
-                                "config", "", "printer.cfg", modified_content,
-                                // Upload success
-                                [on_success]() {
-                                    spdlog::info("[HelixMacroManager] Successfully added include "
-                                                 "to printer.cfg");
-                                    if (on_success) {
-                                        on_success();
-                                    }
+                                "config", "", backup_name, original_content,
+                                [this, on_success, on_error, backup_name,
+                                 modified_content = std::move(modified_content)]() mutable {
+                                    spdlog::info("[HelixMacroManager] Backed up printer.cfg to {}",
+                                                 backup_name);
+                                    api_.transfers().upload_file_with_name(
+                                        "config", "", "printer.cfg", modified_content,
+                                        [on_success]() {
+                                            spdlog::info("[HelixMacroManager] Successfully added "
+                                                         "include to printer.cfg");
+                                            if (on_success) {
+                                                on_success();
+                                            }
+                                        },
+                                        [on_error](const MoonrakerError& err) {
+                                            spdlog::error("[HelixMacroManager] Failed to upload "
+                                                          "modified printer.cfg: {}",
+                                                          err.message);
+                                            if (on_error) {
+                                                on_error(err);
+                                            }
+                                        });
                                 },
-                                // Upload error
-                                [on_error](const MoonrakerError& err) {
-                                    spdlog::error("[HelixMacroManager] Failed to upload modified "
-                                                  "printer.cfg: {}",
-                                                  err.message);
+                                [on_error, backup_name](const MoonrakerError& err) {
+                                    spdlog::error("[HelixMacroManager] Backup upload of {} failed "
+                                                  "- refusing to overwrite printer.cfg: {}",
+                                                  backup_name, err.message);
                                     if (on_error) {
                                         on_error(err);
                                     }
@@ -442,32 +517,6 @@ void MacroManager::delete_macro_file(SuccessCallback on_success, ErrorCallback o
                                      on_error(err);
                                  }
                              });
-}
-
-void MacroManager::restart_klipper(SuccessCallback on_success, ErrorCallback on_error) {
-    spdlog::info("[HelixMacroManager] Requesting Klipper restart...");
-    api_.restart_klipper(on_success, on_error);
-}
-
-std::optional<std::string> MacroManager::parse_installed_version() const {
-    // The installed pack exposes no queryable version, so infer it from which
-    // macros exist - each rung is the newest macro whose presence brackets the
-    // install. Adding a macro to the pack means adding a rung here (and a
-    // matching version bump in helix_macros.cfg).
-    if (hardware_.has_helix_macro("HELIX_UNLOAD_FILAMENT")) {
-        return "2.1.0";
-    }
-
-    if (hardware_.has_helix_macro("HELIX_READY")) {
-        return "2.0.0";
-    }
-
-    // Check for legacy v1.x macros
-    if (hardware_.has_helix_macro("HELIX_START_PRINT")) {
-        return "1.0.0";
-    }
-
-    return std::nullopt;
 }
 
 } // namespace helix

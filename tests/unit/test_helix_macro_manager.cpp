@@ -1,8 +1,13 @@
 // Copyright (C) 2025-2026 356C LLC
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+#include "ui_update_queue.h"
+
+#include "../lvgl_test_fixture.h"
+#include "helix_plugin_installer.h"
 #include "macro_manager.h"
 #include "moonraker_api.h"
+#include "moonraker_api_mock.h"
 #include "moonraker_client_mock.h"
 #include "printer_discovery.h"
 #include "printer_state.h"
@@ -103,6 +108,37 @@ TEST_CASE_METHOD(MacroManagerTestFixture,
     hardware_.parse_objects(objects);
 
     REQUIRE(manager_.get_status() == MacroInstallStatus::OUTDATED);
+}
+
+// No objects list consumed: absence of the macros is not an observation.
+// The Settings row must not offer an install on that vacuum.
+TEST_CASE_METHOD(MacroManagerTestFixture,
+                 "MacroManager - get_status returns UNKNOWN before any objects list",
+                 "[config][status]") {
+    // Fresh discovery, parse_objects() never called.
+    REQUIRE(manager_.get_status() == MacroInstallStatus::UNKNOWN);
+}
+
+TEST_CASE_METHOD(MacroManagerTestFixture,
+                 "MacroManager - evaluate_status is UNKNOWN for an empty snapshot too",
+                 "[config][status]") {
+    PrinterDiscovery empty;
+    REQUIRE(MacroManager::evaluate_status(empty) == MacroInstallStatus::UNKNOWN);
+}
+
+// The update gate must compare version components numerically: lexicographic
+// order misjudges the moment a component reaches two digits.
+TEST_CASE("MacroManager - version_less compares components numerically", "[config][version]") {
+    using M = MacroManager;
+    CHECK(M::version_less("2.0.0", "2.1.0"));
+    CHECK(M::version_less("2.9.0", "2.10.0")); // string compare would say no
+    CHECK_FALSE(M::version_less("2.10.0", "2.9.0"));
+    CHECK_FALSE(M::version_less("2.1.0", "2.1.0"));
+    CHECK_FALSE(M::version_less("2.1.0", "2.0.0"));
+    CHECK(M::version_less("2.1.0", "2.1.1"));
+    // Uneven component counts: missing components are zero.
+    CHECK(M::version_less("2.1", "2.1.1"));
+    CHECK_FALSE(M::version_less("2.1.0", "2.1"));
 }
 
 // ============================================================================
@@ -248,17 +284,14 @@ TEST_CASE("MacroManager - filename constant is valid", "[config][constants]") {
 // Integration-Style Tests (using mock)
 // ============================================================================
 
-// NOTE: The install/update tests below currently expect callbacks NOT to fire
-// because the mock doesn't implement printer.restart. When HTTP file upload
-// is implemented, these tests should be updated to verify actual success.
-
-// Step 1 of both install() and update() is upload_macro_file(), which goes
-// through MoonrakerAPI::transfers() over HTTP - not over the websocket client -
-// so MoonrakerClientMock records nothing for these paths. What it does do is
-// fail SYNCHRONOUSLY on the calling thread, with err.method == "upload_file".
-// That error callback is the observable proof that install()/update() actually
-// reached the upload step: an implementation that returned early, or never
-// touched the API, leaves it unfired.
+// Step 1 of both install_files() and update_files() is upload_macro_file(),
+// which goes through MoonrakerAPI::transfers() over HTTP - not over the
+// websocket client - so MoonrakerClientMock records nothing for these paths.
+// What it does do is fail SYNCHRONOUSLY on the calling thread, with
+// err.method == "upload_file". That error callback is the observable proof that
+// install_files()/update_files() actually reached the upload step: an
+// implementation that returned early, or never touched the API, leaves it
+// unfired.
 //
 // err.type is what separates "reached the upload and could not reach a server"
 // from "was refused before a request was ever built". upload_macro_file() passes
@@ -277,8 +310,8 @@ TEST_CASE_METHOD(MacroManagerTestFixture, "MacroManager - install reaches the up
     bool success_called = false;
     std::optional<MoonrakerError> error;
 
-    manager_.install([&]() { success_called = true; },
-                     [&](const MoonrakerError& err) { error = err; });
+    manager_.install_files([&]() { success_called = true; },
+                           [&](const MoonrakerError& err) { error = err; });
 
     REQUIRE_FALSE(success_called); // nothing can have succeeded without a server
     REQUIRE(error.has_value());
@@ -295,8 +328,8 @@ TEST_CASE_METHOD(MacroManagerTestFixture, "MacroManager - update reaches the upl
     bool success_called = false;
     std::optional<MoonrakerError> error;
 
-    manager_.update([&]() { success_called = true; },
-                    [&](const MoonrakerError& err) { error = err; });
+    manager_.update_files([&]() { success_called = true; },
+                          [&](const MoonrakerError& err) { error = err; });
 
     REQUIRE_FALSE(success_called);
     REQUIRE(error.has_value());
@@ -349,4 +382,164 @@ TEST_CASE_METHOD(MacroManagerTestFixture,
         REQUIRE(error.has_value());
         CHECK(error->type == MoonrakerErrorType::VALIDATION_ERROR);
     }
+}
+
+// ============================================================================
+// Staging Flow via the Mock File API
+// ============================================================================
+//
+// The mock transfer API keeps an in-memory config root (set_config_files):
+// downloads read it, uploads write it. install_files() chains upload ->
+// printer.cfg backup -> include splice, crossing the UpdateQueue between
+// steps, so these cases run on the LVGL test base (queue init + drain) and
+// assert on what actually landed in the config root.
+
+namespace {
+
+const char* PRINTER_CFG = "[stepper_x]\nstep_pin: PF0\n[extruder]\nnozzle_diameter: 0.4\n";
+
+class MacroStageFixture : public LVGLTestFixture {
+  public:
+    MacroStageFixture() {
+        api_.set_config_files({{"printer.cfg", PRINTER_CFG}});
+    }
+
+    ~MacroStageFixture() override {
+        helix::ui::UpdateQueue::instance().drain();
+    }
+
+    // A drained step can queue the next one; pump until quiet.
+    void settle() {
+        for (int i = 0; i < 4; ++i) {
+            helix::ui::UpdateQueue::instance().drain();
+        }
+    }
+
+    std::map<std::string, std::string> config_files() {
+        return api_.transfers_mock().get_config_files();
+    }
+
+    size_t backup_count() {
+        size_t n = 0;
+        for (const auto& [name, _] : config_files()) {
+            if (name.rfind("printer.cfg.helixbak-", 0) == 0) {
+                ++n;
+            }
+        }
+        return n;
+    }
+
+  protected:
+    MoonrakerClientMock client_;
+    PrinterState state_;
+    MoonrakerAPIMock api_{client_, state_};
+    PrinterDiscovery hardware_;
+    MacroManager manager_{api_, hardware_};
+};
+
+} // namespace
+
+TEST_CASE_METHOD(MacroStageFixture,
+                 "install_files uploads the pack, backs up printer.cfg, splices the include",
+                 "[config][install][1271]") {
+    hardware_.parse_objects(
+        json::array({"gcode_macro START_PRINT", "gcode_macro CLEAN_NOZZLE", "bed_mesh"}));
+
+    bool staged = false;
+    std::optional<MoonrakerError> error;
+    manager_.install_files([&] { staged = true; }, [&](const MoonrakerError& err) { error = err; });
+    settle();
+
+    REQUIRE_FALSE(error.has_value());
+    REQUIRE(staged);
+
+    // The macro pack landed whole.
+    auto macros = api_.get_uploaded_config("helix_macros.cfg");
+    REQUIRE(macros.has_value());
+    CHECK(macros->find("[gcode_macro HELIX_CLEAN_NOZZLE]") != std::string::npos);
+
+    // printer.cfg gained the include and kept its own sections.
+    auto cfg = api_.get_uploaded_config("printer.cfg");
+    REQUIRE(cfg.has_value());
+    CHECK(cfg->find("[include helix_macros.cfg]") != std::string::npos);
+    CHECK(cfg->find("[stepper_x]") != std::string::npos);
+
+    // The pre-edit content survives on the printer as a timestamped sibling.
+    REQUIRE(backup_count() == 1);
+    for (const auto& [name, content] : config_files()) {
+        if (name.rfind("printer.cfg.helixbak-", 0) == 0) {
+            CHECK(content == PRINTER_CFG);
+        }
+    }
+}
+
+TEST_CASE_METHOD(MacroStageFixture, "install_files writes no include and no backup when one exists",
+                 "[config][install][1271]") {
+    const std::string with_include = std::string("[include helix_macros.cfg]\n") + PRINTER_CFG;
+    api_.set_config_files({{"printer.cfg", with_include}});
+
+    bool staged = false;
+    std::optional<MoonrakerError> error;
+    manager_.install_files([&] { staged = true; }, [&](const MoonrakerError& err) { error = err; });
+    settle();
+
+    REQUIRE_FALSE(error.has_value());
+    REQUIRE(staged);
+    CHECK(api_.get_uploaded_config("printer.cfg").value_or("") == with_include);
+    CHECK(backup_count() == 0);
+}
+
+TEST_CASE_METHOD(MacroStageFixture, "update_files replaces only the macro file",
+                 "[config][install][1271]") {
+    hardware_.parse_objects(
+        json::array({"gcode_macro HELIX_READY", "gcode_macro HELIX_START_PRINT",
+                     "gcode_macro HELIX_CLEAN_NOZZLE", "gcode_macro HELIX_BED_MESH_IF_NEEDED"}));
+
+    bool staged = false;
+    std::optional<MoonrakerError> error;
+    manager_.update_files([&] { staged = true; }, [&](const MoonrakerError& err) { error = err; });
+    settle();
+
+    REQUIRE_FALSE(error.has_value());
+    REQUIRE(staged);
+    CHECK(api_.get_uploaded_config("printer.cfg").value_or("") == PRINTER_CFG);
+    CHECK(backup_count() == 0);
+    CHECK(api_.get_uploaded_config("helix_macros.cfg")
+              .value_or("")
+              .find("[gcode_macro HELIX_UNLOAD_FILAMENT]") != std::string::npos);
+}
+
+// The whole point of the HTTP path over the plugin installer's shell: it has
+// no local-Moonraker gate. Stage the files while the topology reads remote.
+TEST_CASE_METHOD(MacroStageFixture, "install_files works with a remote Moonraker URL",
+                 "[config][install][1271]") {
+    hardware_.parse_objects(json::array({"gcode_macro START_PRINT", "bed_mesh"}));
+
+    HelixPluginInstaller installer;
+    installer.set_websocket_url("ws://192.168.1.50:7125");
+    REQUIRE_FALSE(installer.is_local_moonraker());
+
+    bool staged = false;
+    std::optional<MoonrakerError> error;
+    manager_.install_files([&] { staged = true; }, [&](const MoonrakerError& err) { error = err; });
+    settle();
+
+    REQUIRE_FALSE(error.has_value());
+    REQUIRE(staged);
+    CHECK(api_.get_uploaded_config("printer.cfg").value_or("").find("[include helix_macros.cfg]") !=
+          std::string::npos);
+}
+
+// The shell path's own gate still answers local for the loopback spellings,
+// which is what makes the two installers' topologies comparable in --test.
+TEST_CASE("HelixPluginInstaller is_local_moonraker distinguishes loopback from remote",
+          "[config][install][1271]") {
+    HelixPluginInstaller installer;
+
+    installer.set_websocket_url("ws://127.0.0.1:7125");
+    CHECK(installer.is_local_moonraker());
+    installer.set_websocket_url("ws://localhost:7125");
+    CHECK(installer.is_local_moonraker());
+    installer.set_websocket_url("ws://192.168.1.50:7125");
+    CHECK_FALSE(installer.is_local_moonraker());
 }

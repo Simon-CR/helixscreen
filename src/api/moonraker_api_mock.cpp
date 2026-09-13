@@ -849,6 +849,14 @@ void MoonrakerFileTransferAPIMock::upload_file_with_name(
         "size={} bytes",
         root, path, filename, content.size());
 
+    // Same recording contract as upload_file(): an injected config root
+    // receives the write, so tests can assert on what a config edit actually
+    // wrote. An empty path is the config root, so the file lands at the bare
+    // filename; a subdirectory prefixes it.
+    if (root == "config" && !config_files_.empty()) {
+        config_files_[path.empty() ? filename : path + "/" + filename] = content;
+    }
+
     // Mock always succeeds
     if (on_success) {
         on_success();

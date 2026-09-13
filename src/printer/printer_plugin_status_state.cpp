@@ -33,6 +33,14 @@ void PrinterPluginStatusState::init_subjects(bool register_xml) {
     // Unknown state allows UI to show "checking..." vs "not available"
     INIT_SUBJECT_INT(helix_plugin_installed, -1, subjects_, register_xml);
     INIT_SUBJECT_INT(phase_tracking_enabled, -1, subjects_, register_xml);
+    INIT_SUBJECT_INT(helix_macros_status, static_cast<int>(HelixMacrosStatus::Unknown), subjects_,
+                     register_xml);
+
+    // Fresh subjects mean a fresh session: re-initialization (test fixtures
+    // re-init the shared PrinterState between cases) must not read a base
+    // status or pending flag from the previous one.
+    macros_base_status_ = static_cast<int>(HelixMacrosStatus::Unknown);
+    macros_restart_pending_ = false;
 
     subjects_initialized_ = true;
     spdlog::trace("[PrinterPluginStatusState] Subjects initialized successfully");
@@ -65,6 +73,32 @@ void PrinterPluginStatusState::set_phase_tracking_enabled(bool enabled) {
             lv_subject_set_int(&phase_tracking_enabled_, enabled ? 1 : 0);
             spdlog::info("[PrinterPluginStatusState] Phase tracking enabled: {}", enabled);
         });
+}
+
+void PrinterPluginStatusState::set_helix_macros_base_status(HelixMacrosStatus base) {
+    macros_base_status_ = static_cast<int>(base);
+    if (base == HelixMacrosStatus::Installed || base == HelixMacrosStatus::Outdated) {
+        // Discovery sees the macros active: a Klipper restart landed and any
+        // staged-install offer is resolved, whatever its fate.
+        macros_restart_pending_ = false;
+    }
+    publish_helix_macros_status();
+    spdlog::info("[PrinterPluginStatusState] Helper macros base status: {}", macros_base_status_);
+}
+
+void PrinterPluginStatusState::set_helix_macros_restart_pending(bool pending) {
+    macros_restart_pending_ = pending;
+    publish_helix_macros_status();
+    spdlog::info("[PrinterPluginStatusState] Helper macro restart pending: {}", pending);
+}
+
+void PrinterPluginStatusState::publish_helix_macros_status() {
+    int composed = macros_base_status_;
+    if (macros_restart_pending_ &&
+        macros_base_status_ == static_cast<int>(HelixMacrosStatus::NotInstalled)) {
+        composed = static_cast<int>(HelixMacrosStatus::RestartPending);
+    }
+    lv_subject_set_int(&helix_macros_status_, composed);
 }
 
 } // namespace helix

@@ -21,6 +21,7 @@
 #include "macro_modification_manager.h"
 #include "moonraker_client.h"
 #include "moonraker_manager.h"
+#include "observer_factory.h"
 #include "panel_widgets/shutdown_widget.h"
 #include "printer_state.h"
 #include "static_panel_registry.h"
@@ -72,6 +73,8 @@ void AdvancedPanel::init_subjects() {
         {"on_configure_print_start", on_configure_print_start_clicked},
         {"on_helix_plugin_install_clicked", on_helix_plugin_install_clicked},
         {"on_helix_plugin_uninstall_clicked", on_helix_plugin_uninstall_clicked},
+        {"on_helix_macros_install_clicked", on_helix_macros_install_clicked},
+        {"on_helix_macros_update_clicked", on_helix_macros_update_clicked},
         {"on_phase_tracking_changed", on_phase_tracking_changed},
         {"on_pid_tuning_clicked", on_pid_tuning_clicked},
         {"on_timelapse_videos_clicked", on_timelapse_videos_clicked},
@@ -98,6 +101,11 @@ void AdvancedPanel::setup(lv_obj_t* panel, lv_obj_t* parent_screen) {
 
     // Event handlers are now declaratively bound via XML event_cb elements
     // No imperative lv_obj_add_event_cb() calls needed
+
+    // The print-active watcher outlives panel navigation (this C++ object is
+    // app-lifetime), so a restart queued mid-print still finds its moment
+    // after the user has left the panel.
+    wire_macro_restart_observer();
 
 #if defined(HELIX_PLATFORM_ESP32)
     // v1 Core+AMS cut has no camera → no timelapse. Force-hide the Timelapse
@@ -234,6 +242,14 @@ void AdvancedPanel::on_helix_plugin_uninstall_clicked(lv_event_t* /*e*/) {
     get_global_advanced_panel().handle_helix_plugin_uninstall_clicked();
 }
 
+void AdvancedPanel::on_helix_macros_install_clicked(lv_event_t* /*e*/) {
+    get_global_advanced_panel().handle_helix_macros_install_clicked();
+}
+
+void AdvancedPanel::on_helix_macros_update_clicked(lv_event_t* /*e*/) {
+    get_global_advanced_panel().handle_helix_macros_update_clicked();
+}
+
 void AdvancedPanel::on_phase_tracking_changed(lv_event_t* e) {
     // Toggle switch callback - get the new state
     lv_obj_t* toggle = static_cast<lv_obj_t*>(lv_event_get_target(e));
@@ -274,6 +290,191 @@ void AdvancedPanel::handle_power_clicked() {
 void AdvancedPanel::handle_timelapse_setup_clicked() {
     spdlog::info("[{}] Timelapse setup clicked", get_name());
     open_timelapse_install();
+}
+
+// ============================================================================
+// HELIX HELPER MACRO HANDLERS (helix_macros.cfg)
+// ============================================================================
+
+bool AdvancedPanel::macro_print_active() const {
+    return lv_subject_get_int(printer_state_.get_print_active_subject()) != 0;
+}
+
+void AdvancedPanel::handle_helix_macros_install_clicked() {
+    spdlog::debug("[{}] Helper macros install clicked", get_name());
+
+    if (!api_) {
+        ToastManager::instance().show(ToastSeverity::ERROR, lv_tr("Not connected to printer"),
+                                      2000);
+        return;
+    }
+
+    const int status = lv_subject_get_int(printer_state_.get_helix_macros_status_subject());
+    if (status == static_cast<int>(HelixMacrosStatus::Unknown)) {
+        ToastManager::instance().show(ToastSeverity::ERROR, lv_tr("Printer status unknown"), 2000);
+        return;
+    }
+    if (status == static_cast<int>(HelixMacrosStatus::RestartPending)) {
+        ToastManager::instance().show(ToastSeverity::INFO,
+                                      lv_tr("Macros installed - restart pending"), 3000);
+        return;
+    }
+    if (status != static_cast<int>(HelixMacrosStatus::NotInstalled)) {
+        ToastManager::instance().show(ToastSeverity::INFO, lv_tr("Helper macros already installed"),
+                                      2000);
+        return;
+    }
+
+    helix::ui::ConfirmOptions opts;
+    opts.owner_token = object_lifetime_.token();
+    helix::ui::modal_confirm(
+        lv_tr("Install Helper Macros?"),
+        macro_print_active()
+            ? lv_tr("This installs the HelixScreen helper macros on the printer and adds them "
+                    "to printer.cfg. A print is running, so Klipper restarts after it finishes.")
+            : lv_tr("This installs the HelixScreen helper macros on the printer, adds them to "
+                    "printer.cfg, and restarts Klipper."),
+        ModalSeverity::Warning, lv_tr("Install"), [this]() { run_helix_macros_stage(false); },
+        opts);
+}
+
+void AdvancedPanel::handle_helix_macros_update_clicked() {
+    spdlog::debug("[{}] Helper macros update clicked", get_name());
+
+    if (!api_) {
+        ToastManager::instance().show(ToastSeverity::ERROR, lv_tr("Not connected to printer"),
+                                      2000);
+        return;
+    }
+
+    const int status = lv_subject_get_int(printer_state_.get_helix_macros_status_subject());
+    if (status != static_cast<int>(HelixMacrosStatus::Outdated)) {
+        ToastManager::instance().show(ToastSeverity::INFO, lv_tr("Helper macros are up to date"),
+                                      2000);
+        return;
+    }
+
+    helix::ui::ConfirmOptions opts;
+    opts.owner_token = object_lifetime_.token();
+    helix::ui::modal_confirm(
+        lv_tr("Update Helper Macros?"),
+        macro_print_active()
+            ? lv_tr("This replaces the printer's helper macros with the current version. A print "
+                    "is running, so Klipper restarts after it finishes.")
+            : lv_tr("This replaces the printer's helper macros with the current version and "
+                    "restarts Klipper."),
+        ModalSeverity::Warning, lv_tr("Update"), [this]() { run_helix_macros_stage(true); }, opts);
+}
+
+void AdvancedPanel::run_helix_macros_stage(bool update) {
+    if (!api_) {
+        ToastManager::instance().show(ToastSeverity::ERROR, lv_tr("Not connected to printer"),
+                                      2000);
+        return;
+    }
+
+    macro_manager_ = std::make_unique<helix::MacroManager>(*api_, printer_state_.get_discovery());
+
+    auto on_staged = [this, update]() {
+        spdlog::info("[{}] Helper macro files staged (update={})", get_name(), update);
+        if (restart_helix_macros_when_idle()) {
+            return; // restart fired; its callbacks report the outcome
+        }
+        // A print is active: queue the restart for the print-complete offer.
+        // The staged files are safe wherever they sit and activate at
+        // whatever Klipper restart happens next, organic or offered.
+        printer_state_.set_helix_macros_restart_pending(true);
+        macro_restart_offer_made_ = false;
+        ToastManager::instance().show(
+            ToastSeverity::SUCCESS,
+            lv_tr("Macros installed. Restart Klipper after the print to activate them."), 4000);
+    };
+    auto on_error = [this](const MoonrakerError& err) {
+        spdlog::error("[{}] Helper macro staging failed: {}", get_name(), err.message);
+        ToastManager::instance().show(ToastSeverity::ERROR,
+                                      lv_tr("Failed to install helper macros"), 4000);
+    };
+
+    if (update) {
+        macro_manager_->update_files(on_staged, on_error);
+    } else {
+        macro_manager_->install_files(on_staged, on_error);
+    }
+}
+
+bool AdvancedPanel::restart_helix_macros_when_idle() {
+    // Never restart during an active print; hard-refuse, the caller queues.
+    if (macro_print_active() || !macro_manager_) {
+        return false;
+    }
+
+    macro_manager_->request_restart(
+        [this]() {
+            spdlog::info("[{}] Klipper restart accepted; helper macros activating", get_name());
+            ToastManager::instance().show(ToastSeverity::SUCCESS,
+                                          lv_tr("Klipper restarting - macros activating"), 3000);
+        },
+        [this](const MoonrakerError& err) {
+            spdlog::error("[{}] Klipper restart request failed: {}", get_name(), err.message);
+            // The files are staged but unactivated: keep offering the restart.
+            printer_state_.set_helix_macros_restart_pending(true);
+            ToastManager::instance().show(ToastSeverity::ERROR, lv_tr("Failed to restart Klipper"),
+                                          4000);
+        });
+    return true;
+}
+
+void AdvancedPanel::offer_helix_macros_restart() {
+    spdlog::info("[{}] Offering the deferred Klipper restart for staged helper macros", get_name());
+
+    helix::ui::ConfirmOptions opts;
+    opts.owner_token = object_lifetime_.token();
+    helix::ui::modal_confirm(
+        lv_tr("Restart Klipper?"),
+        lv_tr("The helper macros are installed and activate after Klipper restarts."),
+        ModalSeverity::Warning, lv_tr("Restart Now"),
+        [this]() {
+            if (!restart_helix_macros_when_idle()) {
+                // A print started between the offer and this tap. The pending
+                // state keeps telling the truth in the row; declining here is
+                // a refusal to act, not a loss of the staged files.
+                ToastManager::instance().show(ToastSeverity::INFO,
+                                              lv_tr("A print is in progress - restart still "
+                                                    "pending"),
+                                              3000);
+            }
+        },
+        opts);
+}
+
+void AdvancedPanel::wire_macro_restart_observer() {
+    if (macro_observer_wired_) {
+        return;
+    }
+
+    macro_print_active_observer_ = helix::ui::observe_int_sync<AdvancedPanel>(
+        printer_state_.get_print_active_subject(), this,
+        [](AdvancedPanel* self, int active) {
+            if (active != 0) {
+                return;
+            }
+            const int status =
+                lv_subject_get_int(self->printer_state_.get_helix_macros_status_subject());
+            if (status != static_cast<int>(HelixMacrosStatus::RestartPending)) {
+                // A restart landed and activated the macros: re-arm so the
+                // next staging gets its own offer.
+                self->macro_restart_offer_made_ = false;
+                return;
+            }
+            if (self->macro_restart_offer_made_) {
+                return; // one offer per staging
+            }
+            self->macro_restart_offer_made_ = true;
+            self->offer_helix_macros_restart();
+        },
+        printer_state_.get_subjects_lifetime());
+    macro_observer_wired_ = true;
+    spdlog::debug("[{}] Macro restart observer wired", get_name());
 }
 
 // ============================================================================

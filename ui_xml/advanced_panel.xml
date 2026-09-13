@@ -172,6 +172,40 @@
             <bind_flag_if_not_eq subject="helix_plugin_installed" flag="hidden" ref_value="1"/>
           </setting_toggle_row>
         </beta_feature>
+        <!-- Helix Helper Macros (helix_macros.cfg): back the Clean Nozzle and
+             Bed Mesh slots on printers with no macros of their own. One row
+             visible per helix_macros_status value (bind_flag_if_not_eq hides
+             the row unless the subject equals its ref_value); -1 (unknown, no
+             objects list yet) matches none, so the whole feature stays hidden
+             rather than offering an install that cannot honestly be made.
+             Values: 0 not installed (install offer), 1 installed, 2 outdated
+             (update offer), 3 staged, awaiting the Klipper restart. -->
+        <setting_action_row name="row_helix_macros_install"
+                            label="Install Helper Macros" label_tag="Install Helper Macros" icon="script_text"
+                            description="Enable Clean Nozzle and other print helpers"
+                            description_tag="Enable Clean Nozzle and other print helpers">
+          <bind_flag_if_not_eq subject="helix_macros_status" flag="hidden" ref_value="0"/>
+          <event_cb trigger="clicked" callback="on_helix_macros_install_clicked"/>
+        </setting_action_row>
+        <setting_action_row name="row_helix_macros_update"
+                            label="Update Helper Macros" label_tag="Update Helper Macros" icon="script_text"
+                            description="A newer version of the helper macros is available"
+                            description_tag="A newer version of the helper macros is available">
+          <bind_flag_if_not_eq subject="helix_macros_status" flag="hidden" ref_value="2"/>
+          <event_cb trigger="clicked" callback="on_helix_macros_update_clicked"/>
+        </setting_action_row>
+        <lv_obj name="container_helix_macros_installed" width="100%" style_pad_all="0" scrollable="false">
+          <bind_flag_if_not_eq subject="helix_macros_status" flag="hidden" ref_value="1"/>
+          <setting_info_row name="row_helix_macros_installed"
+                            label="Helper Macros" label_tag="Helper Macros" icon="script_text" value="Installed"
+                            value_tag="Installed"/>
+        </lv_obj>
+        <lv_obj name="container_helix_macros_restart_pending" width="100%" style_pad_all="0" scrollable="false">
+          <bind_flag_if_not_eq subject="helix_macros_status" flag="hidden" ref_value="3"/>
+          <setting_info_row name="row_helix_macros_restart_pending"
+                            label="Helper Macros" label_tag="Helper Macros" icon="script_text" value="Restart pending"
+                            value_tag="Restart pending"/>
+        </lv_obj>
       </setting_group>
       <!-- ================================================================== -->
       <!-- CALIBRATION SECTION -->
