@@ -3,16 +3,16 @@
 
 /**
  * @file test_material_temps_chamber.cpp
- * @brief The Material Temperatures edit view: its columns and the effective
- *        caps they are held to (prestonbrown/helixscreen#1263, #1615, #1619).
+ * @brief The Material Temperatures edit view: its columns and the bounds
+ *        they are held to (prestonbrown/helixscreen#1263, #1615, #1619).
  *
  * The overlay edits a sparse filament::MaterialOverride; find_material()
  * folds the override into MaterialInfo, and FilamentPanel::set_material()
  * reads each temp from that result to drive
- * TemperatureController::set_target(). These tests pin the capability gates
- * on the columns, the override's path into find_material(), and that every
- * input's ceiling is the EFFECTIVE cap TemperatureController enforces —
- * configfile max_temp over the heater default — not the field's own range.
+ * TemperatureController::set_target(). The material database is a property of
+ * the filament: saves are held only to each field's own absolute bounds, and
+ * the printer's effective ceiling is applied where a target is actually sent
+ * (TemperatureController), never as a database bound.
  */
 
 #include "ui_settings_material_temps.h"
@@ -216,13 +216,6 @@ TEST_CASE_METHOD(XMLTestFixture, "Chamber row is absent when the printer has no 
 namespace {
 
 void check_two_by_two_reflow(const char* variant_path, XMLTestFixture& f) {
-    ControllerScope scope(f);
-    helix::TemperatureControllerTestAccess::set_max(scope.controller(), helix::HeaterType::Chamber,
-                                                    60);
-    helix::TemperatureControllerTestAccess::set_max(scope.controller(), helix::HeaterType::Nozzle,
-                                                    290);
-    helix::TemperatureControllerTestAccess::set_max(scope.controller(), helix::HeaterType::Bed,
-                                                    110);
     reset_material_temps_singleton();
     MaterialSettingsManager::instance().clear_override("ABS");
     set_capability("printer_has_chamber_heater", 1);
@@ -245,23 +238,6 @@ void check_two_by_two_reflow(const char* variant_path, XMLTestFixture& f) {
     CHECK(nozzle_row != chamber_row);
     CHECK_FALSE(hidden(lv_obj_get_parent(chamber_input)));
 
-    // Every cap hint rides along with its reflowed column in this variant too,
-    // not only in the base layout.
-    struct {
-        const char* widget;
-        const char* digits;
-    } hints[] = {
-        {"edit_nozzle_cap_hint", "290"},
-        {"edit_bed_cap_hint", "110"},
-        {"edit_chamber_cap_hint", "60"},
-    };
-    for (const auto& h : hints) {
-        lv_obj_t* hint = find_widget(h.widget);
-        REQUIRE(hint != nullptr);
-        CHECK_FALSE(hidden(hint));
-        CHECK(std::string(lv_label_get_text(hint)).find(h.digits) != std::string::npos);
-    }
-
     MaterialSettingsManager::instance().clear_override("ABS");
     reset_material_temps_singleton();
     // Restore the standard component registration for any case that follows.
@@ -282,57 +258,10 @@ TEST_CASE_METHOD(XMLTestFixture,
     check_two_by_two_reflow("A:ui_xml/micro_portrait/material_temps_overlay.xml", *this);
 }
 
-// The edit view's chamber ceiling is the EFFECTIVE cap — the one
-// TemperatureController enforces (configfile max_temp over the backend's
-// conservative default) — not the input's own 0-120 range, so what the user
-// saves is what a send applies (prestonbrown/helixscreen#1615).
-TEST_CASE_METHOD(XMLTestFixture, "Edit view surfaces the printer's chamber cap when it is tighter",
-                 "[material_temps][chamber][1615]") {
-    ControllerScope scope(*this);
-    helix::TemperatureControllerTestAccess::set_max(scope.controller(), helix::HeaterType::Chamber,
-                                                    60);
-    open_abs_edit_view(*this);
-
-    // Precondition: the setup reached a configured cap through the shared
-    // ceiling helper every temperature-input surface must derive from.
-    const float shared =
-        scope.controller().effective_keypad_max(helix::HeaterType::Chamber, 120.0f);
-    REQUIRE(shared == 60.0f);
-
-    lv_subject_t* cap = lv_xml_get_subject(nullptr, "material_chamber_cap");
-    REQUIRE(cap != nullptr);
-    CHECK(lv_subject_get_int(cap) == static_cast<int>(shared));
-
-    lv_obj_t* hint = find_widget("edit_chamber_cap_hint");
-    REQUIRE(hint != nullptr);
-    CHECK_FALSE(hidden(hint));
-    CHECK(std::string(lv_label_get_text(hint)).find("60") != std::string::npos);
-
-    MaterialSettingsManager::instance().clear_override("ABS");
-    reset_material_temps_singleton();
-}
-
-TEST_CASE_METHOD(XMLTestFixture, "Edit view hides the cap hint when the cap is not tighter",
-                 "[material_temps][chamber][1615]") {
-    ControllerScope scope(*this);
-    // 120 is the input's own absolute ceiling — nothing tighter to surface.
-    helix::TemperatureControllerTestAccess::set_max(scope.controller(), helix::HeaterType::Chamber,
-                                                    120);
-    open_abs_edit_view(*this);
-
-    lv_subject_t* cap = lv_xml_get_subject(nullptr, "material_chamber_cap");
-    REQUIRE(cap != nullptr);
-    CHECK(lv_subject_get_int(cap) == 0);
-
-    lv_obj_t* hint = find_widget("edit_chamber_cap_hint");
-    REQUIRE(hint != nullptr);
-    CHECK(hidden(hint));
-
-    MaterialSettingsManager::instance().clear_override("ABS");
-    reset_material_temps_singleton();
-}
-
-TEST_CASE_METHOD(XMLTestFixture, "Saving a chamber value above the effective cap is rejected",
+// The printer's cap is a send-time authority, not a database bound: a value
+// above the cap stores as entered, and TemperatureController clamps it where
+// a target is actually sent (prestonbrown/helixscreen#1615).
+TEST_CASE_METHOD(XMLTestFixture, "Saving a chamber value above the printer's cap stores it",
                  "[material_temps][chamber][1615]") {
     ControllerScope scope(*this);
     helix::TemperatureControllerTestAccess::set_max(scope.controller(), helix::HeaterType::Chamber,
@@ -342,27 +271,68 @@ TEST_CASE_METHOD(XMLTestFixture, "Saving a chamber value above the effective cap
     lv_obj_t* chamber_input = find_widget("edit_chamber_temp");
     REQUIRE(chamber_input != nullptr);
 
-    // 90 is inside the input's own 0-120 range but above the printer's cap:
-    // without the clamp it would persist and silently apply at 60.
+    // Precondition: 90 really is above the printer's cap.
+    const float shared =
+        scope.controller().effective_keypad_max(helix::HeaterType::Chamber, 120.0f);
+    REQUIRE(shared == 60.0f);
+
+    // 90 is inside the input's own 0-120 range and above the printer's 60 cap:
+    // it stores, and the send path is what holds the target to the cap.
     lv_textarea_set_text(chamber_input, "90");
-    helix::settings::get_material_temps_overlay().handle_save();
-    helix::ui::UpdateQueue::instance().drain();
-
-    CHECK(MaterialSettingsManager::instance().get_override("ABS") == nullptr);
-
-    // At the cap itself saving works: 60 differs from ABS's default 50, so a
-    // chamber override is stored and find_material() applies it.
-    lv_textarea_set_text(chamber_input, "60");
     helix::settings::get_material_temps_overlay().handle_save();
     helix::ui::UpdateQueue::instance().drain();
 
     const auto* ovr = MaterialSettingsManager::instance().get_override("ABS");
     REQUIRE(ovr != nullptr);
     REQUIRE(ovr->chamber_temp.has_value());
-    CHECK(*ovr->chamber_temp == 60);
+    CHECK(*ovr->chamber_temp == 90);
     auto mat = filament::find_material("ABS");
     REQUIRE(mat.has_value());
-    CHECK(mat->chamber_temp_c == 60);
+    CHECK(mat->chamber_temp_c == 90);
+
+    MaterialSettingsManager::instance().clear_override("ABS");
+    reset_material_temps_singleton();
+}
+
+// A chamber override stored while the printer HAD a heater must not hold the
+// edit view hostage on a printer whose heater is gone: the column is hidden,
+// so a cap-driven refusal would name a control the user cannot see or fix.
+TEST_CASE_METHOD(XMLTestFixture, "A hidden chamber override cannot block the edit view's save",
+                 "[material_temps][chamber][1615]") {
+    ControllerScope scope(*this);
+
+    MaterialOverride ovr;
+    ovr.chamber_temp = 100; // above the chamber default ceiling of 80
+    MaterialSettingsManager::instance().set_override("ABS", ovr);
+
+    reset_material_temps_singleton();
+    set_capability("printer_has_chamber_heater", 0);
+    REQUIRE(register_component("material_temps_overlay"));
+
+    auto& overlay = helix::settings::get_material_temps_overlay();
+    overlay.show(lv_screen_active());
+    helix::ui::UpdateQueue::instance().drain();
+    overlay.handle_material_row_clicked("ABS");
+
+    // Precondition: the chamber column really is hidden on this printer.
+    lv_obj_t* chamber_input = find_widget("edit_chamber_temp");
+    REQUIRE(chamber_input != nullptr);
+    CHECK(hidden(lv_obj_get_parent(chamber_input)));
+
+    // Touch one visible field so a successful save leaves a trace.
+    lv_obj_t* bed_input = find_widget("edit_bed_temp");
+    REQUIRE(bed_input != nullptr);
+    lv_textarea_set_text(bed_input, "110");
+    overlay.handle_save();
+    helix::ui::UpdateQueue::instance().drain();
+
+    const auto* saved = MaterialSettingsManager::instance().get_override("ABS");
+    REQUIRE(saved != nullptr);
+    REQUIRE(saved->bed_temp.has_value());
+    CHECK(*saved->bed_temp == 110);
+    // The hidden override survives the round-trip untouched.
+    REQUIRE(saved->chamber_temp.has_value());
+    CHECK(*saved->chamber_temp == 100);
 
     MaterialSettingsManager::instance().clear_override("ABS");
     reset_material_temps_singleton();
@@ -381,85 +351,45 @@ TEST_CASE("Chamber reject-toast buffer holds the longest locale at the widest ca
     CHECK(std::string(buf) == ru_widest);
 }
 
-// The nozzle and bed columns answer the same authority the chamber column
-// gained in #1615: their ceilings are the EFFECTIVE caps, not the fields' own
-// 100-500 / 0-200 ranges (prestonbrown/helixscreen#1619).
-TEST_CASE_METHOD(XMLTestFixture, "Edit view surfaces the printer's nozzle cap when it is tighter",
+// A printer whose nozzle ceiling sits below a material's database default
+// must not make that material unsavable: the ceiling is a send-time bound,
+// so the displayed defaults ride through an untouched save (the audit's
+// stock-260-printer ABS case, prestonbrown/helixscreen#1619).
+TEST_CASE_METHOD(XMLTestFixture,
+                 "An ABS save is not refused for defaults below the printer's nozzle ceiling",
                  "[material_temps][1619]") {
     ControllerScope scope(*this);
     helix::TemperatureControllerTestAccess::set_max(scope.controller(), helix::HeaterType::Nozzle,
-                                                    290);
+                                                    260);
     open_abs_edit_view(*this);
 
-    // Precondition: the setup reached a configured cap through the shared
-    // ceiling helper every temperature-input surface must derive from.
-    const float shared = scope.controller().effective_keypad_max(helix::HeaterType::Nozzle, 500.0f);
-    REQUIRE(shared == 290.0f);
+    // Precondition: the printer's ceiling really is tighter than the ABS
+    // database default the view displays.
+    const auto mat = filament::find_material("ABS");
+    REQUIRE(mat.has_value());
+    REQUIRE(mat->nozzle_max > 260);
 
-    lv_subject_t* cap = lv_xml_get_subject(nullptr, "material_nozzle_cap");
-    REQUIRE(cap != nullptr);
-    CHECK(lv_subject_get_int(cap) == static_cast<int>(shared));
+    // Touch one field so a successful save leaves a trace; the nozzle inputs
+    // keep their displayed 240-270 defaults against the 260 ceiling.
+    lv_obj_t* bed_input = find_widget("edit_bed_temp");
+    REQUIRE(bed_input != nullptr);
+    lv_textarea_set_text(bed_input, "110");
+    helix::settings::get_material_temps_overlay().handle_save();
+    helix::ui::UpdateQueue::instance().drain();
 
-    // The hint sits under the Nozzle Max column — the ceiling field of the
-    // two nozzle inputs the save-time check holds to the cap.
-    lv_obj_t* hint = find_widget("edit_nozzle_cap_hint");
-    REQUIRE(hint != nullptr);
-    CHECK_FALSE(hidden(hint));
-    CHECK(std::string(lv_label_get_text(hint)).find("290") != std::string::npos);
+    const auto* ovr = MaterialSettingsManager::instance().get_override("ABS");
+    REQUIRE(ovr != nullptr);
+    REQUIRE(ovr->bed_temp.has_value());
+    CHECK(*ovr->bed_temp == 110);
+    CHECK_FALSE(ovr->nozzle_max.has_value()); // untouched defaults: nothing to override
 
     MaterialSettingsManager::instance().clear_override("ABS");
     reset_material_temps_singleton();
 }
 
-TEST_CASE_METHOD(XMLTestFixture, "Edit view surfaces the printer's bed cap when it is tighter",
-                 "[material_temps][1619]") {
-    ControllerScope scope(*this);
-    helix::TemperatureControllerTestAccess::set_max(scope.controller(), helix::HeaterType::Bed,
-                                                    110);
-    open_abs_edit_view(*this);
-
-    const float shared = scope.controller().effective_keypad_max(helix::HeaterType::Bed, 200.0f);
-    REQUIRE(shared == 110.0f);
-
-    lv_subject_t* cap = lv_xml_get_subject(nullptr, "material_bed_cap");
-    REQUIRE(cap != nullptr);
-    CHECK(lv_subject_get_int(cap) == static_cast<int>(shared));
-
-    lv_obj_t* hint = find_widget("edit_bed_cap_hint");
-    REQUIRE(hint != nullptr);
-    CHECK_FALSE(hidden(hint));
-    CHECK(std::string(lv_label_get_text(hint)).find("110") != std::string::npos);
-
-    MaterialSettingsManager::instance().clear_override("ABS");
-    reset_material_temps_singleton();
-}
-
-TEST_CASE_METHOD(XMLTestFixture, "Edit view hides the nozzle and bed cap hints when not tighter",
-                 "[material_temps][1619]") {
-    ControllerScope scope(*this);
-    // 500 and 200 are the inputs' own absolute ceilings — nothing to surface.
-    helix::TemperatureControllerTestAccess::set_max(scope.controller(), helix::HeaterType::Nozzle,
-                                                    500);
-    helix::TemperatureControllerTestAccess::set_max(scope.controller(), helix::HeaterType::Bed,
-                                                    200);
-    open_abs_edit_view(*this);
-
-    for (const char* name : {"material_nozzle_cap", "material_bed_cap"}) {
-        lv_subject_t* cap = lv_xml_get_subject(nullptr, name);
-        REQUIRE(cap != nullptr);
-        CHECK(lv_subject_get_int(cap) == 0);
-    }
-    for (const char* name : {"edit_nozzle_cap_hint", "edit_bed_cap_hint"}) {
-        lv_obj_t* hint = find_widget(name);
-        REQUIRE(hint != nullptr);
-        CHECK(hidden(hint));
-    }
-
-    MaterialSettingsManager::instance().clear_override("ABS");
-    reset_material_temps_singleton();
-}
-
-TEST_CASE_METHOD(XMLTestFixture, "Saving a nozzle value above the effective cap is rejected",
+// Same send-time contract as the chamber column: a nozzle value above the
+// printer's cap stores as entered (prestonbrown/helixscreen#1619).
+TEST_CASE_METHOD(XMLTestFixture, "Saving a nozzle value above the printer's cap stores it",
                  "[material_temps][1619]") {
     ControllerScope scope(*this);
     helix::TemperatureControllerTestAccess::set_max(scope.controller(), helix::HeaterType::Nozzle,
@@ -469,33 +399,26 @@ TEST_CASE_METHOD(XMLTestFixture, "Saving a nozzle value above the effective cap 
     lv_obj_t* nozzle_max = find_widget("edit_nozzle_max");
     REQUIRE(nozzle_max != nullptr);
 
-    // 350 is inside the input's own 100-500 range but above the printer's cap:
-    // without the clamp it would persist and silently apply at 290.
+    // 350 is inside the input's own 100-500 range and above the printer's 290
+    // cap: it stores, and the send path is what holds the target to the cap.
     lv_textarea_set_text(nozzle_max, "350");
-    helix::settings::get_material_temps_overlay().handle_save();
-    helix::ui::UpdateQueue::instance().drain();
-
-    CHECK(MaterialSettingsManager::instance().get_override("ABS") == nullptr);
-
-    // At the cap itself saving works: 290 differs from ABS's default 270, so
-    // a nozzle_max override is stored and find_material() applies it.
-    lv_textarea_set_text(nozzle_max, "290");
     helix::settings::get_material_temps_overlay().handle_save();
     helix::ui::UpdateQueue::instance().drain();
 
     const auto* ovr = MaterialSettingsManager::instance().get_override("ABS");
     REQUIRE(ovr != nullptr);
     REQUIRE(ovr->nozzle_max.has_value());
-    CHECK(*ovr->nozzle_max == 290);
+    CHECK(*ovr->nozzle_max == 350);
     auto mat = filament::find_material("ABS");
     REQUIRE(mat.has_value());
-    CHECK(mat->nozzle_max == 290);
+    CHECK(mat->nozzle_max == 350);
 
     MaterialSettingsManager::instance().clear_override("ABS");
     reset_material_temps_singleton();
 }
 
-TEST_CASE_METHOD(XMLTestFixture, "Saving a bed value above the effective cap is rejected",
+// Same send-time contract for the bed column (prestonbrown/helixscreen#1619).
+TEST_CASE_METHOD(XMLTestFixture, "Saving a bed value above the printer's cap stores it",
                  "[material_temps][1619]") {
     ControllerScope scope(*this);
     helix::TemperatureControllerTestAccess::set_max(scope.controller(), helix::HeaterType::Bed,
@@ -505,25 +428,18 @@ TEST_CASE_METHOD(XMLTestFixture, "Saving a bed value above the effective cap is 
     lv_obj_t* bed_input = find_widget("edit_bed_temp");
     REQUIRE(bed_input != nullptr);
 
-    // 150 is inside the input's own 0-200 range but above the printer's cap.
+    // 150 is inside the input's own 0-200 range and above the printer's 110 cap.
     lv_textarea_set_text(bed_input, "150");
-    helix::settings::get_material_temps_overlay().handle_save();
-    helix::ui::UpdateQueue::instance().drain();
-
-    CHECK(MaterialSettingsManager::instance().get_override("ABS") == nullptr);
-
-    // At the cap itself saving works: 110 differs from ABS's default 100.
-    lv_textarea_set_text(bed_input, "110");
     helix::settings::get_material_temps_overlay().handle_save();
     helix::ui::UpdateQueue::instance().drain();
 
     const auto* ovr = MaterialSettingsManager::instance().get_override("ABS");
     REQUIRE(ovr != nullptr);
     REQUIRE(ovr->bed_temp.has_value());
-    CHECK(*ovr->bed_temp == 110);
+    CHECK(*ovr->bed_temp == 150);
     auto mat = filament::find_material("ABS");
     REQUIRE(mat.has_value());
-    CHECK(mat->bed_temp == 110);
+    CHECK(mat->bed_temp == 150);
 
     MaterialSettingsManager::instance().clear_override("ABS");
     reset_material_temps_singleton();
@@ -571,21 +487,4 @@ TEST_CASE("fr nozzle range key carries its intended value in the loaded catalog"
               "La température de la buse doit être entre 100 et %d°C");
     }
     REQUIRE(found);
-}
-
-// kCapHintBufBytes must hold the longest locale's formatted hint (ru) at the
-// widest cap each column can carry, the same worst case the hint snprintf
-// faces. A buffer that cuts it garbles the UTF-8 degree sign on the hint.
-TEST_CASE("Cap-hint buffers hold the longest locale at the widest cap", "[material_temps][1619]") {
-    const std::string ru_widest[] = {
-        "Сопло принтера ограничено 500°C",
-        "Стол принтера ограничен 200°C",
-        "Камера принтера ограничена 120°C",
-    };
-    for (const auto& widest : ru_widest) {
-        char buf[helix::settings::MaterialTempsOverlay::kCapHintBufBytes];
-        const int written = snprintf(buf, sizeof(buf), "%s", widest.c_str());
-        CHECK(written == static_cast<int>(widest.size()));
-        CHECK(std::string(buf) == widest);
-    }
 }
