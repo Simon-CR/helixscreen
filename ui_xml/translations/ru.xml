@@ -2839,6 +2839,7 @@
   <translation tag="Upload Debug Bundle" ru="Отправить пакет диагностики"/>
   <translation tag="Upload Failed" ru="Ошибка отправки"/>
   <translation tag="Upload gcode files to get started" ru="Загрузите gcode-файлы для начала"/>
+  <translation tag="Upload unavailable in this build" ru="Отправка недоступна в этой сборке"/>
   <translation tag="Uptime" ru="Время работы"/>
   <translation tag="Use Android native keyboard for text input" ru="Использовать нативную клавиатуру Android для ввода текста"/>
   <translation tag="Use G10/G11 firmware retraction" ru="Использовать аппаратный ретракт G10/G11"/>

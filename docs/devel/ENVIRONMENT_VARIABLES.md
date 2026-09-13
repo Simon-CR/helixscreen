@@ -1211,6 +1211,54 @@ capture taken at a different span is searched in the wrong harmonic window; that
 deliberate (this is a diagnostic replay, not a file importer) and shows up immediately as
 an implausible peak label.
 
+### `HELIX_DIAGNOSTIC_UPLOADS`
+
+Whether this build may ship diagnostics off-device: debug-bundle uploads
+(`DebugBundleCollector::upload_async`), the crash-reporter auto-send
+(`CrashReporter::try_auto_send`), and the `ctl log` RPC all ask this one
+question. A build that may not upload still collects bundles locally and still
+offers the QR-code crash fallback — only the trip to `crash.helixscreen.org`
+is refused, with a clear "unavailable in this build" message
+(prestonbrown/helixscreen#1410).
+
+| Property | Value |
+|----------|-------|
+| **Values** | `1` (force on), `0` (force off), unset (use build default) |
+| **Default** | **ON for official packaging builds** (`HELIX_PACKAGING=1` sets `ENABLE_DIAGNOSTIC_UPLOADS=yes`); **OFF for every other build**, including plain local `make` and cross builds |
+| **File** | `src/system/diag_upload_gate.cpp` |
+
+```bash
+# A native dev run that should be able to upload:
+HELIX_DIAGNOSTIC_UPLOADS=1 ./build/bin/helix-screen --test -vv
+
+# Opt a device back out (note that the next `make deploy-*` restamps it to 1):
+# In helixscreen.env:
+HELIX_DIAGNOSTIC_UPLOADS=0
+```
+
+**Rigs never need this by hand**: `make deploy-*` stamps `HELIX_DIAGNOSTIC_UPLOADS=1`
+into the device env via `sync-device-features` (`mk/cross.mk`), the same mechanism that
+turns on `HELIX_REMOTE_CONTROL`, so a redeployed test device keeps uploading with no
+per-device change. Official packages need no env at all — the marker is compiled in.
+
+Every uploaded payload carries `diag_upload_marked` (true only in builds made with
+`ENABLE_DIAGNOSTIC_UPLOADS=yes`), so the endpoint can later reject or flag unmarked
+bundles — an env opt-in on an unmarked build uploads honestly unmarked.
+
+### `HELIX_BUNDLE_WORKER_URL` / `HELIX_CRASH_WORKER_URL`
+
+Repoint the debug-bundle / crash-report worker endpoints. A test seam, not an operator
+knob: the unit tests (`tests/unit/test_diag_upload_gate.cpp`) point both at a counting
+loopback listener, because libhv honours no proxy environment — without this override a
+test that reaches the real upload path would ship bytes to `crash.helixscreen.org` (and
+the crash path would auto-file a live GitHub issue).
+
+| Property | Value |
+|----------|-------|
+| **Values** | an `http://` URL |
+| **Default** | unset (the compiled-in `crash.helixscreen.org` endpoints) |
+| **File** | `src/system/debug_bundle_collector.cpp`, `src/system/crash_reporter.cpp` |
+
 ### `HELIX_HOT_RELOAD`
 
 Enable XML hot reload for live UI editing. When enabled, a background thread polls `ui_xml/` (recursively — includes breakpoint variants and `components/`) every 500ms for file changes. Modified XML components are pre-validated, then unregistered and re-registered with LVGL, and the active panel/overlay/modal widget tree is torn down and rebuilt in place — no restart, no navigation needed.

@@ -3206,6 +3206,7 @@ translations:
   Upload Debug Bundle: Subir paquete de diagnóstico
   Upload Failed: Error al subir
   Upload gcode files to get started: Suba archivos gcode para comenzar
+  Upload unavailable in this build: Subida no disponible en esta compilación
   Uptime: Tiempo de actividad
   Use Android native keyboard for text input: Usar el teclado nativo de Android para
     entrada de texto

@@ -25,6 +25,7 @@
 #include "remote_pointer.h"
 #include "screenshot.h"
 #include "subject_debug_registry.h"
+#include "system/diag_upload_gate.h"
 #include "widget_resolution.h"
 
 // LVGL XML subject lookup
@@ -516,6 +517,17 @@ nlohmann::json RemoteControlServer::handle_reset(const nlohmann::json& /*params*
 }
 
 nlohmann::json RemoteControlServer::handle_log(const nlohmann::json& params) {
+    // Same upload gate as the bundle and crash-report pipes: the log ring is
+    // the densest diagnostics surface the app holds, so a build that may not
+    // ship diagnostics does not serve it over RPC either
+    // (prestonbrown/helixscreen#1410). Scripts read the log file instead.
+    if (!helix::diag::uploads_enabled()) {
+        spdlog::info("[RemoteControl] log RPC refused: diagnostic uploads are "
+                     "disabled in this build");
+        return {{"error",
+                 {{"code", -32001}, {"message", "Diagnostic log RPC is disabled in this build"}}}};
+    }
+
     // Serve the in-memory ring buffer the debug bundle already fills, so a
     // scripted run can read the app's own log without tee-ing it to a file.
     int lines = 50;

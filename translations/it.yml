@@ -3203,6 +3203,7 @@ translations:
   Upload Debug Bundle: Carica bundle di debug
   Upload Failed: Caricamento fallito
   Upload gcode files to get started: Carica file gcode per iniziare
+  Upload unavailable in this build: Caricamento non disponibile in questa build
   Uptime: Tempo di attività
   Use Android native keyboard for text input: Usa la tastiera nativa di Android per
     l'inserimento testo

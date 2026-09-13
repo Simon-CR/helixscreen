@@ -2839,6 +2839,7 @@
   <translation tag="Upload Debug Bundle" es="Subir paquete de diagnóstico"/>
   <translation tag="Upload Failed" es="Error al subir"/>
   <translation tag="Upload gcode files to get started" es="Suba archivos gcode para comenzar"/>
+  <translation tag="Upload unavailable in this build" es="Subida no disponible en esta compilación"/>
   <translation tag="Uptime" es="Tiempo de actividad"/>
   <translation tag="Use Android native keyboard for text input" es="Usar el teclado nativo de Android para entrada de texto"/>
   <translation tag="Use G10/G11 firmware retraction" es="Usar retracción de firmware G10/G11"/>

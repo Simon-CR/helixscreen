@@ -3213,6 +3213,7 @@ translations:
   Upload Debug Bundle: Debug-Paket hochladen
   Upload Failed: Hochladen fehlgeschlagen
   Upload gcode files to get started: Laden Sie G-Code-Dateien hoch, um zu beginnen
+  Upload unavailable in this build: Hochladen in diesem Build nicht verfügbar
   Uptime: Betriebszeit
   Use Android native keyboard for text input: Native Android-Tastatur für Texteingabe
     verwenden

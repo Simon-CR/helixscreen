@@ -3238,6 +3238,7 @@ translations:
   Upload Debug Bundle: Téléverser le bundle de débogage
   Upload Failed: Téléversement échoué
   Upload gcode files to get started: Téléversez des fichiers gcode pour commencer
+  Upload unavailable in this build: Téléversement indisponible dans cette version
   Uptime: Temps de fonctionnement
   Use Android native keyboard for text input: Utiliser le clavier natif Android pour
     la saisie de texte

@@ -242,7 +242,7 @@ $(FBDEV_TARGET): $(APP_C_OBJS) $(FBDEV_APP_OBJS) $(FBDEV_GLES_VARIANT_OBJS) $(FB
 	@# dirs — and `make deploy-pi-fbdev` and `make release-pi` both read the
 	@# stamp from the dir they are handling. Without this the fbdev half looked
 	@# like a binary from before the stamp existed.
-	$(Q)printf 'remote_control=%s\n' "$(ENABLE_REMOTE_CONTROL)" > $(dir $@).build-features
+	$(Q)printf 'remote_control=%s\ndiag_uploads=%s\n' "$(ENABLE_REMOTE_CONTROL)" "$(ENABLE_DIAGNOSTIC_UPLOADS)" > $(dir $@).build-features
 
 # =============================================================================
 # Symbol extraction and stripping for both binaries

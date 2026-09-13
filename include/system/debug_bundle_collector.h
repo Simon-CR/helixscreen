@@ -45,6 +45,11 @@ struct BundleResult {
     bool success = false;
     std::string share_code;
     std::string error_message;
+    /// The upload was refused because this build may not ship diagnostics
+    /// (helix::diag::uploads_enabled() false). Distinct from a network
+    /// failure: the caller shows the "unavailable in this build" message
+    /// instead of a retryable error.
+    bool uploads_disabled = false;
 };
 
 /// One config file as the include walker sees it. `status` is the HTTP status
@@ -421,6 +426,13 @@ class DebugBundleCollector {
   private:
     static constexpr const char* WORKER_URL = "https://crash.helixscreen.org/v1/debug-bundle";
     static constexpr const char* INGEST_API_KEY = "hx-tel-v1-a7f3c9e2d1b84056";
+
+    /// WORKER_URL with the HELIX_BUNDLE_WORKER_URL test override applied. The
+    /// override exists so a test that reaches the real upload path posts to a
+    /// loopback listener instead of the CDN — libhv honours no proxy
+    /// environment, so this is the only thing keeping an ungated test run
+    /// from shipping bytes off-box.
+    static const char* worker_url();
 
     /// Blocking HTTP GET to a Moonraker endpoint, returns parsed JSON or error object
     static nlohmann::json moonraker_get(const std::string& base_url, const std::string& endpoint,

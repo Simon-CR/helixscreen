@@ -2944,6 +2944,7 @@ translations:
   Upload Debug Bundle: デバッグバンドルをアップロード
   Upload Failed: アップロード失敗
   Upload gcode files to get started: 開始するには gcode ファイルをアップロードしてください
+  Upload unavailable in this build: このビルドではアップロードできません
   Uptime: 稼働時間
   Use Android native keyboard for text input: テキスト入力に Android ネイティブキーボードを使用
   Use G10/G11 firmware retraction: G10/G11 ファームウェアリトラクションを使用

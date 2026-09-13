@@ -2839,6 +2839,7 @@
   <translation tag="Upload Debug Bundle" ja="デバッグバンドルをアップロード"/>
   <translation tag="Upload Failed" ja="アップロード失敗"/>
   <translation tag="Upload gcode files to get started" ja="開始するには gcode ファイルをアップロードしてください"/>
+  <translation tag="Upload unavailable in this build" ja="このビルドではアップロードできません"/>
   <translation tag="Uptime" ja="稼働時間"/>
   <translation tag="Use Android native keyboard for text input" ja="テキスト入力に Android ネイティブキーボードを使用"/>
   <translation tag="Use G10/G11 firmware retraction" ja="G10/G11 ファームウェアリトラクションを使用"/>
