@@ -127,6 +127,32 @@ ResolvedTemps resolved_temps(const FilamentSlotOverride& o);
 // 0 (which signals to resolved_temps that the material-DB default should win).
 void populate_temps_from_slot_info(FilamentSlotOverride& ovr, const SlotInfo& info);
 
+// The record a backend persists for a user's edit of `info`. One shape for
+// every AMS backend, so the two rules a backend must not get wrong live here
+// rather than in seven near-identical blocks.
+//
+// A persist=true edit is the user speaking, so each field the user supplied is
+// user-locked: that is what stops the auto-mirror overwriting it and what makes
+// the reloaded record classify as the user's word rather than as something the
+// store merely remembered (#965). A field left at its "nothing here" value is
+// NOT locked, so a later firmware report may still fill it; that keeps the
+// invariant every mirror policy already relies on, that a lock and its value
+// are set together.
+//
+// The colour records only when it is a reading rather than the SlotInfo "no
+// colour" sentinel, the question is_declarable_color() answers; a deliberate
+// pure black (#000000) is a reading and records. color_name travels
+// regardless, because it is the user's own text either way.
+//
+// Temps come from populate_temps_from_slot_info(). updated_at is left default
+// so save_async stamps a fresh value.
+FilamentSlotOverride override_from_user_edit(const SlotInfo& info);
+
+// As above, recording `material` in place of info.material, for a backend that
+// stores firmware's normalized spelling of what the user typed. The material
+// lock follows `material`.
+FilamentSlotOverride override_from_user_edit(const SlotInfo& info, const std::string& material);
+
 nlohmann::json to_json(const FilamentSlotOverride& o);
 FilamentSlotOverride from_json(const nlohmann::json& j);
 

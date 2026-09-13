@@ -2580,11 +2580,6 @@ void AmsBackendAfc::parse_afc_stepper(int slot_index, const std::string& lane_na
         firmware.cache.brand = slot.brand;
     }
 
-    // Re-supply the user's attached identity on top of firmware truth. This is
-    // what keeps a lane's spool across an eject now that the parser honours
-    // AFC's clears.
-    apply_overrides(slot, slot.global_index >= 0 ? slot.global_index : slot.slot_index);
-
     // Derive slot status from sensors and status string.
     // Only recompute status when at least one status-related field is present
     // in the update. Partial updates (e.g., weight-only) must not regress the
@@ -2687,6 +2682,12 @@ void AmsBackendAfc::parse_afc_stepper(int slot_index, const std::string& lane_na
         sensed.present = filament_present_now;
         ams::ingest(lane, sensed);
     }
+
+    // Last, because this READS the lane model: every ingest above has to have
+    // landed, the binding has to have been reconciled, and slot.status has to
+    // be this frame's, or the lane paints a reading one frame stale or a
+    // binding that was just dropped.
+    apply_resolved_lane(slot, slot.global_index >= 0 ? slot.global_index : slot.slot_index);
 
     // Populate or clear per-slot error based on lane status
     if (has_status) {
@@ -4250,7 +4251,7 @@ void AmsBackendAfc::parse_lane_data(const nlohmann::json& lane_data) {
         // decided whether an override was visible: the status path applied it,
         // the DB path silently dropped it. Must follow every firmware read above
         // so the override still wins.
-        apply_overrides(slot, slot.global_index >= 0 ? slot.global_index : slot.slot_index);
+        apply_resolved_lane(slot, slot.global_index >= 0 ? slot.global_index : slot.slot_index);
 
         // NO WEIGHT IS READ FROM lane_data, on any AFC version. This is deliberate.
         //
@@ -4948,30 +4949,7 @@ void AmsBackendAfc::apply_overrides(SlotInfo& slot, int slot_index) {
 
 void AmsBackendAfc::persist_override(int slot_index, const SlotInfo& info) {
     // Callers hold mutex_.
-    helix::ams::FilamentSlotOverride o;
-    o.brand = info.brand;
-    o.spool_name = info.spool_name;
-    o.spoolman_id = info.spoolman_id;
-    o.spoolman_vendor_id = info.spoolman_vendor_id;
-    o.remaining_weight_g = info.remaining_weight_g;
-    o.total_weight_g = info.total_weight_g;
-    o.color_name = info.color_name;
-    o.material = info.material;
-    // Catalog product identity — see apply_overrides(). Never auto-mirrored;
-    // a non-empty value is always a user pick.
-    o.catalog_id = info.catalog_id;
-    o.product_name = info.product_name;
-    // A deliberate pure black (#000000) records; the "no color reading"
-    // sentinel does not.
-    if (ams::is_declarable_color(info.color_rgb)) {
-        o.color_rgb = info.color_rgb;
-        o.color_set = true;
-    }
-    // SlotInfo carries the user's edit OR the bound Spoolman spool's
-    // filament profile; the material-DB fallback for fields left at 0
-    // is applied at emit time inside resolved_temps(). Centralized in
-    // the helper so the AMS backends stay in sync.
-    helix::ams::populate_temps_from_slot_info(o, info);
+    helix::ams::FilamentSlotOverride o = helix::ams::override_from_user_edit(info);
     overrides_[slot_index] = o;
 
     if (override_store_) {

@@ -627,6 +627,47 @@ void populate_temps_from_slot_info(FilamentSlotOverride& ovr, const SlotInfo& in
     }
 }
 
+FilamentSlotOverride override_from_user_edit(const SlotInfo& info, const std::string& material) {
+    FilamentSlotOverride ovr;
+    ovr.brand = info.brand;
+    ovr.spool_name = info.spool_name;
+    ovr.spoolman_id = info.spoolman_id;
+    ovr.spoolman_vendor_id = info.spoolman_vendor_id;
+    ovr.remaining_weight_g = info.remaining_weight_g;
+    ovr.total_weight_g = info.total_weight_g;
+    ovr.color_name = info.color_name;
+    ovr.material = material;
+    // Catalog product identity. Persisted so a reopen can restore the EXACT
+    // product rather than the alphabetically-first variant of the same
+    // vendor+material. Firmware has no notion of a catalog product, so a
+    // non-empty value can only be a user pick and needs no lock of its own.
+    ovr.catalog_id = info.catalog_id;
+    ovr.product_name = info.product_name;
+    // A deliberate pure black (#000000) is a reading and records; the "no
+    // colour reading" sentinel is not one and does not.
+    if (is_declarable_color(info.color_rgb)) {
+        ovr.color_rgb = info.color_rgb;
+        ovr.color_set = true;
+    }
+    // The locks are what mark this record as the user's own word rather than
+    // something the store merely remembered, both to the auto-mirror policies
+    // and to the reload that classifies the record (#965). Each field locks
+    // only when the user actually supplied it: a field left at its "nothing
+    // here" value is the mirror's to fill from a later firmware report.
+    ovr.user_locked_color = ovr.color_set;
+    ovr.user_locked_material = !material.empty();
+    // SlotInfo carries the user's edit OR the bound Spoolman spool's filament
+    // profile; the material-DB fallback for fields left at 0 is applied at
+    // emit time inside resolved_temps().
+    populate_temps_from_slot_info(ovr, info);
+    // updated_at left default: save_async stamps a fresh value.
+    return ovr;
+}
+
+FilamentSlotOverride override_from_user_edit(const SlotInfo& info) {
+    return override_from_user_edit(info, info.material);
+}
+
 // ============================================================================
 // FilamentSlotOverrideStore skeleton (Task 2). Real load/save wiring lands
 // in Tasks 3-5; this skeleton exists so other components can depend on the

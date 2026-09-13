@@ -1238,7 +1238,7 @@ void AmsBackendAd5xIfs::update_slot_from_state(int slot_index) {
     // last so overrides win for any non-default field. Callers hold mutex_,
     // which also covers overrides_ writes from on_started() and set_slot_info()
     // — see apply_overrides() below for the invariant.
-    apply_overrides(entry->info, slot_index);
+    apply_resolved_lane(entry->info, slot_index);
 }
 
 void AmsBackendAd5xIfs::apply_overrides(SlotInfo& slot, int slot_index) {
@@ -2777,44 +2777,10 @@ AmsError AmsBackendAd5xIfs::set_slot_info(int slot_index, const SlotInfo& info, 
         // down, so there's only one place that mutates overrides_ for
         // persist=true set_slot_info.
         if (persist) {
-            helix::ams::FilamentSlotOverride ovr;
-            ovr.brand = info.brand;
-            ovr.spool_name = info.spool_name;
-            ovr.spoolman_id = info.spoolman_id;
-            ovr.spoolman_vendor_id = info.spoolman_vendor_id;
-            ovr.remaining_weight_g = info.remaining_weight_g;
-            ovr.total_weight_g = info.total_weight_g;
-            ovr.color_rgb = info.color_rgb;
-            ovr.color_set = true; // a user-edit always records a color, even pure black (#000000)
-            ovr.color_name = info.color_name;
-            // normalize_material() was already applied to the cached
-            // materials_ copy; reuse it so the on-disk record carries the
-            // firmware-valid value instead of the raw user-typed string.
-            ovr.material = normalized_material;
-            // Catalog product identity. Persisted so a reopen can restore the
-            // EXACT product rather than the alphabetically-first variant of the
-            // same vendor+material. Never auto-mirrored (firmware has no notion
-            // of a catalog product), so no user-lock flag is needed: a non-empty
-            // value can only have come from a user pick.
-            ovr.catalog_id = info.catalog_id;
-            ovr.product_name = info.product_name;
-            // User-lock signals: persist=true is a user edit, so tag both
-            // fields user-locked. Material is only locked when the user
-            // actually provided one — an explicit empty material is the user
-            // saying "no material set", which the bootstrap mirror is allowed
-            // to fill from a subsequent firmware report. See #965 for why
-            // these locks exist (post-print firmware revert clobbered user
-            // material via the OverwriteAlways auto-mirror).
-            ovr.user_locked_color = true;
-            ovr.user_locked_material = !normalized_material.empty();
-            // SlotInfo carries the user's edit OR the bound Spoolman spool's
-            // filament profile; the material-DB fallback for fields left at 0
-            // is applied at emit time inside resolved_temps(). Centralized in
-            // the helper so the four AMS backends stay in sync.
-            helix::ams::populate_temps_from_slot_info(ovr, info);
-            // updated_at left default — save_async stamps a fresh value so
-            // the on-disk record's scan_time wins over any local clock skew.
-            overrides_[slot_index] = ovr;
+            // normalize_material() was already applied to the cached materials_
+            // copy; record that instead of the raw user-typed string so the
+            // on-disk record carries a firmware-valid value.
+            overrides_[slot_index] = helix::ams::override_from_user_edit(info, normalized_material);
         }
 
         // Treat the user's chosen color as the new "firmware truth" baseline

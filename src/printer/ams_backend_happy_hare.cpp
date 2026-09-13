@@ -977,17 +977,14 @@ void AmsBackendHappyHare::parse_mmu_state(const nlohmann::json& mmu_data) {
                 reading.spoolman_id.reset();
             }
         }
-        // Re-supply user-attached identity the gate map cannot carry.
-        for (size_t i = 0; i < spool_ids.size(); ++i) {
-            if (auto* entry = slots_.get_mut(static_cast<int>(i))) {
-                apply_overrides(entry->info, static_cast<int>(i));
-            }
-        }
         // The gate map is the one thing Happy Hare states about a gate's
         // binding, so this is where a binding that has stopped holding is
         // found. The id compared is the gate's own accumulated reading rather
-        // than entry->info, which carries the stored record's id back after
-        // the override merge just above.
+        // than entry->info, which carries the resolved record's id back.
+        //
+        // Runs BEFORE the lane is painted below: a binding this drops must be
+        // gone from the model before anything reads it, or the gate paints the
+        // spool that just stopped describing it for one more frame.
         for (size_t i = 0; i < spool_ids.size(); ++i) {
             const int gate = static_cast<int>(i);
             if (!slots_.get(gate)) {
@@ -1001,6 +998,14 @@ void AmsBackendHappyHare::parse_mmu_state(const nlohmann::json& mmu_data) {
             if (reconcile_lane_binding(gate, firmware_id) != ams::BindingVerdict::Holds) {
                 helix::ams::clear_persisted_override(override_store_.get(), overrides_, gate,
                                                      "[AMS HH]");
+            }
+        }
+        // Re-supply user-attached identity the gate map cannot carry. Last,
+        // because it reads the lane model the two loops above have just
+        // finished writing.
+        for (size_t i = 0; i < spool_ids.size(); ++i) {
+            if (auto* entry = slots_.get_mut(static_cast<int>(i))) {
+                apply_resolved_lane(entry->info, static_cast<int>(i));
             }
         }
         spdlog::trace("[AMS HappyHare] Parsed gate_spool_id for {} gates", spool_ids.size());
@@ -2653,30 +2658,7 @@ void AmsBackendHappyHare::apply_overrides(SlotInfo& slot, int slot_index) {
 
 void AmsBackendHappyHare::persist_override(int slot_index, const SlotInfo& info) {
     // Callers hold mutex_.
-    helix::ams::FilamentSlotOverride o;
-    o.brand = info.brand;
-    o.spool_name = info.spool_name;
-    o.spoolman_id = info.spoolman_id;
-    o.spoolman_vendor_id = info.spoolman_vendor_id;
-    o.remaining_weight_g = info.remaining_weight_g;
-    o.total_weight_g = info.total_weight_g;
-    o.color_name = info.color_name;
-    o.material = info.material;
-    // Catalog product identity — see apply_overrides(). Never auto-mirrored;
-    // a non-empty value is always a user pick.
-    o.catalog_id = info.catalog_id;
-    o.product_name = info.product_name;
-    // A deliberate pure black (#000000) records; the "no color reading"
-    // sentinel does not.
-    if (ams::is_declarable_color(info.color_rgb)) {
-        o.color_rgb = info.color_rgb;
-        o.color_set = true;
-    }
-    // SlotInfo carries the user's edit OR the bound Spoolman spool's
-    // filament profile; the material-DB fallback for fields left at 0
-    // is applied at emit time inside resolved_temps(). Centralized in
-    // the helper so the AMS backends stay in sync.
-    helix::ams::populate_temps_from_slot_info(o, info);
+    helix::ams::FilamentSlotOverride o = helix::ams::override_from_user_edit(info);
     overrides_[slot_index] = o;
 
     if (override_store_) {

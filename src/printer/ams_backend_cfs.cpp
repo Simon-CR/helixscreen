@@ -1620,7 +1620,7 @@ void AmsBackendCfs::handle_status_update(const nlohmann::json& notification) {
                             slot.material, slot.status == SlotStatus::AVAILABLE,
                             helix::ams::MirrorPolicy::FillUnsetOnly, backend_log_tag());
                     }
-                    apply_overrides(slot, global_idx);
+                    apply_resolved_lane(slot, global_idx);
                 }
             }
         }
@@ -2099,37 +2099,7 @@ AmsError AmsBackendCfs::set_slot_info(int slot_index, const SlotInfo& info, bool
         // registers the expected post-write fingerprints with rfid_tracker_
         // before dispatching the gcode.
         if (persist) {
-            helix::ams::FilamentSlotOverride ovr;
-            ovr.brand = info.brand;
-            ovr.spool_name = info.spool_name;
-            ovr.spoolman_id = info.spoolman_id;
-            ovr.spoolman_vendor_id = info.spoolman_vendor_id;
-            ovr.remaining_weight_g = info.remaining_weight_g;
-            ovr.total_weight_g = info.total_weight_g;
-            ovr.color_rgb = info.color_rgb;
-            ovr.color_set = true; // a user-edit always records a color, even pure black (#000000)
-            ovr.color_name = info.color_name;
-            ovr.material = info.material;
-            // Catalog product identity. Persisted so a reopen can restore the
-            // EXACT product rather than the alphabetically-first variant of the
-            // same vendor+material. Never auto-mirrored (firmware has no notion
-            // of a catalog product), so no user-lock flag is needed: a non-empty
-            // value can only have come from a user pick.
-            ovr.catalog_id = info.catalog_id;
-            ovr.product_name = info.product_name;
-            // User-lock: CFS uses FillUnsetOnly so the locks are
-            // belt-and-suspenders here, but they keep the on-disk schema
-            // consistent across backends and protect against a future
-            // policy change. See #965 for the motivating bug.
-            ovr.user_locked_color = true;
-            ovr.user_locked_material = !info.material.empty();
-            // SlotInfo carries the user's edit OR the bound Spoolman spool's
-            // filament profile; the material-DB fallback for fields left at 0
-            // is applied at emit time inside resolved_temps(). Centralized in
-            // the helper so the four AMS backends stay in sync.
-            helix::ams::populate_temps_from_slot_info(ovr, info);
-            // updated_at left default — save_async stamps a fresh value.
-            overrides_[slot_index] = ovr;
+            overrides_[slot_index] = helix::ams::override_from_user_edit(info);
         }
 
         // Record our own SPOOLMAN_ID write for the fork dialect (the only

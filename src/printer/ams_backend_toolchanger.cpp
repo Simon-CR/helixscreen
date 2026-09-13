@@ -101,7 +101,7 @@ void AmsBackendToolChanger::on_started() {
         if (!overrides_.empty() && !system_info_.units.empty()) {
             auto& slots = system_info_.units[0].slots;
             for (size_t i = 0; i < slots.size(); ++i) {
-                apply_overrides(slots[i], static_cast<int>(i));
+                apply_resolved_lane(slots[i], static_cast<int>(i));
             }
         }
     }
@@ -541,7 +541,7 @@ void AmsBackendToolChanger::handle_status_update(const nlohmann::json& notificat
         if (state_changed && !overrides_.empty() && !system_info_.units.empty()) {
             auto& slots = system_info_.units[0].slots;
             for (size_t i = 0; i < slots.size(); ++i) {
-                apply_overrides(slots[i], static_cast<int>(i));
+                apply_resolved_lane(slots[i], static_cast<int>(i));
             }
         }
     }
@@ -936,7 +936,7 @@ void AmsBackendToolChanger::initialize_tools() {
     if (!overrides_.empty() && !system_info_.units.empty()) {
         auto& slots = system_info_.units[0].slots;
         for (size_t i = 0; i < slots.size(); ++i) {
-            apply_overrides(slots[i], static_cast<int>(i));
+            apply_resolved_lane(slots[i], static_cast<int>(i));
         }
     }
 
@@ -1283,25 +1283,7 @@ AmsError AmsBackendToolChanger::set_slot_info(int slot_index, const SlotInfo& in
             // klipper-toolchanger supplies no material, colour, brand or weight,
             // so there is nothing underneath for these to fall through to.
             if (persist) {
-                helix::ams::FilamentSlotOverride ovr;
-                ovr.brand = info.brand;
-                ovr.spool_name = info.spool_name;
-                ovr.spoolman_id = info.spoolman_id;
-                ovr.spoolman_vendor_id = info.spoolman_vendor_id;
-                ovr.remaining_weight_g = info.remaining_weight_g;
-                ovr.total_weight_g = info.total_weight_g;
-                ovr.color_rgb = info.color_rgb;
-                ovr.color_set = true; // a user edit records a colour, even #000000
-                ovr.color_name = info.color_name;
-                ovr.material = info.material;
-                ovr.catalog_id = info.catalog_id;
-                ovr.product_name = info.product_name;
-                // No auto-mirror can exist on this backend (no firmware source),
-                // so the locks are inert here. Set for one shape across backends.
-                ovr.user_locked_color = true;
-                ovr.user_locked_material = !info.material.empty();
-                helix::ams::populate_temps_from_slot_info(ovr, info);
-                overrides_[slot_index] = ovr;
+                overrides_[slot_index] = helix::ams::override_from_user_edit(info);
             }
         }
     }

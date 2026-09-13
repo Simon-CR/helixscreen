@@ -178,6 +178,101 @@ TEST_CASE("populate_temps_from_slot_info wires SlotInfo temps onto the override"
     }
 }
 
+TEST_CASE("override_from_user_edit records a colour the user chose and refuses the sentinel",
+          "[filament_slot_override]") {
+    using helix::ams::override_from_user_edit;
+
+    SECTION("pure black is a colour a user can choose") {
+        helix::SlotInfo info;
+        info.color_rgb = 0x000000;
+        const auto ovr = override_from_user_edit(info);
+        CHECK(ovr.color_set);
+        CHECK(ovr.color_rgb == 0x000000u);
+    }
+
+    SECTION("the no-colour sentinel is not a choice") {
+        helix::SlotInfo info;
+        info.color_rgb = helix::AMS_DEFAULT_SLOT_COLOR;
+        const auto ovr = override_from_user_edit(info);
+        CHECK_FALSE(ovr.color_set);
+    }
+
+    SECTION("the colour name is the user's own text either way") {
+        helix::SlotInfo info;
+        info.color_rgb = helix::AMS_DEFAULT_SLOT_COLOR;
+        info.color_name = "Warm Grey";
+        const auto ovr = override_from_user_edit(info);
+        CHECK(ovr.color_name == "Warm Grey");
+    }
+}
+
+TEST_CASE("override_from_user_edit signs the fields the user supplied",
+          "[filament_slot_override]") {
+    using helix::ams::override_from_user_edit;
+
+    SECTION("a colour and a material the user gave are both the user's") {
+        helix::SlotInfo info;
+        info.color_rgb = 0x1E5AA8;
+        info.material = "PETG";
+        const auto ovr = override_from_user_edit(info);
+        CHECK(ovr.user_locked_color);
+        CHECK(ovr.user_locked_material);
+    }
+
+    SECTION("a field the user left empty stays open to a firmware report") {
+        helix::SlotInfo info;
+        info.color_rgb = helix::AMS_DEFAULT_SLOT_COLOR;
+        info.brand = "Polymaker";
+        const auto ovr = override_from_user_edit(info);
+        CHECK_FALSE(ovr.user_locked_color);
+        CHECK_FALSE(ovr.user_locked_material);
+    }
+
+    SECTION("the rest of the identity rides along") {
+        helix::SlotInfo info;
+        info.brand = "Polymaker";
+        info.spool_name = "Blue PETG 1kg";
+        info.spoolman_id = 42;
+        info.spoolman_vendor_id = 7;
+        info.remaining_weight_g = 730.0f;
+        info.total_weight_g = 1000.0f;
+        info.catalog_id = "polymaker-polylite-petg";
+        info.product_name = "PolyLite PETG";
+        info.bed_temp = 80;
+        info.nozzle_temp_min = 230;
+        info.nozzle_temp_max = 250;
+        const auto ovr = override_from_user_edit(info);
+        CHECK(ovr.brand == "Polymaker");
+        CHECK(ovr.spool_name == "Blue PETG 1kg");
+        CHECK(ovr.spoolman_id == 42);
+        CHECK(ovr.spoolman_vendor_id == 7);
+        CHECK(ovr.remaining_weight_g == Catch::Approx(730.0f));
+        CHECK(ovr.total_weight_g == Catch::Approx(1000.0f));
+        CHECK(ovr.catalog_id == "polymaker-polylite-petg");
+        CHECK(ovr.product_name == "PolyLite PETG");
+        CHECK(ovr.bed_temp == 80);
+        CHECK(ovr.nozzle_temp == 240);
+        // save_async stamps this; a record built here carries no time of its own.
+        CHECK(ovr.updated_at.time_since_epoch().count() == 0);
+    }
+
+    SECTION("a backend that normalizes the material records and signs that spelling") {
+        helix::SlotInfo info;
+        info.material = "Silk PLA";
+        const auto ovr = override_from_user_edit(info, "SILK");
+        CHECK(ovr.material == "SILK");
+        CHECK(ovr.user_locked_material);
+    }
+
+    SECTION("a normalized material that comes back empty locks nothing") {
+        helix::SlotInfo info;
+        info.material = "Silk PLA";
+        const auto ovr = override_from_user_edit(info, "");
+        CHECK(ovr.material.empty());
+        CHECK_FALSE(ovr.user_locked_material);
+    }
+}
+
 TEST_CASE("FilamentSlotOverride roundtrips through JSON", "[filament_slot_override]") {
     FilamentSlotOverride ovr;
     ovr.brand = "Polymaker";
