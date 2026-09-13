@@ -521,11 +521,13 @@ nlohmann::json RemoteControlServer::handle_log(const nlohmann::json& params) {
     // the densest diagnostics surface the app holds, so a build that may not
     // ship diagnostics does not serve it over RPC either
     // (prestonbrown/helixscreen#1410). Scripts read the log file instead.
+    // Throw, like every other refusal here: dispatch() wraps a handler's
+    // RETURN as a success result, so a returned error object would read as a
+    // served log request.
     if (!helix::diag::uploads_enabled()) {
         spdlog::info("[RemoteControl] log RPC refused: diagnostic uploads are "
                      "disabled in this build");
-        return {{"error",
-                 {{"code", -32001}, {"message", "Diagnostic log RPC is disabled in this build"}}}};
+        throw std::runtime_error("Diagnostic log RPC is disabled in this build");
     }
 
     // Serve the in-memory ring buffer the debug bundle already fills, so a

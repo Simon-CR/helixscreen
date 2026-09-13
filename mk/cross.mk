@@ -2866,13 +2866,34 @@ define assert-no-remote-control
 	fi
 endef
 
+# The upload-gate twin of the above, with the polarity flipped: a release
+# binary MUST carry the diagnostic-upload marker (HELIX_PACKAGING=1 sets
+# ENABLE_DIAGNOSTIC_UPLOADS=yes). The installed fleet is the crash telemetry;
+# a release silently assembled from a developer binary would ship with every
+# upload pipe defaulted off, and nothing downstream would look wrong.
+#
+#   $(1) build/<plat>/bin
+define assert-diag-uploads
+	@feat=$$(sed -n 's/^diag_uploads=//p' $(1)/.build-features 2>/dev/null); \
+	if [ -z "$$feat" ]; then \
+		echo "$(YELLOW)  WARNING: $(1)/.build-features missing or unstamped — cannot confirm this binary carries the upload marker$(RESET)"; \
+	elif [ "$$feat" != "yes" ]; then \
+		echo "$(RED)$(BOLD)✗ $(1)/helix-screen was built WITHOUT diagnostic uploads enabled.$(RESET)"; \
+		echo "$(YELLOW)  A release must upload crash telemetry. Rebuild with HELIX_PACKAGING=1$(RESET)"; \
+		echo "$(YELLOW)  (what package-* sets) or ENABLE_DIAGNOSTIC_UPLOADS=yes, then re-run this target.$(RESET)"; \
+		exit 1; \
+	fi
+endef
+
 .PHONY: release-pi release-pi32 release-ad5m release-cc1 release-k1 release-ad5x release-k1-dynamic release-k2 release-snapmaker-u1 release-x86 release-all release-clean pi-fbdev-docker pi32-fbdev-docker pi-all-docker pi32-all-docker x86-fbdev-docker x86-all-docker
 
 # Package Pi release
 release-pi: | build/pi/bin/helix-screen build/pi/bin/helix-splash build/pi-fbdev/bin/helix-screen
 	@echo "$(CYAN)$(BOLD)Packaging Pi release v$(VERSION)...$(RESET)"
 	$(call assert-no-remote-control,build/pi/bin)
+	$(call assert-diag-uploads,build/pi/bin)
 	$(call assert-no-remote-control,build/pi-fbdev/bin)
+	$(call assert-diag-uploads,build/pi-fbdev/bin)
 	@mkdir -p $(RELEASE_DIR)/helixscreen/bin
 	@cp build/pi/bin/helix-screen build/pi/bin/helix-splash $(RELEASE_DIR)/helixscreen/bin/
 	@if [ -f build/pi/bin/helix-watchdog ]; then cp build/pi/bin/helix-watchdog $(RELEASE_DIR)/helixscreen/bin/; fi
@@ -2919,7 +2940,9 @@ release-pi: | build/pi/bin/helix-screen build/pi/bin/helix-splash build/pi-fbdev
 release-pi32: | build/pi32/bin/helix-screen build/pi32/bin/helix-splash build/pi32-fbdev/bin/helix-screen
 	@echo "$(CYAN)$(BOLD)Packaging Pi 32-bit release v$(VERSION)...$(RESET)"
 	$(call assert-no-remote-control,build/pi32/bin)
+	$(call assert-diag-uploads,build/pi32/bin)
 	$(call assert-no-remote-control,build/pi32-fbdev/bin)
+	$(call assert-diag-uploads,build/pi32-fbdev/bin)
 	@mkdir -p $(RELEASE_DIR)/helixscreen/bin
 	@cp build/pi32/bin/helix-screen build/pi32/bin/helix-splash $(RELEASE_DIR)/helixscreen/bin/
 	@if [ -f build/pi32/bin/helix-watchdog ]; then cp build/pi32/bin/helix-watchdog $(RELEASE_DIR)/helixscreen/bin/; fi
@@ -2967,6 +2990,7 @@ release-pi32: | build/pi32/bin/helix-screen build/pi32/bin/helix-splash build/pi
 release-ad5m: | build/ad5m/bin/helix-screen build/ad5m/bin/helix-splash
 	@echo "$(CYAN)$(BOLD)Packaging AD5M release v$(VERSION)...$(RESET)"
 	$(call assert-no-remote-control,build/ad5m/bin)
+	$(call assert-diag-uploads,build/ad5m/bin)
 	@mkdir -p $(RELEASE_DIR)/helixscreen/bin
 	@cp build/ad5m/bin/helix-screen build/ad5m/bin/helix-splash $(RELEASE_DIR)/helixscreen/bin/
 	@if [ -f build/ad5m/bin/helix-watchdog ]; then cp build/ad5m/bin/helix-watchdog $(RELEASE_DIR)/helixscreen/bin/; fi
@@ -3017,6 +3041,7 @@ release-ad5m: | build/ad5m/bin/helix-screen build/ad5m/bin/helix-splash
 release-ad5x: | build/ad5x/bin/helix-screen build/ad5x/bin/helix-splash
 	@echo "$(CYAN)$(BOLD)Packaging AD5X release v$(VERSION)...$(RESET)"
 	$(call assert-no-remote-control,build/ad5x/bin)
+	$(call assert-diag-uploads,build/ad5x/bin)
 	@mkdir -p $(RELEASE_DIR)/helixscreen/bin
 	@cp build/ad5x/bin/helix-screen build/ad5x/bin/helix-splash $(RELEASE_DIR)/helixscreen/bin/
 	@if [ -f build/ad5x/bin/helix-watchdog ]; then cp build/ad5x/bin/helix-watchdog $(RELEASE_DIR)/helixscreen/bin/; fi
@@ -3068,6 +3093,7 @@ release-ad5x: | build/ad5x/bin/helix-screen build/ad5x/bin/helix-splash
 release-cc1: | build/cc1/bin/helix-screen build/cc1/bin/helix-splash
 	@echo "$(CYAN)$(BOLD)Packaging CC1 release v$(VERSION)...$(RESET)"
 	$(call assert-no-remote-control,build/cc1/bin)
+	$(call assert-diag-uploads,build/cc1/bin)
 	@mkdir -p $(RELEASE_DIR)/helixscreen/bin
 	@cp build/cc1/bin/helix-screen build/cc1/bin/helix-splash $(RELEASE_DIR)/helixscreen/bin/
 	@if [ -f build/cc1/bin/helix-watchdog ]; then cp build/cc1/bin/helix-watchdog $(RELEASE_DIR)/helixscreen/bin/; fi
@@ -3119,6 +3145,7 @@ release-cc1: | build/cc1/bin/helix-screen build/cc1/bin/helix-splash
 release-k1: | build/mips/bin/helix-screen build/mips/bin/helix-splash
 	@echo "$(CYAN)$(BOLD)Packaging K1 release v$(VERSION)...$(RESET)"
 	$(call assert-no-remote-control,build/mips/bin)
+	$(call assert-diag-uploads,build/mips/bin)
 	@mkdir -p $(RELEASE_DIR)/helixscreen/bin
 	@cp build/mips/bin/helix-screen build/mips/bin/helix-splash $(RELEASE_DIR)/helixscreen/bin/
 	@if [ -f build/mips/bin/helix-watchdog ]; then cp build/mips/bin/helix-watchdog $(RELEASE_DIR)/helixscreen/bin/; fi
@@ -3170,6 +3197,7 @@ release-k1: | build/mips/bin/helix-screen build/mips/bin/helix-splash
 release-k1-dynamic: | build/k1-dynamic/bin/helix-screen build/k1-dynamic/bin/helix-splash
 	@echo "$(CYAN)$(BOLD)Packaging K1 Dynamic release v$(VERSION)...$(RESET)"
 	$(call assert-no-remote-control,build/k1-dynamic/bin)
+	$(call assert-diag-uploads,build/k1-dynamic/bin)
 	@mkdir -p $(RELEASE_DIR)/helixscreen/bin
 	@cp build/k1-dynamic/bin/helix-screen build/k1-dynamic/bin/helix-splash $(RELEASE_DIR)/helixscreen/bin/
 	@if [ -f build/k1-dynamic/bin/helix-watchdog ]; then cp build/k1-dynamic/bin/helix-watchdog $(RELEASE_DIR)/helixscreen/bin/; fi
@@ -3212,6 +3240,7 @@ release-k1-dynamic: | build/k1-dynamic/bin/helix-screen build/k1-dynamic/bin/hel
 release-k2: | build/k2/bin/helix-screen build/k2/bin/helix-splash
 	@echo "$(CYAN)$(BOLD)Packaging K2 release v$(VERSION)...$(RESET)"
 	$(call assert-no-remote-control,build/k2/bin)
+	$(call assert-diag-uploads,build/k2/bin)
 	@mkdir -p $(RELEASE_DIR)/helixscreen/bin
 	@cp build/k2/bin/helix-screen build/k2/bin/helix-splash $(RELEASE_DIR)/helixscreen/bin/
 	@if [ -f build/k2/bin/helix-watchdog ]; then cp build/k2/bin/helix-watchdog $(RELEASE_DIR)/helixscreen/bin/; fi
@@ -3265,6 +3294,7 @@ release-k2: | build/k2/bin/helix-screen build/k2/bin/helix-splash
 release-snapmaker-u1: | build/snapmaker-u1/bin/helix-screen
 	@echo "$(CYAN)$(BOLD)Packaging Snapmaker U1 release v$(VERSION)...$(RESET)"
 	$(call assert-no-remote-control,build/snapmaker-u1/bin)
+	$(call assert-diag-uploads,build/snapmaker-u1/bin)
 	@mkdir -p $(RELEASE_DIR)/helixscreen/bin
 	@cp build/snapmaker-u1/bin/helix-screen $(RELEASE_DIR)/helixscreen/bin/
 	@if [ -f build/snapmaker-u1/bin/helix-splash ]; then cp build/snapmaker-u1/bin/helix-splash $(RELEASE_DIR)/helixscreen/bin/; fi
@@ -3316,7 +3346,9 @@ release-snapmaker-u1: | build/snapmaker-u1/bin/helix-screen
 release-x86: | build/x86/bin/helix-screen build/x86/bin/helix-splash build/x86-fbdev/bin/helix-screen
 	@echo "$(CYAN)$(BOLD)Packaging x86 release v$(VERSION)...$(RESET)"
 	$(call assert-no-remote-control,build/x86/bin)
+	$(call assert-diag-uploads,build/x86/bin)
 	$(call assert-no-remote-control,build/x86-fbdev/bin)
+	$(call assert-diag-uploads,build/x86-fbdev/bin)
 	@mkdir -p $(RELEASE_DIR)/helixscreen/bin
 	@cp build/x86/bin/helix-screen build/x86/bin/helix-splash $(RELEASE_DIR)/helixscreen/bin/
 	@if [ -f build/x86/bin/helix-watchdog ]; then cp build/x86/bin/helix-watchdog $(RELEASE_DIR)/helixscreen/bin/; fi
