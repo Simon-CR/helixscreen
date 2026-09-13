@@ -1756,6 +1756,7 @@ translations:
   No video player installed - showing the timelapse library: '動画プレーヤーがありません – タイムラプス一覧を表示します'
   ? "No webcam detected.\nA webcam is required for timelapse."
   : "ウェブカメラが検出されませんでした。\nタイムラプスにはウェブカメラが必要です。"
+  No widgets found: ウィジェットが見つかりません
   No width sensor detected: '幅センサーが検出されません'
   None: なし
   None (disable): なし (無効)
@@ -2389,6 +2390,7 @@ translations:
   Search printers...: プリンターを検索...
   Search spools...: スプール検索...
   Search vendors...: ベンダーを検索...
+  Search widgets...: ウィジェットを検索...
   Searching...: 検索中...
   Secondary: セカンダリ
   Section Detail: セクション詳細
@@ -2888,6 +2890,7 @@ translations:
   USB drive removed: USB ドライブが取り外されました
   USB printer access denied — check permissions: USB プリンターへのアクセスが拒否されました — 権限を確認してください
   Unavailable: 利用不可
+  Unavailable on this printer: このプリンターでは利用できません
   Understanding Results: 結果の理解
   ? "Uneven belt tension causes print artifacts like layer shifts, VFAs (vertical fine artifacts), and ringing.\n\nThis tool vibrates each belt path and measures the resonant frequency — matched frequencies mean balanced tension.\n\nFor CoreXY, Path A and B should be within a few Hz of each other."
   : "ベルト張力が不均一だと、レイヤーシフトや VFA(垂直微細アーティファクト)、リンギングなどの印刷不良が発生します。\n\nこのツールは各ベルトパスを振動させて共振周波数を測定します — 周波数が一致していれば張力が均等であることを意味します。\n\nCoreXY では、パス A と B は数 Hz 以内に収まっている必要があります。"

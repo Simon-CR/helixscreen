@@ -1705,6 +1705,7 @@
   <translation tag="No vendors found" en="No vendors found"/>
   <translation tag="No video player installed - showing the timelapse library" en="No video player installed - showing the timelapse library"/>
   <translation tag="No webcam detected.&#10;A webcam is required for timelapse." en="No webcam detected.&#10;A webcam is required for timelapse."/>
+  <translation tag="No widgets found" en="No widgets found"/>
   <translation tag="No width sensor detected" en="No width sensor detected"/>
   <translation tag="None" en="None"/>
   <translation tag="None (disable)" en="None (disable)"/>
@@ -2318,6 +2319,7 @@
   <translation tag="Search printers..." en="Search printers..."/>
   <translation tag="Search spools..." en="Search spools..."/>
   <translation tag="Search vendors..." en="Search vendors..."/>
+  <translation tag="Search widgets..." en="Search widgets..."/>
   <translation tag="Searching..." en="Searching..."/>
   <translation tag="Secondary" en="Secondary"/>
   <translation tag="Section Detail" en="Section Detail"/>
@@ -2784,6 +2786,7 @@
   <translation tag="USB drive removed" en="USB drive removed"/>
   <translation tag="USB printer access denied — check permissions" en="USB printer access denied — check permissions"/>
   <translation tag="Unavailable" en="Unavailable"/>
+  <translation tag="Unavailable on this printer" en="Unavailable on this printer"/>
   <translation tag="Understanding Results" en="Understanding Results"/>
   <translation tag="Uneven belt tension causes print artifacts like layer shifts, VFAs (vertical fine artifacts), and ringing.&#10;&#10;This tool vibrates each belt path and measures the resonant frequency — matched frequencies mean balanced tension.&#10;&#10;For CoreXY, Path A and B should be within a few Hz of each other." en="Uneven belt tension causes print artifacts like layer shifts, VFAs (vertical fine artifacts), and ringing.&#10;&#10;This tool vibrates each belt path and measures the resonant frequency — matched frequencies mean balanced tension.&#10;&#10;For CoreXY, Path A and B should be within a few Hz of each other."/>
   <translation tag="Uninstall" en="Uninstall"/>

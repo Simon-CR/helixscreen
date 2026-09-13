@@ -6,6 +6,8 @@
 #include "ui_fonts.h"
 #include "ui_modal.h"
 #include "ui_nav_manager.h"
+#include "ui_selector_model.h"
+#include "ui_subject_registry.h"
 #include "ui_update_queue.h"
 #include "ui_utils.h"
 
@@ -33,6 +35,10 @@ namespace helix {
 
 namespace {
 
+/// widget_catalog_view subject values: which list the catalog body shows.
+constexpr int kCatalogViewBrowse = 0; // category rows
+constexpr int kCatalogViewSearch = 1; // flat search results
+
 struct CatalogState {
     lv_obj_t* overlay_root = nullptr;
     lv_obj_t* backdrop = nullptr;      // Semi-transparent dark backdrop behind the catalog
@@ -41,6 +47,13 @@ struct CatalogState {
     const PanelWidgetConfig* config = nullptr; // Owned by the caller (GridEditMode)
     WidgetSelectedCallback on_select;
     CatalogClosedCallback on_close;
+
+    // Search state. Entries are parallel to the search_results children (one row
+    // per registry def, both in registry order) and to nothing else — the
+    // category pages build their own rows per dive.
+    lv_subject_t view = {};        // kCatalogView*; bound by the XML view flip
+    lv_subject_t match_count = {}; // visible search rows; drives the empty message
+    std::vector<ui::SelectorEntry> entries;
 };
 
 CatalogState g_catalog_state;
@@ -317,6 +330,143 @@ lv_obj_t* WidgetCatalogOverlay::create_row(lv_obj_t* parent, const char* name, c
     return row;
 }
 
+/// True when this widget's hardware gate subject exists and reads 0.
+///
+/// A def with no gate subject is never gated. A gate subject that is not
+/// registered yet also reads as available: the subjects come up with the panel,
+/// and treating "not yet known" as missing hardware would grey out half the
+/// catalog during startup.
+static bool is_hardware_gated(const PanelWidgetDef& def) {
+    if (!def.hardware_gate_subject) {
+        return false;
+    }
+    lv_subject_t* gate = lv_xml_get_subject(nullptr, def.hardware_gate_subject);
+    return gate && lv_subject_get_int(gate) == 0;
+}
+
+/// Appends " (<reason>)" to a gated widget's catalog name.
+static std::string with_gate_hint(const char* display_name, const PanelWidgetDef& def) {
+    std::string name(display_name);
+    const char* hint =
+        def.hardware_gate_hint ? lv_tr(def.hardware_gate_hint) : lv_tr("not detected");
+    name += std::string(" (") + hint + ")";
+    return name;
+}
+
+/// Pointers to every registry def, in registry order — the def list behind the
+/// search results.
+static std::vector<const PanelWidgetDef*> all_widget_def_ptrs() {
+    std::vector<const PanelWidgetDef*> defs;
+    const auto& all = get_all_widget_defs();
+    defs.reserve(all.size());
+    for (const auto& def : all) {
+        defs.push_back(&def);
+    }
+    return defs;
+}
+
+/// A category's defs that can actually be placed here, in registry order.
+static std::vector<const PanelWidgetDef*> available_in_category(WidgetCategory category) {
+    std::vector<const PanelWidgetDef*> out;
+    for (const auto& def : get_all_widget_defs()) {
+        if (def.category == category && !is_hardware_gated(def)) {
+            out.push_back(&def);
+        }
+    }
+    return out;
+}
+
+/// Every def whose hardware is missing here, in registry order — the contents of
+/// the "Unavailable on this printer" dive.
+static std::vector<const PanelWidgetDef*> gated_widget_defs() {
+    std::vector<const PanelWidgetDef*> out;
+    for (const auto& def : get_all_widget_defs()) {
+        if (is_hardware_gated(def)) {
+            out.push_back(&def);
+        }
+    }
+    return out;
+}
+
+/// Placed instances per multi_instance base ID.
+///
+/// "Placed" means holding a grid cell, not merely enabled — an instance at
+/// (-1,-1) is on no dashboard and counting it overstates what the user sees.
+static std::unordered_map<std::string, int> count_multi_placed(const PanelWidgetConfig& config) {
+    std::unordered_map<std::string, int> multi_placed;
+    for (const auto& entry : config.entries()) {
+        auto colon_pos = entry.id.find(':');
+        if (colon_pos != std::string::npos && entry.enabled && entry.has_grid_position()) {
+            multi_placed[entry.id.substr(0, colon_pos)]++;
+        }
+    }
+    return multi_placed;
+}
+
+/// Searchable copy of the registry, translated: label = display name, group =
+/// category name, description = the one-line blurb shown under each row. `id`
+/// indexes get_all_widget_defs(), which is also the row order in search_results.
+static std::vector<ui::SelectorEntry> build_catalog_entries() {
+    std::vector<ui::SelectorEntry> entries;
+    const auto& defs = get_all_widget_defs();
+    entries.reserve(defs.size());
+    for (size_t i = 0; i < defs.size(); ++i) {
+        const auto& def = defs[i];
+        const WidgetCategoryDef* cat = find_widget_category(def.category);
+        entries.push_back({
+            def.display_name ? std::string(lv_tr(def.display_name)) : std::string(def.id),
+            cat ? std::string(lv_tr(cat->display_name)) : std::string(),
+            static_cast<int>(i),
+            def.description ? std::string(lv_tr(def.description)) : std::string(),
+        });
+    }
+    return entries;
+}
+
+/// Flip the catalog between the category list and the flat search results, and
+/// show/hide result rows by match. Rows are built once per open; a keystroke
+/// only toggles flags, the same treatment the wizard's ~105-row list gets.
+static void apply_catalog_search(const std::string& query) {
+    lv_obj_t* results = lv_obj_find_by_name(g_catalog_state.overlay_root, "search_results");
+    if (!results) {
+        return;
+    }
+    if (ui::selector_query_is_blank(query)) {
+        lv_subject_set_int(&g_catalog_state.view, kCatalogViewBrowse);
+        return;
+    }
+
+    int visible = 0;
+    const uint32_t row_count = lv_obj_get_child_count(results);
+    for (uint32_t i = 0; i < row_count && i < g_catalog_state.entries.size(); i++) {
+        lv_obj_t* row = lv_obj_get_child(results, static_cast<int32_t>(i));
+        if (!row) {
+            continue;
+        }
+        if (ui::selector_entry_matches(g_catalog_state.entries[i], query)) {
+            lv_obj_remove_flag(row, LV_OBJ_FLAG_HIDDEN);
+            ++visible;
+        } else {
+            lv_obj_add_flag(row, LV_OBJ_FLAG_HIDDEN);
+        }
+    }
+    lv_subject_set_int(&g_catalog_state.match_count, visible);
+    lv_subject_set_int(&g_catalog_state.view, kCatalogViewSearch);
+    lv_obj_scroll_to_y(results, 0, LV_ANIM_OFF);
+    spdlog::debug("[WidgetCatalog] Search '{}' matched {} of {} widgets", query, visible,
+                  g_catalog_state.entries.size());
+}
+
+/// Search box handler — the XML textarea's value_changed callback.
+void on_catalog_search_changed(lv_event_t* e) {
+    if (!g_catalog_state.overlay_root) {
+        return;
+    }
+    lv_obj_t* ta = static_cast<lv_obj_t*>(lv_event_get_target(e));
+    const char* text = lv_textarea_get_text(ta);
+    apply_catalog_search(text ? text : "");
+}
+
 // ============================================================================
 // Category grouping
 // ============================================================================
@@ -349,7 +499,13 @@ void WidgetCatalogOverlay::populate_category_rows(lv_obj_t* group) {
 
     for (size_t i = 0; i < categories.size(); i++) {
         const auto& cat = categories[i];
-        size_t count = widgets_in_category(cat.id).size();
+        size_t count = available_in_category(cat.id).size();
+        if (count == 0) {
+            // Every widget this category holds is hardware-gated here; the
+            // unavailable row below carries them. A category row that dives
+            // into an empty page is a dead menu entry.
+            continue;
+        }
         std::string subtitle = fmt::format(fmt::runtime(lv_tr("{} widgets")), count);
 
         const char* attrs[] = {"label", lv_tr(cat.display_name), "label_tag", cat.translation_tag,
@@ -366,6 +522,33 @@ void WidgetCatalogOverlay::populate_category_rows(lv_obj_t* group) {
             continue;
         }
         lv_obj_set_user_data(row, reinterpret_cast<void*>(i));
+    }
+
+    // Hardware-gated widgets get their own dive at the bottom rather than
+    // greying out rows inside their categories: they stay discoverable (the
+    // section is collapsed into one row) without padding out every category
+    // with things this printer cannot place.
+    size_t gated = gated_widget_defs().size();
+    if (gated == 0) {
+        return;
+    }
+    std::string subtitle = fmt::format(fmt::runtime(lv_tr("{} widgets")), gated);
+    const char* attrs[] = {"label",
+                           lv_tr("Unavailable on this printer"),
+                           "label_tag",
+                           "Unavailable on this printer",
+                           "icon",
+                           "block_helper",
+                           "description",
+                           subtitle.c_str(),
+                           "description_min_bp",
+                           "0",
+                           "callback",
+                           "on_catalog_unavailable_clicked",
+                           nullptr};
+    auto* row = static_cast<lv_obj_t*>(lv_xml_create(group, "setting_action_row", attrs));
+    if (!row) {
+        spdlog::warn("[WidgetCatalog] Failed to create the unavailable row");
     }
 }
 
@@ -384,141 +567,105 @@ void WidgetCatalogOverlay::on_category_row_clicked(lv_event_t* e) {
     show_category(categories[index].id);
 }
 
-/// True when this widget's hardware gate subject exists and reads 0.
-///
-/// A def with no gate subject is never gated. A gate subject that is not
-/// registered yet also reads as available: the subjects come up with the panel,
-/// and treating "not yet known" as missing hardware would grey out half the
-/// catalog during startup.
-static bool is_hardware_gated(const PanelWidgetDef& def) {
-    if (!def.hardware_gate_subject) {
-        return false;
-    }
-    lv_subject_t* gate = lv_xml_get_subject(nullptr, def.hardware_gate_subject);
-    return gate && lv_subject_get_int(gate) == 0;
-}
-
-/// Appends " (<reason>)" to a gated widget's catalog name.
-static std::string with_gate_hint(const char* display_name, const PanelWidgetDef& def) {
-    std::string name(display_name);
-    const char* hint =
-        def.hardware_gate_hint ? lv_tr(def.hardware_gate_hint) : lv_tr("not detected");
-    name += std::string(" (") + hint + ")";
-    return name;
+void WidgetCatalogOverlay::on_unavailable_row_clicked(lv_event_t* /*e*/) {
+    show_unavailable();
 }
 
 void WidgetCatalogOverlay::populate_rows(lv_obj_t* scroll, const PanelWidgetConfig& config,
-                                         WidgetCategory category) {
-    const auto defs = widgets_in_category(category);
-
-    // Pre-pass: count placed instances per multi_instance base ID.
-    // "Placed" means holding a grid cell, not merely enabled — an instance at
-    // (-1,-1) is on no dashboard and counting it overstates what the user sees.
-    std::unordered_map<std::string, int> multi_placed_count;
-    for (const auto& entry : config.entries()) {
-        auto colon_pos = entry.id.find(':');
-        if (colon_pos != std::string::npos && entry.enabled && entry.has_grid_position()) {
-            std::string base = entry.id.substr(0, colon_pos);
-            multi_placed_count[base]++;
-        }
-    }
-
+                                         const std::vector<const PanelWidgetDef*>& defs) {
+    const auto multi_placed_count = count_multi_placed(config);
     for (const auto* def_ptr : defs) {
-        const auto& def = *def_ptr;
-        if (def.multi_instance) {
-            // Multi-instance widget — show one row with placed count.
-            // Clicking always mints a new instance.
-            int placed = multi_placed_count[def.id];
+        create_widget_row(scroll, *def_ptr, config, multi_placed_count);
+    }
+}
 
-            const char* display_name = def.display_name ? lv_tr(def.display_name) : def.id;
+lv_obj_t* WidgetCatalogOverlay::create_widget_row(
+    lv_obj_t* parent, const PanelWidgetDef& def, const PanelWidgetConfig& config,
+    const std::unordered_map<std::string, int>& multi_placed_count) {
+    const char* display_name = def.display_name ? lv_tr(def.display_name) : def.id;
 
-            // A multi-instance widget is never "all placed" — another instance
-            // can always be minted — but it is still gated on its hardware. Two
-            // widgets are both: power_device and thermistor. Skipping the gate
-            // here let you add a Power tile on a printer with no Moonraker power
-            // device, which then rendered as a dead control.
-            bool hardware_gated = is_hardware_gated(def);
+    // A multi-instance widget is never "all placed" — another instance can
+    // always be minted — but it is still gated on its hardware. Two widgets
+    // are both: power_device and thermistor. Skipping the gate check let you
+    // add a Power tile on a printer with no Moonraker power device, which then
+    // rendered as a dead control.
+    bool hardware_gated = is_hardware_gated(def);
+    std::string name_str =
+        hardware_gated ? with_gate_hint(display_name, def) : std::string(display_name);
 
-            std::string name_str =
-                hardware_gated ? with_gate_hint(display_name, def) : std::string(display_name);
-            if (!hardware_gated && placed > 0) {
-                char buf[32];
-                snprintf(buf, sizeof(buf), " (%d %s)", placed, lv_tr("Placed"));
-                name_str += buf;
-            }
+    // Single-instance widget: is_placed(), not is_enabled() — a widget enabled
+    // at (-1,-1) is on no grid, and the catalog is the only surface that can
+    // give it a cell back. Dimming it there left it with no UI at all.
+    bool already_placed = def.multi_instance ? false : config.is_placed(def.id);
 
-            const char* desc = def.description ? lv_tr(def.description) : nullptr;
-            lv_obj_t* row = create_row(scroll, name_str.c_str(), def.icon, desc, def.colspan,
-                                       def.rowspan, /*already_placed=*/false, hardware_gated);
-
-            // create_row() already stripped CLICKABLE when gated; binding the
-            // mint handler anyway would leave a live callback on a dead row.
-            if (hardware_gated) {
-                continue;
-            }
-
-            // The base ID pointer comes from the static def table (stable lifetime)
-            lv_obj_add_event_cb(
-                row,
-                [](lv_event_t* ev) {
-                    auto* base_id = static_cast<const char*>(lv_event_get_user_data(ev));
-                    if (!base_id)
-                        return;
-                    // Mint a new instance ID
-                    auto& mgr_config = PanelWidgetManager::instance().get_widget_config("home");
-                    std::string new_id = mgr_config.mint_instance_id(base_id);
-                    spdlog::info("[WidgetCatalog] Minted multi-instance widget: {}", new_id);
-                    auto cb = g_catalog_state.on_select;
-                    close_catalog();
-                    if (cb) {
-                        cb(new_id);
-                    }
-                },
-                LV_EVENT_CLICKED, const_cast<char*>(def.id));
-        } else {
-            // Single-instance widget.
-            // is_placed(), not is_enabled(): a widget enabled at (-1,-1) is on
-            // no grid, and the catalog is the only surface that can give it a
-            // cell back. Dimming it there left it with no UI at all.
-            bool already_placed = config.is_placed(def.id);
-
-            const char* display_name = def.display_name ? lv_tr(def.display_name) : def.id;
-
-            bool hardware_gated = is_hardware_gated(def);
-            std::string name_str =
-                hardware_gated ? with_gate_hint(display_name, def) : std::string(display_name);
-
-            const char* desc = def.description ? lv_tr(def.description) : nullptr;
-            lv_obj_t* row = create_row(scroll, name_str.c_str(), def.icon, desc, def.colspan,
-                                       def.rowspan, already_placed, hardware_gated);
-
-            if (!already_placed) {
-                // Store widget ID in user data for the click handler.
-                // The ID string comes from the static widget def table, so the pointer is
-                // stable.
-                lv_obj_set_user_data(row, const_cast<char*>(def.id));
-
-                // Widget pool recycling exception: dynamic row click handler
-                lv_obj_add_event_cb(
-                    row,
-                    [](lv_event_t* ev) {
-                        auto* widget_id = static_cast<const char*>(lv_event_get_user_data(ev));
-                        if (!widget_id) {
-                            return;
-                        }
-                        spdlog::info("[WidgetCatalog] Selected widget: {}", widget_id);
-                        // Copy callback and ID before closing (close resets state)
-                        auto cb = g_catalog_state.on_select;
-                        std::string id_copy(widget_id);
-                        close_catalog();
-                        if (cb) {
-                            cb(id_copy);
-                        }
-                    },
-                    LV_EVENT_CLICKED, const_cast<char*>(def.id));
-            }
+    if (!hardware_gated && def.multi_instance) {
+        auto it = multi_placed_count.find(def.id);
+        int placed = it != multi_placed_count.end() ? it->second : 0;
+        if (placed > 0) {
+            char buf[32];
+            snprintf(buf, sizeof(buf), " (%d %s)", placed, lv_tr("Placed"));
+            name_str += buf;
         }
     }
+
+    const char* desc = def.description ? lv_tr(def.description) : nullptr;
+    lv_obj_t* row = create_row(parent, name_str.c_str(), def.icon, desc, def.colspan, def.rowspan,
+                               already_placed, hardware_gated);
+    // Named for the def id so tests and `ctl` can address the row directly.
+    lv_obj_set_name(row, def.id);
+
+    // create_row() already stripped CLICKABLE when gated or placed; binding a
+    // handler anyway would leave a live callback on a dead row.
+    if (hardware_gated || already_placed) {
+        return row;
+    }
+
+    if (def.multi_instance) {
+        // Multi-instance widget — clicking always mints a new instance.
+        // The base ID pointer comes from the static def table (stable lifetime)
+        lv_obj_add_event_cb(
+            row,
+            [](lv_event_t* ev) {
+                auto* base_id = static_cast<const char*>(lv_event_get_user_data(ev));
+                if (!base_id)
+                    return;
+                // Mint a new instance ID
+                auto& mgr_config = PanelWidgetManager::instance().get_widget_config("home");
+                std::string new_id = mgr_config.mint_instance_id(base_id);
+                spdlog::info("[WidgetCatalog] Minted multi-instance widget: {}", new_id);
+                auto cb = g_catalog_state.on_select;
+                close_catalog();
+                if (cb) {
+                    cb(new_id);
+                }
+            },
+            LV_EVENT_CLICKED, const_cast<char*>(def.id));
+    } else {
+        // Store widget ID in user data for the click handler.
+        // The ID string comes from the static widget def table, so the pointer is
+        // stable.
+        lv_obj_set_user_data(row, const_cast<char*>(def.id));
+
+        // Widget pool recycling exception: dynamic row click handler
+        lv_obj_add_event_cb(
+            row,
+            [](lv_event_t* ev) {
+                auto* widget_id = static_cast<const char*>(lv_event_get_user_data(ev));
+                if (!widget_id) {
+                    return;
+                }
+                spdlog::info("[WidgetCatalog] Selected widget: {}", widget_id);
+                // Copy callback and ID before closing (close resets state)
+                auto cb = g_catalog_state.on_select;
+                std::string id_copy(widget_id);
+                close_catalog();
+                if (cb) {
+                    cb(id_copy);
+                }
+            },
+            LV_EVENT_CLICKED, const_cast<char*>(def.id));
+    }
+    return row;
 }
 
 // ============================================================================
@@ -533,6 +680,16 @@ void WidgetCatalogOverlay::show(lv_obj_t* parent_screen, const PanelWidgetConfig
     }
     lv_xml_register_event_cb(nullptr, "on_catalog_reset", on_catalog_reset);
     lv_xml_register_event_cb(nullptr, "on_catalog_category_clicked", on_category_row_clicked);
+    lv_xml_register_event_cb(nullptr, "on_catalog_unavailable_clicked", on_unavailable_row_clicked);
+    lv_xml_register_event_cb(nullptr, "on_catalog_search_changed", on_catalog_search_changed);
+
+    // Search subjects. Registered before the overlay XML is parsed so its
+    // bind_flag_* elements resolve them, and re-initialized per open: entries
+    // from the previous open's widgets removed themselves when those widgets
+    // were deleted, and the next open must not see their values.
+    UI_SUBJECT_INIT_AND_REGISTER_INT(g_catalog_state.view, kCatalogViewBrowse,
+                                     "widget_catalog_view");
+    UI_SUBJECT_INIT_AND_REGISTER_INT(g_catalog_state.match_count, 0, "widget_catalog_match_count");
 
     // Create a semi-transparent dark backdrop so the home panel shows through.
     // Uses the same modal_backdrop_opacity constant as Modal dialogs (DRY).
@@ -612,6 +769,20 @@ void WidgetCatalogOverlay::show(lv_obj_t* parent_screen, const PanelWidgetConfig
 
     populate_category_rows(group);
 
+    // Search results: one row per registry def, in registry order, built once
+    // per open — a keystroke only flips visibility flags (apply_catalog_search),
+    // the same treatment the wizard's ~105-row list gets. Entries are parallel
+    // to these rows.
+    lv_obj_t* results = lv_obj_find_by_name(overlay, "search_results");
+    if (!results) {
+        spdlog::error("[WidgetCatalog] search_results not found in XML");
+        lv_obj_delete(overlay);
+        release_catalog_state();
+        return;
+    }
+    g_catalog_state.entries = build_catalog_entries();
+    populate_rows(results, config, all_widget_def_ptrs());
+
     // Register with nullptr lifecycle — this overlay is function-based, not class-based
     NavigationManager::instance().register_overlay_instance(overlay, nullptr);
 
@@ -650,25 +821,42 @@ void WidgetCatalogOverlay::show(lv_obj_t* parent_screen, const PanelWidgetConfig
 // ============================================================================
 
 void WidgetCatalogOverlay::show_category(WidgetCategory category) {
+    const WidgetCategoryDef* def = find_widget_category(category);
+    if (!def) {
+        spdlog::warn("[WidgetCatalog] Unknown category requested");
+        return;
+    }
+    const auto defs = available_in_category(category);
+    show_widget_page(lv_tr(def->display_name), def->translation_tag, defs);
+    spdlog::info("[WidgetCatalog] Dived into category '{}' ({} widgets)", def->display_name,
+                 defs.size());
+}
+
+void WidgetCatalogOverlay::show_unavailable() {
+    const auto defs = gated_widget_defs();
+    if (defs.empty()) {
+        spdlog::debug("[WidgetCatalog] No gated widgets; ignoring unavailable dive");
+        return;
+    }
+    show_widget_page(lv_tr("Unavailable on this printer"), "Unavailable on this printer", defs);
+    spdlog::info("[WidgetCatalog] Dived into the unavailable list ({} widgets)", defs.size());
+}
+
+void WidgetCatalogOverlay::show_widget_page(const char* title, const char* title_tag,
+                                            const std::vector<const PanelWidgetDef*>& defs) {
     if (!g_catalog_state.overlay_root || !g_catalog_state.config ||
         !g_catalog_state.parent_screen) {
-        spdlog::warn("[WidgetCatalog] show_category() with no catalog open");
+        spdlog::warn("[WidgetCatalog] show_widget_page() with no catalog open");
         return;
     }
     if (g_catalog_state.category_root) {
         spdlog::warn("[WidgetCatalog] A category page is already open, ignoring dive");
         return;
     }
-    const WidgetCategoryDef* def = find_widget_category(category);
-    if (!def) {
-        spdlog::warn("[WidgetCatalog] Unknown category requested");
-        return;
-    }
 
     // The title is baked in at parse time — overlay_panel forwards $title to its
     // header_bar, so each dive creates a page already carrying its own name.
-    const char* attrs[] = {"title", lv_tr(def->display_name), "title_tag", def->translation_tag,
-                           nullptr};
+    const char* attrs[] = {"title", title, "title_tag", title_tag, nullptr};
     auto* page = static_cast<lv_obj_t*>(
         lv_xml_create(g_catalog_state.parent_screen, "widget_catalog_category_overlay", attrs));
     if (!page) {
@@ -688,7 +876,7 @@ void WidgetCatalogOverlay::show_category(WidgetCategory category) {
         lv_obj_delete(page);
         return;
     }
-    populate_rows(scroll, *g_catalog_state.config, category);
+    populate_rows(scroll, *g_catalog_state.config, defs);
 
     g_catalog_state.category_root = page;
 
@@ -706,9 +894,6 @@ void WidgetCatalogOverlay::show_category(WidgetCategory category) {
         retire_category_page(page);
         spdlog::debug("[WidgetCatalog] Category page closed, back at the category list");
     });
-
-    spdlog::info("[WidgetCatalog] Dived into category '{}' ({} widgets)", def->display_name,
-                 widgets_in_category(category).size());
 }
 
 } // namespace helix

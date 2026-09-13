@@ -1902,6 +1902,7 @@ translations:
   No video player installed - showing the timelapse library: 'No hay reproductor de vídeo instalado: se muestra la biblioteca de timelapse'
   ? "No webcam detected.\nA webcam is required for timelapse."
   : "No se detectó webcam.\nSe necesita webcam para timelapse."
+  No widgets found: No se encontraron widgets
   No width sensor detected: 'No se detectó sensor de ancho'
   None: Ninguno
   None (disable): Ninguno (desactivar)
@@ -2581,6 +2582,7 @@ translations:
   Search printers...: Buscar impresoras...
   Search spools...: Buscar bobinas...
   Search vendors...: Buscar proveedores...
+  Search widgets...: Buscar widgets...
   Searching...: Buscando...
   Secondary: Secundario
   Section Detail: Detalle de sección
@@ -3146,6 +3148,7 @@ translations:
   USB printer access denied — check permissions: Acceso a la impresora USB denegado
     — revisa los permisos
   Unavailable: No disponible
+  Unavailable on this printer: No disponible en esta impresora
   Understanding Results: Entender resultados
   ? "Uneven belt tension causes print artifacts like layer shifts, VFAs (vertical fine artifacts), and ringing.\n\nThis tool vibrates each belt path and measures the resonant frequency — matched frequencies mean balanced tension.\n\nFor CoreXY, Path A and B should be within a few Hz of each other."
   : "La tensión desigual de la correa causa defectos de impresión como desplazamientos de capa, VFA (artefactos verticales finos) y ringing.\n\nEsta herramienta hace vibrar cada trayectoria de correa y mide la frecuencia de resonancia — frecuencias iguales significan tensión equilibrada.\n\nPara CoreXY, las trayectorias A y B deben estar dentro de unos pocos Hz entre sí."

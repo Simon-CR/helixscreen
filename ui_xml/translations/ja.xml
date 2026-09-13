@@ -1705,6 +1705,7 @@
   <translation tag="No vendors found" ja="ベンダーが見つかりません"/>
   <translation tag="No video player installed - showing the timelapse library" ja="動画プレーヤーがありません – タイムラプス一覧を表示します"/>
   <translation tag="No webcam detected.&#10;A webcam is required for timelapse." ja="ウェブカメラが検出されませんでした。&#10;タイムラプスにはウェブカメラが必要です。"/>
+  <translation tag="No widgets found" ja="ウィジェットが見つかりません"/>
   <translation tag="No width sensor detected" ja="幅センサーが検出されません"/>
   <translation tag="None" ja="なし"/>
   <translation tag="None (disable)" ja="なし (無効)"/>
@@ -2318,6 +2319,7 @@
   <translation tag="Search printers..." ja="プリンターを検索..."/>
   <translation tag="Search spools..." ja="スプール検索..."/>
   <translation tag="Search vendors..." ja="ベンダーを検索..."/>
+  <translation tag="Search widgets..." ja="ウィジェットを検索..."/>
   <translation tag="Searching..." ja="検索中..."/>
   <translation tag="Secondary" ja="セカンダリ"/>
   <translation tag="Section Detail" ja="セクション詳細"/>
@@ -2784,6 +2786,7 @@
   <translation tag="USB drive removed" ja="USB ドライブが取り外されました"/>
   <translation tag="USB printer access denied — check permissions" ja="USB プリンターへのアクセスが拒否されました — 権限を確認してください"/>
   <translation tag="Unavailable" ja="利用不可"/>
+  <translation tag="Unavailable on this printer" ja="このプリンターでは利用できません"/>
   <translation tag="Understanding Results" ja="結果の理解"/>
   <translation tag="Uneven belt tension causes print artifacts like layer shifts, VFAs (vertical fine artifacts), and ringing.&#10;&#10;This tool vibrates each belt path and measures the resonant frequency — matched frequencies mean balanced tension.&#10;&#10;For CoreXY, Path A and B should be within a few Hz of each other." ja="ベルト張力が不均一だと、レイヤーシフトや VFA(垂直微細アーティファクト)、リンギングなどの印刷不良が発生します。&#10;&#10;このツールは各ベルトパスを振動させて共振周波数を測定します — 周波数が一致していれば張力が均等であることを意味します。&#10;&#10;CoreXY では、パス A と B は数 Hz 以内に収まっている必要があります。"/>
   <translation tag="Uninstall" ja="アンインストール"/>

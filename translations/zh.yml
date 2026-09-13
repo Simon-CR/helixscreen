@@ -1748,6 +1748,7 @@ translations:
   No video player installed - showing the timelapse library: '未安装视频播放器 – 显示延时摄影库'
   ? "No webcam detected.\nA webcam is required for timelapse."
   : "未检测到摄像头。\n延时摄影需要摄像头。"
+  No widgets found: 未找到小组件
   No width sensor detected: '未检测到宽度传感器'
   None: 无
   None (disable): 无 (禁用)
@@ -2380,6 +2381,7 @@ translations:
   Search printers...: 搜索打印机...
   Search spools...: 搜索料盘...
   Search vendors...: 搜索供应商…
+  Search widgets...: 搜索小组件...
   Searching...: 搜索中...
   Secondary: 次要
   Section Detail: 区域详情
@@ -2878,6 +2880,7 @@ translations:
   USB drive removed: U 盘已移除
   USB printer access denied — check permissions: USB 打印机访问被拒绝 — 请检查权限
   Unavailable: 不可用
+  Unavailable on this printer: 此打印机上不可用
   Understanding Results: 了解结果
   ? "Uneven belt tension causes print artifacts like layer shifts, VFAs (vertical fine artifacts), and ringing.\n\nThis tool vibrates each belt path and measures the resonant frequency — matched frequencies mean balanced tension.\n\nFor CoreXY, Path A and B should be within a few Hz of each other."
   : "皮带张力不均会导致层错位、VFA(垂直细纹)和振纹等打印瑕疵。\n\n此工具会振动每条皮带路径并测量共振频率 — 频率匹配意味着张力均衡。\n\n对于 CoreXY,路径 A 与 B 应相差在几 Hz 以内。"

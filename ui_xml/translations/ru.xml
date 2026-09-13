@@ -1705,6 +1705,7 @@
   <translation tag="No vendors found" ru="Производители не найдены"/>
   <translation tag="No video player installed - showing the timelapse library" ru="Видеоплеер не установлен – показана библиотека таймлапсов"/>
   <translation tag="No webcam detected.&#10;A webcam is required for timelapse." ru="Веб-камера не обнаружена.&#10;Для таймлапса необходима веб-камера."/>
+  <translation tag="No widgets found" ru="Виджеты не найдены"/>
   <translation tag="No width sensor detected" ru="Датчик диаметра не обнаружен"/>
   <translation tag="None" ru="Нет"/>
   <translation tag="None (disable)" ru="Нет (отключить)"/>
@@ -2318,6 +2319,7 @@
   <translation tag="Search printers..." ru="Поиск принтеров..."/>
   <translation tag="Search spools..." ru="Поиск катушек..."/>
   <translation tag="Search vendors..." ru="Поиск производителей..."/>
+  <translation tag="Search widgets..." ru="Поиск виджетов..."/>
   <translation tag="Searching..." ru="Поиск..."/>
   <translation tag="Secondary" ru="Вторичный"/>
   <translation tag="Section Detail" ru="Детали раздела"/>
@@ -2784,6 +2786,7 @@
   <translation tag="USB drive removed" ru="USB-накопитель извлечён"/>
   <translation tag="USB printer access denied — check permissions" ru="Доступ к USB-принтеру запрещён — проверьте разрешения"/>
   <translation tag="Unavailable" ru="Недоступно"/>
+  <translation tag="Unavailable on this printer" ru="Недоступно на этом принтере"/>
   <translation tag="Understanding Results" ru="Понимание результатов"/>
   <translation tag="Uneven belt tension causes print artifacts like layer shifts, VFAs (vertical fine artifacts), and ringing.&#10;&#10;This tool vibrates each belt path and measures the resonant frequency — matched frequencies mean balanced tension.&#10;&#10;For CoreXY, Path A and B should be within a few Hz of each other." ru="Неравномерное натяжение ремня вызывает дефекты печати, такие как смещения слоёв, VFA (вертикальные мелкие артефакты) и ringing.&#10;&#10;Этот инструмент вибрирует каждый путь ремня и измеряет резонансную частоту — совпадающие частоты означают сбалансированное натяжение.&#10;&#10;Для CoreXY пути A и B должны отличаться на несколько Гц."/>
   <translation tag="Uninstall" ru="Удалить"/>

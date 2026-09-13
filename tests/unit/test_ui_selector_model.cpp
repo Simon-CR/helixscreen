@@ -132,6 +132,44 @@ TEST_CASE("Selector: query matching nothing yields an empty list", "[selector]")
     CHECK(filter_selector_entries(entries, "zzz").empty());
 }
 
+// ============================================================================
+// Description matching (the widget catalog's entries carry a description)
+// ============================================================================
+
+TEST_CASE("Selector: query matching only the description still hits", "[selector]") {
+    std::vector<SelectorEntry> entries = {
+        {"Camera", "Print & Status", 0, "Live view from your webcam"},
+        {"Network", "System", 1, "Wi-Fi or ethernet connection status"},
+    };
+    CHECK(labels_of(filter_selector_entries(entries, "webcam")) ==
+          std::vector<std::string>{"Camera"});
+    CHECK(labels_of(filter_selector_entries(entries, "ethernet")) ==
+          std::vector<std::string>{"Network"});
+}
+
+TEST_CASE("Selector: description matching is case-insensitive substring", "[selector]") {
+    std::vector<SelectorEntry> entries = {
+        {"Fan Speeds", "Temperature & Cooling", 0, "Part, hotend, and auxiliary fan speeds"},
+    };
+    CHECK(labels_of(filter_selector_entries(entries, "AUXILIARY")) ==
+          std::vector<std::string>{"Fan Speeds"});
+    CHECK(labels_of(filter_selector_entries(entries, "aux")) ==
+          std::vector<std::string>{"Fan Speeds"});
+}
+
+TEST_CASE("Selector: entries with no description keep matching label and group only",
+          "[selector]") {
+    // The wizard's shape: {model, manufacturer, id} — the description field stays
+    // empty, and neither matching path may regress to require it.
+    std::vector<SelectorEntry> entries = {
+        {"Creality K1 Max", "Creality", 1},
+    };
+    CHECK(selector_entry_matches(entries[0], "k1"));
+    CHECK(selector_entry_matches(entries[0], "creality"));
+    CHECK_FALSE(selector_entry_matches(entries[0], "prusa"));
+    CHECK(filter_selector_entries(entries, "webcam").empty());
+}
+
 TEST_CASE("Selector: filter_selector_entries is exactly the entries the predicate accepts",
           "[selector]") {
     const auto entries = sample_entries();
