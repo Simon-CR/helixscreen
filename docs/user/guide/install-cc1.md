@@ -4,7 +4,7 @@ How to get HelixScreen onto an Elegoo Centauri Carbon: flash the community [Open
 
 ## Tested With
 
-> **Tested and working.** Prebuilt binaries ship in releases and the installer has auto-detection support. Requires the community [OpenCentauri COSMOS firmware](https://docs.opencentauri.cc/klipper-conversion/cosmos/cosmos/) - stock Elegoo firmware is not supported (no SSH, no Klipper, no Moonraker).
+> **Tested and working.** Prebuilt binaries ship in releases and the installer has auto-detection support. Requires the community [OpenCentauri COSMOS firmware](https://docs.opencentauri.cc/klipper-conversion/cosmos/cosmos/); stock Elegoo firmware is not supported (no SSH, no Klipper, no Moonraker).
 
 ## Prerequisites
 
@@ -26,7 +26,7 @@ OpenCentauri COSMOS is a full firmware replacement for the Centauri Carbon. It s
 2. Copy it to the root of a FAT32-formatted USB stick
 3. Insert the USB stick into the printer, power on
 4. From the stock Elegoo UI, navigate to the firmware-update menu and apply the update
-5. **First boot takes 5-10 minutes** while it reflashes the toolhead and bed boards - be patient
+5. **First boot takes 5-10 minutes** while it reflashes the toolhead and bed boards; be patient
 6. After reboot, connect to WiFi from the COSMOS UI and note the printer's IP address
 
 If the update fails or the device won't boot, consult the OpenCentauri [install guide](https://docs.opencentauri.cc/klipper-conversion/cosmos/install/) and [emergency USB recovery](https://docs.opencentauri.cc/software/updates/) docs.
@@ -95,13 +95,13 @@ The uninstaller reverses the `gui-switcher` registration, including the allowlis
 ## Quirks and Notes
 
 - **Moonraker listens on port `80`** on COSMOS directly (no nginx); HelixScreen's `cc1` preset is configured for this
-- **Factory white-balance calibration** - the `cc1` preset ships with per-channel panel gain so colors look neutral out of the box on the Centauri Carbon's 4.3" panel. No manual tuning needed
-- **The `config-manager` allowlist** - COSMOS's `config-manager` has a fixed allowlist for the `screen_ui` slot. The installer handles this automatically via an init-script wrapper so HelixScreen can be selected without patching COSMOS itself; the uninstaller fully reverses it
+- **Factory white-balance calibration**: the `cc1` preset ships with per-channel panel gain so colors look neutral out of the box on the Centauri Carbon's 4.3" panel. No manual tuning needed
+- **The `config-manager` allowlist**: COSMOS's `config-manager` has a fixed allowlist for the `screen_ui` slot. The installer handles this automatically via an init-script wrapper so HelixScreen can be selected without patching COSMOS itself; the uninstaller fully reverses it
 
 **Testing on this printer?** Please report your results via [GitHub Issues](https://github.com/prestonbrown/helixscreen/issues) or [Discord](https://discord.gg/RZCT2StKhr).
 
 ## See Also
 
-- [Supported printers](supported-printers.md#other-dedicated-builds) - where the Centauri Carbon sits in the support matrix
-- [Troubleshooting](../TROUBLESHOOTING.md) - log collection and common problems
-- [UPGRADING.md](../UPGRADING.md) - version pinning, resets, migrations
+- [Supported printers](supported-printers.md#other-dedicated-builds): where the Centauri Carbon sits in the support matrix
+- [Troubleshooting](../TROUBLESHOOTING.md): log collection and common problems
+- [UPGRADING.md](../UPGRADING.md): version pinning, resets, migrations

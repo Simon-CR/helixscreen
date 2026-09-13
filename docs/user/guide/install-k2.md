@@ -2,7 +2,7 @@
 
 End-to-end guide for the Creality K2, K2 Plus, and K2 Pro: install, update, and uninstall. HelixScreen runs on the stock firmware, in place of the stock screen UI.
 
-> **Tested state:** works with stock firmware and stock Moonraker - no custom firmware required. Root access is enabled from the printer's own settings menu.
+> **Tested state:** works with stock firmware and stock Moonraker (no custom firmware required). Root access is enabled from the printer's own settings menu.
 
 ## Prerequisites
 
@@ -24,7 +24,7 @@ SSH into the printer and run:
 python3 -c "import urllib.request as u;u.urlretrieve('https://raw.githubusercontent.com/prestonbrown/helixscreen/main/scripts/install.sh','/tmp/install.sh')" && sh /tmp/install.sh
 ```
 
-> **Why not `wget`?** Recent K2 firmware (Tina/OpenWrt) ships neither `wget` nor `curl` on the `PATH` - even the BusyBox `wget` applet has been compiled out. Every K2 includes `python3` (Klipper and Moonraker need it) with working SSL, so the command above uses Python to fetch the installer over HTTPS; the installer then uses Python for the rest of the download and extraction. If your firmware still has `wget` (older builds did), `wget -O - http://dl.helixscreen.org/install.sh | sh` also works.
+> **Why not `wget`?** Recent K2 firmware (Tina/OpenWrt) ships neither `wget` nor `curl` on the `PATH`: even the BusyBox `wget` applet has been compiled out. Every K2 includes `python3` (Klipper and Moonraker need it) with working SSL, so the command above uses Python to fetch the installer over HTTPS; the installer then uses Python for the rest of the download and extraction. If your firmware still has `wget` (older builds did), `wget -O - http://dl.helixscreen.org/install.sh | sh` also works.
 
 After installation, the setup wizard runs on the touchscreen. Moonraker is already on the printer, so the wizard's connection step needs no changes.
 
@@ -32,7 +32,7 @@ After installation, the setup wizard runs on the touchscreen. Moonraker is alrea
 
 - Installs to `/opt/helixscreen/`, with a boot service at `/etc/init.d/S99helixscreen`
 - Stops and persistently disables the stock Creality UI service (`/etc/init.d/app`). Creality's `web-server` is intentionally left running, so the Creality Cloud app and its camera stream keep working
-- Stages the download, caches, and logs on `/mnt/UDISK` (the large user partition) - `/opt` sits on a small system overlay that a release archive would fill
+- Stages the download, caches, and logs on `/mnt/UDISK` (the large user partition): `/opt` sits on a small system overlay that a release archive would fill
 - Waits up to two minutes for Moonraker during boot, then starts the UI anyway; it reconnects on its own
 
 ## Service Control and Logs
@@ -75,13 +75,13 @@ Check the current version over SSH:
 /opt/helixscreen/install.sh --uninstall
 ```
 
-This removes HelixScreen, re-enables and starts the stock Creality UI service (`/etc/init.d/app`), and hands the chamber camera back to the stock camera app - which also restores Creality's stock AI failure detection (see the note below).
+This removes HelixScreen, re-enables and starts the stock Creality UI service (`/etc/init.d/app`), and hands the chamber camera back to the stock camera app, which also restores Creality's stock AI failure detection (see the note below).
 
 ## Quirks and Notes
 
 **What's different from the K1:**
-- ARM processor (Allwinner, not MIPS) - standard cross-compilation
-- Stock Moonraker - no community firmware required
+- ARM processor (Allwinner, not MIPS): standard cross-compilation
+- Stock Moonraker: no community firmware required
 - OpenWrt-based init system (procd, not SysV)
 - CFS (Creality Filament System) support for RS-485 filament management
 
@@ -91,7 +91,7 @@ This removes HelixScreen, re-enables and starts the stock Creality UI service (`
 
 ## See Also
 
-- [Supported Printers: Creality K2 Plus / K2 Pro](supported-printers.md#creality-k2-plus--k2-pro) - CFS integration detail
-- [Troubleshooting](../TROUBLESHOOTING.md) - including [CFS shows no slots](../TROUBLESHOOTING.md#cfs-shows-no-slots-creality-k2)
-- [UPGRADING.md](../UPGRADING.md) - version pinning, factory reset, what a reset clears
-- [Installation overview](../INSTALL.md) - all other platforms
+- [Supported Printers: Creality K2 Plus / K2 Pro](supported-printers.md#creality-k2-plus--k2-pro): CFS integration detail
+- [Troubleshooting](../TROUBLESHOOTING.md): including [CFS shows no slots](../TROUBLESHOOTING.md#cfs-shows-no-slots-creality-k2)
+- [UPGRADING.md](../UPGRADING.md): version pinning, factory reset, what a reset clears
+- [Installation overview](../INSTALL.md): all other platforms

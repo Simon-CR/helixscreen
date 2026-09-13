@@ -27,7 +27,7 @@ The installer automatically detects which firmware you're running and configures
 | **Forge-X** | GuppyScreen | `/opt/helixscreen/` | `S90helixscreen` |
 | **Klipper Mod** | KlipperScreen | `/root/printer_software/helixscreen/` | `S80helixscreen` |
 
-On Klipper Mod, swapping KlipperScreen for HelixScreen frees a substantial chunk of the AD5M's limited RAM - see [Memory Constraints](#memory-constraints) below.
+On Klipper Mod, swapping KlipperScreen for HelixScreen frees a substantial chunk of the AD5M's limited RAM; see [Memory Constraints](#memory-constraints) below.
 
 ### Forge-X: Set Up GUPPY Mode First
 
@@ -48,13 +48,13 @@ For everything the installer then changes on Forge-X, see [What the Installer Do
 
 ### Option 1: Ready-Made Firmware Image (Easiest)
 
-We maintain a [ready-made firmware image](https://github.com/prestonbrown/ff5m) - a fork of Forge-X 1.4.0 with HelixScreen pre-configured. This is the fastest way to get up and running:
+We maintain a [ready-made firmware image](https://github.com/prestonbrown/ff5m), a fork of Forge-X 1.4.0 with HelixScreen pre-configured. This is the fastest way to get up and running:
 
 1. Download the image from [github.com/prestonbrown/ff5m](https://github.com/prestonbrown/ff5m)
 2. Copy it to a USB flash drive
 3. Insert the flash drive into your AD5M or AD5M Pro and install
 
-That's it - no SSH, no manual commands. HelixScreen will be ready to go after the firmware installs.
+That's it: no SSH, no manual commands. HelixScreen will be ready to go after the firmware installs.
 
 > If you already have Forge-X or Klipper Mod installed and prefer to add HelixScreen manually, continue with the options below.
 
@@ -87,8 +87,8 @@ scp -O helixscreen-ad5m.zip install.sh root@<printer-ip>:/data/
 
 > **Windows users:** The `-O` flag is not supported by Windows 11's built-in OpenSSH.
 > Use one of these alternatives instead:
-> - **WSL** (recommended) - open a WSL terminal and run all commands as shown (Linux tools work natively)
-> - **[WinSCP](https://winscp.net/)** (free, GUI) - set the protocol to **SCP**, then drag and drop files to `/data/` on the printer
+> - **WSL** (recommended): open a WSL terminal and run all commands as shown (Linux tools work natively)
+> - **[WinSCP](https://winscp.net/)** (free, GUI): set the protocol to **SCP**, then drag and drop files to `/data/` on the printer
 > - **[PuTTY pscp](https://www.chiark.greenend.org.uk/~sgtatham/putty/latest.html)** (free, command-line):
 >   `pscp helixscreen-ad5m.zip install.sh root@<printer-ip>:/data/`
 
@@ -194,7 +194,7 @@ rm /mnt/data/helixscreen-ad5m.zip
 reboot
 ```
 
-After reboot, HelixScreen will start automatically on the touchscreen. Use the touchscreen to complete the setup wizard - the printer should auto-detect since it's running locally. At the wizard's Moonraker Connection step, use `localhost`.
+After reboot, HelixScreen will start automatically on the touchscreen. Use the touchscreen to complete the setup wizard; the printer should auto-detect since it's running locally. At the wizard's Moonraker Connection step, use `localhost`.
 
 ---
 
@@ -216,7 +216,7 @@ Before proceeding, the installer validates that Klipper and Moonraker are runnin
 - Installs HelixScreen to `/root/printer_software/helixscreen/`
 - Creates init script at `/etc/init.d/S80helixscreen`
 
-On uninstall, all of this is reversed and your previous UI is restored - see [Uninstalling](#uninstalling).
+On uninstall, all of this is reversed and your previous UI is restored; see [Uninstalling](#uninstalling).
 
 ---
 
@@ -383,7 +383,7 @@ The AD5M has limited RAM (~108MB total, with only ~24MB free after Klipper, Moon
 | Screen UI | ~50 MB (Python + X Server) | **~10 MB** (C++) |
 | **Total** | ~50 MB | **~10 MB** |
 
-On Klipper Mod systems, switching from KlipperScreen to HelixScreen frees approximately **40 MB** of RAM - a significant improvement on a memory-constrained device!
+On Klipper Mod systems, switching from KlipperScreen to HelixScreen frees approximately **40 MB** of RAM, a significant improvement on a memory-constrained device!
 
 > **Note:** The 10 MB footprint includes the full LVGL widget tree, draw buffers for UI elements (gradients, color pickers, AMS spool icons), and runtime state for all panels. Images are loaded on-demand, not pre-cached.
 
@@ -394,15 +394,15 @@ If you experience memory issues:
 
 ### Screen Dims After a Few Seconds
 
-If the screen dims to ~10% brightness shortly after boot (about 3 seconds after Klipper starts), the Forge-X backlight patch didn't get applied - this can happen on manual installs. See [Troubleshooting: screen dims after a few seconds](../TROUBLESHOOTING.md#screen-dims-after-a-few-seconds).
+If the screen dims to ~10% brightness shortly after boot (about 3 seconds after Klipper starts), the Forge-X backlight patch didn't get applied; this can happen on manual installs. See [Troubleshooting: screen dims after a few seconds](../TROUBLESHOOTING.md#screen-dims-after-a-few-seconds).
 
 ---
 
 ## See Also
 
-- [Troubleshooting](../TROUBLESHOOTING.md) - generic problems (connections, displays, touch input), including a dedicated [Flashforge Adventurer 5M section](../TROUBLESHOOTING.md#flashforge-adventurer-5m-issues)
-- [Supported Printers: FlashForge Adventurer 5M / 5M Pro](supported-printers.md#flashforge-adventurer-5m--5m-pro) - what works on the AD5M
-- [Upgrading HelixScreen](../UPGRADING.md) - universal migrations: fixing a setup wizard that keeps appearing, factory reset, pinning versions
+- [Troubleshooting](../TROUBLESHOOTING.md): generic problems (connections, displays, touch input), including a dedicated [Flashforge Adventurer 5M section](../TROUBLESHOOTING.md#flashforge-adventurer-5m-issues)
+- [Supported Printers: FlashForge Adventurer 5M / 5M Pro](supported-printers.md#flashforge-adventurer-5m--5m-pro): what works on the AD5M
+- [Upgrading HelixScreen](../UPGRADING.md): universal migrations (fixing a setup wizard that keeps appearing, factory reset, pinning versions)
 
 ---
 

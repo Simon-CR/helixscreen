@@ -2,7 +2,7 @@
 
 This guide helps you upgrade HelixScreen to a newer version.
 
-> For platform-specific upgrade commands (the two-step offline process on printers without HTTPS fetch tools, the AD5X chroot path, bundled-installer locations), see your printer's install guide - start from the [router table in the Installation Guide](INSTALL.md#which-printer-are-you-installing-on).
+> For platform-specific upgrade commands (the two-step offline process on printers without HTTPS fetch tools, the AD5X chroot path, bundled-installer locations), see your printer's install guide; start from the [router table in the Installation Guide](INSTALL.md#which-printer-are-you-installing-on).
 
 ---
 
@@ -55,7 +55,7 @@ rm /usr/data/helixscreen/config/settings.json
 /etc/init.d/S99helixscreen restart
 ```
 
-After restarting, the wizard will guide you through setup again. Your printer settings (Klipper, Moonraker) are not affected - only HelixScreen's display preferences need to be reconfigured.
+After restarting, the wizard will guide you through setup again. Your printer settings (Klipper, Moonraker) are not affected; only HelixScreen's display preferences need to be reconfigured.
 
 ### Alternative: Factory Reset from UI
 
@@ -73,9 +73,9 @@ This clears all HelixScreen settings and restarts the wizard.
 
 The installer automatically preserves:
 
-- **`settings.json`** - All your settings (printer connection, display preferences, sound, safety, etc.)
-- **`helixscreen.env`** - Any environment variable overrides you've set
-- **Custom files** - Custom printer images, user-added printer database entries, and other files in the `config/` directory
+- **`settings.json`**: All your settings (printer connection, display preferences, sound, safety, etc.)
+- **`helixscreen.env`**: Any environment variable overrides you've set
+- **Custom files**: Custom printer images, user-added printer database entries, and other files in the `config/` directory
 
 You should not need to reconfigure anything after a normal upgrade. If something does go wrong, see the troubleshooting sections below.
 
@@ -91,7 +91,7 @@ If you perform a factory reset or delete your config, you'll need to reconfigure
 - Sound settings
 - Safety preferences (E-Stop confirmation)
 
-Your Klipper configuration, Moonraker settings, print history, and G-code files are **not affected** - they're stored separately.
+Your Klipper configuration, Moonraker settings, print history, and G-code files are **not affected**; they're stored separately.
 
 ---
 
@@ -117,7 +117,7 @@ curl -sSL https://raw.githubusercontent.com/prestonbrown/helixscreen/main/script
 
 **On the touchscreen:** Settings → scroll down → Version row shows current version
 
-**Via SSH:** run `<install-path>/bin/helix-screen --version`. The binary's location varies by platform - each printer's install guide lists its path.
+**Via SSH:** run `<install-path>/bin/helix-screen --version`. The binary's location varies by platform; each printer's install guide lists its path.
 
 ---
 
