@@ -2,11 +2,21 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 
+#include "lane_source_store.h"
 #include "lane_translation.h"
 
 namespace helix::ams {
 
 class FilamentSlotOverrideStore;
+
+/// File every source @p sources holds onto @p lane, each through the funnel it
+/// is allowed to use: LocalUser through commit_slot_edit(), the rest through
+/// ingest(). Returns true when at least one was filed.
+///
+/// The one list of which sources a stored record can produce. A source added
+/// to LaneSources and forgotten here is filed by nobody, silently, so both the
+/// real migration and the fixtures that imitate it read it from here.
+bool file_lane_sources(LaneId lane, const LaneSources& sources);
 
 /// Classify every lane_data record @p store's last load_blocking() parsed and
 /// file each onto its lane.

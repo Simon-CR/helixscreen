@@ -19,6 +19,7 @@
 #include "lane_resolver.h"
 #include "lane_source_store.h"
 #include "test_helpers/registered_backend.h"
+#include "test_helpers/seeded_override.h"
 
 #include "../catch_amalgamated.hpp"
 
@@ -167,4 +168,57 @@ TEST_CASE_METHOD(LVGLTestFixture, "A weight update with no total leaves the back
     apply_resolved(slot, resolve(sources));
     CHECK(slot.remaining_weight_g == Catch::Approx(250.0F));
     CHECK(slot.total_weight_g == Catch::Approx(1000.0F));
+}
+
+TEST_CASE_METHOD(LVGLTestFixture, "A firmware frame cannot erase what a stored record remembered",
+                 "[lane][writepath][remembered]") {
+    // The defect Remembered exists to close. A stored record and a backend's
+    // own parse both used to file VendorCache, ingest() replaces a source's
+    // record whole, and a frame states only what that frame knows. So a brand
+    // nobody had retyped since the last boot disappeared on the first poll.
+    RegisteredBackend<AmsBackendAfc> harness(nullptr, nullptr);
+    const auto lane = harness.lane(0);
+
+    helix::ams::FilamentSlotOverride stored;
+    stored.brand = "Polymaker";
+    stored.material = "ASA";
+    helix::test::file_override_as_lane_records(*harness, 0, stored);
+
+    REQUIRE(lane_sources(lane).remembered.has_value());
+    REQUIRE(lane_sources(lane).remembered->brand == "Polymaker");
+
+    // The machine speaks, and says nothing about a brand.
+    Observation frame(ObservationSource::VendorCache);
+    frame.material = "PLA";
+    frame.color_rgb = 0xED2C2Cu;
+    ingest(lane, frame);
+
+    const auto after = lane_sources(lane);
+    REQUIRE(after.remembered.has_value());
+    CHECK(after.remembered->brand == "Polymaker");
+
+    const auto r = resolve(after);
+    // The frame outranks the disk copy on what it actually stated, and leaves
+    // the rest of the disk copy standing.
+    CHECK(r.material == "PLA");
+    CHECK(r.color_rgb == 0xED2C2Cu);
+    CHECK(r.brand == "Polymaker");
+}
+
+TEST_CASE_METHOD(LVGLTestFixture, "A remembered field never outranks the machine stating it",
+                 "[lane][writepath][remembered]") {
+    // Remembered is the weakest rung. A printer that does state the field wins,
+    // or last boot's copy would pin a value the machine has moved on from.
+    RegisteredBackend<AmsBackendAfc> harness(nullptr, nullptr);
+    const auto lane = harness.lane(0);
+
+    helix::ams::FilamentSlotOverride stored;
+    stored.brand = "Polymaker";
+    helix::test::file_override_as_lane_records(*harness, 0, stored);
+
+    Observation frame(ObservationSource::VendorCache);
+    frame.brand = "Elegoo";
+    ingest(lane, frame);
+
+    CHECK(resolve(lane_sources(lane)).brand == "Elegoo");
 }

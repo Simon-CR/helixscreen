@@ -156,6 +156,7 @@ void reset_lane_to_machine_readings(LaneId lane) {
     drop_lane_source(lane, ObservationSource::Spoolman);
     drop_lane_source(lane, ObservationSource::LocalUser);
     drop_lane_source(lane, ObservationSource::Metered);
+    drop_lane_source(lane, ObservationSource::Remembered);
 }
 
 LaneSources lane_sources(LaneId lane) {

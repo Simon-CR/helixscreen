@@ -135,8 +135,9 @@ void drop_lane_source(LaneId lane, ObservationSource source);
 
 /// Reset a lane to what the machine itself reports, dropping every record that
 /// came from somewhere else: the user's own declaration, a Spoolman binding,
-/// and our meter's estimate. Sensed and VendorCache survive, because those are
-/// firmware's own readings and a clear is not a statement about them.
+/// our meter's estimate, and what our stored record remembered. Sensed and
+/// VendorCache survive, because those alone are firmware's own readings and a
+/// clear is not a statement about them.
 ///
 /// The counterpart to a backend erasing its stored override. That erase and
 /// this call are one operation in two stores: an override removed from one

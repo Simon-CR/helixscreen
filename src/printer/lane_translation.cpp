@@ -177,9 +177,14 @@ ObservationSource classify_declaration(const FilamentSlotOverride& record,
     // uses, so a non-boolean lock value classifies the same way here as it
     // did on load, rather than disagreeing with the parser on the same key.
     const LockKeyNames lock = lock_key_names(keys);
+    // Remembered, not VendorCache: every caller of this hands it a record read
+    // back from our own store, never a frame the machine just sent. VendorCache
+    // is what firmware states now, and a backend replaces that record whole on
+    // each parse, so a stored record filed there loses every field the next
+    // frame is silent about.
     return (locked(wire, lock.color) || locked(wire, lock.material))
                ? ObservationSource::LocalUser
-               : ObservationSource::VendorCache;
+               : ObservationSource::Remembered;
 }
 
 Observation declared_from_record(const FilamentSlotOverride& record, const nlohmann::json& wire,
@@ -248,28 +253,33 @@ LaneSources sources_from_record(const FilamentSlotOverride& record, const nlohma
     }
 
     // Colour and material each carry their own lock key, so one record can
-    // declare one field and merely cache the other.
+    // declare one field and merely remembered the other.
     const LockKeyNames lock = lock_key_names(keys);
     const bool color_locked = locked(wire, lock.color);
     const bool material_locked = locked(wire, lock.material);
 
+    // Everything this record merely REMEMBERS, as opposed to declares, is
+    // filed as Remembered rather than VendorCache. VendorCache is what the
+    // machine states on the current frame, and a backend replaces that record
+    // whole on every parse, so a field this record holds and the frame does
+    // not restate would be erased on the first poll after load.
     Observation user(ObservationSource::LocalUser);
-    Observation cache(ObservationSource::VendorCache);
+    Observation remembered(ObservationSource::Remembered);
     bool have_user = false;
-    bool have_cache = false;
+    bool have_remembered = false;
 
     if (record.color_set && is_declarable_color(record.color_rgb)) {
-        Observation& target = color_locked ? user : cache;
+        Observation& target = color_locked ? user : remembered;
         target.color_rgb = record.color_rgb;
         if (!record.color_name.empty()) {
             target.color_name = record.color_name;
         }
-        (color_locked ? have_user : have_cache) = true;
+        (color_locked ? have_user : have_remembered) = true;
     }
     if (!record.material.empty()) {
-        Observation& target = material_locked ? user : cache;
+        Observation& target = material_locked ? user : remembered;
         target.material = record.material;
-        (material_locked ? have_user : have_cache) = true;
+        (material_locked ? have_user : have_remembered) = true;
     }
 
     // Firmware has no concept of a catalog product, so a value here is always
@@ -284,27 +294,28 @@ LaneSources sources_from_record(const FilamentSlotOverride& record, const nlohma
         have_user = true;
     }
 
-    // Brand, spool name and vendor id carry no authorship signal. A cache
-    // never outranks the thing it caches, so a wrong guess here is corrected
-    // by the next declaration instead of pinned forever.
+    // Brand, spool name and vendor id carry no authorship signal, so they are
+    // remembered rather than declared. Remembered is the weakest rung, so a
+    // wrong guess here is corrected by the next declaration, or by the machine
+    // stating the field itself, instead of being pinned forever.
     if (!record.brand.empty() || !record.spool_name.empty() || record.spoolman_vendor_id > 0) {
         if (!record.brand.empty()) {
-            cache.brand = record.brand;
+            remembered.brand = record.brand;
         }
         if (!record.spool_name.empty()) {
-            cache.spool_name = record.spool_name;
+            remembered.spool_name = record.spool_name;
         }
         if (record.spoolman_vendor_id > 0) {
-            cache.spoolman_vendor_id = record.spoolman_vendor_id;
+            remembered.spoolman_vendor_id = record.spoolman_vendor_id;
         }
-        have_cache = true;
+        have_remembered = true;
     }
 
     if (have_user) {
         sources.apply(user);
     }
-    if (have_cache) {
-        sources.apply(cache);
+    if (have_remembered) {
+        sources.apply(remembered);
     }
     return sources;
 }

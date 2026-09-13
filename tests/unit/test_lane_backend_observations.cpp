@@ -2948,17 +2948,17 @@ TEST_CASE_METHOD(LVGLTestFixture, "a resync re-reads the shared namespace into t
     db.seed("T0", nlohmann::json{{"lane", "0"}, {"material", "ASA"}, {"color", "#A4B2BC"}});
     ToolChangerTestAccess::inject_override_store(*harness, toolchanger_store(db));
 
-    REQUIRE_FALSE(lane_sources(harness.lane(0)).vendor_cache.has_value());
+    REQUIRE_FALSE(lane_sources(harness.lane(0)).remembered.has_value());
 
     harness->request_resync();
     helix::ui::UpdateQueue::instance().drain();
 
     CHECK(db.api.mock_db_namespace_get_count() == 1);
     const auto lane = lane_sources(harness.lane(0));
-    REQUIRE(lane.vendor_cache.has_value());
-    CHECK(lane.vendor_cache->material == "ASA");
-    REQUIRE(lane.vendor_cache->color_rgb.has_value());
-    CHECK(*lane.vendor_cache->color_rgb == 0xA4B2BCu);
+    REQUIRE(lane.remembered.has_value());
+    CHECK(lane.remembered->material == "ASA");
+    REQUIRE(lane.remembered->color_rgb.has_value());
+    CHECK(*lane.remembered->color_rgb == 0xA4B2BCu);
 }
 
 TEST_CASE_METHOD(LVGLTestFixture, "a resync reaches the backend's own block, not slot indices",
@@ -2981,12 +2981,12 @@ TEST_CASE_METHOD(LVGLTestFixture, "a resync reaches the backend's own block, not
 
     // Slot 1, not slot 0: the slot index is carried as well as the block.
     const auto lane = lane_sources(backend->lane_id(1));
-    REQUIRE(lane.vendor_cache.has_value());
-    CHECK(lane.vendor_cache->material == "PC");
+    REQUIRE(lane.remembered.has_value());
+    CHECK(lane.remembered->material == "PC");
 
     // Block 0 belongs to the other backend. Deriving the id from the slot
     // index alone would land the record there.
-    CHECK_FALSE(lane_sources(helix::ams::lane_id_for(0, 1)).vendor_cache.has_value());
+    CHECK_FALSE(lane_sources(helix::ams::lane_id_for(0, 1)).remembered.has_value());
 }
 
 TEST_CASE_METHOD(LVGLTestFixture, "a resync files no declaration for a record naming a spool",
@@ -3005,11 +3005,11 @@ TEST_CASE_METHOD(LVGLTestFixture, "a resync files no declaration for a record na
 
     const auto linked = lane_sources(harness.lane(0));
     CHECK_FALSE(linked.spoolman.has_value());
-    CHECK_FALSE(linked.vendor_cache.has_value());
+    CHECK_FALSE(linked.remembered.has_value());
 
     const auto plain = lane_sources(harness.lane(1));
-    REQUIRE(plain.vendor_cache.has_value());
-    CHECK(plain.vendor_cache->material == "PLA");
+    REQUIRE(plain.remembered.has_value());
+    CHECK(plain.remembered->material == "PLA");
 }
 
 TEST_CASE_METHOD(LVGLTestFixture, "a resync files no declaration for a locked record",
@@ -3031,11 +3031,11 @@ TEST_CASE_METHOD(LVGLTestFixture, "a resync files no declaration for a locked re
     // declared it again at the moment the screen was opened.
     const auto locked = lane_sources(harness.lane(0));
     CHECK_FALSE(locked.local_user.has_value());
-    CHECK_FALSE(locked.vendor_cache.has_value());
+    CHECK_FALSE(locked.remembered.has_value());
 
     const auto plain = lane_sources(harness.lane(1));
-    REQUIRE(plain.vendor_cache.has_value());
-    CHECK(plain.vendor_cache->material == "PLA");
+    REQUIRE(plain.remembered.has_value());
+    CHECK(plain.remembered->material == "PLA");
 }
 
 TEST_CASE_METHOD(LVGLTestFixture, "a re-read that cannot reach the database leaves the lane alone",
@@ -3047,7 +3047,7 @@ TEST_CASE_METHOD(LVGLTestFixture, "a re-read that cannot reach the database leav
 
     harness->request_resync();
     helix::ui::UpdateQueue::instance().drain();
-    REQUIRE(lane_sources(harness.lane(0)).vendor_cache.has_value());
+    REQUIRE(lane_sources(harness.lane(0)).remembered.has_value());
 
     db.seed("T0", nlohmann::json{{"lane", "0"}, {"material", "TPU"}});
     db.api.mock_reject_next_db_get();
@@ -3055,8 +3055,8 @@ TEST_CASE_METHOD(LVGLTestFixture, "a re-read that cannot reach the database leav
     helix::ui::UpdateQueue::instance().drain();
 
     const auto lane = lane_sources(harness.lane(0));
-    REQUIRE(lane.vendor_cache.has_value());
-    CHECK(lane.vendor_cache->material == "PLA");
+    REQUIRE(lane.remembered.has_value());
+    CHECK(lane.remembered->material == "PLA");
 }
 
 // --- The six that do not ---------------------------------------------------

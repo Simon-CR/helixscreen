@@ -17,6 +17,12 @@ namespace {
 int declared_spool_id(const LaneSources& sources) {
     LaneSources declared = sources;
     declared.drop(ObservationSource::VendorCache);
+    // Remembered goes for the same reason, and for one more: it is our own
+    // disk copy rather than anyone's statement. It cannot carry a spool id
+    // today, because a record naming one routes wholly to Spoolman, so this
+    // changes no answer; it keeps the function's contract true by construction
+    // rather than by a detail of another file.
+    declared.drop(ObservationSource::Remembered);
     return resolve(declared).spoolman_id.value_or(0);
 }
 
@@ -55,6 +61,9 @@ BindingVerdict reconcile_binding(LaneId lane, const BindingReading& reading) {
     if (verdict != BindingVerdict::Holds) {
         drop_lane_source(lane, ObservationSource::Spoolman);
         drop_lane_source(lane, ObservationSource::LocalUser);
+        // What we remembered describes the spool that was here before, so a
+        // lane firmware says now holds a different one must not keep it.
+        drop_lane_source(lane, ObservationSource::Remembered);
     }
     return verdict;
 }

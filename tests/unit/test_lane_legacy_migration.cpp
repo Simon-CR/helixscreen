@@ -59,8 +59,8 @@ TEST_CASE_METHOD(HelixTestFixture, "Loading a namespace populates each lane's so
 
     // Lane 1 carried no lock key, so it is a cache.
     const auto lane1 = lane_sources(lane_id_for(0, 1));
-    REQUIRE(lane1.vendor_cache.has_value());
-    CHECK(lane1.vendor_cache->color_rgb == 0xED2C2Cu);
+    REQUIRE(lane1.remembered.has_value());
+    CHECK(lane1.remembered->color_rgb == 0xED2C2Cu);
     CHECK_FALSE(lane1.local_user.has_value());
 
     // Nothing stored is a presence signal, so neither lane carries a presence
@@ -94,7 +94,7 @@ TEST_CASE_METHOD(HelixTestFixture,
     const auto lane = lane_sources(lane_id_for(0, 0));
     REQUIRE(lane.local_user.has_value());
     CHECK(lane.local_user->color_rgb == 0x3355FFu);
-    CHECK_FALSE(lane.vendor_cache.has_value());
+    CHECK_FALSE(lane.remembered.has_value());
 }
 
 TEST_CASE_METHOD(HelixTestFixture, "Ingesting the same namespace twice changes nothing",
@@ -145,8 +145,8 @@ TEST_CASE_METHOD(HelixTestFixture, "Classification reads the document the store 
     ingest_legacy_records(store, LegacyLockKeys::LaneData, 0);
     const auto lane = lane_sources(lane_id_for(0, 0));
     CHECK_FALSE(lane.local_user.has_value());
-    REQUIRE(lane.vendor_cache.has_value());
-    CHECK(lane.vendor_cache->color_rgb == 0xED2C2Cu);
+    REQUIRE(lane.remembered.has_value());
+    CHECK(lane.remembered->color_rgb == 0xED2C2Cu);
 }
 
 TEST_CASE_METHOD(HelixTestFixture, "A load that falls back to the on-disk cache ingests nothing",

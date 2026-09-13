@@ -18,6 +18,15 @@ enum class ObservationSource {
     LocalUser,   ///< A human editing in HelixScreen.
     VendorCache, ///< Firmware-persisted metadata. A cache of a past declaration.
     Metered,     ///< The consumption meter.
+    /// What our own stored record remembered from before this session.
+    ///
+    /// Distinct from VendorCache, which is what the machine states on THIS
+    /// frame. The two had one destination and two producers: a lane's stored
+    /// record was filed as VendorCache at load, and the backend's own parse
+    /// then replaced that record whole, erasing every field the frame did not
+    /// restate. A brand nobody had typed since last boot vanished on the first
+    /// poll.
+    Remembered,
 };
 
 /// One reading from one source. Every field is optional so that "not observed"

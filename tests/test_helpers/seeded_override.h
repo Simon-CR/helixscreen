@@ -6,6 +6,7 @@
 
 #include "ams_backend.h"
 #include "filament_slot_override.h"
+#include "lane_legacy_migration.h"
 #include "lane_source_store.h"
 #include "lane_translation.h"
 
@@ -34,18 +35,7 @@ inline void file_override_as_lane_records(const AmsBackend& backend, int slot_in
                                           const helix::ams::FilamentSlotOverride& ovr) {
     const helix::ams::LaneSources sources = helix::ams::sources_from_record(
         ovr, nlohmann::json::object(), helix::ams::LegacyLockKeys::LaneData);
-    const helix::ams::LaneId lane = backend.lane_id(slot_index);
-
-    for (const auto* held : {&sources.spoolman, &sources.vendor_cache, &sources.metered}) {
-        if (held->has_value()) {
-            helix::ams::ingest(lane, **held);
-        }
-    }
-    if (sources.local_user.has_value()) {
-        // ingest() refuses a LocalUser observation; commit_slot_edit() is that
-        // source's only funnel.
-        helix::ams::commit_slot_edit(lane, *sources.local_user);
-    }
+    helix::ams::file_lane_sources(backend.lane_id(slot_index), sources);
 }
 
 } // namespace helix::test

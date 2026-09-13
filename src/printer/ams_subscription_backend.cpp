@@ -134,15 +134,18 @@ void AmsSubscriptionBackend::request_resync() {
             token.defer("AmsSubscriptionBackend::resync_lane_records",
                         [block, records = std::move(records)]() {
                             for (const auto& [slot, entry] : records) {
-                                // Only what the namespace holds as a vendor cache
-                                // is re-filed. A record naming a spool is the
+                                // Only what the namespace merely remembers is
+                                // re-filed. A record naming a spool is the
                                 // server's statement and one carrying a lock key
                                 // is a person's; re-filing either would forge a
                                 // declaration out of a re-read, which is the
                                 // confusion the source model exists to end.
+                                //
+                                // Remembered rather than VendorCache because this
+                                // re-reads our own store, not a firmware frame.
                                 const helix::ams::Observation obs =
                                     helix::ams::declared_from_record(entry.record, entry.wire);
-                                if (obs.source != helix::ams::ObservationSource::VendorCache) {
+                                if (obs.source != helix::ams::ObservationSource::Remembered) {
                                     continue;
                                 }
                                 helix::ams::ingest(helix::ams::lane_id_for(block, slot), obs);

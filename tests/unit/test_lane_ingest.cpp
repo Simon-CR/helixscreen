@@ -454,7 +454,7 @@ TEST_CASE("an unlinked record with a real lock is the user's declaration", "[lan
     CHECK(declared_from_record(rec, wire).color_rgb == 0xBCBCBC);
 }
 
-TEST_CASE("an unlinked record with no lock key is a cache, not a user", "[lane][ingest]") {
+TEST_CASE("an unlinked record with no lock key is remembered, not declared", "[lane][ingest]") {
     // The load default reads a missing helix_locked_color back as color_set,
     // so a legacy record carrying a colour arrives looking locked. Only a key
     // that is actually present is a human's signature.
@@ -465,8 +465,8 @@ TEST_CASE("an unlinked record with no lock key is a cache, not a user", "[lane][
     const auto rec = record_from(wire);
     REQUIRE(rec.user_locked_color); // the load default, not a declaration
 
-    CHECK(classify_declaration(rec, wire) == ObservationSource::VendorCache);
-    CHECK(declared_from_record(rec, wire).source == ObservationSource::VendorCache);
+    CHECK(classify_declaration(rec, wire) == ObservationSource::Remembered);
+    CHECK(declared_from_record(rec, wire).source == ObservationSource::Remembered);
 }
 
 TEST_CASE("a record with a zero spool id is unlinked", "[lane][ingest]") {
@@ -493,7 +493,7 @@ TEST_CASE("a record with no colour does not claim one", "[lane][ingest]") {
     // The record's own default reads user_locked_material as true (material
     // is non-empty), but the wire carries no lock key at all: the classifier
     // must side with the wire, not the struct's legacy-preservation default.
-    CHECK(classify_declaration(rec, wire) == ObservationSource::VendorCache);
+    CHECK(classify_declaration(rec, wire) == ObservationSource::Remembered);
 
     const auto obs = declared_from_record(rec, wire);
     CHECK(obs.material == "PLA");
@@ -613,7 +613,7 @@ TEST_CASE("A stored record carrying a spool binding migrates to the server's run
     CHECK_FALSE(sources.local_user.has_value());
 }
 
-TEST_CASE("An unlinked stored record without the lock key is a cache, not a declaration",
+TEST_CASE("An unlinked stored record without the lock key is remembered, not declared",
           "[lane][ingest]") {
     // The load default is safe_bool(j, "helix_locked_color", o.color_set), so
     // a legacy record with a colour and no key parses back as locked. Reading
@@ -624,10 +624,10 @@ TEST_CASE("An unlinked stored record without the lock key is a cache, not a decl
 
     const auto sources = sources_from_record(rec, wire);
 
-    REQUIRE(sources.vendor_cache.has_value());
-    REQUIRE(sources.vendor_cache->color_rgb.has_value());
-    CHECK(*sources.vendor_cache->color_rgb == 0xED2C2C);
-    CHECK(sources.vendor_cache->material == "PLA");
+    REQUIRE(sources.remembered.has_value());
+    REQUIRE(sources.remembered->color_rgb.has_value());
+    CHECK(*sources.remembered->color_rgb == 0xED2C2C);
+    CHECK(sources.remembered->material == "PLA");
     CHECK_FALSE(sources.local_user.has_value());
 }
 
@@ -650,13 +650,13 @@ TEST_CASE("An unlinked stored record with the lock key set true is the user's ow
     CHECK(*sources.local_user->color_rgb == 0xBCBCBC);
     CHECK_FALSE(sources.local_user->material.has_value());
 
-    REQUIRE(sources.vendor_cache.has_value());
-    REQUIRE(sources.vendor_cache->material.has_value());
-    CHECK(*sources.vendor_cache->material == "PLA");
-    CHECK_FALSE(sources.vendor_cache->color_rgb.has_value());
+    REQUIRE(sources.remembered.has_value());
+    REQUIRE(sources.remembered->material.has_value());
+    CHECK(*sources.remembered->material == "PLA");
+    CHECK_FALSE(sources.remembered->color_rgb.has_value());
 }
 
-TEST_CASE("An unlinked stored record with the lock key set false is a cache", "[lane][ingest]") {
+TEST_CASE("An unlinked stored record with the lock key set false is remembered", "[lane][ingest]") {
     // The explicit false is the auto-mirror's own signature. It must not be
     // treated like an absent key that happens to read the same in the struct.
     const nlohmann::json wire = {{"lane", "1"},
@@ -669,8 +669,8 @@ TEST_CASE("An unlinked stored record with the lock key set false is a cache", "[
     const auto sources = sources_from_record(rec, wire);
 
     CHECK_FALSE(sources.local_user.has_value());
-    REQUIRE(sources.vendor_cache.has_value());
-    CHECK(sources.vendor_cache->color_rgb == 0x112233);
+    REQUIRE(sources.remembered.has_value());
+    CHECK(sources.remembered->color_rgb == 0x112233);
 }
 
 TEST_CASE("A catalog pick is always the user's, because firmware cannot make one",
@@ -690,8 +690,8 @@ TEST_CASE("A catalog pick is always the user's, because firmware cannot make one
     REQUIRE(sources.local_user->catalog_id.has_value());
     CHECK(*sources.local_user->catalog_id == "sunlu-pla-plus-2-0");
     CHECK(*sources.local_user->product_name == "PLA+ 2.0");
-    REQUIRE(sources.vendor_cache.has_value());
-    CHECK(sources.vendor_cache->material == "PLA");
+    REQUIRE(sources.remembered.has_value());
+    CHECK(sources.remembered->material == "PLA");
 }
 
 TEST_CASE("The two lock-key spellings read the same document differently", "[lane][ingest]") {
@@ -705,13 +705,13 @@ TEST_CASE("The two lock-key spellings read the same document differently", "[lan
     REQUIRE(as_lane_data.local_user.has_value());
     CHECK(*as_lane_data.local_user->color_rgb == 0xBCBCBC);
 
-    const auto as_local_cache = sources_from_record(rec, wire, LegacyLockKeys::LocalCache);
-    CHECK_FALSE(as_local_cache.local_user.has_value());
-    REQUIRE(as_local_cache.vendor_cache.has_value());
-    CHECK(*as_local_cache.vendor_cache->color_rgb == 0xBCBCBC);
+    const auto as_local_remembered = sources_from_record(rec, wire, LegacyLockKeys::LocalCache);
+    CHECK_FALSE(as_local_remembered.local_user.has_value());
+    REQUIRE(as_local_remembered.remembered.has_value());
+    CHECK(*as_local_remembered.remembered->color_rgb == 0xBCBCBC);
 }
 
-TEST_CASE("A cache-shaped record carrying a brand is not dropped by the cache's own parser",
+TEST_CASE("A remembered record carrying a brand is not dropped by its own parser",
           "[lane][ingest]") {
     // filament_slot_overrides.json writes the bare "brand" key (to_json);
     // from_lane_data_record instead reads "vendor" / "vendor_name" and would
@@ -726,11 +726,11 @@ TEST_CASE("A cache-shaped record carrying a brand is not dropped by the cache's 
 
     // No lock key names material, so it is the cache's; brand carries no
     // authorship signal either way and is always the cache's.
-    REQUIRE(sources.vendor_cache.has_value());
-    REQUIRE(sources.vendor_cache->brand.has_value());
-    CHECK(*sources.vendor_cache->brand == "Kingroon");
-    REQUIRE(sources.vendor_cache->material.has_value());
-    CHECK(*sources.vendor_cache->material == "PETG");
+    REQUIRE(sources.remembered.has_value());
+    REQUIRE(sources.remembered->brand.has_value());
+    CHECK(*sources.remembered->brand == "Kingroon");
+    REQUIRE(sources.remembered->material.has_value());
+    CHECK(*sources.remembered->material == "PETG");
 }
 
 TEST_CASE("Weights migrate to the meter, never to a declaration", "[lane][ingest]") {

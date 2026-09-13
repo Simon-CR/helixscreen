@@ -27,6 +27,7 @@ struct LaneSources {
     std::optional<Observation> local_user;
     std::optional<Observation> vendor_cache;
     std::optional<Observation> metered;
+    std::optional<Observation> remembered;
 
     /// Replace this source's record with @p obs. Whole-record replacement, so a
     /// field a source stops reporting stops contributing.
@@ -57,6 +58,8 @@ inline const std::optional<Observation>& record_for(const LaneSources& lane,
         return lane.vendor_cache;
     case ObservationSource::Metered:
         return lane.metered;
+    case ObservationSource::Remembered:
+        return lane.remembered;
     }
 }
 
