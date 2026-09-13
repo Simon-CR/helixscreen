@@ -89,61 +89,61 @@ enum class AmsResult {
 inline const char* ams_result_to_string(AmsResult result) {
     switch (result) {
     case AmsResult::SUCCESS:
-        return "Success";
+        return lv_tr("Success");
     case AmsResult::NOT_CONNECTED:
-        return "Not Connected";
+        return lv_tr("Not Connected");
     case AmsResult::TIMEOUT:
-        return "Timeout";
+        return lv_tr("Timeout");
     case AmsResult::CONNECTION_LOST:
-        return "Connection Lost";
+        return lv_tr("Connection Lost");
     case AmsResult::COMMAND_FAILED:
-        return "Command Failed";
+        return lv_tr("Command Failed");
     case AmsResult::NOT_INITIALIZED:
-        return "Not Initialized";
+        return lv_tr("Not Initialized");
     case AmsResult::NO_AMS_DETECTED:
-        return "No AMS Detected";
+        return lv_tr("No AMS Detected");
     case AmsResult::WRONG_STATE:
-        return "Wrong State";
+        return lv_tr("Wrong State");
     case AmsResult::BUSY:
-        return "Busy";
+        return lv_tr("Busy");
     case AmsResult::FILAMENT_JAM:
-        return "Filament Jam";
+        return lv_tr("Filament Jam");
     case AmsResult::SLOT_BLOCKED:
-        return "Slot Blocked";
+        return lv_tr("Slot Blocked");
     case AmsResult::SENSOR_ERROR:
-        return "Sensor Error";
+        return lv_tr("Sensor Error");
     case AmsResult::ENCODER_ERROR:
-        return "Encoder Error";
+        return lv_tr("Encoder Error");
     case AmsResult::HOMING_FAILED:
-        return "Homing Failed";
+        return lv_tr("Homing Failed");
     case AmsResult::EXTRUDER_COLD:
-        return "Extruder Cold";
+        return lv_tr("Extruder Cold");
     case AmsResult::LOAD_FAILED:
-        return "Load Failed";
+        return lv_tr("Load Failed");
     case AmsResult::UNLOAD_FAILED:
-        return "Unload Failed";
+        return lv_tr("Unload Failed");
     case AmsResult::TOOL_CHANGE_FAILED:
-        return "Tool Change Failed";
+        return lv_tr("Tool Change Failed");
     case AmsResult::TIP_FORMING_FAILED:
-        return "Tip Forming Failed";
+        return lv_tr("Tip Forming Failed");
     case AmsResult::SLOT_NOT_AVAILABLE:
-        return "Slot Not Available";
+        return lv_tr("Slot Not Available");
     case AmsResult::INVALID_SLOT:
-        return "Invalid Slot";
+        return lv_tr("Invalid Slot");
     case AmsResult::INVALID_TOOL:
-        return "Invalid Tool";
+        return lv_tr("Invalid Tool");
     case AmsResult::MAPPING_ERROR:
-        return "Mapping Error";
+        return lv_tr("Mapping Error");
     case AmsResult::SPOOLMAN_NOT_AVAILABLE:
-        return "Spoolman Not Available";
+        return lv_tr("Spoolman Not Available");
     case AmsResult::SPOOL_NOT_FOUND:
-        return "Spool Not Found";
+        return lv_tr("Spool Not Found");
     case AmsResult::NOT_SUPPORTED:
-        return "Not Supported";
+        return lv_tr("Not Supported");
     case AmsResult::RESUME_REQUIRES_RESTART:
-        return "Resume Requires Restart";
+        return lv_tr("Resume Requires Restart");
     default:
-        return "Unknown Error";
+        return lv_tr("Unknown Error");
     }
 }
 

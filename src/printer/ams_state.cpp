@@ -2707,12 +2707,15 @@ void AmsState::sync_clog_meter_from_info(const AmsSystemInfo& info) {
     int mode = 0;
     int value = 0;
     int warning = 0;
-    char mode_text[24] = "";
+    // Sized with the member buffers they feed: translated mode names and
+    // endpoint labels run past the ASCII lengths (ru "Засор: вручную" = 24B,
+    // "СПУТЫВАНИЕ" = 20B) and snprintf would clip mid-codepoint.
+    char mode_text[32] = "";
     int new_danger_pct = 75;
     int new_peak_pct = 0;
     char center_buf[16] = "";
-    char left_buf[16] = "";
-    char right_buf[16] = "";
+    char left_buf[24] = "";
+    char right_buf[24] = "";
 
     // Determine which sources are available
     bool has_flowguard = info.flowguard_info.enabled;

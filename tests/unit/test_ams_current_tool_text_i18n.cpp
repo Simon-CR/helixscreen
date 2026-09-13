@@ -8,6 +8,7 @@
  */
 
 #include "../lvgl_test_fixture.h"
+#include "../test_helpers/ams_state_test_access.h"
 #include "ams_state.h"
 #include "app_globals.h"
 #include "display_numbering.h"
@@ -97,4 +98,48 @@ TEST_CASE_METHOD(LVGLTestFixture,
     // last_operation_detail_ persists in the singleton; clear it so later
     // tests derive the detail from their own state.
     ams.set_action_detail("");
+}
+
+TEST_CASE_METHOD(LVGLTestFixture, "clog_meter_mode_text holds the longest translated mode whole",
+                 "[ams][ams_state][i18n]") {
+    ScopedLanguage restore_lang;
+
+    get_printer_state().init_subjects(false);
+    auto& ams = AmsState::instance();
+    ams.init_subjects(false);
+
+    helix::ui::ensure_translation_loaded("ru");
+    lv_translation_set_language("ru");
+
+    AmsSystemInfo info{};
+    info.encoder_info.enabled = true;
+    info.encoder_info.detection_mode = 1; // manual: "Clog Manual" -> ru below
+    AmsStateTestAccess::sync_clog_meter(ams, info);
+
+    const std::string mode(lv_subject_get_string(ams.get_clog_meter_mode_text_subject()));
+    // ru "Засор: вручную" is 24 UTF-8 bytes; a 24-byte buffer truncates it
+    // mid-codepoint, so the guard below is what lets this distinguish the
+    // resized buffer from the original.
+    REQUIRE(mode.size() >= 24);
+    CHECK(mode == "Засор: вручную");
+}
+
+TEST_CASE_METHOD(LVGLTestFixture, "clog_meter endpoint labels hold СПУТЫВАНИЕ whole",
+                 "[ams][ams_state][i18n]") {
+    ScopedLanguage restore_lang;
+
+    get_printer_state().init_subjects(false);
+    auto& ams = AmsState::instance();
+    ams.init_subjects(false);
+
+    helix::ui::ensure_translation_loaded("ru");
+    lv_translation_set_language("ru");
+
+    AmsSystemInfo info{};
+    info.flowguard_info.enabled = true; // flowguard fills both endpoint labels
+    AmsStateTestAccess::sync_clog_meter(ams, info);
+
+    const std::string left(lv_subject_get_string(ams.get_clog_meter_label_left_subject()));
+    REQUIRE(left.size() > 16); // otherwise this test cannot distinguish old from new
+    CHECK(left == "СПУТЫВАНИЕ");
 }

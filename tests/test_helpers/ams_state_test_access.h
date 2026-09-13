@@ -47,5 +47,11 @@ class AmsStateTestAccess {
     static constexpr std::chrono::seconds grace_window() {
         return AmsState::POST_UNLOAD_RUNOUT_GRACE;
     }
+
+    /// Drive the clog-meter subject sync with a hand-built AmsSystemInfo, so
+    /// tests about what lands in the meter's text buffers need no live backend.
+    static void sync_clog_meter(AmsState& ams, const AmsSystemInfo& info) {
+        ams.sync_clog_meter_from_info(info);
+    }
 };
 } // namespace helix

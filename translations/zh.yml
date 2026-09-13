@@ -254,6 +254,7 @@ translations:
   BLUETOOTH SCANNERS: 蓝牙扫描器
   Back: 返回
   'Backtrace: {} frames': '回溯: {} 帧'
+  Backup lane name contains invalid characters: '备用耗材通道名称包含无效字符'
   Backup spool switching state unknown: 备用料盘切换状态未知
   Barcode Scanner: 条码扫描器
   Base: 基准
@@ -333,6 +334,7 @@ translations:
   Buffer tube problem: 缓冲管故障
   'Build Volume: ': '构建尺寸: '
   Bundle Uploaded: 捆绑包已上传
+  Busy: '正忙'
   Button taps and navigation sounds: 按钮点击和导航声音
   Buzz Servo: '轻动舵机'
   Bypass: 旁路
@@ -346,6 +348,7 @@ translations:
   Bypass failed: 旁通失败
   ? Bypass is active, but this print uses AMS slots. The printer may refuse to load a slot while bypass filament is in the toolhead. Remove the filament and turn bypass off before printing. Start anyway?
   : 旁路已启用，但此打印使用 AMS 槽位。当旁路耗材仍在工具头中时，打印机可能拒绝装载槽位。请在打印前取出耗材并关闭旁路。仍要开始打印吗？
+  Bypass mode is not currently active: '旁通模式当前未启用'
   Bypass toggle failed: 旁通切换失败
   C: 腔
   CALIBRATION: 校准
@@ -461,6 +464,7 @@ translations:
   Changes apply immediately. Adjust during print for tuning.: 更改立即生效。可在打印时调整进行调优。
   Changes are temporary and reset on printer reboot: 更改是临时的，打印机重启后会重置
   Changes can be reversed anytime using the Macro Viewer.: 可随时使用 Macro Viewer 恢复更改。
+  Check AFC configuration: '请检查 AFC 配置'
   Check Again: 重新检查
   Check Klipper console for details: 详情请查看 Klipper 控制台
   Check extruder temperature and try again. Manual removal may be required.: 请检查挤出机温度后重试。可能需要手动取出。
@@ -539,6 +543,7 @@ translations:
   Color: 颜色
   Color Mismatch: 颜色不匹配
   Color Sensors: 颜色传感器
+  Command Failed: '命令失败'
   Command failed: 命令失败
   Communication Test: '通信测试'
   Compact: 紧凑
@@ -559,6 +564,7 @@ translations:
   Config-defined (read-only): 配置定义（只读）
   Configuration added successfully.: 配置添加成功。
   Configuration already present.: 配置已存在。
+  Configuration not available: '配置不可用'
   Configuration saved - restarting: 配置已保存 - 正在重启
   Configure: 配置
   Configure Fan Widget: 配置风扇小组件
@@ -603,6 +609,7 @@ translations:
   Connecting...: 正在连接...
   Connection: 连接
   Connection Failed: 连接失败
+  Connection Lost: '连接已断开'
   Connection Request: '连接请求'
   Connection Stability: 连接稳定性
   Connection failed: 连接失败
@@ -656,6 +663,7 @@ translations:
   Could not update filaments: 无法更新耗材
   Could not verify Spoolman status. Moonraker may still be restarting.: 无法验证 Spoolman
     状态。Moonraker 可能仍在重启中。
+  Couldn't save the material name: '无法保存材料名称'
   Couldn't update Spoolman — saved locally: 无法更新 Spoolman — 已保存在本地
   Cover open: 盖子未关闭
   Crash Report: 崩溃报告
@@ -712,6 +720,7 @@ translations:
   Date (oldest): 日期（最早）
   Day: 日
   Debug: 调试
+  Default: '默认'
   Default border thickness: 默认边框厚度
   'Default: %d-%d°C nozzle, %d°C bed': '默认: 喷嘴 %d-%d°C,热床 %d°C'
   'Default: %d-%d°C nozzle, %d°C bed, %d°C chamber': ''
@@ -849,8 +858,10 @@ translations:
   Enable/disable quiet operation mode: '启用/停用静音运行模式'
   Enabled: 已启用
   Encoder: 编码器
+  Encoder Error: '编码器错误'
   Ended: 已结束
   Endless spool failover cleared for every slot: '已清除所有槽位的无限料盘设置'
+  Endless spool is turned off on this MMU: '此 MMU 上的无限料盘已关闭'
   Enhanced {} operation in PRINT_START: 增强了 PRINT_START 中的 {} 项操作
   Enhanced {} operations in PRINT_START: 增强了 PRINT_START 中的 {} 项操作
   Enhancement Complete!: 增强完成！
@@ -861,6 +872,8 @@ translations:
   Enter New PIN: 输入新 PIN
   Enter PIN: 输入 PIN
   Enter WiFi Password: 输入 WiFi 密码
+  Enter a length between 100 and {:.0f}mm: '请输入 100 至 {:.0f}mm 之间的长度'
+  Enter a multiplier between 0.5 and 2.0: '请输入 0.5 至 2.0 之间的倍率'
   Enter a name for this profile: "输入此配置的名称"
   'Enter a name for your custom theme:': 输入自定义主题名称：
   Enter a name to save this profile: 输入名称以保存此配置
@@ -899,6 +912,7 @@ translations:
   Ethernet: 以太网
   Events appear here after sessions and prints: 会话和打印后事件将显示在此处
   Every extruder's temperature at once: 同时查看所有挤出机温度
+  Everything else was saved. Rename the material using letters, digits, spaces, and + - _ . ( ) /: '其他内容均已保存。请使用字母、数字、空格以及 + - _ . ( ) / 重命名材料'
   Excellent Accuracy: 精度极佳
   'Exception: {}': '异常: {}'
   Exclude: 排除
@@ -908,6 +922,8 @@ translations:
   Execute printer macros: 执行打印机宏
   Exhaust Fan: 排气扇
   Exit Code: 退出代码
+  Expected boolean: '需要布尔值'
+  Expected float: '需要小数值'
   Explore how the selected palette shapes text, controls, and status colors.: 探索所选调色板如何影响文本、控件和状态颜色。
   Explore palette and preview: 探索调色板和预览
   External: 外部
@@ -923,6 +939,7 @@ translations:
   Extrude may still be running — response timed out: 挤出可能仍在运行 — 响应超时
   Extrude/retract feedrate (Saved): 挤出/回抽速度（已保存）
   Extruder: 挤出机
+  Extruder Cold: '挤出机过冷'
   Extruder Load Speed: '挤出机装载速度'
   Extruder MPC Calibration: 挤出机 MPC 校准
   Extruder PID Tuning: 挤出机 PID 调优
@@ -1066,6 +1083,7 @@ translations:
   Filament Grade Mismatch: 耗材等级不匹配
   Filament Humidity: 耗材湿度
   Filament In The Toolhead: 工具头处有耗材
+  Filament Jam: '耗材堵塞'
   Filament Mapping: 耗材映射
   Filament Runout: 耗材用尽
   Filament Sensor: 耗材传感器
@@ -1087,10 +1105,12 @@ translations:
   Filament feeder: 耗材送料器
   Filament is clear of the toolhead. Pull it out the rest of the way.: 耗材已脱离工具头。请将剩余部分拉出。
   Filament is dragging: 耗材阻力过大
+  Filament is loaded at the toolhead. Unload it before enabling bypass.: '工具头上已装载耗材。启用旁通前请先卸载。'
   Filament is loose: 耗材松弛
   Filament is pulling tight: 耗材拉紧
   ? Filament is still at the nozzle after unloading. The cut or retract may not have completed. Clear the toolhead before loading another spool.
   : 卸载后耗材仍留在喷嘴处。切断或回抽可能未完成。请先清理工具头，再装载其他料盘。
+  Filament is still loaded. Unload it before enabling bypass.: '耗材仍处于装载状态。启用旁通前请先卸载。'
   Filament is still present after the cut — the blade may be dull or misaligned: 切断后仍有耗材残留。刀片可能已钝或未对准
   Filament jam detected: 检测到耗材堵塞
   Filament jammed at the extruder gear: 耗材卡在挤出机齿轮处
@@ -1265,6 +1285,7 @@ translations:
   Home printer first?: 先将打印机归位？
   Home selector: 选择器归位
   Homing AFC system...: AFC系统归位中...
+  Homing Failed: '回零失败'
   Homing X...: 正在归位 X...
   Homing XY...: 正在归位 XY...
   Homing Y...: 正在归位 Y...
@@ -1276,6 +1297,7 @@ translations:
   'Homing failed: {}': '归位失败: {}'
   Homing first...: 正在先归位...
   Homing may still be running — response timed out: 归位可能仍在运行 — 响应超时
+  Homing selector: '选择器回零'
   Homing timed out: 归位超时
   Homing timed out — printer may still be homing: 回零超时 — 打印机可能仍在回零
   Homing...: 正在归零...
@@ -1369,12 +1391,19 @@ translations:
   Interface size. Applies after restart.: 界面大小。重启后生效。
   'Internal error: API not available': '内部错误: API 不可用'
   'Internal error: no scan result': '内部错误: 无扫描结果'
+  Invalid Slot: '无效槽位'
+  Invalid Tool: '无效工具'
+  Invalid duration: '时长无效'
   Invalid number: 无效编号
   Invalid parameter: 无效参数
   Invalid port number: 无效的端口号
   'Invalid sheet template index: {} (have {})': '标签纸模板索引无效: {} (实际有 {})'
   Invalid status response from printer: 打印机返回的状态响应无效
+  Invalid temperature: '温度无效'
   Invalid tool number: 无效工具编号
+  Invalid tool/slot: '无效的工具/槽位'
+  Invalid value: '值无效'
+  Invalid value type: '值类型无效'
   Issue description: 问题描述
   It can be un-archived in Spoolman's web UI.: 可以在 Spoolman 的网页界面中取消归档。
   It is jammed between the hub sensor and the hub gear. Open the CFS and clear the hub before retrying: 它卡在集线器传感器与集线器齿轮之间。请打开 CFS 清理集线器后重试
@@ -1432,6 +1461,7 @@ translations:
   Labels: 标签
   Labels Per Sheet: 每页标签数
   Lane: 耗材通道
+  Lane name contains invalid characters: '耗材通道名称包含无效字符'
   Lane tests and motor resets: '耗材通道测试与电机重置'
   Lanes: 耗材通道
   Language: 语言
@@ -1463,6 +1493,7 @@ translations:
   Listening: 正在监听
   Live view from your webcam: 摄像头实时画面
   Load: 加载
+  Load Failed: '装载失败'
   Load Filament: 加载耗材
   Load a filament first before trying to unload: 请先装载耗材，再尝试卸载
   Load a new spool in this slot, or turn on auto-refill to switch to a matching one: 请在此槽位装入新料盘，或开启自动续料以切换到匹配的料盘
@@ -1569,6 +1600,7 @@ translations:
   Manually clear the jam and retry the operation: 请手动清除堵塞后重试操作
   Manually pull the filament back through the connector: 请手动将耗材从接头处抽回
   Map to closest colors with matching material: 按匹配材料映射最接近的颜色
+  Mapping Error: '映射错误'
   Marginal: 偏高
   Master volume level: 主音量
   Match: 匹配度
@@ -1607,6 +1639,7 @@ translations:
   Minimal: 极简
   Minimum: 最小值
   Minutes: 分钟
+  Missing value: '缺少值'
   Mode: 模式
   Modified: 已修改
   'Monitor prints in progress — time remaining, current layer, and progress. Tap to pause, resume, or cancel the active job.': 监控正在进行的打印 — 剩余时间、当前层和进度。点击可暂停、恢复或取消当前任务。
@@ -1682,6 +1715,7 @@ translations:
   Next belt: 下一条皮带
   Niimbot (Bluetooth): Niimbot（蓝牙）
   'No': 否
+  No AMS Detected: '未检测到 AMS'
   No API connection: 无 API 连接
   No Bluetooth printer selected — pick one in settings: 未选择蓝牙打印机 — 请在设置中选择
   No Bluetooth printers found: 未找到蓝牙打印机
@@ -1723,6 +1757,7 @@ translations:
   No file loaded: 未加载文件
   No file to reprint: 没有可重新打印的文件
   No files available for printing: 没有可用于打印的文件
+  No hub configured: '未配置 Hub'
   No humidity sensor detected: '未检测到湿度传感器'
   No images found on USB drive: USB驱动器上未找到图片
   No jobs in queue: 队列中无任务
@@ -1760,6 +1795,7 @@ translations:
   No temperature sensors detected: '未检测到温度传感器'
   No timelapse videos found: 未找到延时视频
   No vendors found: 未找到供应商
+  No verified bypass command for this CFS firmware: '此 CFS 固件没有经验证的旁通命令'
   No video player installed - showing the timelapse library: '未安装视频播放器 – 显示延时摄影库'
   ? "No webcam detected.\nA webcam is required for timelapse."
   : "未检测到摄像头。\n延时摄影需要摄像头。"
@@ -1768,8 +1804,11 @@ translations:
   None: 无
   None (disable): 无 (禁用)
   Normal: 正常
+  Not Connected: '未连接'
   Not Enough Filament: 耗材不足
+  Not Initialized: '未初始化'
   Not Now: 暂不
+  Not Supported: '不支持'
   Not available here. Update from a terminal.: 此处不可用。请通过终端更新。
   Not available on Android: Android 上不可用
   Not calibrated: 未校准
@@ -1788,6 +1827,7 @@ translations:
   Nothing loaded: 未装载耗材
   Nothing starred yet. Tap the star on a filament to add it here.: '还没有收藏。点击耗材行的星标即可收藏到这里。'
   Nothing to remap: 没有可重新映射的内容
+  'Nothing to unload: no filament at the nozzle': '没有可卸载的耗材: 喷嘴处没有耗材'
   Notification: 通知
   Notifications: 通知
   Notify when print finishes: 打印完成时通知
@@ -2052,9 +2092,6 @@ translations:
   Printer Type: 打印机类型
   Printer accepted job but isn't printing — check cover, paper, and label type (firmware status=0x{:02X} error=0x{:02X}): 打印机已接受作业但未开始打印
     — 请检查盖板、纸张和标签类型 (firmware status=0x{:02X} error=0x{:02X})
-  Printer caps bed at %d°C: 打印机热床上限为 %d°C
-  Printer caps chamber at %d°C: 打印机腔体上限为 %d°C
-  Printer caps nozzle at %d°C: 打印机喷嘴上限为 %d°C
   Printer connection unavailable: 打印机连接不可用
   Printer database format error: 打印机数据库格式错误
   Printer database is corrupt: 打印机数据库已损坏
@@ -2107,6 +2144,13 @@ translations:
   Profiles: 配置
   Progress, file, and time remaining: 进度、文件和剩余时间
   Prompt before running this macro: 运行此宏前询问
+  Provide a boolean {}: '请为 {} 提供布尔值'
+  Provide a bowden length value: '请提供鲍登管长度值'
+  Provide a numeric value: '请提供数值'
+  Provide a numeric {}: '请为 {} 提供数值'
+  Provide a speed multiplier value: '请提供速度倍率值'
+  Provide a {}: '请提供 {}'
+  Provide {}: '请提供 {}'
   Pulling filament back: 正在回抽耗材
   Purge: 排料
   Purge & Wipe: '排料与擦拭'
@@ -2244,6 +2288,7 @@ translations:
   Reset to defaults: 重置为默认值
   Reset to original values: 重置为原始值
   Resetting: 重置中
+  Resetting system: '正在重置系统'
   Resetting...: 正在重置...
   Response (Kp): 响应 (Kp)
   Restart: 重启
@@ -2271,6 +2316,7 @@ translations:
   Restoring position: 正在恢复位置
   Resume: 恢复
   Resume Print: 恢复打印
+  Resume Requires Restart: '恢复打印需要重新开始'
   Resume interrupted print?: 恢复中断的打印？
   Resume macro not configured: 恢复宏未配置
   Resume preparation failed: 恢复准备失败
@@ -2418,6 +2464,8 @@ translations:
   Select a valid number: 请选择有效编号
   Select a valid number (1-{}): 请选择有效编号（1-{}）
   Select a valid tool: 请选择有效工具
+  Select a valid {}: '请选择有效的 {}'
+  Select a {}: '请选择 {}'
   Select fan: 选择风扇
   Select gate: '选择通道'
   Select macro for first button: 为第一个按钮选择宏
@@ -2444,6 +2492,7 @@ translations:
   Send this crash report to help improve HelixScreen.: 发送此崩溃报告以帮助改进 HelixScreen。
   Sending...: 正在发送...
   Sensor: 传感器
+  Sensor Error: '传感器错误'
   Sensor Response: 传感器响应
   Sensor Source: 传感器来源
   Sensor Temperature: 传感器温度
@@ -2464,8 +2513,10 @@ translations:
   Set and watch the bed temperature: 设置并监控热床温度
   Set and watch the chamber temperature: 设置并监控腔体温度
   Set and watch the nozzle temperature: 设置并监控喷嘴温度
+  Set duration between 1 and {} minutes: '请设置 1 到 {} 分钟之间的时长'
   Set local timezone for time display: 设置本地时区以显示时间
   Set logging verbosity for troubleshooting: 设置日志详细级别以便故障排除
+  Set temperature between {}°C and {}°C: '请设置 {}°C 到 {}°C 之间的温度'
   ? Set the filament type and colour by hand for this slot. If the tag should be readable, re-seat the spool with its label facing the reader once the box is idle
   : 请手动设置该槽位的耗材类型和颜色。若标签本应可读，请在料盒空闲时将料盘取出并使标签朝向读取器重新装入
   Set up: 设置
@@ -2516,6 +2567,8 @@ translations:
   Slicer: 切片软件
   Slot: 槽位
   Slot 1: 槽位 1
+  Slot Blocked: '槽位被阻塞'
+  Slot Not Available: '槽位不可用'
   Slot colors, materials, and levels: 槽位的颜色、材料和余量
   Slots: 槽位
   Small labels help keep controls calm and focused.: 小标签有助于保持控件简洁专注。
@@ -2545,6 +2598,7 @@ translations:
   'Spool #': '线轴 #'
   'Spool #{}': '线轴 #{}'
   Spool Info: 料盘信息
+  Spool Not Found: '找不到料盘'
   Spool Weight (g): 料盘重量（克）
   Spool archived: 料盘已归档
   Spool created successfully: 料盘创建成功
@@ -2553,6 +2607,7 @@ translations:
   Spool saved: 料盘已保存
   Spool wt (g): 料盘重量 (g)
   Spoolman: Spoolman
+  Spoolman Not Available: 'Spoolman 不可用'
   Spoolman Server: Spoolman 服务器
   Spoolman connected!: Spoolman 已连接！
   Spoolman found! Configuring...: 已找到 Spoolman！正在配置...
@@ -2638,6 +2693,7 @@ translations:
   System busy — try again: 系统繁忙 — 请重试
   System default: 系统默认
   System detected: 检测到系统
+  System is {}: '系统状态: {}'
   TANGLE: 打结
   TD-1 filament color detection: TD-1 耗材颜色检测
   TEMPERATURE SENSORS: 温度传感器
@@ -2761,6 +2817,9 @@ translations:
   'These tools have incompatible materials loaded:': 这些工具加载了不兼容的材料：
   'These tools have no filament loaded:': '以下工具未加载耗材:'
   'These tools have no matching filament loaded:': 以下工具未加载匹配的耗材：
+  This AFC system does not support bypass mode: '此 AFC 系统不支持旁通模式'
+  This CFS firmware exposes no external spool slot: '此 CFS 固件没有外部料盘槽位'
+  This Happy Hare system does not support bypass mode: '此 Happy Hare 系统不支持旁通模式'
   This calibration uses the paper friction method to set your Z-offset.: 此校准使用纸张摩擦法设置
     Z 偏移。
   This cannot be undone.: 此操作无法撤销。
@@ -2776,6 +2835,7 @@ translations:
   This filament system does not report buffer or flow data.: 此耗材系统不报告缓冲区或流量数据。
   This file was sliced for {} but {} is loaded.: 此文件为 {} 切片，但当前加载的是 {}。
   This file was sliced for {}, but {} is loaded. It will print slower and hotter than the loaded spool needs.: 此文件为 {} 切片，但当前加载的是 {}。打印会比当前装载的料盘所需更慢、更热。
+  This firmware can only switch slots by loading them: '此固件只能通过装载来切换槽位'
   ? This installs the HelixScreen helper macros on the printer and adds them to printer.cfg. A print is running, so Klipper restarts after it finishes.
   : '这会在打印机上安装 HelixScreen 帮助宏并添加到 printer.cfg。当前正在打印，Klipper 将在打印结束后重启。'
   This installs the HelixScreen helper macros on the printer, adds them to printer.cfg, and restarts Klipper.: '这会在打印机上安装 HelixScreen 帮助宏，添加到 printer.cfg，并重启 Klipper。'
@@ -2793,6 +2853,7 @@ translations:
   This replaces the printer's helper macros with the current version and restarts Klipper.: '这会将打印机的帮助宏替换为当前版本并重启 Klipper。'
   ? This replaces the printer's helper macros with the current version. A print is running, so Klipper restarts after it finishes.
   : '这会将打印机的帮助宏替换为当前版本。当前正在打印，Klipper 将在打印结束后重启。'
+  This system does not support bypass mode: '此系统不支持旁通模式'
   This tool probes each bed screw and tells you how much to adjust.: 此工具探测每个热床螺丝并告诉您需要调整多少。
   ? This will apply the Z-offset to your endstop and restart Klipper to save the configuration.
     The printer will briefly disconnect.
@@ -2832,8 +2893,10 @@ translations:
   Timelapse render failed: 延时摄影渲染失败
   'Timelapse render failed: {}': '延时摄影渲染失败: {}'
   Timelapse rendered successfully: 延时视频渲染成功
+  Timeout: '超时'
   Timezone: 时区
   Tip Forming: '尖端成型'
+  Tip Forming Failed: '料尖成型失败'
   Tip shaping configuration: '尖端成型配置'
   'Tip:': 提示：
   Tips: '提示'
@@ -2850,9 +2913,11 @@ translations:
   Too humid: 湿度过高
   Too soft - pluck harder: 力度太轻 - 请用力拨动
   Tool: 工具
+  Tool Change Failed: '工具切换失败'
   Tool Changer: 换刀器
   Tool Switcher: '工具切换器'
   'Tool change failed: {}': '工具切换失败: {}'
+  Tool change to T{}: '切换工具到 T{}'
   Tool mapping failed: 工具映射失败
   Tool swap: 工具切换
   Toolhead: '工具头'
@@ -2889,6 +2954,7 @@ translations:
   Turn Off WiFi?: 关闭 WiFi？
   Turn On: 开启
   Turn On LEDs: '打开 LED'
+  Turn endless spool on, then set the backup gate: '请先开启无限料盘，再设置备用通道'
   Turn on LEDs when printer starts: 打印机启动时开启 LED
   Turn the extruder heater off after a load or unload finishes: 加载或卸载完成后关闭挤出机加热器
   Turn the picture to match how the screen is mounted. Applies after restart.: 旋转画面以匹配屏幕的安装方向。重启后生效。
@@ -2921,20 +2987,25 @@ translations:
   'Unit ': '单元 '
   'Units: %d   Boxes: %d   Dryers: %d': ''
   Unknown: 未知
+  Unknown Error: '未知错误'
   Unknown Event: 未知事件
   Unknown Spool: 未知料盘
   Unknown Step: 未知步骤
   Unknown error: 未知错误
   Unload: 卸载
   Unload Distance: '卸载距离'
+  Unload Failed: '卸载失败'
   Unload Filament: 卸载耗材
   Unload failed: 卸载失败
   Unload filament: '卸载耗材'
+  Unload from toolhead first: '请先从工具头卸载'
   Unload macro not configured: 卸载宏未配置
   Unload may still be running — response timed out: 卸载可能仍在运行 — 响应超时
+  Unload the CFS filament before enabling bypass: '启用旁通前请先卸载 CFS 耗材'
   Unloading: 卸载中
   Unloading Start Speed: '卸载起始速度'
   Unloading before bypass...: 旁通前正在卸载...
+  Unloading filament: '正在卸载耗材'
   Unloading filament...: 正在卸载耗材...
   Unloads After Print: 打印后卸载
   Unlock: 解锁
@@ -2965,7 +3036,9 @@ translations:
   Uptime: 运行时长
   Use Android native keyboard for text input: 使用 Android 原生键盘进行文本输入
   Use G10/G11 firmware retraction: 使用 G10/G11 固件回抽
+  Use Unload before Eject: '请先使用“卸载”，再使用“弹出”'
   Use printer type to select image: 使用打印机类型选择图片
+  User intervention required: '需要手动干预'
   VM Peak: 虚拟内存峰值
   VM Size: 虚拟内存大小
   Validating bed mesh...: 正在验证热床网格...
@@ -3006,6 +3079,8 @@ translations:
   WLED Preset: WLED 预设
   WPA/WPA2: 'WPA/WPA2'
   WPA3: 'WPA3'
+  Wait for config to load: '请等待配置加载'
+  Wait for current operation to complete or use cancel: '请等待当前操作完成，或使用取消'
   Wait for the current filament operation to finish: 请等待当前耗材操作完成
   Wait for the current operation to complete: 请等待当前操作完成
   Wait for the current operation to complete or cancel it first: 请等待当前操作完成，或先将其取消
@@ -3066,6 +3141,7 @@ translations:
   Working...: 处理中...
   Write failed at chunk {}: 区块 {} 写入失败
   Wrong PIN: PIN 错误
+  Wrong State: '状态错误'
   Wrong media: 介质错误
   X: X
   X Axis: X 轴

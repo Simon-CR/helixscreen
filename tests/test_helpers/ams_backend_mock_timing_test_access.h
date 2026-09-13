@@ -30,6 +30,19 @@ class AmsBackendMockTimingTestAccess {
     static void set_dryer_speed_x(AmsBackendMock& b, int speed_x) {
         b.dryer_speed_x_ = speed_x;
     }
+
+    /// Mark the backend started without launching its simulation threads, for
+    /// tests that only need an operation's precondition guards to pass.
+    static void force_started(AmsBackendMock& b) {
+        b.running_ = true;
+    }
+
+    /// The mock persona ships with filament loaded (the interesting default for
+    /// UI runs); tests asserting the empty-toolhead guards need the other state.
+    static void force_filament_loaded(AmsBackendMock& b, bool loaded) {
+        std::lock_guard<std::mutex> lock(b.mutex_);
+        b.system_info_.filament_loaded = loaded;
+    }
 };
 
 } // namespace helix

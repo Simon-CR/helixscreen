@@ -2006,7 +2006,7 @@ AmsError AmsBackendAd5xIfs::do_unload_filament(int slot_index) {
                          backend_log_tag());
             return AmsError(AmsResult::WRONG_STATE,
                             "unload_filament: head sensor empty, no seated or active lane",
-                            "Nothing to unload: no filament at the nozzle");
+                            lv_tr("Nothing to unload: no filament at the nozzle"));
         }
         spdlog::info("{} Unload with empty toolhead sensor -> cold lane eject (slot {})",
                      backend_log_tag(), eject_slot);
@@ -2156,7 +2156,7 @@ AmsError AmsBackendAd5xIfs::do_select_slot(int slot_index) {
     if (ifs_module_live_.load()) {
         return AmsError(AmsResult::NOT_SUPPORTED,
                         "select_slot: the standalone IFS module has no load-free selection",
-                        "This firmware can only switch slots by loading them");
+                        lv_tr("This firmware can only switch slots by loading them"));
     }
 
     int port = slot_index + 1; // DISPLAY_NUMBERING_OK: 1-based SET_EXTRUDER_SLOT gcode parameter
@@ -2257,7 +2257,7 @@ AmsError AmsBackendAd5xIfs::eject_lane(int slot_index) {
         // a seated lane and wave the cold retract straight through.
         if (system_info_.current_slot == slot_index && !head_empty_for_unload_routing_locked()) {
             return AmsError(AmsResult::WRONG_STATE, "Lane is loaded in toolhead",
-                            "Unload from toolhead first", "Use Unload before Eject");
+                            lv_tr("Unload from toolhead first"), lv_tr("Use Unload before Eject"));
         }
 
         // Resolve the cold-retract LEN/SPEED from filament.json keyed by the
