@@ -92,3 +92,28 @@ PY
     run grep -F 'HELIX_CRASH_WORKER_URL' src/system/crash_reporter.cpp
     [ "$status" -eq 0 ]
 }
+
+@test "the three un-harnessed gate paths keep their wiring" {
+    # These three hunks SURVIVED mutate-diff (no unit test drives the RPC
+    # server or the two modals), so their wiring is pinned structurally: the
+    # log RPC refuses, the crash modal pre-checks before promising "Sending",
+    # and the debug modal maps the refusal to the translated message rather
+    # than a raw error string.
+    run python3 - <<'PY'
+import sys
+checks = [
+    ("src/remote/remote_control_server.cpp",
+     "helix::diag::uploads_enabled()", "the log RPC gate"),
+    ("src/ui/ui_crash_report_modal.cpp",
+     "helix::diag::uploads_enabled()", "the crash modal pre-check"),
+    ("src/ui/ui_debug_bundle_modal.cpp",
+     'lv_tr("Upload unavailable in this build")',
+     "the debug modal honest-off message"),
+]
+for path, needle, what in checks:
+    if needle not in open(path).read():
+        print(f"{path}: lost {what}")
+        sys.exit(1)
+PY
+    [ "$status" -eq 0 ]
+}
