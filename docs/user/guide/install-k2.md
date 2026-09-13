@@ -46,9 +46,9 @@ Two log streams; collect both when reporting an issue:
 ```bash
 # Structured app log (on the UDISK data partition, rotated):
 tail -100 /mnt/UDISK/helixscreen/logs/helix.log
-# Launcher / crash capture (persistent /var/log; falls back to
-# /opt/helixscreen/logs/launcher.log where /var/log is RAM-backed):
-tail -100 /var/log/helixscreen/launcher.log
+# Launcher / crash capture (lives beside the install; on builds whose
+# /var/log is persistent it lands at /var/log/helixscreen/launcher.log):
+tail -100 /opt/helixscreen/logs/launcher.log
 # Anything that reached the OpenWrt syslog:
 logread | grep helix-screen | tail -100
 ```
