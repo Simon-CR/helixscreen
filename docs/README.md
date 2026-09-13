@@ -16,7 +16,7 @@ Welcome to the HelixScreen documentation. Choose your path:
 | [**Troubleshooting**](user/TROUBLESHOOTING.md) | Solutions to common problems |
 | [**FAQ**](user/FAQ.md) | Quick answers to common questions |
 | [**Telemetry**](user/TELEMETRY.md) | What telemetry collects, privacy controls, opt-in/out |
-| [**Feature Guides**](user/guide/) | 24 per-feature guides: printing, calibration, filament, sensors, camera, security, and more |
+| [**Feature Guides**](user/guide/) | 30 guides: per-feature (printing, calibration, filament, sensors, camera, and more) plus per-printer install guides (K1C, K2, AD5M, AD5X, CC1, Sonic Pad, U1) |
 | [**Plugin Development**](devel/PLUGIN_DEVELOPMENT.md) | Create custom plugins |
 
 ---
@@ -135,12 +135,12 @@ docs/
 │
 ├── user/                     # END-USER DOCUMENTATION
 │   ├── CLAUDE.md             # Style guide for user docs
-│   ├── INSTALL.md            # Installation guide
+│   ├── INSTALL.md            # Installation: router + generic Linux/Pi path
 │   ├── USER_GUIDE.md         # How to use HelixScreen
 │   ├── CONFIGURATION.md      # Settings reference
 │   ├── TROUBLESHOOTING.md    # Common problems
 │   ├── FAQ.md                # Frequently asked questions
-│   └── guide/                # 24 per-feature guides (+ guide/settings/)
+│   └── guide/                # 30 guides: per-feature + per-printer install (+ guide/settings/)
 │
 ├── devel/                    # DEVELOPER DOCUMENTATION
 │   ├── CLAUDE.md             # Full developer doc index

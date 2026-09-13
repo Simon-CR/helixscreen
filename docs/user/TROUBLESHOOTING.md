@@ -57,9 +57,11 @@ sudo systemctl restart helixscreen        # Raspberry Pi
 Then tail the log:
 
 ```bash
-sudo journalctl -u helixscreen -f         # Raspberry Pi (systemd)
-tail -f /var/log/messages | grep helix    # AD5M / non-systemd
+sudo journalctl -u helixscreen -f          # Raspberry Pi (systemd)
+tail -f /data/helixscreen/logs/helix.log   # AD5M
 ```
+
+The app log's location varies by platform; see [Collecting Logs](#collecting-logs) for the path on yours.
 
 **Verbosity levels:**
 - `warn` — production default (errors and warnings only)
@@ -94,7 +96,7 @@ tail -f /var/log/messages | grep helix    # AD5M / non-systemd
    ```
 4. To instead go back to the stock screen, run the uninstaller: `curl -sSL https://raw.githubusercontent.com/prestonbrown/helixscreen/main/scripts/install.sh | sh -s -- --uninstall && reboot`.
 
-See [INSTALL.md → Recovery](INSTALL.md#recovery-screen-is-blank-or-the-printer-is-off-the-network) for the full procedure and the manual reset fallback.
+See [Snapmaker U1 install guide → Recovery](guide/install-u1.md#recovery-screen-is-blank-or-the-printer-is-off-the-network) for the full procedure and the manual reset fallback.
 
 ### Update failed in Mainsail — screen won't start after update (AD5X)
 
@@ -105,7 +107,7 @@ See [INSTALL.md → Recovery](INSTALL.md#recovery-screen-is-blank-or-the-printer
 
 **What happened:** Moonraker's in-place update wiped part of `/srv/helixscreen` (including the `bin/helix-screen` binary) before something interrupted it. The install directory now has leftover files but no working binary, so the launcher can't start anything, and a retry from Mainsail trips over those leftovers.
 
-**Fix:** Re-run the CLI installer from inside the ZMOD chroot — it cleans up the broken state and lays down a fresh install while preserving your settings. Full procedure: [UPGRADING.md → Adventurer 5X (ZMOD)](UPGRADING.md#quick-upgrade).
+**Fix:** Re-run the CLI installer from inside the ZMOD chroot - it cleans up the broken state and lays down a fresh install while preserving your settings. Full procedure: [Adventurer 5X install guide → Updating](guide/install-ad5x.md#updating).
 
 Quick form, from a Mainsail Shell or SSH:
 
@@ -1795,26 +1797,23 @@ Covers the K1, K1C and K1 Max on stock or Guilouz Helper Script firmware.
 - HelixScreen, Fluidd, Mainsail and Moonraker all work normally
 
 **Cause:**
-This is a deliberate trade-off, not a fault. HelixScreen and the stock Creality UI cannot share the framebuffer, so the installer stops the stock UI stack. On the K1 that stack is started by `/etc/init.d/S99start_app`, which also launches `master-server`, `app-server` and `web-server` — the backend Creality Print and the Creality Cloud app talk to. Stopping the stock UI takes those with it.
+Current HelixScreen installs keep the stock Creality backend (`master-server`, `app-server`, `web-server`) running beside the screen UI, so Creality Print and Creality Cloud work normally. If they cannot reach the printer, the backend is not running: most often the installed HelixScreen predates the backend support, or the backend init script (`/etc/init.d/S99creality-backend`) failed to start. On a Simple AF install the stock stack was already disabled before HelixScreen arrived, so a lost Creality Print connection there predates HelixScreen. Full setup path and background: [K1 / K1C / K1 Max setup guide](guide/creality-k1c-setup.md).
 
-**What still works for sending prints:**
-- Fluidd or Mainsail in a browser
-- HelixScreen's own file browser, including USB
-- Any slicer that can upload to Moonraker — OrcaSlicer, and PrusaSlicer with the Moonraker plugin
-- Creality Print can still *slice*; it just cannot upload to the printer over the network. Export the G-code and send it by one of the routes above.
-
-**Solution:**
-If you need the stock Creality network stack back, uninstall HelixScreen:
+**Fix:** update to the current HelixScreen release; the update installs and starts the backend script:
 
 ```bash
-/usr/data/helixscreen/install.sh --uninstall
+cp /usr/data/helixscreen/install.sh /tmp/install.sh && sh /tmp/install.sh --update
 ```
 
-Uninstalling re-enables the services the installer disabled and restores the stock UI.
+After the update (and after a reboot), `pidof web-server` should answer with a PID. If it does not, check `/etc/init.d/S99creality-backend` exists and start it with `/etc/init.d/S99creality-backend start`.
 
-> **Do not just run `chmod +x /etc/init.d/S99start_app`.** It appears to work until the next reboot. HelixScreen's own init script runs `platform_stop_competing_uis` on every start, which re-applies `chmod a-x` to that file — and `S99helixscreen` sorts before `S99start_app`, so it runs first. To restore the stock stack without uninstalling, stop and disable the HelixScreen service first, then re-enable `S99start_app`.
+**If you would rather have the stock screen back:** uninstalling removes the backend script and re-enables the stock UI services it replaced:
 
-Tracked as [#1447](https://github.com/prestonbrown/helixscreen/issues/1447); keeping the Creality backend alive alongside HelixScreen is [#1468](https://github.com/prestonbrown/helixscreen/issues/1468).
+```bash
+cp /usr/data/helixscreen/install.sh /tmp/install.sh && sh /tmp/install.sh --uninstall
+```
+
+Keeping the Creality backend alive alongside HelixScreen is prestonbrown/helixscreen#1468; the original breakage was #1447.
 
 ## Flashforge Adventurer 5M Issues
 
@@ -1869,8 +1868,10 @@ ls -la /opt/config/mod/.root/S80guppyscreen
 
 **Check HelixScreen is running:**
 ```bash
-/etc/init.d/S90helixscreen status
-cat /opt/helixscreen/logs/launcher.log    # AD5M launcher capture
+/etc/init.d/S90helixscreen status                        # Forge-X (Klipper Mod: S80helixscreen)
+tail /data/helixscreen/logs/helix.log                    # structured app log
+cat /opt/helixscreen/logs/launcher.log                   # Forge-X launcher capture
+cat /root/printer_software/helixscreen/logs/launcher.log # Klipper Mod launcher capture
 ```
 
 ### Service commands (SysV init)
@@ -1881,15 +1882,15 @@ AD5M uses SysV init, not systemd. Commands are different:
 # Forge-X
 /etc/init.d/S90helixscreen start|stop|restart|status
 cat /opt/helixscreen/logs/launcher.log
-grep helix-screen /var/log/messages | tail -100    # structured app log
+tail -100 /data/helixscreen/logs/helix.log    # structured app log
 
 # Klipper Mod
 /etc/init.d/S80helixscreen start|stop|restart|status
-cat /opt/helixscreen/logs/launcher.log
-grep helix-screen /var/log/messages | tail -100
+cat /root/printer_software/helixscreen/logs/launcher.log
+tail -100 /data/helixscreen/logs/helix.log
 ```
 
-> The `launcher.log` file captures startup messages and crash output from the supervisor shell. The full structured app log (everything the app itself logs) goes to the system log (`/var/log/messages`). You usually want both when reporting an issue. On pre-v0.99.62 installs the launcher log lived at `/tmp/helixscreen.log` — check that path if `launcher.log` doesn't exist.
+> The `launcher.log` file captures startup messages and crash output from the supervisor shell. The full structured app log (everything the app itself logs) goes to `/data/helixscreen/logs/helix.log`, written directly to flash and rotated; `/var/log/messages` carries only the earliest startup output, before the app's own logging takes over. You usually want both when reporting an issue. On pre-v0.99.62 installs the launcher log lived at `/tmp/helixscreen.log` — check that path if `launcher.log` doesn't exist.
 
 ### SSH/SCP notes
 
@@ -2072,22 +2073,41 @@ Two streams to collect — both are needed when reporting an issue:
 
 ```bash
 # 1) Structured app log (everything from spdlog: connection events, errors, etc.)
-grep helix-screen /var/log/messages | tail -200
+tail -200 /data/helixscreen/logs/helix.log
 
 # 2) Launcher / supervisor capture (startup banner, crash output, glibc abort messages)
-tail -200 /opt/helixscreen/logs/launcher.log    # pre-v0.99.62 installs: /tmp/helixscreen.log
+#    Forge-X: /opt/helixscreen/logs/launcher.log
+#    Klipper Mod: /root/printer_software/helixscreen/logs/launcher.log
+#    pre-v0.99.62 installs: /tmp/helixscreen.log
+tail -200 /opt/helixscreen/logs/launcher.log
 
-# Follow the system log live while reproducing the issue
-tail -f /var/log/messages | grep helix-screen
+# Follow the app log live while reproducing the issue
+tail -f /data/helixscreen/logs/helix.log
 ```
 
-**Creality K1 / K1C / K2 (BusyBox in-memory syslog):**
+**Creality K1 / K1C (BusyBox):**
 ```bash
-# Structured app log — held in a RAM ring buffer, vanishes on reboot
-logread | grep helix-screen | tail -200
+# Structured app log (on flash, rotated)
+tail -200 /usr/data/helixscreen/logs/helix.log
 
 # Launcher / supervisor capture
 tail -200 /usr/data/helixscreen/logs/launcher.log
+
+# Anything that reached the in-memory syslog before the app log opened
+logread | grep helix-screen | tail -200
+```
+
+**Creality K2:**
+```bash
+# Structured app log (on the UDISK data partition, rotated)
+tail -200 /mnt/UDISK/helixscreen/logs/helix.log
+
+# Launcher / crash capture (lives beside the install; on builds whose
+# /var/log is persistent it lands at /var/log/helixscreen/launcher.log)
+tail -200 /opt/helixscreen/logs/launcher.log
+
+# Anything that reached the OpenWrt syslog
+logread | grep helix-screen | tail -200
 ```
 
 **Flashforge AD5X (ZMOD MIPS):**
@@ -2116,8 +2136,14 @@ tail -200 /var/log/helixscreen/launcher.log
 
 **Elegoo Centauri Carbon (COSMOS):**
 ```bash
-logread | grep helix-screen | tail -200
+# Structured app log (on flash, rotated)
+tail -200 /user-resource/helixscreen/logs/helix.log
+
+# Launcher / supervisor capture
 tail -200 /user-resource/helixscreen/logs/launcher.log
+
+# Anything that reached the in-memory syslog before the app log opened
+logread | grep helix-screen | tail -200
 ```
 
 ### Configuration
