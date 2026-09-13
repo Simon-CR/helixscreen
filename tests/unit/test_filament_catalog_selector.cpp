@@ -615,6 +615,48 @@ TEST_CASE_METHOD(XMLTestFixture,
     helix::ui::UpdateQueue::instance().drain();
 }
 
+TEST_CASE_METHOD(XMLTestFixture, "browsing to favorites leaves an unstarred entry pick unchecked",
+                 "[filament_picker][catalog_selector][favorites]") {
+    FavoriteIdsGuard guard;
+    lv_obj_t* root = make_fragment();
+    REQUIRE(root != nullptr);
+
+    FilamentCatalogSelector sel;
+    sel.attach(root);
+    sel.configure(std::nullopt, std::nullopt);
+    sel.populate();
+
+    // One starred product the slot never used; the slot's own product stays
+    // unstarred, so it does not survive into the flat favorites list.
+    CHECK(helix::filament_favorites::toggle_favorite("generic-abs"));
+
+    // Host entry state: a specific product highlighted and anchored, and
+    // preselect-on-change enabled, the way the spool editor hosts the
+    // selector (the standalone picker keeps the opt-out default).
+    REQUIRE(sel.preselect_product_id("generic-pla"));
+    REQUIRE(sel.highlighted() != nullptr);
+    REQUIRE(sel.highlighted()->id == "generic-pla");
+    sel.set_preselect_on_change(true);
+
+    sel.change_vendor_for_test(0);
+    REQUIRE(FilamentCatalogSelector::is_favorites_vendor(sel.current_vendor()));
+    // The favorites list is non-empty (the starred ABS is there) and does not
+    // contain the anchored product.
+    CHECK(sel.product_names_for_test() == std::vector<std::string>{"ABS"});
+
+    // Browsing is not picking: nothing may be highlighted, so a Save keeps
+    // the slot's identity instead of adopting whichever favorite sorts first.
+    CHECK(sel.highlighted() == nullptr);
+
+    // An explicit tap still selects, and that pick is the user's to save.
+    sel.select_product_for_test("generic-abs");
+    REQUIRE(sel.highlighted() != nullptr);
+    CHECK(sel.highlighted()->name == "ABS");
+
+    sel.detach();
+    helix::ui::UpdateQueue::instance().drain();
+}
+
 TEST_CASE_METHOD(XMLTestFixture, "favorites view hides types the backend whitelist rejects",
                  "[filament_picker][catalog_selector][favorites][whitelist]") {
     FavoriteIdsGuard guard;

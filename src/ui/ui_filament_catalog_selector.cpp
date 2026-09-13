@@ -253,6 +253,15 @@ void FilamentCatalogSelector::preselect_after_change() {
             }
         }
     }
+    if (is_favorites_vendor(current_vendor())) {
+        // Favorites is a filter the user browses, not a vendor choice: a slot
+        // whose own product is unstarred must not be re-identified as whatever
+        // sorts first among the starred. Leave the view unchecked and tell the
+        // host, like the empty-list case above; an explicit tap still selects.
+        if (on_selection_changed_)
+            on_selection_changed_(nullptr);
+        return;
+    }
     handle_row_selected(products.front()->id);
 }
 
