@@ -2,53 +2,21 @@
 
 This guide helps you upgrade HelixScreen to a newer version.
 
+> For platform-specific upgrade commands (the two-step offline process on printers without HTTPS fetch tools, the AD5X chroot path, bundled-installer locations), see your printer's install guide - start from the [router table in the Installation Guide](INSTALL.md#which-printer-are-you-installing-on).
+
 ---
 
 ## Quick Upgrade
 
-**Raspberry Pi / Creality K1:**
+On any host with direct internet access:
+
 ```bash
 curl -sSL https://raw.githubusercontent.com/prestonbrown/helixscreen/main/scripts/install.sh | sh -s -- --update
 ```
 
-**Adventurer 5M** (no HTTPS support - two-step process):
-```bash
-# On your computer (replace vX.Y.Z with actual version):
-VERSION=vX.Y.Z  # Check latest at https://github.com/prestonbrown/helixscreen/releases/latest
-wget "https://github.com/prestonbrown/helixscreen/releases/download/${VERSION}/helixscreen-ad5m.zip"
-# Windows users: use WSL, WinSCP (SCP protocol), or PuTTY's pscp instead of scp -O
-scp -O helixscreen-ad5m.zip root@<printer-ip>:/data/
-
-# On the printer (use the bundled install.sh):
-# Forge-X:
-/opt/helixscreen/install.sh --local /data/helixscreen-ad5m.zip --update
-# Klipper Mod:
-/root/printer_software/helixscreen/install.sh --local /data/helixscreen-ad5m.zip --update
-```
-
-**Adventurer 5X (ZMOD):**
-
-Most AD5X upgrades happen automatically through Mainsail's Update Manager — open Mainsail, go to **Machine → Update Manager**, and click **Update** next to HelixScreen.
-
-If that fails (you see an error toast like `Error updating helixscreen: [Errno 93] Directory not empty`, or HelixScreen won't start after an update), run the CLI upgrade from a Mainsail Shell or SSH session:
-
-```bash
-ssh root@<printer-ip>
-chroot /usr/data/.mod/.zmod
-curl -fsSL https://releases.helixscreen.org/install.sh | sh -s -- --update
-```
-
-The `chroot` step is required. ZMOD installs HelixScreen inside `/usr/data/.mod/.zmod/`, and a plain `curl … | sh` from outside the chroot writes to the wrong filesystem view — the installer detects this and refuses to run.
-
-Offline variant (release zip already on the printer):
-
-```bash
-ssh root@<printer-ip>
-chroot /usr/data/.mod/.zmod
-sh /tmp/install.sh --local /tmp/helixscreen-ad5x.zip --update
-```
-
 Your settings (`settings.json`), environment overrides (`helixscreen.env`), and custom files (custom printer images, etc.) are automatically preserved across updates.
+
+Printers without direct internet access or HTTPS fetch tools (Creality K1, Adventurer 5M, Adventurer 5X) use a two-step or chroot procedure instead - each printer's install guide has the exact commands.
 
 ---
 
@@ -103,9 +71,9 @@ This clears all HelixScreen settings and restarts the wizard.
 
 The installer automatically preserves:
 
-- **`settings.json`** — All your settings (printer connection, display preferences, sound, safety, etc.)
-- **`helixscreen.env`** — Any environment variable overrides you've set
-- **Custom files** — Custom printer images, user-added printer database entries, and other files in the `config/` directory
+- **`settings.json`** - All your settings (printer connection, display preferences, sound, safety, etc.)
+- **`helixscreen.env`** - Any environment variable overrides you've set
+- **Custom files** - Custom printer images, user-added printer database entries, and other files in the `config/` directory
 
 You should not need to reconfigure anything after a normal upgrade. If something does go wrong, see the troubleshooting sections below.
 
@@ -127,16 +95,13 @@ Your Klipper configuration, Moonraker settings, print history, and G-code files 
 
 ## Upgrade to Specific Version
 
-**Raspberry Pi / Creality K1:**
 ```bash
 curl -sSL https://raw.githubusercontent.com/prestonbrown/helixscreen/main/scripts/install.sh | sh -s -- --update --version v1.2.0
 ```
 
-**Adventurer 5M:** Download the specific version archive from [GitHub Releases](https://github.com/prestonbrown/helixscreen/releases), then use `--local` as shown above.
-
 ### Reinstall a Version with Fresh Settings
 
-The commands above keep your existing `settings.json`. To reinstall a specific version **and** reset HelixScreen's settings to defaults at the same time, use `--clean` instead of `--update`:
+The command above keeps your existing `settings.json`. To reinstall a specific version **and** reset HelixScreen's settings to defaults at the same time, use `--clean` instead of `--update`:
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/prestonbrown/helixscreen/main/scripts/install.sh | sh -s -- --clean --version v1.2.0
@@ -150,23 +115,7 @@ curl -sSL https://raw.githubusercontent.com/prestonbrown/helixscreen/main/script
 
 **On the touchscreen:** Settings → scroll down → Version row shows current version
 
-**Via SSH:**
-```bash
-# Pi:
-/opt/helixscreen/bin/helix-screen --version
-
-# K1:
-/usr/data/helixscreen/bin/helix-screen --version
-
-# AD5M (Forge-X):
-/opt/helixscreen/bin/helix-screen --version
-
-# AD5M (Klipper Mod):
-/root/printer_software/helixscreen/bin/helix-screen --version
-
-# AD5X (ZMOD — run from inside the chroot):
-/srv/helixscreen/bin/helix-screen --version
-```
+**Via SSH:** run `<install-path>/bin/helix-screen --version`. The binary's location varies by platform - each printer's install guide lists its path.
 
 ---
 
@@ -176,12 +125,7 @@ If you encounter issues after upgrading:
 
 1. Ask in the [HelixScreen Discord](https://discord.gg/RZCT2StKhr) for quick help
 2. Check [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for common problems
-3. View logs for error messages:
-   - **Pi / x86 (systemd):** `sudo journalctl -u helixscreen -n 50`
-   - **AD5M:** `tail -50 /opt/helixscreen/logs/launcher.log` and `grep helix-screen /var/log/messages | tail -50`
-   - **K1 / K1C / K2 / AD5X (BusyBox):** `tail -50 /usr/data/helixscreen/logs/launcher.log` and `logread | grep helix-screen`
-   - **Snapmaker U1:** `tail -50 /var/log/helixscreen/launcher.log` and `grep helix-screen /var/log/messages | tail -50`
-   - **Pre-v0.99.62 installs (legacy):** add `tail -50 /tmp/helixscreen.log` as a fallback if `launcher.log` doesn't exist yet
+3. View logs for error messages: on systemd hosts, `sudo journalctl -u helixscreen -n 50`. Log locations for the other platforms are in your printer's install guide.
 4. Open an issue on [GitHub](https://github.com/prestonbrown/helixscreen/issues) with your version and any error messages
 
 ---

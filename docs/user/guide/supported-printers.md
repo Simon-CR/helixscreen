@@ -40,7 +40,7 @@ Runs directly on the printer's built-in 4.3" screen as a replacement for the sto
 - Reliable on-device operation tuned for the AD5M's embedded hardware
 - **Firmware-managed Z-offset** when running ZMOD — the offset is stored by the firmware, and HelixScreen shows the stored value while idle rather than the 0.000 the firmware leaves in Klipper between prints. See [Printing → Z-Offset](printing.md#z-offset--baby-steps)
 
-**Requirements:** Forge-X or Klipper-Mod firmware (which provides Moonraker). See [Installation → Adventurer 5M](../INSTALL.md#flashforge-adventurer-5m--5m-pro).
+**Requirements:** Forge-X or Klipper-Mod firmware (which provides Moonraker). See [Installation → Adventurer 5M](install-ad5m.md).
 
 **Status:** Tested.
 
@@ -58,7 +58,7 @@ The AD5X's four-color **IFS (Intelligent Filament System)** is fully integrated,
 - **Infinite Spool Mode** reporting — when a slot runs out, the IFS automatically switches to another slot with the same filament type *and* color, if one is loaded. HelixScreen tells you this plainly on the runout screen and in the AMS panel
 - **Firmware-managed Z-offset** — ZMOD stores the offset itself, so there is no Save step. HelixScreen shows the *stored* value while the printer is idle, where other interfaces read 0.000, and adjusts from it correctly. See [Printing → Z-Offset](printing.md#z-offset--baby-steps)
 
-**Requirements:** ZMOD firmware v1.7.0 or newer (a community firmware mod, separate from FlashForge stock). See [Installation → Adventurer 5X](../INSTALL.md#flashforge-adventurer-5x).
+**Requirements:** ZMOD firmware v1.7.0 or newer (a community firmware mod, separate from FlashForge stock). See [Installation → Adventurer 5X](install-ad5x.md).
 
 **Status:** Tested.
 
@@ -75,7 +75,7 @@ Runs on the K1's built-in screen. K1C and K1 Max are the most thoroughly tested 
 - **Chamber heater control** on the K1 Max
 - **Optional CFS support** — with Creality's official CFS upgrade kit and firmware (v2.3.5.33+), HelixScreen detects and drives the K1-series filament system (see [Creality Filament System](filament.md#creality-filament-system-cfs))
 
-**Requirements:** Community firmware that includes Moonraker (stock K1 firmware has none) — Guilouz, Simple AF, or Guppy Mod — plus root access. See [Installation → Creality K1 Series](../INSTALL.md#creality-k1-series).
+**Requirements:** Community firmware that includes Moonraker (stock K1 firmware has none) — Guilouz, Simple AF, or Guppy Mod — plus root access. See [Installation → Creality K1 Series](creality-k1c-setup.md).
 
 **Status:** Supported.
 
@@ -95,7 +95,7 @@ Runs on the K2's built-in screen and — unlike the K1 — **works with stock fi
 - **Chamber heater** control (K2 Pro / Plus)
 - **AI print monitoring** offered as a pre-print option when the firmware provides it; stock K2 firmware does not, so the toggle is normally absent (see [Print Monitoring](print-monitoring.md#creality-k2-ai-detection)). Filament runout is detected and acted on by the printer's own firmware, which pauses the job; HelixScreen reports what the CFS decided and offers the recovery buttons
 
-**Requirements:** Stock firmware works out of the box. See [Installation → Creality K2 Series](../INSTALL.md#creality-k2-series).
+**Requirements:** Stock firmware works out of the box. See [Installation → Creality K2 Series](install-k2.md).
 
 **Status:** Tested — runs natively with CFS support.
 
@@ -135,7 +135,7 @@ A true 4-toolhead changer, running on the U1's built-in 3.5" screen. Each of the
 - **Per-extruder feed/load state and runout handling** with automatic resume
 - **Firmware-managed Z-offset** and dedicated print-start tracking; near-certain auto-detection
 
-**Requirements:** SSH access — either stock firmware 1.2+ (via its **Root access** option) or PAXX Extended Firmware (SSH on by default). Reinstall after any firmware update. See [Installation → Snapmaker U1](../INSTALL.md#snapmaker-u1).
+**Requirements:** SSH access — either stock firmware 1.2+ (via its **Root access** option) or PAXX Extended Firmware (SSH on by default). Reinstall after any firmware update. See [Installation → Snapmaker U1](install-u1.md).
 
 **Status:** Tested (on PAXX 1.2.x–1.4.x; stock-firmware support is newly added — testers wanted).
 
