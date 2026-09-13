@@ -89,8 +89,14 @@ classify_declaration(const FilamentSlotOverride& record, const nlohmann::json& w
                                               const nlohmann::json& wire,
                                               LegacyLockKeys keys = LegacyLockKeys::LaneData);
 
-/// The declared set a user's edit records: every field the edit supplied whose
-/// authorship has no lock flag of its own.
+/// The declared set a user's edit records: every field @p observed carries
+/// whose authorship has no lock flag of its own.
+///
+/// Takes the observation rather than the record it is about to become, so that
+/// what a person declared is decided once, by user_edit_observation(), and read
+/// here rather than guessed again from the record's values. A record holds what
+/// the lane should show, which includes fields the machine supplied and the
+/// user never moved; only the observation separates the two.
 ///
 /// Colour and material are deliberately absent. FilamentSlotOverride's
 /// user_locked_color / user_locked_material are their declared bits, and those
@@ -98,7 +104,7 @@ classify_declaration(const FilamentSlotOverride& record, const nlohmann::json& w
 /// namespace keys on their presence to recognise a record as HelixScreen's.
 /// sources_from_record reads each field from whichever of the two homes it
 /// uses, so no caller has to know which is which.
-[[nodiscard]] DeclaredFields declared_fields_supplied(const FilamentSlotOverride& record);
+[[nodiscard]] DeclaredFields declared_fields_supplied(const Observation& observed);
 
 /// @p declared as the JSON array of field names both documents persist, under
 /// `helix_declared` in lane_data and `declared` in the local cache.

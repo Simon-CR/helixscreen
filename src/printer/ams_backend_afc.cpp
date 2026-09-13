@@ -4947,9 +4947,12 @@ void AmsBackendAfc::apply_overrides(SlotInfo& slot, int slot_index) {
     }
 }
 
-void AmsBackendAfc::persist_override(int slot_index, const SlotInfo& info) {
-    // Callers hold mutex_.
-    helix::ams::FilamentSlotOverride o = helix::ams::override_from_user_edit(info);
+void AmsBackendAfc::persist_override(int slot_index, const SlotInfo& original,
+                                     const SlotInfo& info) {
+    // Callers hold mutex_, and @p original is the lane as it stood before this
+    // edit: override_from_user_edit tells what the user moved from what the
+    // editor merely carried back, so it needs both snapshots.
+    helix::ams::FilamentSlotOverride o = helix::ams::override_from_user_edit(original, info);
     overrides_[slot_index] = o;
 
     if (override_store_) {
@@ -5446,6 +5449,8 @@ AmsError AmsBackendAfc::set_slot_info(int slot_index, const SlotInfo& info, bool
                                                 system_info_.total_slots - 1);
         }
         auto& slot = entry->info;
+        // Snapshotted before the writes below, for persist_override.
+        const SlotInfo prior_slot = slot;
 
         // Capture old spoolman_id before updating for clear detection
         int old_spoolman_id = slot.spoolman_id;
@@ -5504,7 +5509,7 @@ AmsError AmsBackendAfc::set_slot_info(int slot_index, const SlotInfo& info, bool
         // ids at all, and the fields it DOES hold get cleared by its own
         // clear_values() on eject.
         if (persist) {
-            persist_override(slot_index, info);
+            persist_override(slot_index, prior_slot, info);
         }
 
         // Persistence is never version-gated. These SET_* commands have existed

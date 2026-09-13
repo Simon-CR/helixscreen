@@ -645,51 +645,64 @@ void populate_temps_from_slot_info(FilamentSlotOverride& ovr, const SlotInfo& in
     }
 }
 
-FilamentSlotOverride override_from_user_edit(const SlotInfo& info, const std::string& material) {
+FilamentSlotOverride override_from_user_edit(const SlotInfo& original, const SlotInfo& edited,
+                                             const std::string& material) {
     FilamentSlotOverride ovr;
-    ovr.brand = info.brand;
-    ovr.spool_name = info.spool_name;
-    ovr.spoolman_id = info.spoolman_id;
-    ovr.spoolman_vendor_id = info.spoolman_vendor_id;
-    ovr.remaining_weight_g = info.remaining_weight_g;
-    ovr.total_weight_g = info.total_weight_g;
-    ovr.color_name = info.color_name;
+    ovr.brand = edited.brand;
+    ovr.spool_name = edited.spool_name;
+    ovr.spoolman_id = edited.spoolman_id;
+    ovr.spoolman_vendor_id = edited.spoolman_vendor_id;
+    ovr.remaining_weight_g = edited.remaining_weight_g;
+    ovr.total_weight_g = edited.total_weight_g;
+    ovr.color_name = edited.color_name;
     ovr.material = material;
     // Catalog product identity. Persisted so a reopen can restore the EXACT
     // product rather than the alphabetically-first variant of the same
     // vendor+material. Firmware has no notion of a catalog product, so a
     // non-empty value can only be a user pick and needs no lock of its own.
-    ovr.catalog_id = info.catalog_id;
-    ovr.product_name = info.product_name;
+    ovr.catalog_id = edited.catalog_id;
+    ovr.product_name = edited.product_name;
     // A deliberate pure black (#000000) is a reading and records; the "no
     // colour reading" sentinel is not one and does not.
-    if (is_declarable_color(info.color_rgb)) {
-        ovr.color_rgb = info.color_rgb;
+    if (is_declarable_color(edited.color_rgb)) {
+        ovr.color_rgb = edited.color_rgb;
         ovr.color_set = true;
     }
-    // The locks are what mark this record as the user's own word rather than
-    // something the store merely remembered, both to the auto-mirror policies
-    // and to the reload that classifies the record (#965). Each field locks
-    // only when the user actually supplied it: a field left at its "nothing
-    // here" value is the mirror's to fill from a later firmware report.
-    ovr.user_locked_color = ovr.color_set;
-    ovr.user_locked_material = !material.empty();
-    // The identity fields the edit supplied, under the same rule: brand, spool
-    // name and vendor id are the user's word here, and a reload files them as
-    // a declaration rather than as something the store merely remembered. The
-    // auto-mirror can populate none of the three, so nothing but an edit
-    // reaches this.
-    ovr.declared = declared_fields_supplied(ovr);
+
+    // What the user actually said, as opposed to what the record now carries.
+    // Every field above travels because the lane must show it; only the fields
+    // this observation names are the user's own word. The editor opens on the
+    // lane's current state, so a value the machine supplied and the user never
+    // moved reaches `edited` looking exactly like something they typed, and the
+    // diff is the only thing that can tell them apart.
+    const Observation declaration = user_edit_observation(original, edited);
+
+    // The two locks mark their fields as the user's word rather than something
+    // the store merely remembered, both to the auto-mirror policies and to the
+    // reload that classifies the record (#965).
+    //
+    // A lock protects a value, so there has to be one to protect. The colour
+    // gets that for free, since an observation only ever carries a declarable
+    // colour. The material does not: a clear files an empty string, and a
+    // backend's normalized spelling of what the user typed can come back empty
+    // on its own, and in both cases the lane holds nothing for the lock to
+    // stand over and a later firmware report should be free to fill it.
+    ovr.user_locked_color = declaration.color_rgb.has_value();
+    ovr.user_locked_material = declaration.material.has_value() && !ovr.material.empty();
+    // The same answer, for the roster rows that keep their authorship in the
+    // declared set rather than on a flag of their own.
+    ovr.declared = declared_fields_supplied(declaration);
+
     // SlotInfo carries the user's edit OR the bound Spoolman spool's filament
     // profile; the material-DB fallback for fields left at 0 is applied at
     // emit time inside resolved_temps().
-    populate_temps_from_slot_info(ovr, info);
+    populate_temps_from_slot_info(ovr, edited);
     // updated_at left default: save_async stamps a fresh value.
     return ovr;
 }
 
-FilamentSlotOverride override_from_user_edit(const SlotInfo& info) {
-    return override_from_user_edit(info, info.material);
+FilamentSlotOverride override_from_user_edit(const SlotInfo& original, const SlotInfo& edited) {
+    return override_from_user_edit(original, edited, edited.material);
 }
 
 // ============================================================================

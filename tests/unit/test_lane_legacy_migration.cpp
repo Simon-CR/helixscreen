@@ -194,10 +194,11 @@ TEST_CASE_METHOD(HelixTestFixture,
 
     // The edit is a brand and nothing else: every other SlotInfo field rests
     // on its "nothing here" default, so the record declares exactly one field.
+    const helix::SlotInfo empty_lane;
     helix::SlotInfo edited;
     edited.brand = "Hatchbox";
     bool saved = false;
-    store.save_async(0, helix::ams::override_from_user_edit(edited),
+    store.save_async(0, helix::ams::override_from_user_edit(empty_lane, edited),
                      [&](bool, std::string) { saved = true; });
     REQUIRE(saved);
 
@@ -347,9 +348,11 @@ TEST_CASE("Colour and material answer from their lock flags in both wire formats
 TEST_CASE("A declared brand survives the private cache round-trip", "[lane][migration]") {
     // The local cache is the other document a record goes home in, so it
     // carries the declared set under its own bare key.
+    const helix::SlotInfo empty_lane;
     helix::SlotInfo edited;
     edited.brand = "Hatchbox";
-    const helix::ams::FilamentSlotOverride ovr = helix::ams::override_from_user_edit(edited);
+    const helix::ams::FilamentSlotOverride ovr =
+        helix::ams::override_from_user_edit(empty_lane, edited);
 
     const nlohmann::json wire = helix::ams::to_json(ovr);
     REQUIRE(wire.contains("declared"));
@@ -410,11 +413,12 @@ TEST_CASE("The declared set cannot carry colour or material", "[lane][migration]
     }
 
     SECTION("an edit that supplies all three names only the one in the set") {
+        const helix::SlotInfo empty_lane;
         helix::SlotInfo edited;
         edited.brand = "Hatchbox";
         edited.material = "PETG";
         edited.color_rgb = 0x3355FF;
-        const auto ovr = helix::ams::override_from_user_edit(edited);
+        const auto ovr = helix::ams::override_from_user_edit(empty_lane, edited);
 
         // The two locks carry colour and material.
         CHECK(ovr.user_locked_color);
@@ -426,4 +430,202 @@ TEST_CASE("The declared set cannot carry colour or material", "[lane][migration]
         CHECK(declared.size() == 1);
         CHECK(declared.at(0) == "brand");
     }
+}
+
+// ============================================================================
+// What a user's edit claims, end to end: override_from_user_edit builds the
+// record, the store emits it, and sources_from_record routes it back.
+// ============================================================================
+
+namespace {
+
+/// A lane carrying only what the machine reported, which is what the spool
+/// editor seeds its working copy from.
+helix::SlotInfo firmware_lane() {
+    helix::SlotInfo info;
+    info.brand = "Firmware Brand";
+    info.spool_name = "Firmware Spool";
+    info.spoolman_vendor_id = 3;
+    info.material = "PLA";
+    info.color_rgb = 0x3355FF;
+    return info;
+}
+
+/// Persist @p ovr the way a backend does and put the reloaded record into the
+/// lane model, exactly as a backend's on_started() would.
+helix::ams::LaneId reload_into_lane(FilamentSlotOverrideStore& store,
+                                    const helix::ams::FilamentSlotOverride& ovr) {
+    bool saved = false;
+    store.save_async(0, ovr, [&](bool, std::string) { saved = true; });
+    REQUIRE(saved);
+    REQUIRE(store.load_blocking().size() == 1);
+    REQUIRE(ingest_legacy_records(store, LegacyLockKeys::LaneData, /*backend_index=*/0) == 1);
+    return lane_id_for(0, 0);
+}
+
+/// Everything the machine states on a later frame, all of it different from
+/// what firmware_lane() holds.
+Observation correcting_frame() {
+    Observation frame(ObservationSource::VendorCache);
+    frame.brand = "Corrected Brand";
+    frame.spool_name = "Corrected Spool";
+    frame.spoolman_vendor_id = 9;
+    frame.material = "PETG";
+    frame.color_rgb = 0xFF0000;
+    return frame;
+}
+
+} // namespace
+
+TEST_CASE_METHOD(HelixTestFixture,
+                 "An edit that moves only the weight claims none of the identity it carried",
+                 "[lane][migration]") {
+    // The editor opens on the lane, so firmware's brand, spool name, vendor id,
+    // colour and material all come back on the commit untouched. A record
+    // claiming them would outrank the machine that supplied them, and no later
+    // firmware correction could ever land.
+    MoonrakerClientMock client(MoonrakerClientMock::PrinterType::VORON_24);
+    helix::PrinterState state;
+    state.init_subjects(false);
+    MoonrakerAPIMock api(client, state);
+    FilamentSlotOverrideStore store(&api, "ad5x_ifs");
+
+    const helix::SlotInfo before = firmware_lane();
+    helix::SlotInfo edited = before;
+    edited.remaining_weight_g = 730.0F;
+
+    const auto ovr = helix::ams::override_from_user_edit(before, edited);
+    CHECK_FALSE(ovr.user_locked_color);
+    CHECK_FALSE(ovr.user_locked_material);
+    CHECK_FALSE(ovr.declared.any());
+    // The identity still travels: the lane has to show it. Only the claim on it
+    // does not.
+    CHECK(ovr.brand == "Firmware Brand");
+    CHECK(ovr.spool_name == "Firmware Spool");
+    CHECK(ovr.material == "PLA");
+    CHECK(ovr.color_set);
+
+    const helix::ams::LaneId lane = reload_into_lane(store, ovr);
+    const auto sources = lane_sources(lane);
+    CHECK_FALSE(sources.local_user.has_value());
+    REQUIRE(sources.remembered.has_value());
+    CHECK(sources.remembered->brand == "Firmware Brand");
+    CHECK(sources.remembered->spool_name == "Firmware Spool");
+    CHECK(sources.remembered->material == "PLA");
+
+    ingest(lane, correcting_frame());
+    const auto resolved = resolved_lane(lane);
+    CHECK(resolved.brand == "Corrected Brand");
+    CHECK(resolved.spool_name == "Corrected Spool");
+    CHECK(resolved.spoolman_vendor_id == 9);
+    CHECK(resolved.material == "PETG");
+    CHECK(resolved.color_rgb == 0xFF0000u);
+}
+
+TEST_CASE_METHOD(HelixTestFixture, "An edit that moves the brand claims the brand alone",
+                 "[lane][migration]") {
+    // One record, three fields whose authorship rides the declared set, and
+    // exactly one of them moved. The record carries all three, so the routing
+    // has to split them rather than answer once for the record.
+    MoonrakerClientMock client(MoonrakerClientMock::PrinterType::VORON_24);
+    helix::PrinterState state;
+    state.init_subjects(false);
+    MoonrakerAPIMock api(client, state);
+    FilamentSlotOverrideStore store(&api, "ad5x_ifs");
+
+    const helix::SlotInfo before = firmware_lane();
+    helix::SlotInfo edited = before;
+    edited.brand = "Hatchbox";
+
+    const auto ovr = helix::ams::override_from_user_edit(before, edited);
+    CHECK_FALSE(ovr.user_locked_color);
+    CHECK_FALSE(ovr.user_locked_material);
+    const nlohmann::json declared = helix::ams::declared_field_names(ovr.declared);
+    REQUIRE(declared.is_array());
+    CHECK(declared.size() == 1);
+    CHECK(declared.at(0) == "brand");
+
+    const helix::ams::LaneId lane = reload_into_lane(store, ovr);
+    const auto sources = lane_sources(lane);
+    REQUIRE(sources.local_user.has_value());
+    CHECK(sources.local_user->brand == "Hatchbox");
+    CHECK_FALSE(sources.local_user->spool_name.has_value());
+    CHECK_FALSE(sources.local_user->spoolman_vendor_id.has_value());
+    REQUIRE(sources.remembered.has_value());
+    CHECK(sources.remembered->spool_name == "Firmware Spool");
+    CHECK(sources.remembered->spoolman_vendor_id == 3);
+
+    ingest(lane, correcting_frame());
+    const auto resolved = resolved_lane(lane);
+    CHECK(resolved.brand == "Hatchbox");
+    CHECK(resolved.spool_name == "Corrected Spool");
+    CHECK(resolved.spoolman_vendor_id == 9);
+    CHECK(resolved.material == "PETG");
+    CHECK(resolved.color_rgb == 0xFF0000u);
+}
+
+TEST_CASE_METHOD(HelixTestFixture, "An edit that moves the material locks it against the machine",
+                 "[lane][migration]") {
+    // The #965 protection: a material the person moved is theirs, and no
+    // firmware frame may take it back.
+    MoonrakerClientMock client(MoonrakerClientMock::PrinterType::VORON_24);
+    helix::PrinterState state;
+    state.init_subjects(false);
+    MoonrakerAPIMock api(client, state);
+    FilamentSlotOverrideStore store(&api, "ad5x_ifs");
+
+    const helix::SlotInfo before = firmware_lane();
+    helix::SlotInfo edited = before;
+    edited.material = "ASA";
+
+    const auto ovr = helix::ams::override_from_user_edit(before, edited);
+    CHECK(ovr.user_locked_material);
+    CHECK_FALSE(ovr.user_locked_color);
+    CHECK_FALSE(ovr.declared.any());
+
+    const helix::ams::LaneId lane = reload_into_lane(store, ovr);
+    REQUIRE(lane_sources(lane).local_user.has_value());
+    CHECK(lane_sources(lane).local_user->material == "ASA");
+
+    ingest(lane, correcting_frame());
+    const auto resolved = resolved_lane(lane);
+    CHECK(resolved.material == "ASA");
+    // The colour rode along on the same commit and was never moved, so the
+    // machine still owns it.
+    CHECK(resolved.color_rgb == 0xFF0000u);
+}
+
+TEST_CASE_METHOD(HelixTestFixture, "Linking a spool declares the binding, not what rode in with it",
+                 "[lane][migration]") {
+    // Picking a spool fills the editor with the server's brand, name and
+    // colour. The person chose a spool, not any of those values.
+    MoonrakerClientMock client(MoonrakerClientMock::PrinterType::VORON_24);
+    helix::PrinterState state;
+    state.init_subjects(false);
+    MoonrakerAPIMock api(client, state);
+    FilamentSlotOverrideStore store(&api, "ad5x_ifs");
+
+    const helix::SlotInfo before;
+    helix::SlotInfo edited;
+    edited.spoolman_id = 42;
+    edited.brand = "Hatchbox";
+    edited.spool_name = "Blue PETG 1kg";
+    edited.spoolman_vendor_id = 7;
+    edited.material = "PETG";
+    edited.color_rgb = 0x3355FF;
+
+    const auto ovr = helix::ams::override_from_user_edit(before, edited);
+    CHECK(ovr.spoolman_id == 42);
+    CHECK_FALSE(ovr.user_locked_color);
+    CHECK_FALSE(ovr.user_locked_material);
+    CHECK_FALSE(ovr.declared.any());
+
+    // A linked record is wholly the server's on reload, which is the same
+    // answer by a different route, so the lane names Spoolman and no user rung.
+    const helix::ams::LaneId lane = reload_into_lane(store, ovr);
+    const auto sources = lane_sources(lane);
+    CHECK_FALSE(sources.local_user.has_value());
+    REQUIRE(sources.spoolman.has_value());
+    CHECK(sources.spoolman->spoolman_id == 42);
+    CHECK(sources.spoolman->brand == "Hatchbox");
 }

@@ -17,13 +17,14 @@ struct SlotInfo;
 namespace helix::ams {
 
 struct FilamentSlotOverride;
+struct Observation;
 class DeclaredFields;
 
 // The only two functions that may put a bit in a DeclaredFields. Both walk the
 // field roster in lane_translation.cpp and admit only the rows that roster
 // marks as keeping their authorship in the set, which is what keeps colour and
 // material out of it. Declared here so the class below can befriend them.
-[[nodiscard]] DeclaredFields declared_fields_supplied(const FilamentSlotOverride& record);
+[[nodiscard]] DeclaredFields declared_fields_supplied(const Observation& observed);
 [[nodiscard]] DeclaredFields declared_fields_from_names(const nlohmann::json& names);
 
 // Which of a stored record's fields the user declared, one bit per row of the
@@ -66,7 +67,7 @@ class DeclaredFields {
         }
     }
 
-    friend DeclaredFields declared_fields_supplied(const FilamentSlotOverride&);
+    friend DeclaredFields declared_fields_supplied(const Observation&);
     friend DeclaredFields declared_fields_from_names(const nlohmann::json&);
 
     uint16_t bits_ = 0;
@@ -195,17 +196,22 @@ ResolvedTemps resolved_temps(const FilamentSlotOverride& o);
 // 0 (which signals to resolved_temps that the material-DB default should win).
 void populate_temps_from_slot_info(FilamentSlotOverride& ovr, const SlotInfo& info);
 
-// The record a backend persists for a user's edit of `info`. One shape for
-// every AMS backend, so the two rules a backend must not get wrong live here
-// rather than in seven near-identical blocks.
+// The record a backend persists for a user's edit that took @p original to
+// @p edited. One shape for every AMS backend, so the rules a backend must not
+// get wrong live here rather than in seven near-identical blocks.
 //
-// A persist=true edit is the user speaking, so each field the user supplied is
-// user-locked: that is what stops the auto-mirror overwriting it and what makes
-// the reloaded record classify as the user's word rather than as something the
-// store merely remembered (#965). A field left at its "nothing here" value is
-// NOT locked, so a later firmware report may still fill it; that keeps the
-// invariant every mirror policy already relies on, that a lock and its value
-// are set together.
+// The record carries every identity field @p edited holds, because that is what
+// the lane must show. Which of them the record claims as the USER'S word is a
+// narrower question, and user_edit_observation() answers it from the two
+// snapshots: a field is the user's exactly when they moved it. The editor seeds
+// its working copy from the lane's current state, so a firmware-sourced brand,
+// colour or material arrives in @p edited untouched, and a record claiming
+// those would outrank the firmware that supplied them and refuse every later
+// correction (#965).
+//
+// Authorship therefore lands in two homes, both from that one answer: the two
+// lock flags for colour and material, and the declared set for the roster rows
+// that have no flag of their own.
 //
 // The colour records only when it is a reading rather than the SlotInfo "no
 // colour" sentinel, the question is_declarable_color() answers; a deliberate
@@ -214,12 +220,14 @@ void populate_temps_from_slot_info(FilamentSlotOverride& ovr, const SlotInfo& in
 //
 // Temps come from populate_temps_from_slot_info(). updated_at is left default
 // so save_async stamps a fresh value.
-FilamentSlotOverride override_from_user_edit(const SlotInfo& info);
+FilamentSlotOverride override_from_user_edit(const SlotInfo& original, const SlotInfo& edited);
 
-// As above, recording `material` in place of info.material, for a backend that
-// stores firmware's normalized spelling of what the user typed. The material
-// lock follows `material`.
-FilamentSlotOverride override_from_user_edit(const SlotInfo& info, const std::string& material);
+// As above, recording `material` in place of edited.material, for a backend
+// that stores firmware's normalized spelling of what the user typed. Whether
+// the material was declared still follows the edit, since the normalized
+// spelling has no before-value to be compared against.
+FilamentSlotOverride override_from_user_edit(const SlotInfo& original, const SlotInfo& edited,
+                                             const std::string& material);
 
 nlohmann::json to_json(const FilamentSlotOverride& o);
 FilamentSlotOverride from_json(const nlohmann::json& j);

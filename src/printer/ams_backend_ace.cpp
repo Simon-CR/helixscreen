@@ -485,6 +485,10 @@ AmsError AmsBackendAce::set_slot_info(int slot_index, const SlotInfo& info, bool
         // including persist=false previews that must survive until the next
         // firmware parse.
         auto& slot = system_info_.units[0].slots[slot_index];
+        // The lane as it stood before this edit. override_from_user_edit needs
+        // it to tell what the user moved from what the editor merely carried
+        // back, so it has to be taken before the writes below.
+        const SlotInfo prior_slot = slot;
         slot.color_rgb = info.color_rgb;
         slot.color_name = info.color_name;
         slot.material = info.material;
@@ -506,7 +510,7 @@ AmsError AmsBackendAce::set_slot_info(int slot_index, const SlotInfo& info, bool
         // edits are in-memory only and will be overwritten by the next
         // firmware parse (expected preview contract).
         if (persist) {
-            overrides_[slot_index] = helix::ams::override_from_user_edit(info);
+            overrides_[slot_index] = helix::ams::override_from_user_edit(prior_slot, info);
         }
     }
 

@@ -342,7 +342,7 @@ class AmsBackendHappyHare : public AmsSubscriptionBackend {
     std::unique_ptr<helix::ams::FilamentSlotOverrideStore> lane_publish_store_;
     std::unordered_map<int, helix::ams::FilamentSlotOverride> overrides_;
     void apply_overrides(SlotInfo& slot, int slot_index);
-    void persist_override(int slot_index, const SlotInfo& info);
+    void persist_override(int slot_index, const SlotInfo& original, const SlotInfo& info);
 
     // Build a " GATES=g0,g1,..." suffix targeting a specific unit's gates for
     // MMU_HEATER on multi-unit (EMU) rigs. Returns "" for a single-unit MMU or

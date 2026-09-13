@@ -8135,16 +8135,19 @@ TEST_CASE("AD5X IFS external CHANGE_ZCOLOR preserves the user brand override (#9
     Ad5xIfsTestAccess::set_color(backend, 0, "FEF043");
     Ad5xIfsTestAccess::set_material(backend, 0, "PLA");
 
-    // User edit through the AMS slot editor: brand "Sunlu" for a PLA spool at
-    // the firmware color. set_slot_info(persist=true) stages a user-LOCKED
-    // override (so the #981 external-clear path fires) that ALSO carries the
-    // firmware-can't-carry brand metadata. REQUIRE success — this is the
-    // precondition that must REACH the clear path (previously the repro seeded
-    // the override directly, sidestepping the production persist path).
+    // User edit through the AMS slot editor: brand "Sunlu", and a colour of
+    // their own rather than the one firmware reported. set_slot_info(persist=
+    // true) stages a user-LOCKED override (so the #981 external-clear path
+    // fires) that ALSO carries the firmware-can't-carry brand metadata.
+    // REQUIRE success — this is the precondition that must REACH the clear path.
+    //
+    // The colour has to MOVE for the lock to land: a commit whose colour and
+    // material read back the same as firmware's declares neither, which is what
+    // keeps a mirrored firmware value from being frozen as the user's word.
     SlotInfo edit;
     edit.brand = "Sunlu";
     edit.material = "PLA";
-    edit.color_rgb = 0xFEF043;
+    edit.color_rgb = 0x1A73E8;
     REQUIRE(backend.set_slot_info(0, edit, /*persist=*/true).success());
 
     // Precondition: the brand override is live and user-locked (so the #981
@@ -8155,7 +8158,10 @@ TEST_CASE("AD5X IFS external CHANGE_ZCOLOR preserves the user brand override (#9
         auto staged = Ad5xIfsTestAccess::get_override(backend, 0);
         REQUIRE(staged.has_value());
         REQUIRE(staged->brand == "Sunlu");
-        REQUIRE(staged->user_locked_material); // material provided -> locked
+        REQUIRE(staged->user_locked_color); // colour moved -> locked
+        // The material read back what firmware already said, so the edit made
+        // no claim on it and the mirror keeps it.
+        REQUIRE_FALSE(staged->user_locked_material);
     }
 
     // AD5X native LCD load/insert: a bare CHANGE_ZCOLOR with the material only,

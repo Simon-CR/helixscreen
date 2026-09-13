@@ -2954,8 +2954,11 @@ TEST_CASE("CFS runout invalidates the exhausted lane's remembered Spoolman link"
         CHECK(ovr->material == "ASA-CF");
         CHECK(ovr->brand == "Elegoo");
         CHECK(ovr->spool_name == "Black ASA");
-        CHECK(ovr->user_locked_color);
-        CHECK(ovr->user_locked_material);
+        // Remembered, not claimed. Linking a spool carries the server's colour
+        // and material in without a person choosing either, so the record keeps
+        // them without outranking a machine that later states its own.
+        CHECK_FALSE(ovr->user_locked_color);
+        CHECK_FALSE(ovr->user_locked_material);
     }
     SECTION("the live slot shows the drop immediately") {
         auto info = rig.backend->get_slot_info(3);

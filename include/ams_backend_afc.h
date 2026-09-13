@@ -564,8 +564,10 @@ class AmsBackendAfc : public AmsSubscriptionBackend {
     std::unordered_map<int, helix::ams::FilamentSlotOverride> overrides_;
     /// Layer the user override over firmware values. Callers hold mutex_.
     void apply_overrides(SlotInfo& slot, int slot_index);
-    /// Build + persist an override from a user edit. Callers hold mutex_.
-    void persist_override(int slot_index, const SlotInfo& info);
+    /// Build + persist an override from a user edit. Callers hold mutex_ and
+    /// pass the lane as it stood before the edit, which is what says which
+    /// fields the user actually moved.
+    void persist_override(int slot_index, const SlotInfo& original, const SlotInfo& info);
 
     /// Async callback safety guard. Tokens shared with AfcConfigManager instances.
     helix::AsyncLifetimeGuard lifetime_;

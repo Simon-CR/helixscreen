@@ -445,20 +445,17 @@ LaneSources sources_from_record(const FilamentSlotOverride& record, const nlohma
     return sources;
 }
 
-DeclaredFields declared_fields_supplied(const FilamentSlotOverride& record) {
+DeclaredFields declared_fields_supplied(const Observation& observed) {
     DeclaredFields declared;
+    // No per-kind rule for what counts as a declaration: the observation was
+    // built by comparing the edit against what it opened on, so a field it
+    // carries is one a person moved, whatever value they moved it to. Clearing
+    // a field is a declaration the same as typing into one.
     for_each_field_indexed([&](const auto& f, size_t index) {
         using Row = std::decay_t<decltype(f)>;
         if constexpr (Row::authorship == Authorship::DeclaredSet) {
-            const auto& value = record.*(f.record);
-            if constexpr (Row::kind == FieldKind::Text) {
-                if (!value.empty()) {
-                    declared.set(index);
-                }
-            } else {
-                if (value > 0) {
-                    declared.set(index);
-                }
+            if ((observed.*(f.obs)).has_value()) {
+                declared.set(index);
             }
         }
     });

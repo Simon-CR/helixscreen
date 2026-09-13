@@ -764,9 +764,10 @@ AmsError AmsBackendSnapmaker::set_slot_info(int slot_index, const SlotInfo& info
     if (err.result != AmsResult::SUCCESS)
         return err;
 
-    // The channel as it stood before this edit. user_edit_observation needs
-    // the whole struct to answer what the user declared, and that answer is
-    // what the write-back guard suppresses.
+    // The channel as it stood before this edit. Both the stored record and the
+    // write-back guard rest on what the user declared, and only a diff against
+    // this answers that: the editor opens on the lane's current state, so a
+    // value firmware supplied comes back looking like one a person typed.
     SlotInfo prior_slot;
 
     {
@@ -820,7 +821,7 @@ AmsError AmsBackendSnapmaker::set_slot_info(int slot_index, const SlotInfo& info
         // (CFS shares the tracker and DOES register one — it writes
         // color_value back to the box, which is half of its fingerprint.)
         if (persist) {
-            overrides_[slot_index] = helix::ams::override_from_user_edit(info);
+            overrides_[slot_index] = helix::ams::override_from_user_edit(prior_slot, info);
         }
     }
 
