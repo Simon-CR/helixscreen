@@ -19,6 +19,7 @@
 
 #include "../helix_test_fixture.h"
 #include "netd_test_server.h"
+#include "remote_control_server.h"
 #include "system/crash_history.h"
 #include "system/crash_reporter.h"
 #include "system/debug_bundle_collector.h"
@@ -30,8 +31,10 @@
 #include <cstring>
 #include <filesystem>
 #include <netinet/in.h>
+#include <poll.h>
 #include <string>
 #include <sys/socket.h>
+#include <sys/un.h>
 #include <thread>
 #include <unistd.h>
 
@@ -308,4 +311,91 @@ TEST_CASE("payload marker: bundle and crash report both carry diag_upload_marked
     const json report_json = CrashReporter::instance().report_to_json(report);
     REQUIRE(report_json.contains("diag_upload_marked"));
     CHECK(report_json["diag_upload_marked"] == json(helix::diag::marked_build()));
+}
+
+// ============================================================================
+// Pipe C: the `ctl log` RPC through the real dispatch machinery [diag-uploads]
+// ============================================================================
+
+namespace {
+
+/// One newline-framed JSON-RPC round trip over the server's unix socket.
+/// Empty string on any transport failure — the REQUIREs on the parsed
+/// response then fail with a readable cause instead of hanging.
+std::string rpc_roundtrip(int fd, const std::string& request) {
+    const std::string line = request + "\n";
+    if (send(fd, line.data(), line.size(), 0) != static_cast<ssize_t>(line.size())) {
+        return "";
+    }
+
+    struct timeval tv {};
+    tv.tv_sec = 5;
+    tv.tv_usec = 0;
+    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+
+    std::string response;
+    char buf[4096];
+    while (response.find('\n') == std::string::npos) {
+        struct pollfd pfd {
+            fd, POLLIN, 0
+        };
+        if (poll(&pfd, 1, 5000) <= 0) {
+            return "";
+        }
+        ssize_t n = recv(fd, buf, sizeof(buf), 0);
+        if (n <= 0) {
+            return "";
+        }
+        response.append(buf, static_cast<size_t>(n));
+    }
+    response.erase(response.find('\n'));
+    return response;
+}
+
+} // namespace
+
+TEST_CASE_METHOD(DiagUploadGateFixture,
+                 "log RPC: unmarked build gets a real JSON-RPC error, not a served result",
+                 "[diag-uploads][remote]") {
+    const std::string sock_path = (temp_dir_ / "ctl.sock").string();
+    ::unlink(sock_path.c_str());
+
+    helix::RemoteConfig config;
+    config.socket_path = sock_path;
+    auto& server = helix::RemoteControlServer::instance();
+    REQUIRE(server.start(config));
+
+    sockaddr_un addr{};
+    addr.sun_family = AF_UNIX;
+    REQUIRE(sock_path.size() < sizeof(addr.sun_path));
+    std::strncpy(addr.sun_path, sock_path.c_str(), sizeof(addr.sun_path) - 1);
+    int fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    REQUIRE(fd >= 0);
+    REQUIRE(connect(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == 0);
+
+    // Gate OFF (the default this binary compiles to): dispatch() must answer
+    // with a top-level JSON-RPC error and no result key. A handler that
+    // RETURNS an error object instead of throwing ships it inside
+    // {"result": ...} — exactly the shape these two assertions reject.
+    const std::string refused =
+        rpc_roundtrip(fd, R"({"jsonrpc":"2.0","method":"log","params":{"lines":3},"id":1})");
+    REQUIRE_FALSE(refused.empty());
+    const json refused_json = json::parse(refused);
+    REQUIRE(refused_json.contains("error"));
+    REQUIRE_FALSE(refused_json.contains("result"));
+    const std::string message = refused_json["error"].value("message", "");
+    CHECK(message.find("disabled") != std::string::npos);
+
+    // Gate ON (the env opt-in a rig carries): the same request serves the
+    // ring, proving the refusal was the gate and not a broken handler.
+    opt_in_.set("1");
+    const std::string served =
+        rpc_roundtrip(fd, R"({"jsonrpc":"2.0","method":"log","params":{"lines":3},"id":2})");
+    REQUIRE_FALSE(served.empty());
+    const json served_json = json::parse(served);
+    REQUIRE(served_json.contains("result"));
+    CHECK(served_json["result"].contains("lines"));
+
+    close(fd);
+    server.stop();
 }

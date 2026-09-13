@@ -93,17 +93,16 @@ PY
     [ "$status" -eq 0 ]
 }
 
-@test "the three un-harnessed gate paths keep their wiring" {
-    # These three hunks SURVIVED mutate-diff (no unit test drives the RPC
-    # server or the two modals), so their wiring is pinned structurally: the
-    # log RPC refuses, the crash modal pre-checks before promising "Sending",
-    # and the debug modal maps the refusal to the translated message rather
-    # than a raw error string.
+@test "the un-harnessed modal gate paths keep their wiring" {
+    # The log RPC gate has behavioural coverage (the unix-socket test in
+    # test_diag_upload_gate.cpp); these two modal hunks SURVIVED mutate-diff
+    # (no harness drives the modals), so their wiring is pinned structurally:
+    # the crash modal pre-checks before promising "Sending", and the debug
+    # modal maps the refusal to the translated message rather than a raw
+    # error string.
     run python3 - <<'PY'
 import sys
 checks = [
-    ("src/remote/remote_control_server.cpp",
-     "helix::diag::uploads_enabled()", "the log RPC gate"),
     ("src/ui/ui_crash_report_modal.cpp",
      "helix::diag::uploads_enabled()", "the crash modal pre-check"),
     ("src/ui/ui_debug_bundle_modal.cpp",
