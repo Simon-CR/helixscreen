@@ -1272,6 +1272,7 @@
   <translation tag="Homing failed: {}" ru="Ошибка парковки: {}"/>
   <translation tag="Homing first..." ru="Парковка..."/>
   <translation tag="Homing may still be running — response timed out" ru="Парковка может ещё выполняться — время ожидания истекло"/>
+  <translation tag="Homing selector" ru="Парковка селектора"/>
   <translation tag="Homing timed out" ru="Парковка — время ожидания истекло"/>
   <translation tag="Homing timed out — printer may still be homing" ru="Тайм-аут парковки — принтер может всё ещё выполнять парковку"/>
   <translation tag="Homing..." ru="Парковка..."/>
@@ -2232,6 +2233,7 @@
   <translation tag="Reset to defaults" ru="Сбросить по умолчанию"/>
   <translation tag="Reset to original values" ru="Сбросить к исходным значениям"/>
   <translation tag="Resetting" ru="Сброс"/>
+  <translation tag="Resetting system" ru="Сброс системы"/>
   <translation tag="Resetting..." ru="Сброс..."/>
   <translation tag="Response (Kp)" ru="Отклик (Kp)"/>
   <translation tag="Restart" ru="Перезапуск"/>
@@ -2820,6 +2822,7 @@
   <translation tag="Tool Changer" ru="Сменщик инструментов"/>
   <translation tag="Tool Switcher" ru="Переключатель инструментов"/>
   <translation tag="Tool change failed: {}" ru="Ошибка смены инструмента: {}"/>
+  <translation tag="Tool change to T{}" ru="Смена инструмента на T{}"/>
   <translation tag="Tool mapping failed" ru="Ошибка сопоставления инструмента"/>
   <translation tag="Tool swap" ru="Смена инструмента"/>
   <translation tag="Toolhead" ru="Печатающая головка"/>
@@ -2905,6 +2908,7 @@
   <translation tag="Unloading" ru="Выгрузка"/>
   <translation tag="Unloading Start Speed" ru="Начальная скорость выгрузки"/>
   <translation tag="Unloading before bypass..." ru="Выгрузка перед байпасом..."/>
+  <translation tag="Unloading filament" ru="Выгрузка филамента"/>
   <translation tag="Unloading filament..." ru="Выгрузка филамента..."/>
   <translation tag="Unloads After Print" ru="Выгрузка после печати"/>
   <translation tag="Unlock" ru="Разблокировать"/>
@@ -2937,6 +2941,7 @@
   <translation tag="Use G10/G11 firmware retraction" ru="Использовать аппаратный ретракт G10/G11"/>
   <translation tag="Use Unload before Eject" ru="Используйте «Выгрузить» перед «Извлечь»"/>
   <translation tag="Use printer type to select image" ru="Использовать тип принтера для выбора изображения"/>
+  <translation tag="User intervention required" ru="Требуется ручное вмешательство"/>
   <translation tag="VM Peak" ru="Пик VM"/>
   <translation tag="VM Size" ru="Размер VM"/>
   <translation tag="Validating bed mesh..." ru="Валидация сетки стола..."/>

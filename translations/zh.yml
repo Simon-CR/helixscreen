@@ -1297,6 +1297,7 @@ translations:
   'Homing failed: {}': '归位失败: {}'
   Homing first...: 正在先归位...
   Homing may still be running — response timed out: 归位可能仍在运行 — 响应超时
+  Homing selector: '选择器回零'
   Homing timed out: 归位超时
   Homing timed out — printer may still be homing: 回零超时 — 打印机可能仍在回零
   Homing...: 正在归零...
@@ -2287,6 +2288,7 @@ translations:
   Reset to defaults: 重置为默认值
   Reset to original values: 重置为原始值
   Resetting: 重置中
+  Resetting system: '正在重置系统'
   Resetting...: 正在重置...
   Response (Kp): 响应 (Kp)
   Restart: 重启
@@ -2915,6 +2917,7 @@ translations:
   Tool Changer: 换刀器
   Tool Switcher: '工具切换器'
   'Tool change failed: {}': '工具切换失败: {}'
+  Tool change to T{}: '切换工具到 T{}'
   Tool mapping failed: 工具映射失败
   Tool swap: 工具切换
   Toolhead: '工具头'
@@ -3002,6 +3005,7 @@ translations:
   Unloading: 卸载中
   Unloading Start Speed: '卸载起始速度'
   Unloading before bypass...: 旁通前正在卸载...
+  Unloading filament: '正在卸载耗材'
   Unloading filament...: 正在卸载耗材...
   Unloads After Print: 打印后卸载
   Unlock: 解锁
@@ -3034,6 +3038,7 @@ translations:
   Use G10/G11 firmware retraction: 使用 G10/G11 固件回抽
   Use Unload before Eject: '请先使用“卸载”，再使用“弹出”'
   Use printer type to select image: 使用打印机类型选择图片
+  User intervention required: '需要手动干预'
   VM Peak: 虚拟内存峰值
   VM Size: 虚拟内存大小
   Validating bed mesh...: 正在验证热床网格...

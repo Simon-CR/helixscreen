@@ -1272,6 +1272,7 @@
   <translation tag="Homing failed: {}" it="Homing fallito: {}"/>
   <translation tag="Homing first..." it="Homing in corso..."/>
   <translation tag="Homing may still be running — response timed out" it="Homing potrebbe essere ancora in corso — tempo scaduto"/>
+  <translation tag="Homing selector" it="Homing del selettore"/>
   <translation tag="Homing timed out" it="Homing — tempo scaduto"/>
   <translation tag="Homing timed out — printer may still be homing" it="Timeout dell’azzeramento — la stampante potrebbe essere ancora in fase di azzeramento"/>
   <translation tag="Homing..." it="Azzeramento..."/>
@@ -2232,6 +2233,7 @@
   <translation tag="Reset to defaults" it="Ripristina predefiniti"/>
   <translation tag="Reset to original values" it="Ripristina valori originali"/>
   <translation tag="Resetting" it="Reset"/>
+  <translation tag="Resetting system" it="Ripristino del sistema"/>
   <translation tag="Resetting..." it="Ripristino..."/>
   <translation tag="Response (Kp)" it="Risposta (Kp)"/>
   <translation tag="Restart" it="Riavvia"/>
@@ -2820,6 +2822,7 @@
   <translation tag="Tool Changer" it="Cambia utensile"/>
   <translation tag="Tool Switcher" it="Selettore utensile"/>
   <translation tag="Tool change failed: {}" it="Cambio utensile fallito: {}"/>
+  <translation tag="Tool change to T{}" it="Cambio utensile su T{}"/>
   <translation tag="Tool mapping failed" it="Mappatura utensile fallita"/>
   <translation tag="Tool swap" it="Cambio utensile"/>
   <translation tag="Toolhead" it="Testina"/>
@@ -2905,6 +2908,7 @@
   <translation tag="Unloading" it="Scaricamento"/>
   <translation tag="Unloading Start Speed" it="Velocità iniziale di scarico"/>
   <translation tag="Unloading before bypass..." it="Scaricamento prima del bypass..."/>
+  <translation tag="Unloading filament" it="Scaricamento del filamento"/>
   <translation tag="Unloading filament..." it="Scaricamento filamento..."/>
   <translation tag="Unloads After Print" it="Scarica dopo la stampa"/>
   <translation tag="Unlock" it="Sblocca"/>
@@ -2937,6 +2941,7 @@
   <translation tag="Use G10/G11 firmware retraction" it="Usa retrazione firmware G10/G11"/>
   <translation tag="Use Unload before Eject" it="Usa Scarica prima di Espelli"/>
   <translation tag="Use printer type to select image" it="Usa il tipo di stampante per selezionare l&apos;immagine"/>
+  <translation tag="User intervention required" it="Intervento manuale richiesto"/>
   <translation tag="VM Peak" it="Picco VM"/>
   <translation tag="VM Size" it="Dimensione VM"/>
   <translation tag="Validating bed mesh..." it="Convalida mesh piano..."/>

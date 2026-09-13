@@ -1417,6 +1417,7 @@ translations:
   Homing first...: Referenzfahrt zuerst...
   Homing may still be running — response timed out: Referenzfahrt läuft möglicherweise
     noch — Zeitüberschreitung
+  Homing selector: 'Referenzfahrt des Selektors'
   Homing timed out: Referenzfahrt Zeitüberschreitung
   Homing timed out — printer may still be homing: Referenzfahrt Zeitüberschreitung
     — Drucker referenziert möglicherweise noch
@@ -2479,6 +2480,7 @@ translations:
   Reset to defaults: Auf Standardwerte zurücksetzen
   Reset to original values: Auf Originalwerte zurücksetzen
   Resetting: Zurücksetzen
+  Resetting system: 'System wird zurückgesetzt'
   Resetting...: Wird zurückgesetzt...
   Response (Kp): Antwort (Kp)
   Restart: Neustart
@@ -3186,6 +3188,7 @@ translations:
   Tool Changer: Werkzeugwechsler
   Tool Switcher: 'Werkzeugwechsler'
   'Tool change failed: {}': 'Werkzeugwechsel fehlgeschlagen: {}'
+  Tool change to T{}: 'Werkzeugwechsel zu T{}'
   Tool mapping failed: Werkzeugzuordnung fehlgeschlagen
   Tool swap: Werkzeugwechsel
   Toolhead: 'Werkzeugkopf'
@@ -3280,6 +3283,7 @@ translations:
   Unloading: Entladen
   Unloading Start Speed: 'Startgeschwindigkeit beim Entladen'
   Unloading before bypass...: Entladen vor Bypass...
+  Unloading filament: 'Filament wird entladen'
   Unloading filament...: Filament wird entladen...
   Unloads After Print: Entlädt nach dem Druck
   Unlock: Entsperren
@@ -3314,6 +3318,7 @@ translations:
   Use G10/G11 firmware retraction: G10/G11-Firmware-Retraktion verwenden
   Use Unload before Eject: 'Verwenden Sie Entladen vor Auswerfen'
   Use printer type to select image: Druckertyp zur Bildauswahl verwenden
+  User intervention required: 'Manueller Eingriff erforderlich'
   VM Peak: VM-Spitze
   VM Size: VM-Größe
   Validating bed mesh...: Bettnetz validieren...

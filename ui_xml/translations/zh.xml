@@ -1272,6 +1272,7 @@
   <translation tag="Homing failed: {}" zh="归位失败: {}"/>
   <translation tag="Homing first..." zh="正在先归位..."/>
   <translation tag="Homing may still be running — response timed out" zh="归位可能仍在运行 — 响应超时"/>
+  <translation tag="Homing selector" zh="选择器回零"/>
   <translation tag="Homing timed out" zh="归位超时"/>
   <translation tag="Homing timed out — printer may still be homing" zh="回零超时 — 打印机可能仍在回零"/>
   <translation tag="Homing..." zh="正在归零..."/>
@@ -2232,6 +2233,7 @@
   <translation tag="Reset to defaults" zh="重置为默认值"/>
   <translation tag="Reset to original values" zh="重置为原始值"/>
   <translation tag="Resetting" zh="重置中"/>
+  <translation tag="Resetting system" zh="正在重置系统"/>
   <translation tag="Resetting..." zh="正在重置..."/>
   <translation tag="Response (Kp)" zh="响应 (Kp)"/>
   <translation tag="Restart" zh="重启"/>
@@ -2820,6 +2822,7 @@
   <translation tag="Tool Changer" zh="换刀器"/>
   <translation tag="Tool Switcher" zh="工具切换器"/>
   <translation tag="Tool change failed: {}" zh="工具切换失败: {}"/>
+  <translation tag="Tool change to T{}" zh="切换工具到 T{}"/>
   <translation tag="Tool mapping failed" zh="工具映射失败"/>
   <translation tag="Tool swap" zh="工具切换"/>
   <translation tag="Toolhead" zh="工具头"/>
@@ -2905,6 +2908,7 @@
   <translation tag="Unloading" zh="卸载中"/>
   <translation tag="Unloading Start Speed" zh="卸载起始速度"/>
   <translation tag="Unloading before bypass..." zh="旁通前正在卸载..."/>
+  <translation tag="Unloading filament" zh="正在卸载耗材"/>
   <translation tag="Unloading filament..." zh="正在卸载耗材..."/>
   <translation tag="Unloads After Print" zh="打印后卸载"/>
   <translation tag="Unlock" zh="解锁"/>
@@ -2937,6 +2941,7 @@
   <translation tag="Use G10/G11 firmware retraction" zh="使用 G10/G11 固件回抽"/>
   <translation tag="Use Unload before Eject" zh="请先使用“卸载”，再使用“弹出”"/>
   <translation tag="Use printer type to select image" zh="使用打印机类型选择图片"/>
+  <translation tag="User intervention required" zh="需要手动干预"/>
   <translation tag="VM Peak" zh="虚拟内存峰值"/>
   <translation tag="VM Size" zh="虚拟内存大小"/>
   <translation tag="Validating bed mesh..." zh="正在验证热床网格..."/>

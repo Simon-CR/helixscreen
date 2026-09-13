@@ -1421,6 +1421,7 @@ translations:
   Homing first...: Référence en cours...
   Homing may still be running — response timed out: Référence peut-être encore en
     cours — délai dépassé
+  Homing selector: 'Prise d''origine du sélecteur'
   Homing timed out: Référence — délai dépassé
   Homing timed out — printer may still be homing: Délai de prise d'origine dépassé
     — l'imprimante est peut-être encore en cours
@@ -2492,6 +2493,7 @@ translations:
   Reset to defaults: Réinitialiser par défaut
   Reset to original values: Réinitialiser aux valeurs d'origine
   Resetting: Réinitialisation
+  Resetting system: 'Réinitialisation du système'
   Resetting...: Réinitialisation...
   Response (Kp): Réponse (Kp)
   Restart: Redémarrer
@@ -3213,6 +3215,7 @@ translations:
   Tool Changer: Changeur d'outils
   Tool Switcher: 'Sélecteur d''outil'
   'Tool change failed: {}': 'Échec du changement d''outil : {}'
+  Tool change to T{}: 'Changement d''outil vers T{}'
   Tool mapping failed: Échec de la correspondance d'outils
   Tool swap: Changement d'outil
   Toolhead: 'Tête d''outil'
@@ -3305,6 +3308,7 @@ translations:
   Unloading: Déchargement
   Unloading Start Speed: 'Vitesse initiale de déchargement'
   Unloading before bypass...: Déchargement avant bypass...
+  Unloading filament: 'Déchargement du filament'
   Unloading filament...: Déchargement du filament...
   Unloads After Print: Décharge après l'impression
   Unlock: Déverrouiller
@@ -3340,6 +3344,7 @@ translations:
   Use Unload before Eject: 'Utilisez Décharger avant Éjecter'
   Use printer type to select image: Utiliser le type d'imprimante pour sélectionner
     l'image
+  User intervention required: 'Intervention manuelle requise'
   VM Peak: Pic de mémoire virtuelle
   VM Size: Taille de la mémoire virtuelle
   Validating bed mesh...: Validation du maillage du plateau...

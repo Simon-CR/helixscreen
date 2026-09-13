@@ -1272,6 +1272,7 @@
   <translation tag="Homing failed: {}" en="Homing failed: {}"/>
   <translation tag="Homing first..." en="Homing first..."/>
   <translation tag="Homing may still be running — response timed out" en="Homing may still be running — response timed out"/>
+  <translation tag="Homing selector" en="Homing selector"/>
   <translation tag="Homing timed out" en="Homing timed out"/>
   <translation tag="Homing timed out — printer may still be homing" en="Homing timed out — printer may still be homing"/>
   <translation tag="Homing..." en="Homing..."/>
@@ -2232,6 +2233,7 @@
   <translation tag="Reset to defaults" en="Reset to defaults"/>
   <translation tag="Reset to original values" en="Reset to original values"/>
   <translation tag="Resetting" en="Resetting"/>
+  <translation tag="Resetting system" en="Resetting system"/>
   <translation tag="Resetting..." en="Resetting..."/>
   <translation tag="Response (Kp)" en="Response (Kp)"/>
   <translation tag="Restart" en="Restart"/>
@@ -2820,6 +2822,7 @@
   <translation tag="Tool Changer" en="Tool Changer"/>
   <translation tag="Tool Switcher" en="Tool Switcher"/>
   <translation tag="Tool change failed: {}" en="Tool change failed: {}"/>
+  <translation tag="Tool change to T{}" en="Tool change to T{}"/>
   <translation tag="Tool mapping failed" en="Tool mapping failed"/>
   <translation tag="Tool swap" en="Tool swap"/>
   <translation tag="Toolhead" en="Toolhead"/>
@@ -2905,6 +2908,7 @@
   <translation tag="Unloading" en="Unloading"/>
   <translation tag="Unloading Start Speed" en="Unloading Start Speed"/>
   <translation tag="Unloading before bypass..." en="Unloading before bypass..."/>
+  <translation tag="Unloading filament" en="Unloading filament"/>
   <translation tag="Unloading filament..." en="Unloading filament..."/>
   <translation tag="Unloads After Print" en="Unloads After Print"/>
   <translation tag="Unlock" en="Unlock"/>
@@ -2937,6 +2941,7 @@
   <translation tag="Use G10/G11 firmware retraction" en="Use G10/G11 firmware retraction"/>
   <translation tag="Use Unload before Eject" en="Use Unload before Eject"/>
   <translation tag="Use printer type to select image" en="Use printer type to select image"/>
+  <translation tag="User intervention required" en="User intervention required"/>
   <translation tag="VM Peak" en="VM Peak"/>
   <translation tag="VM Size" en="VM Size"/>
   <translation tag="Validating bed mesh..." en="Validating bed mesh..."/>

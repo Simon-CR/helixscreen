@@ -1272,6 +1272,7 @@
   <translation tag="Homing failed: {}" pt="Falha no homing: {}"/>
   <translation tag="Homing first..." pt="Posicionando primeiro..."/>
   <translation tag="Homing may still be running — response timed out" pt="O homing pode ainda estar em execução — tempo esgotado"/>
+  <translation tag="Homing selector" pt="Referenciando o seletor"/>
   <translation tag="Homing timed out" pt="Homing — tempo esgotado"/>
   <translation tag="Homing timed out — printer may still be homing" pt="Tempo de referenciamento esgotado — a impressora ainda pode estar referenciando"/>
   <translation tag="Homing..." pt="Posicionando..."/>
@@ -2232,6 +2233,7 @@
   <translation tag="Reset to defaults" pt="Restaurar padrões"/>
   <translation tag="Reset to original values" pt="Restaurar valores originais"/>
   <translation tag="Resetting" pt="Restaurando"/>
+  <translation tag="Resetting system" pt="Redefinindo o sistema"/>
   <translation tag="Resetting..." pt="Resetando..."/>
   <translation tag="Response (Kp)" pt="Resposta (Kp)"/>
   <translation tag="Restart" pt="Reiniciar"/>
@@ -2820,6 +2822,7 @@
   <translation tag="Tool Changer" pt="Trocador de Ferramentas"/>
   <translation tag="Tool Switcher" pt="Seletor de ferramentas"/>
   <translation tag="Tool change failed: {}" pt="Falha ao trocar ferramenta: {}"/>
+  <translation tag="Tool change to T{}" pt="Troca de ferramenta para T{}"/>
   <translation tag="Tool mapping failed" pt="Falha no mapeamento de ferramenta"/>
   <translation tag="Tool swap" pt="Troca de ferramenta"/>
   <translation tag="Toolhead" pt="Cabeçote"/>
@@ -2905,6 +2908,7 @@
   <translation tag="Unloading" pt="Descarregando"/>
   <translation tag="Unloading Start Speed" pt="Velocidade inicial de descarregamento"/>
   <translation tag="Unloading before bypass..." pt="Descarregando antes do bypass..."/>
+  <translation tag="Unloading filament" pt="Descarregando filamento"/>
   <translation tag="Unloading filament..." pt="Descarregando filamento..."/>
   <translation tag="Unloads After Print" pt="Descarrega após a impressão"/>
   <translation tag="Unlock" pt="Desbloquear"/>
@@ -2937,6 +2941,7 @@
   <translation tag="Use G10/G11 firmware retraction" pt="Usar retração de firmware G10/G11"/>
   <translation tag="Use Unload before Eject" pt="Use Descarregar antes de Ejetar"/>
   <translation tag="Use printer type to select image" pt="Usar tipo de impressora para selecionar imagem"/>
+  <translation tag="User intervention required" pt="Intervenção manual necessária"/>
   <translation tag="VM Peak" pt="Pico de VM"/>
   <translation tag="VM Size" pt="Tamanho de VM"/>
   <translation tag="Validating bed mesh..." pt="Validando malha da mesa..."/>

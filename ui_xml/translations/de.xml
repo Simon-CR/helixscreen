@@ -1272,6 +1272,7 @@
   <translation tag="Homing failed: {}" de="Referenzfahrt fehlgeschlagen: {}"/>
   <translation tag="Homing first..." de="Referenzfahrt zuerst..."/>
   <translation tag="Homing may still be running — response timed out" de="Referenzfahrt läuft möglicherweise noch — Zeitüberschreitung"/>
+  <translation tag="Homing selector" de="Referenzfahrt des Selektors"/>
   <translation tag="Homing timed out" de="Referenzfahrt Zeitüberschreitung"/>
   <translation tag="Homing timed out — printer may still be homing" de="Referenzfahrt Zeitüberschreitung — Drucker referenziert möglicherweise noch"/>
   <translation tag="Homing..." de="Referenzfahrt..."/>
@@ -2232,6 +2233,7 @@
   <translation tag="Reset to defaults" de="Auf Standardwerte zurücksetzen"/>
   <translation tag="Reset to original values" de="Auf Originalwerte zurücksetzen"/>
   <translation tag="Resetting" de="Zurücksetzen"/>
+  <translation tag="Resetting system" de="System wird zurückgesetzt"/>
   <translation tag="Resetting..." de="Wird zurückgesetzt..."/>
   <translation tag="Response (Kp)" de="Antwort (Kp)"/>
   <translation tag="Restart" de="Neustart"/>
@@ -2820,6 +2822,7 @@
   <translation tag="Tool Changer" de="Werkzeugwechsler"/>
   <translation tag="Tool Switcher" de="Werkzeugwechsler"/>
   <translation tag="Tool change failed: {}" de="Werkzeugwechsel fehlgeschlagen: {}"/>
+  <translation tag="Tool change to T{}" de="Werkzeugwechsel zu T{}"/>
   <translation tag="Tool mapping failed" de="Werkzeugzuordnung fehlgeschlagen"/>
   <translation tag="Tool swap" de="Werkzeugwechsel"/>
   <translation tag="Toolhead" de="Werkzeugkopf"/>
@@ -2905,6 +2908,7 @@
   <translation tag="Unloading" de="Entladen"/>
   <translation tag="Unloading Start Speed" de="Startgeschwindigkeit beim Entladen"/>
   <translation tag="Unloading before bypass..." de="Entladen vor Bypass..."/>
+  <translation tag="Unloading filament" de="Filament wird entladen"/>
   <translation tag="Unloading filament..." de="Filament wird entladen..."/>
   <translation tag="Unloads After Print" de="Entlädt nach dem Druck"/>
   <translation tag="Unlock" de="Entsperren"/>
@@ -2937,6 +2941,7 @@
   <translation tag="Use G10/G11 firmware retraction" de="G10/G11-Firmware-Retraktion verwenden"/>
   <translation tag="Use Unload before Eject" de="Verwenden Sie Entladen vor Auswerfen"/>
   <translation tag="Use printer type to select image" de="Druckertyp zur Bildauswahl verwenden"/>
+  <translation tag="User intervention required" de="Manueller Eingriff erforderlich"/>
   <translation tag="VM Peak" de="VM-Spitze"/>
   <translation tag="VM Size" de="VM-Größe"/>
   <translation tag="Validating bed mesh..." de="Bettnetz validieren..."/>

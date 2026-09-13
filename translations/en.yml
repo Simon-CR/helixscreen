@@ -1372,6 +1372,7 @@ translations:
   Homing first...: Homing first...
   Homing may still be running — response timed out: Homing may still be running —
     response timed out
+  Homing selector: Homing selector
   Homing timed out: Homing timed out
   Homing timed out — printer may still be homing: Homing timed out — printer may still
     be homing
@@ -2420,6 +2421,7 @@ translations:
   Reset to defaults: Reset to defaults
   Reset to original values: Reset to original values
   Resetting: Resetting
+  Resetting system: Resetting system
   Resetting...: Resetting...
   Response (Kp): Response (Kp)
   Restart: Restart
@@ -3109,6 +3111,7 @@ translations:
   Tool Changer: Tool Changer
   Tool Switcher: Tool Switcher
   'Tool change failed: {}': 'Tool change failed: {}'
+  Tool change to T{}: Tool change to T{}
   Tool mapping failed: Tool mapping failed
   Tool swap: Tool swap
   Toolhead: Toolhead
@@ -3201,6 +3204,7 @@ translations:
   Unloading: Unloading
   Unloading Start Speed: Unloading Start Speed
   Unloading before bypass...: Unloading before bypass...
+  Unloading filament: Unloading filament
   Unloading filament...: Unloading filament...
   Unloads After Print: Unloads After Print
   Unlock: Unlock
@@ -3234,6 +3238,7 @@ translations:
   Use G10/G11 firmware retraction: Use G10/G11 firmware retraction
   Use Unload before Eject: Use Unload before Eject
   Use printer type to select image: Use printer type to select image
+  User intervention required: User intervention required
   VM Peak: VM Peak
   VM Size: VM Size
   'Validating bed mesh...': 'Validating bed mesh...'

@@ -1272,6 +1272,7 @@
   <translation tag="Homing failed: {}" ja="ホーミングに失敗しました: {}"/>
   <translation tag="Homing first..." ja="ホーミング中..."/>
   <translation tag="Homing may still be running — response timed out" ja="ホーミングがまだ実行中の可能性があります — 応答タイムアウト"/>
+  <translation tag="Homing selector" ja="セレクターをホーミングしています"/>
   <translation tag="Homing timed out" ja="ホーミングがタイムアウトしました"/>
   <translation tag="Homing timed out — printer may still be homing" ja="ホーミングがタイムアウトしました — プリンターはまだホーミング中の可能性があります"/>
   <translation tag="Homing..." ja="ホーミング中..."/>
@@ -2232,6 +2233,7 @@
   <translation tag="Reset to defaults" ja="デフォルトに戻す"/>
   <translation tag="Reset to original values" ja="元の値にリセット"/>
   <translation tag="Resetting" ja="リセット中"/>
+  <translation tag="Resetting system" ja="システムをリセットしています"/>
   <translation tag="Resetting..." ja="リセット中..."/>
   <translation tag="Response (Kp)" ja="応答 (Kp)"/>
   <translation tag="Restart" ja="再起動"/>
@@ -2820,6 +2822,7 @@
   <translation tag="Tool Changer" ja="ツールチェンジャー"/>
   <translation tag="Tool Switcher" ja="ツール切り替え"/>
   <translation tag="Tool change failed: {}" ja="ツール変更に失敗しました: {}"/>
+  <translation tag="Tool change to T{}" ja="ツールを T{} に変更しています"/>
   <translation tag="Tool mapping failed" ja="ツールマッピングに失敗しました"/>
   <translation tag="Tool swap" ja="ツール交換"/>
   <translation tag="Toolhead" ja="ツールヘッド"/>
@@ -2905,6 +2908,7 @@
   <translation tag="Unloading" ja="アンロード中"/>
   <translation tag="Unloading Start Speed" ja="アンロード開始速度"/>
   <translation tag="Unloading before bypass..." ja="バイパス前にアンロード中..."/>
+  <translation tag="Unloading filament" ja="フィラメントを取り出しています"/>
   <translation tag="Unloading filament..." ja="フィラメントを排出中..."/>
   <translation tag="Unloads After Print" ja="印刷後にアンロード"/>
   <translation tag="Unlock" ja="ロック解除"/>
@@ -2937,6 +2941,7 @@
   <translation tag="Use G10/G11 firmware retraction" ja="G10/G11 ファームウェアリトラクションを使用"/>
   <translation tag="Use Unload before Eject" ja="先に「アンロード」してから「排出」してください"/>
   <translation tag="Use printer type to select image" ja="プリンタータイプで画像を選択"/>
+  <translation tag="User intervention required" ja="手動での対応が必要です"/>
   <translation tag="VM Peak" ja="VM ピーク"/>
   <translation tag="VM Size" ja="VM サイズ"/>
   <translation tag="Validating bed mesh..." ja="ベッドメッシュを検証中..."/>

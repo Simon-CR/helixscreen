@@ -1388,6 +1388,7 @@ translations:
   Homing first...: Парковка...
   Homing may still be running — response timed out: Парковка может ещё выполняться
     — время ожидания истекло
+  Homing selector: 'Парковка селектора'
   Homing timed out: Парковка — время ожидания истекло
   Homing timed out — printer may still be homing: Тайм-аут парковки — принтер может
     всё ещё выполнять парковку
@@ -2445,6 +2446,7 @@ translations:
   Reset to defaults: Сбросить по умолчанию
   Reset to original values: Сбросить к исходным значениям
   Resetting: Сброс
+  Resetting system: 'Сброс системы'
   Resetting...: Сброс...
   Response (Kp): Отклик (Kp)
   Restart: Перезапуск
@@ -3141,6 +3143,7 @@ translations:
   Tool Changer: Сменщик инструментов
   Tool Switcher: 'Переключатель инструментов'
   'Tool change failed: {}': 'Ошибка смены инструмента: {}'
+  Tool change to T{}: 'Смена инструмента на T{}'
   Tool mapping failed: Ошибка сопоставления инструмента
   Tool swap: Смена инструмента
   Toolhead: 'Печатающая головка'
@@ -3233,6 +3236,7 @@ translations:
   Unloading: Выгрузка
   Unloading Start Speed: 'Начальная скорость выгрузки'
   Unloading before bypass...: Выгрузка перед байпасом...
+  Unloading filament: 'Выгрузка филамента'
   Unloading filament...: Выгрузка филамента...
   Unloads After Print: Выгрузка после печати
   Unlock: Разблокировать
@@ -3266,6 +3270,7 @@ translations:
   Use G10/G11 firmware retraction: Использовать аппаратный ретракт G10/G11
   Use Unload before Eject: 'Используйте «Выгрузить» перед «Извлечь»'
   Use printer type to select image: Использовать тип принтера для выбора изображения
+  User intervention required: 'Требуется ручное вмешательство'
   VM Peak: Пик VM
   VM Size: Размер VM
   Validating bed mesh...: Валидация сетки стола...

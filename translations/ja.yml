@@ -1303,6 +1303,7 @@ translations:
   'Homing failed: {}': 'ホーミングに失敗しました: {}'
   Homing first...: ホーミング中...
   Homing may still be running — response timed out: ホーミングがまだ実行中の可能性があります — 応答タイムアウト
+  Homing selector: 'セレクターをホーミングしています'
   Homing timed out: ホーミングがタイムアウトしました
   Homing timed out — printer may still be homing: ホーミングがタイムアウトしました — プリンターはまだホーミング中の可能性があります
   Homing...: ホーミング中...
@@ -2296,6 +2297,7 @@ translations:
   Reset to defaults: デフォルトに戻す
   Reset to original values: 元の値にリセット
   Resetting: リセット中
+  Resetting system: 'システムをリセットしています'
   Resetting...: リセット中...
   Response (Kp): 応答 (Kp)
   Restart: 再起動
@@ -2925,6 +2927,7 @@ translations:
   Tool Changer: ツールチェンジャー
   Tool Switcher: 'ツール切り替え'
   'Tool change failed: {}': 'ツール変更に失敗しました: {}'
+  Tool change to T{}: 'ツールを T{} に変更しています'
   Tool mapping failed: ツールマッピングに失敗しました
   Tool swap: ツール交換
   Toolhead: 'ツールヘッド'
@@ -3012,6 +3015,7 @@ translations:
   Unloading: アンロード中
   Unloading Start Speed: 'アンロード開始速度'
   Unloading before bypass...: バイパス前にアンロード中...
+  Unloading filament: 'フィラメントを取り出しています'
   Unloading filament...: フィラメントを排出中...
   Unloads After Print: 印刷後にアンロード
   Unlock: ロック解除
@@ -3044,6 +3048,7 @@ translations:
   Use G10/G11 firmware retraction: G10/G11 ファームウェアリトラクションを使用
   Use Unload before Eject: '先に「アンロード」してから「排出」してください'
   Use printer type to select image: プリンタータイプで画像を選択
+  User intervention required: '手動での対応が必要です'
   VM Peak: VM ピーク
   VM Size: VM サイズ
   Validating bed mesh...: ベッドメッシュを検証中...
