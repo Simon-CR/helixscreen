@@ -101,7 +101,9 @@
   <translation tag="A backup of %s is created before applying" zh="应用前会创建 %s 的备份"/>
   <translation tag="A motor IO pin couldn&apos;t be restored. Power-cycle the printer to recover" zh="无法恢复电机 IO 引脚。请重新为打印机上电以恢复"/>
   <translation tag="A motor&apos;s parameters couldn&apos;t be written. Power-cycle the printer to retry" zh="无法写入电机参数。请重新为打印机上电后重试"/>
+  <translation tag="A newer version of the helper macros is available" zh="有更新版本的帮助宏可用"/>
   <translation tag="A picture of your printer" zh="打印机的图片"/>
+  <translation tag="A print is in progress - restart still pending" zh="打印进行中 - 重启待执行"/>
   <translation tag="A spool may be tangled or the drive gear is jammed" zh="料盘可能缠绕，或驱动齿轮卡住"/>
   <translation tag="ABS" zh="ABS"/>
   <translation tag="ACCELEROMETERS" zh="加速度计"/>
@@ -815,6 +817,7 @@
   <translation tag="Enable Brush Wipe" zh="启用刷子擦拭"/>
   <translation tag="Enable Bypass" zh="启用旁路"/>
   <translation tag="Enable Bypass Controls" zh="启用旁路控制"/>
+  <translation tag="Enable Clean Nozzle and other print helpers" zh="启用清洁喷嘴等打印辅助功能"/>
   <translation tag="Enable Monitoring" zh="启用监控"/>
   <translation tag="Enable Purge" zh="启用排料"/>
   <translation tag="Enable Retraction" zh="启用回抽"/>
@@ -951,6 +954,7 @@
   <translation tag="Failed to get limits" zh="获取限制失败"/>
   <translation tag="Failed to initialize Bluetooth" zh="初始化蓝牙失败"/>
   <translation tag="Failed to initialize Bluetooth context" zh="初始化蓝牙上下文失败"/>
+  <translation tag="Failed to install helper macros" zh="安装帮助宏失败"/>
   <translation tag="Failed to load G-code preview" zh="加载 G-code 预览失败"/>
   <translation tag="Failed to load devices" zh="加载设备失败"/>
   <translation tag="Failed to load fan configuration screen" zh="加载风扇配置界面失败"/>
@@ -980,6 +984,7 @@
   <translation tag="Failed to render label" zh="渲染标签失败"/>
   <translation tag="Failed to reprint: {}" zh="重新打印失败: {}"/>
   <translation tag="Failed to reset theme" zh="重置主题失败"/>
+  <translation tag="Failed to restart Klipper" zh="重启 Klipper 失败"/>
   <translation tag="Failed to restart Moonraker." zh="重启 Moonraker 失败。"/>
   <translation tag="Failed to restart: {}" zh="重启失败：{}"/>
   <translation tag="Failed to resume: {}" zh="恢复失败: {}"/>
@@ -1220,6 +1225,9 @@
   <translation tag="Help &amp; About" zh="帮助与关于"/>
   <translation tag="Help Improve HelixScreen" zh="帮助改进 HelixScreen"/>
   <translation tag="Help improve HelixScreen?" zh="帮助改进 HelixScreen？"/>
+  <translation tag="Helper Macros" zh="帮助宏"/>
+  <translation tag="Helper macros already installed" zh="帮助宏已安装"/>
+  <translation tag="Helper macros are up to date" zh="帮助宏已是最新版本"/>
   <translation tag="Hide Firmware Noise" zh="隐藏固件噪声"/>
   <translation tag="Hide Temperature Reports" zh="隐藏温度报告"/>
   <translation tag="High Water Mark" zh="峰值标记"/>
@@ -1304,6 +1312,8 @@
   <translation tag="Inspecting bed..." zh="正在检查热床..."/>
   <translation tag="Install" zh="安装"/>
   <translation tag="Install HelixPrint Plugin" zh="安装 HelixPrint 插件"/>
+  <translation tag="Install Helper Macros" zh="安装帮助宏"/>
+  <translation tag="Install Helper Macros?" zh="安装帮助宏？"/>
   <translation tag="Install Older Version?" zh="要安装旧版本吗？"/>
   <translation tag="Install Plugin" zh="安装插件"/>
   <translation tag="Install Root" zh="安装根目录"/>
@@ -1321,6 +1331,7 @@
   <translation tag="Installation takes about 30 seconds." zh="安装大约需要 30 秒。"/>
   <translation tag="Installation timed out" zh="安装超时"/>
   <translation tag="Installation timed out. The script may be stuck." zh="安装超时。脚本可能已卡住。"/>
+  <translation tag="Installed" zh="已安装"/>
   <translation tag="Installing..." zh="正在安装..."/>
   <translation tag="Intensity" zh="强度"/>
   <translation tag="Interactive calibration for all lanes" zh="所有槽位的交互式校准"/>
@@ -1360,6 +1371,7 @@
   <translation tag="Klipper firmware has disconnected from the host. Try restarting Klipper or performing a firmware restart." zh="Klipper 固件已与主机断开连接。请尝试重启 Klipper 或执行固件重启。"/>
   <translation tag="Klipper has entered an error state. This is typically caused by an MCU connection failure or configuration error. Try a firmware restart." zh="Klipper 已进入错误状态。这通常是由 MCU 连接失败或配置错误引起的。请尝试固件重启。"/>
   <translation tag="Klipper has entered shutdown state. This may be due to an emergency stop, thermal runaway, or configuration error." zh="Klipper 已进入关机状态。这可能是由于紧急停止、热失控或配置错误引起的。"/>
+  <translation tag="Klipper restarting - macros activating" zh="正在重启 Klipper - 正在启用宏"/>
   <translation tag="Klipper will restart to apply changes" zh="Klipper 将重启以应用更改"/>
   <translation tag="Klipper will restart to apply changes." zh="Klipper 将重启以应用更改。"/>
   <translation tag="Klipper will restart to apply new settings." zh="Klipper 将重启以应用新设置。"/>
@@ -1498,6 +1510,9 @@
   <translation tag="Macro to resume a paused print" zh="恢复暂停打印的宏"/>
   <translation tag="Macro to unload filament from extruder" zh="从挤出机卸载耗材的宏"/>
   <translation tag="Macros" zh="宏"/>
+  <translation tag="Macros installed - restart pending" zh="宏已安装 - 重启待执行"/>
+  <translation tag="Macros installed. Restart Klipper after the print to activate them." zh="宏已安装。打印结束后重启 Klipper 即可启用。"/>
+  <translation tag="Macros updated. Restart Klipper after the print to activate them." zh="宏已更新。打印结束后重启 Klipper 即可启用。"/>
   <translation tag="Macros, G-code console, calibration tools (PID, input shaper, z-offset), firmware updates, and developer utilities." zh="宏、G-code 控制台、校准工具（PID、输入整形、Z 偏移）、固件更新以及开发者实用工具。"/>
   <translation tag="Main LED Strip" zh="主 LED 灯带"/>
   <translation tag="Maintaining" zh="保持中"/>
@@ -2001,6 +2016,7 @@
   <translation tag="Printer not connected" zh="打印机未连接"/>
   <translation tag="Printer not ready" zh="打印机未就绪"/>
   <translation tag="Printer ready" zh="打印机就绪"/>
+  <translation tag="Printer status unknown" zh="打印机状态未知"/>
   <translation tag="Printer type mismatch" zh="打印机类型不匹配"/>
   <translation tag="Printer:" zh="打印机:"/>
   <translation tag="Printer: " zh="打印机: "/>
@@ -2180,11 +2196,13 @@
   <translation tag="Restart HelixScreen" zh="重启 HelixScreen"/>
   <translation tag="Restart Klipper" zh="重启 Klipper"/>
   <translation tag="Restart Klipper without rebooting" zh="无需重启主机即可重启 Klipper"/>
+  <translation tag="Restart Klipper?" zh="重启 Klipper？"/>
   <translation tag="Restart Moonraker" zh="重启 Moonraker"/>
   <translation tag="Restart Now" zh="立即重启"/>
   <translation tag="Restart Required" zh="需要重启"/>
   <translation tag="Restart failed: not connected" zh="重启失败: 未连接"/>
   <translation tag="Restart from the beginning to recover" zh="请从头重新开始以恢复打印"/>
+  <translation tag="Restart pending" zh="重启待执行"/>
   <translation tag="Restart the display application" zh="重启显示应用程序"/>
   <translation tag="Restart the printer or screen" zh="重启打印机或屏幕"/>
   <translation tag="Restarting HelixScreen..." zh="正在重启 HelixScreen…"/>
@@ -2629,6 +2647,7 @@
   <translation tag="The filament may not have fully retracted — try again or manually pull" zh="耗材可能未完全回抽。请重试或手动抽出"/>
   <translation tag="The filament system reported an error" zh="耗材系统报告错误"/>
   <translation tag="The heater will cycle on and off several times." zh="加热器将多次开关循环。"/>
+  <translation tag="The helper macros are installed and activate after Klipper restarts." zh="帮助宏已安装，将在 Klipper 重启后启用。"/>
   <translation tag="The left RFID reader in this CFS unit may need service" zh="此 CFS 单元的左侧 RFID 读取器可能需要维修"/>
   <translation tag="The loaded spool is {}, but this file was sliced for {}. Filled filament runs at a lower flow rate and needs a hardened nozzle." zh="当前装载的料盘是 {}，但此文件为 {} 切片。填充耗材需要以更低的流量运行，且需要硬化喷嘴。"/>
   <translation tag="The print is paused. Changing tools now moves the toolhead and swaps the filament at the nozzle. Resume the print once the change finishes." zh="打印已暂停。现在切换工具会移动工具头并更换喷嘴处的耗材。切换完成后请恢复打印。"/>
@@ -2675,6 +2694,8 @@
   <translation tag="This filament system does not report buffer or flow data." zh="此耗材系统不报告缓冲区或流量数据。"/>
   <translation tag="This file was sliced for {} but {} is loaded." zh="此文件为 {} 切片，但当前加载的是 {}。"/>
   <translation tag="This file was sliced for {}, but {} is loaded. It will print slower and hotter than the loaded spool needs." zh="此文件为 {} 切片，但当前加载的是 {}。打印会比当前装载的料盘所需更慢、更热。"/>
+  <translation tag="This installs the HelixScreen helper macros on the printer and adds them to printer.cfg. A print is running, so Klipper restarts after it finishes." zh="这会在打印机上安装 HelixScreen 帮助宏并添加到 printer.cfg。当前正在打印，Klipper 将在打印结束后重启。"/>
+  <translation tag="This installs the HelixScreen helper macros on the printer, adds them to printer.cfg, and restarts Klipper." zh="这会在打印机上安装 HelixScreen 帮助宏，添加到 printer.cfg，并重启 Klipper。"/>
   <translation tag="This is exactly the data that will be sent" zh="这正是将要发送的数据"/>
   <translation tag="This is what data would be sent if enabled" zh="这是启用后将发送的数据"/>
   <translation tag="This may take up to 30 seconds" zh="这可能需要 30 秒"/>
@@ -2682,6 +2703,8 @@
   <translation tag="This print needs about %.0fg but the spool has about %.0fg remaining. Start anyway?" zh="本次打印需要约 %.0fg，但料盘仅剩约 %.0fg。仍要开始吗？"/>
   <translation tag="This printer looks like a {} ({}% confidence), but it is set up as a {}. A wrong type applies incorrect pre-print options and presets." zh="此打印机看起来是 {}（置信度 {}%），但当前设置为 {}。错误的类型会应用不正确的打印前选项和预设。"/>
   <translation tag="This removes the plugin&apos;s macros and its Moonraker component from the printer and restarts Klipper." zh="从打印机移除插件的宏及其 Moonraker 组件，并重启 Klipper。"/>
+  <translation tag="This replaces the printer&apos;s helper macros with the current version and restarts Klipper." zh="这会将打印机的帮助宏替换为当前版本并重启 Klipper。"/>
+  <translation tag="This replaces the printer&apos;s helper macros with the current version. A print is running, so Klipper restarts after it finishes." zh="这会将打印机的帮助宏替换为当前版本。当前正在打印，Klipper 将在打印结束后重启。"/>
   <translation tag="This tool probes each bed screw and tells you how much to adjust." zh="此工具探测每个热床螺丝并告诉您需要调整多少。"/>
   <translation tag="This will apply the Z-offset to your endstop and restart Klipper to save the configuration. The printer will briefly disconnect." zh="这将把 Z-offset 应用到限位开关并重启 Klipper 以保存配置。打印机将短暂断开连接。"/>
   <translation tag="This will apply the Z-offset to your probe and restart Klipper to save the configuration. The printer will briefly disconnect." zh="这将把 Z-offset 应用到探针并重启 Klipper 以保存配置。打印机将短暂断开连接。"/>
@@ -2829,6 +2852,8 @@
   <translation tag="Update Available" zh="有可用更新"/>
   <translation tag="Update Channel" zh="更新通道"/>
   <translation tag="Update Failed" zh="更新失败"/>
+  <translation tag="Update Helper Macros" zh="更新帮助宏"/>
+  <translation tag="Update Helper Macros?" zh="更新帮助宏？"/>
   <translation tag="Update Success" zh="更新成功"/>
   <translation tag="Update from a Terminal" zh="通过终端更新"/>
   <translation tag="Update installed!" zh="更新已安装！"/>

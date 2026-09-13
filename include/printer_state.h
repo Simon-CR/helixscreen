@@ -1880,6 +1880,30 @@ class PrinterState {
     bool is_phase_tracking_enabled() const;
 
     /**
+     * @brief Mark helper-macro files as staged, awaiting a Klipper restart
+     *
+     * Set by the Advanced panel's macro install flow when the files landed
+     * but a running print made an immediate restart unsafe. Clears when
+     * discovery reports the macros active.
+     *
+     * Main thread only (fired from deferred install callbacks).
+     *
+     * @param pending True while the staged files still await a restart
+     */
+    void set_helix_macros_restart_pending(bool pending);
+
+    /**
+     * @brief Helper-macro install status subject
+     *
+     * Bound by advanced_panel.xml to switch the macro rows. Values are
+     * HelixMacrosStatus: -1 unknown, 0 not installed, 1 installed,
+     * 2 outdated, 3 staged awaiting restart.
+     */
+    lv_subject_t* get_helix_macros_status_subject() {
+        return plugin_status_state_.get_helix_macros_status_subject();
+    }
+
+    /**
      * @brief Get helix_plugin_installed subject for observers
      *
      * Use this when you need to observe plugin status changes (e.g., for install prompts).

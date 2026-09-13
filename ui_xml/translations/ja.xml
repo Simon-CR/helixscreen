@@ -101,7 +101,9 @@
   <translation tag="A backup of %s is created before applying" ja="適用前に %s のバックアップを作成します"/>
   <translation tag="A motor IO pin couldn&apos;t be restored. Power-cycle the printer to recover" ja="モーターのIOピンを復元できませんでした。プリンターの電源を入れ直してください"/>
   <translation tag="A motor&apos;s parameters couldn&apos;t be written. Power-cycle the printer to retry" ja="モーターのパラメーターを書き込めませんでした。プリンターの電源を入れ直して再試行してください"/>
+  <translation tag="A newer version of the helper macros is available" ja="ヘルパーマクロの新しいバージョンが利用可能です"/>
   <translation tag="A picture of your printer" ja="プリンターの画像"/>
+  <translation tag="A print is in progress - restart still pending" ja="印刷中です - 再起動は保留中"/>
   <translation tag="A spool may be tangled or the drive gear is jammed" ja="スプールが絡まっているか、駆動ギアが詰まっている可能性があります"/>
   <translation tag="ABS" ja="ABS"/>
   <translation tag="ACCELEROMETERS" ja="加速度センサー"/>
@@ -815,6 +817,7 @@
   <translation tag="Enable Brush Wipe" ja="ブラシワイプを有効化"/>
   <translation tag="Enable Bypass" ja="バイパスを有効化"/>
   <translation tag="Enable Bypass Controls" ja="バイパスコントロールを有効化"/>
+  <translation tag="Enable Clean Nozzle and other print helpers" ja="ノズル清掃などの印刷ヘルパーを有効にする"/>
   <translation tag="Enable Monitoring" ja="監視を有効化"/>
   <translation tag="Enable Purge" ja="パージを有効化"/>
   <translation tag="Enable Retraction" ja="リトラクションを有効化"/>
@@ -951,6 +954,7 @@
   <translation tag="Failed to get limits" ja="制限の取得に失敗しました"/>
   <translation tag="Failed to initialize Bluetooth" ja="Bluetooth の初期化に失敗しました"/>
   <translation tag="Failed to initialize Bluetooth context" ja="Bluetooth コンテキストの初期化に失敗しました"/>
+  <translation tag="Failed to install helper macros" ja="ヘルパーマクロをインストールできませんでした"/>
   <translation tag="Failed to load G-code preview" ja="G-code プレビューの読み込みに失敗しました"/>
   <translation tag="Failed to load devices" ja="デバイスの読み込みに失敗しました"/>
   <translation tag="Failed to load fan configuration screen" ja="ファン設定画面の読み込みに失敗しました"/>
@@ -980,6 +984,7 @@
   <translation tag="Failed to render label" ja="ラベルのレンダリングに失敗しました"/>
   <translation tag="Failed to reprint: {}" ja="再印刷に失敗しました: {}"/>
   <translation tag="Failed to reset theme" ja="テーマのリセットに失敗しました"/>
+  <translation tag="Failed to restart Klipper" ja="Klipper を再起動できませんでした"/>
   <translation tag="Failed to restart Moonraker." ja="Moonrakerの再起動に失敗しました。"/>
   <translation tag="Failed to restart: {}" ja="再起動に失敗しました: {}"/>
   <translation tag="Failed to resume: {}" ja="再開に失敗しました: {}"/>
@@ -1220,6 +1225,9 @@
   <translation tag="Help &amp; About" ja="ヘルプと情報"/>
   <translation tag="Help Improve HelixScreen" ja="HelixScreen の改善にご協力ください"/>
   <translation tag="Help improve HelixScreen?" ja="HelixScreenの改善に協力しますか？"/>
+  <translation tag="Helper Macros" ja="ヘルパーマクロ"/>
+  <translation tag="Helper macros already installed" ja="ヘルパーマクロはすでにインストールされています"/>
+  <translation tag="Helper macros are up to date" ja="ヘルパーマクロは最新です"/>
   <translation tag="Hide Firmware Noise" ja="ファームウェアノイズを非表示"/>
   <translation tag="Hide Temperature Reports" ja="温度レポートを非表示"/>
   <translation tag="High Water Mark" ja="最大値"/>
@@ -1304,6 +1312,8 @@
   <translation tag="Inspecting bed..." ja="ベッドを検査中..."/>
   <translation tag="Install" ja="インストール"/>
   <translation tag="Install HelixPrint Plugin" ja="HelixPrint プラグインをインストール"/>
+  <translation tag="Install Helper Macros" ja="ヘルパーマクロをインストール"/>
+  <translation tag="Install Helper Macros?" ja="ヘルパーマクロをインストールしますか？"/>
   <translation tag="Install Older Version?" ja="以前のバージョンをインストールしますか？"/>
   <translation tag="Install Plugin" ja="プラグインをインストール"/>
   <translation tag="Install Root" ja="インストールルート"/>
@@ -1321,6 +1331,7 @@
   <translation tag="Installation takes about 30 seconds." ja="インストールには約30秒かかります。"/>
   <translation tag="Installation timed out" ja="インストールがタイムアウトしました"/>
   <translation tag="Installation timed out. The script may be stuck." ja="インストールがタイムアウトしました。スクリプトが停止している可能性があります。"/>
+  <translation tag="Installed" ja="インストール済み"/>
   <translation tag="Installing..." ja="インストール中..."/>
   <translation tag="Intensity" ja="強度"/>
   <translation tag="Interactive calibration for all lanes" ja="全レーンの対話式キャリブレーション"/>
@@ -1360,6 +1371,7 @@
   <translation tag="Klipper firmware has disconnected from the host. Try restarting Klipper or performing a firmware restart." ja="Klipper ファームウェアがホストから切断されました。Klipper を再起動するか、ファームウェア再起動を実行してみてください。"/>
   <translation tag="Klipper has entered an error state. This is typically caused by an MCU connection failure or configuration error. Try a firmware restart." ja="Klipper がエラー状態になりました。これは通常、MCU 接続の失敗または設定エラーが原因です。ファームウェア再起動を試してください。"/>
   <translation tag="Klipper has entered shutdown state. This may be due to an emergency stop, thermal runaway, or configuration error." ja="Klipper がシャットダウン状態になりました。緊急停止、熱暴走、または設定エラーが原因の可能性があります。"/>
+  <translation tag="Klipper restarting - macros activating" ja="Klipper を再起動しています - マクロを有効化中"/>
   <translation tag="Klipper will restart to apply changes" ja="変更を適用するために Klipper が再起動します"/>
   <translation tag="Klipper will restart to apply changes." ja="変更を適用するために Klipper が再起動します。"/>
   <translation tag="Klipper will restart to apply new settings." ja="新しい設定を適用するためKlipperが再起動します。"/>
@@ -1498,6 +1510,9 @@
   <translation tag="Macro to resume a paused print" ja="一時停止した印刷を再開するマクロ"/>
   <translation tag="Macro to unload filament from extruder" ja="エクストルーダーからフィラメントを排出するマクロ"/>
   <translation tag="Macros" ja="マクロ"/>
+  <translation tag="Macros installed - restart pending" ja="マクロをインストールしました - 再起動は保留中"/>
+  <translation tag="Macros installed. Restart Klipper after the print to activate them." ja="マクロをインストールしました。印刷後に Klipper を再起動すると有効になります。"/>
+  <translation tag="Macros updated. Restart Klipper after the print to activate them." ja="マクロを更新しました。印刷後に Klipper を再起動すると有効になります。"/>
   <translation tag="Macros, G-code console, calibration tools (PID, input shaper, z-offset), firmware updates, and developer utilities." ja="マクロ、G-code コンソール、キャリブレーションツール（PID、入力シェイパー、Z オフセット）、ファームウェア更新、開発者向けユーティリティ。"/>
   <translation tag="Main LED Strip" ja="メインLEDストリップ"/>
   <translation tag="Maintaining" ja="維持中"/>
@@ -2001,6 +2016,7 @@
   <translation tag="Printer not connected" ja="プリンターが接続されていません"/>
   <translation tag="Printer not ready" ja="プリンターの準備ができていません"/>
   <translation tag="Printer ready" ja="プリンター準備完了"/>
+  <translation tag="Printer status unknown" ja="プリンターの状態が不明です"/>
   <translation tag="Printer type mismatch" ja="プリンタータイプの不一致"/>
   <translation tag="Printer:" ja="プリンター:"/>
   <translation tag="Printer: " ja="プリンター: "/>
@@ -2180,11 +2196,13 @@
   <translation tag="Restart HelixScreen" ja="HelixScreen を再起動"/>
   <translation tag="Restart Klipper" ja="Klipper を再起動"/>
   <translation tag="Restart Klipper without rebooting" ja="ホストを再起動せずに Klipper を再起動"/>
+  <translation tag="Restart Klipper?" ja="Klipper を再起動しますか？"/>
   <translation tag="Restart Moonraker" ja="Moonraker を再起動"/>
   <translation tag="Restart Now" ja="今すぐ再起動"/>
   <translation tag="Restart Required" ja="再起動が必要です"/>
   <translation tag="Restart failed: not connected" ja="再起動に失敗: 未接続"/>
   <translation tag="Restart from the beginning to recover" ja="復旧するには最初からやり直してください"/>
+  <translation tag="Restart pending" ja="再起動保留中"/>
   <translation tag="Restart the display application" ja="ディスプレイアプリケーションを再起動"/>
   <translation tag="Restart the printer or screen" ja="プリンターまたは画面を再起動します"/>
   <translation tag="Restarting HelixScreen..." ja="HelixScreenを再起動中..."/>
@@ -2629,6 +2647,7 @@
   <translation tag="The filament may not have fully retracted — try again or manually pull" ja="フィラメントが完全に戻っていない可能性があります。再試行するか手で引き抜いてください"/>
   <translation tag="The filament system reported an error" ja="フィラメントシステムがエラーを報告しました"/>
   <translation tag="The heater will cycle on and off several times." ja="ヒーターは数回オン/オフを繰り返します。"/>
+  <translation tag="The helper macros are installed and activate after Klipper restarts." ja="ヘルパーマクロはインストール済みで、Klipper の再起動後に有効になります。"/>
   <translation tag="The left RFID reader in this CFS unit may need service" ja="この CFS ユニットの左側 RFID リーダーは修理が必要な可能性があります"/>
   <translation tag="The loaded spool is {}, but this file was sliced for {}. Filled filament runs at a lower flow rate and needs a hardened nozzle." ja="装填中のスプールは {} ですが、このファイルは {} 用にスライスされています。充填材入りフィラメントはフローレートが低くなり、硬化ノズルが必要です。"/>
   <translation tag="The print is paused. Changing tools now moves the toolhead and swaps the filament at the nozzle. Resume the print once the change finishes." ja="印刷は一時停止中です。ここでツールを交換すると、ツールヘッドが移動してノズルのフィラメントが入れ替わります。交換が完了したら印刷を再開してください。"/>
@@ -2675,6 +2694,8 @@
   <translation tag="This filament system does not report buffer or flow data." ja="このフィラメントシステムはバッファーやフローのデータを報告しません。"/>
   <translation tag="This file was sliced for {} but {} is loaded." ja="このファイルは {} 用にスライスされていますが、{} がロードされています。"/>
   <translation tag="This file was sliced for {}, but {} is loaded. It will print slower and hotter than the loaded spool needs." ja="このファイルは {} 用にスライスされていますが、{} がロードされています。装填中のスプールが必要とするより遅く高温で印刷されます。"/>
+  <translation tag="This installs the HelixScreen helper macros on the printer and adds them to printer.cfg. A print is running, so Klipper restarts after it finishes." ja="HelixScreen のヘルパーマクロをプリンターにインストールし、printer.cfg に追加します。印刷中のため、Klipper は印刷完了後に再起動されます。"/>
+  <translation tag="This installs the HelixScreen helper macros on the printer, adds them to printer.cfg, and restarts Klipper." ja="HelixScreen のヘルパーマクロをプリンターにインストールし、printer.cfg に追加して、Klipper を再起動します。"/>
   <translation tag="This is exactly the data that will be sent" ja="これが送信されるデータです"/>
   <translation tag="This is what data would be sent if enabled" ja="これは有効にした場合に送信されるデータです"/>
   <translation tag="This may take up to 30 seconds" ja="最大30秒かかる場合があります"/>
@@ -2682,6 +2703,8 @@
   <translation tag="This print needs about %.0fg but the spool has about %.0fg remaining. Start anyway?" ja="この印刷には約 %.0fg 必要ですが、スプールの残量は約 %.0fg です。それでも開始しますか？"/>
   <translation tag="This printer looks like a {} ({}% confidence), but it is set up as a {}. A wrong type applies incorrect pre-print options and presets." ja="このプリンターは {} のようです（信頼度 {}%）が、{} として設定されています。誤ったタイプでは不正確な印刷前オプションとプリセットが適用されます。"/>
   <translation tag="This removes the plugin&apos;s macros and its Moonraker component from the printer and restarts Klipper." ja="プラグインのマクロと Moonraker コンポーネントをプリンターから削除し、Klipper を再起動します。"/>
+  <translation tag="This replaces the printer&apos;s helper macros with the current version and restarts Klipper." ja="プリンターのヘルパーマクロを現在のバージョンに置き換え、Klipper を再起動します。"/>
+  <translation tag="This replaces the printer&apos;s helper macros with the current version. A print is running, so Klipper restarts after it finishes." ja="プリンターのヘルパーマクロを現在のバージョンに置き換えます。印刷中のため、Klipper は印刷完了後に再起動されます。"/>
   <translation tag="This tool probes each bed screw and tells you how much to adjust." ja="このツールは各ベッドネジをプローブし、どのくらい調整が必要かを教えます。"/>
   <translation tag="This will apply the Z-offset to your endstop and restart Klipper to save the configuration. The printer will briefly disconnect." ja="Z-offset をエンドストップに適用し、設定を保存するために Klipper を再起動します。プリンターは一時的に切断されます。"/>
   <translation tag="This will apply the Z-offset to your probe and restart Klipper to save the configuration. The printer will briefly disconnect." ja="Z-offset をプローブに適用し、設定を保存するために Klipper を再起動します。プリンターは一時的に切断されます。"/>
@@ -2829,6 +2852,8 @@
   <translation tag="Update Available" ja="更新あり"/>
   <translation tag="Update Channel" ja="更新チャンネル"/>
   <translation tag="Update Failed" ja="更新失敗"/>
+  <translation tag="Update Helper Macros" ja="ヘルパーマクロを更新"/>
+  <translation tag="Update Helper Macros?" ja="ヘルパーマクロを更新しますか？"/>
   <translation tag="Update Success" ja="更新成功"/>
   <translation tag="Update from a Terminal" ja="ターミナルから更新"/>
   <translation tag="Update installed!" ja="アップデートをインストールしました！"/>

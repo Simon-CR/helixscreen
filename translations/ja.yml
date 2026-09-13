@@ -102,7 +102,9 @@ translations:
   A backup of %s is created before applying: '適用前に %s のバックアップを作成します'
   A motor IO pin couldn't be restored. Power-cycle the printer to recover: モーターのIOピンを復元できませんでした。プリンターの電源を入れ直してください
   A motor's parameters couldn't be written. Power-cycle the printer to retry: モーターのパラメーターを書き込めませんでした。プリンターの電源を入れ直して再試行してください
+  A newer version of the helper macros is available: 'ヘルパーマクロの新しいバージョンが利用可能です'
   A picture of your printer: プリンターの画像
+  A print is in progress - restart still pending: '印刷中です - 再起動は保留中'
   A spool may be tangled or the drive gear is jammed: スプールが絡まっているか、駆動ギアが詰まっている可能性があります
   ABS: ABS
   ACCELEROMETERS: 加速度センサー
@@ -833,6 +835,7 @@ translations:
   Enable Brush Wipe: 'ブラシワイプを有効化'
   Enable Bypass: バイパスを有効化
   Enable Bypass Controls: バイパスコントロールを有効化
+  Enable Clean Nozzle and other print helpers: 'ノズル清掃などの印刷ヘルパーを有効にする'
   Enable Monitoring: 監視を有効化
   Enable Purge: 'パージを有効化'
   Enable Retraction: リトラクションを有効化
@@ -971,6 +974,7 @@ translations:
   Failed to get limits: 制限の取得に失敗しました
   Failed to initialize Bluetooth: Bluetooth の初期化に失敗しました
   Failed to initialize Bluetooth context: Bluetooth コンテキストの初期化に失敗しました
+  Failed to install helper macros: 'ヘルパーマクロをインストールできませんでした'
   Failed to load G-code preview: G-code プレビューの読み込みに失敗しました
   Failed to load devices: デバイスの読み込みに失敗しました
   Failed to load fan configuration screen: ファン設定画面の読み込みに失敗しました
@@ -1000,6 +1004,7 @@ translations:
   Failed to render label: ラベルのレンダリングに失敗しました
   'Failed to reprint: {}': '再印刷に失敗しました: {}'
   Failed to reset theme: テーマのリセットに失敗しました
+  Failed to restart Klipper: 'Klipper を再起動できませんでした'
   Failed to restart Moonraker.: Moonrakerの再起動に失敗しました。
   'Failed to restart: {}': '再起動に失敗しました: {}'
   'Failed to resume: {}': '再開に失敗しました: {}'
@@ -1251,6 +1256,9 @@ translations:
   Help & About: ヘルプと情報
   Help Improve HelixScreen: HelixScreen の改善にご協力ください
   Help improve HelixScreen?: HelixScreenの改善に協力しますか？
+  Helper Macros: 'ヘルパーマクロ'
+  Helper macros already installed: 'ヘルパーマクロはすでにインストールされています'
+  Helper macros are up to date: 'ヘルパーマクロは最新です'
   Hide Firmware Noise: ファームウェアノイズを非表示
   Hide Temperature Reports: 温度レポートを非表示
   High Water Mark: 最大値
@@ -1338,6 +1346,8 @@ translations:
   Inspecting bed...: ベッドを検査中...
   Install: インストール
   Install HelixPrint Plugin: HelixPrint プラグインをインストール
+  Install Helper Macros: 'ヘルパーマクロをインストール'
+  Install Helper Macros?: 'ヘルパーマクロをインストールしますか？'
   Install Older Version?: '以前のバージョンをインストールしますか？'
   Install Plugin: プラグインをインストール
   Install Root: インストールルート
@@ -1357,6 +1367,7 @@ translations:
   Installation takes about 30 seconds.: インストールには約30秒かかります。
   Installation timed out: インストールがタイムアウトしました
   Installation timed out. The script may be stuck.: インストールがタイムアウトしました。スクリプトが停止している可能性があります。
+  Installed: 'インストール済み'
   Installing...: インストール中...
   Intensity: 強度
   Interactive calibration for all lanes: '全レーンの対話式キャリブレーション'
@@ -1401,6 +1412,7 @@ translations:
   : Klipper がエラー状態になりました。これは通常、MCU 接続の失敗または設定エラーが原因です。ファームウェア再起動を試してください。
   Klipper has entered shutdown state. This may be due to an emergency stop, thermal runaway, or configuration error.: Klipper
     がシャットダウン状態になりました。緊急停止、熱暴走、または設定エラーが原因の可能性があります。
+  Klipper restarting - macros activating: 'Klipper を再起動しています - マクロを有効化中'
   Klipper will restart to apply changes: 変更を適用するために Klipper が再起動します
   Klipper will restart to apply changes.: 変更を適用するために Klipper が再起動します。
   Klipper will restart to apply new settings.: 新しい設定を適用するためKlipperが再起動します。
@@ -1541,6 +1553,9 @@ translations:
   Macro to resume a paused print: 一時停止した印刷を再開するマクロ
   Macro to unload filament from extruder: エクストルーダーからフィラメントを排出するマクロ
   Macros: マクロ
+  Macros installed - restart pending: 'マクロをインストールしました - 再起動は保留中'
+  Macros installed. Restart Klipper after the print to activate them.: 'マクロをインストールしました。印刷後に Klipper を再起動すると有効になります。'
+  Macros updated. Restart Klipper after the print to activate them.: 'マクロを更新しました。印刷後に Klipper を再起動すると有効になります。'
   'Macros, G-code console, calibration tools (PID, input shaper, z-offset), firmware updates, and developer utilities.': マクロ、G-code コンソール、キャリブレーションツール（PID、入力シェイパー、Z オフセット）、ファームウェア更新、開発者向けユーティリティ。
   Main LED Strip: メインLEDストリップ
   Maintaining: 維持中
@@ -2062,6 +2077,7 @@ translations:
   Printer not connected: プリンターが接続されていません
   Printer not ready: プリンターの準備ができていません
   Printer ready: プリンター準備完了
+  Printer status unknown: 'プリンターの状態が不明です'
   Printer type mismatch: プリンタータイプの不一致
   'Printer:': 'プリンター:'
   'Printer: ': 'プリンター: '
@@ -2244,11 +2260,13 @@ translations:
   Restart HelixScreen: HelixScreen を再起動
   Restart Klipper: Klipper を再起動
   Restart Klipper without rebooting: ホストを再起動せずに Klipper を再起動
+  Restart Klipper?: 'Klipper を再起動しますか？'
   Restart Moonraker: Moonraker を再起動
   Restart Now: 今すぐ再起動
   Restart Required: 再起動が必要です
   'Restart failed: not connected': '再起動に失敗: 未接続'
   Restart from the beginning to recover: 復旧するには最初からやり直してください
+  Restart pending: '再起動保留中'
   Restart the display application: ディスプレイアプリケーションを再起動
   Restart the printer or screen: プリンターまたは画面を再起動します
   Restarting HelixScreen...: HelixScreenを再起動中...
@@ -2714,6 +2732,7 @@ translations:
   The filament may not have fully retracted — try again or manually pull: フィラメントが完全に戻っていない可能性があります。再試行するか手で引き抜いてください
   The filament system reported an error: フィラメントシステムがエラーを報告しました
   The heater will cycle on and off several times.: ヒーターは数回オン/オフを繰り返します。
+  The helper macros are installed and activate after Klipper restarts.: 'ヘルパーマクロはインストール済みで、Klipper の再起動後に有効になります。'
   The left RFID reader in this CFS unit may need service: この CFS ユニットの左側 RFID リーダーは修理が必要な可能性があります
   ? The loaded spool is {}, but this file was sliced for {}. Filled filament runs at a lower flow rate and needs a hardened nozzle.
   : 装填中のスプールは {} ですが、このファイルは {} 用にスライスされています。充填材入りフィラメントはフローレートが低くなり、硬化ノズルが必要です。
@@ -2766,6 +2785,9 @@ translations:
   This filament system does not report buffer or flow data.: このフィラメントシステムはバッファーやフローのデータを報告しません。
   This file was sliced for {} but {} is loaded.: このファイルは {} 用にスライスされていますが、{} がロードされています。
   This file was sliced for {}, but {} is loaded. It will print slower and hotter than the loaded spool needs.: このファイルは {} 用にスライスされていますが、{} がロードされています。装填中のスプールが必要とするより遅く高温で印刷されます。
+  ? This installs the HelixScreen helper macros on the printer and adds them to printer.cfg. A print is running, so Klipper restarts after it finishes.
+  : 'HelixScreen のヘルパーマクロをプリンターにインストールし、printer.cfg に追加します。印刷中のため、Klipper は印刷完了後に再起動されます。'
+  This installs the HelixScreen helper macros on the printer, adds them to printer.cfg, and restarts Klipper.: 'HelixScreen のヘルパーマクロをプリンターにインストールし、printer.cfg に追加して、Klipper を再起動します。'
   This is exactly the data that will be sent: これが送信されるデータです
   This is what data would be sent if enabled: これは有効にした場合に送信されるデータです
   This may take up to 30 seconds: 最大30秒かかる場合があります
@@ -2778,6 +2800,9 @@ translations:
   ? This printer looks like a {} ({}% confidence), but it is set up as a {}. A wrong type applies incorrect pre-print options and presets.
   : このプリンターは {} のようです（信頼度 {}%）が、{} として設定されています。誤ったタイプでは不正確な印刷前オプションとプリセットが適用されます。
   This removes the plugin's macros and its Moonraker component from the printer and restarts Klipper.: プラグインのマクロと Moonraker コンポーネントをプリンターから削除し、Klipper を再起動します。
+  This replaces the printer's helper macros with the current version and restarts Klipper.: 'プリンターのヘルパーマクロを現在のバージョンに置き換え、Klipper を再起動します。'
+  ? This replaces the printer's helper macros with the current version. A print is running, so Klipper restarts after it finishes.
+  : 'プリンターのヘルパーマクロを現在のバージョンに置き換えます。印刷中のため、Klipper は印刷完了後に再起動されます。'
   This tool probes each bed screw and tells you how much to adjust.: このツールは各ベッドネジをプローブし、どのくらい調整が必要かを教えます。
   ? This will apply the Z-offset to your endstop and restart Klipper to save the configuration.
     The printer will briefly disconnect.
@@ -2934,6 +2959,8 @@ translations:
   Update Available: 更新あり
   Update Channel: 更新チャンネル
   Update Failed: 更新失敗
+  Update Helper Macros: 'ヘルパーマクロを更新'
+  Update Helper Macros?: 'ヘルパーマクロを更新しますか？'
   Update Success: 更新成功
   Update from a Terminal: ターミナルから更新
   Update installed!: アップデートをインストールしました！

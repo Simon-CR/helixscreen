@@ -101,7 +101,9 @@
   <translation tag="A backup of %s is created before applying" ru="Перед применением создаётся резервная копия %s"/>
   <translation tag="A motor IO pin couldn&apos;t be restored. Power-cycle the printer to recover" ru="Не удалось восстановить вывод ввода-вывода двигателя. Выключите и включите принтер"/>
   <translation tag="A motor&apos;s parameters couldn&apos;t be written. Power-cycle the printer to retry" ru="Не удалось записать параметры двигателя. Выключите и включите принтер и повторите попытку"/>
+  <translation tag="A newer version of the helper macros is available" ru="Доступна более новая версия вспомогательных макросов"/>
   <translation tag="A picture of your printer" ru="Изображение вашего принтера"/>
+  <translation tag="A print is in progress - restart still pending" ru="Идёт печать - перезапуск ещё отложен"/>
   <translation tag="A spool may be tangled or the drive gear is jammed" ru="Катушка может быть запутана или заклинило приводную шестерню"/>
   <translation tag="ABS" ru="ABS"/>
   <translation tag="ACCELEROMETERS" ru="АКСЕЛЕРОМЕТРЫ"/>
@@ -815,6 +817,7 @@
   <translation tag="Enable Brush Wipe" ru="Включить очистку щёткой"/>
   <translation tag="Enable Bypass" ru="Включить байпас"/>
   <translation tag="Enable Bypass Controls" ru="Включить управление байпасом"/>
+  <translation tag="Enable Clean Nozzle and other print helpers" ru="Включить очистку сопла и другие вспомогательные функции печати"/>
   <translation tag="Enable Monitoring" ru="Включить мониторинг"/>
   <translation tag="Enable Purge" ru="Включить продувку"/>
   <translation tag="Enable Retraction" ru="Включить аппаратный ретракт"/>
@@ -951,6 +954,7 @@
   <translation tag="Failed to get limits" ru="Не удалось получить ограничения"/>
   <translation tag="Failed to initialize Bluetooth" ru="Не удалось инициализировать Bluetooth"/>
   <translation tag="Failed to initialize Bluetooth context" ru="Не удалось инициализировать контекст Bluetooth"/>
+  <translation tag="Failed to install helper macros" ru="Не удалось установить вспомогательные макросы"/>
   <translation tag="Failed to load G-code preview" ru="Не удалось загрузить предпросмотр G-code"/>
   <translation tag="Failed to load devices" ru="Не удалось загрузить устройства"/>
   <translation tag="Failed to load fan configuration screen" ru="Не удалось загрузить экран настройки вентилятора"/>
@@ -980,6 +984,7 @@
   <translation tag="Failed to render label" ru="Не удалось отрендерить этикетку"/>
   <translation tag="Failed to reprint: {}" ru="Не удалось перепечатать: {}"/>
   <translation tag="Failed to reset theme" ru="Не удалось сбросить тему"/>
+  <translation tag="Failed to restart Klipper" ru="Не удалось перезапустить Klipper"/>
   <translation tag="Failed to restart Moonraker." ru="Не удалось перезапустить Moonraker."/>
   <translation tag="Failed to restart: {}" ru="Не удалось перезапустить: {}"/>
   <translation tag="Failed to resume: {}" ru="Не удалось возобновить: {}"/>
@@ -1220,6 +1225,9 @@
   <translation tag="Help &amp; About" ru="Помощь и о программе"/>
   <translation tag="Help Improve HelixScreen" ru="Помогите улучшить HelixScreen"/>
   <translation tag="Help improve HelixScreen?" ru="Помочь улучшить HelixScreen?"/>
+  <translation tag="Helper Macros" ru="Вспомогательные макросы"/>
+  <translation tag="Helper macros already installed" ru="Вспомогательные макросы уже установлены"/>
+  <translation tag="Helper macros are up to date" ru="Вспомогательные макросы актуальны"/>
   <translation tag="Hide Firmware Noise" ru="Скрыть служебные сообщения прошивки"/>
   <translation tag="Hide Temperature Reports" ru="Скрыть отчёты о температуре"/>
   <translation tag="High Water Mark" ru="Пиковое значение"/>
@@ -1304,6 +1312,8 @@
   <translation tag="Inspecting bed..." ru="Осмотр стола..."/>
   <translation tag="Install" ru="Установить"/>
   <translation tag="Install HelixPrint Plugin" ru="Установить плагин HelixPrint"/>
+  <translation tag="Install Helper Macros" ru="Установить вспомогательные макросы"/>
+  <translation tag="Install Helper Macros?" ru="Установить вспомогательные макросы?"/>
   <translation tag="Install Older Version?" ru="Установить более старую версию?"/>
   <translation tag="Install Plugin" ru="Установить плагин"/>
   <translation tag="Install Root" ru="Корень установки"/>
@@ -1321,6 +1331,7 @@
   <translation tag="Installation takes about 30 seconds." ru="Установка занимает около 30 секунд."/>
   <translation tag="Installation timed out" ru="Время установки истекло"/>
   <translation tag="Installation timed out. The script may be stuck." ru="Время установки истекло. Скрипт мог зависнуть."/>
+  <translation tag="Installed" ru="Установлено"/>
   <translation tag="Installing..." ru="Установка..."/>
   <translation tag="Intensity" ru="Интенсивность"/>
   <translation tag="Interactive calibration for all lanes" ru="Интерактивная калибровка всех слотов"/>
@@ -1360,6 +1371,7 @@
   <translation tag="Klipper firmware has disconnected from the host. Try restarting Klipper or performing a firmware restart." ru="Прошивка Klipper отключилась от хоста. Попробуйте перезапустить Klipper или выполнить перезапуск прошивки."/>
   <translation tag="Klipper has entered an error state. This is typically caused by an MCU connection failure or configuration error. Try a firmware restart." ru="Klipper перешёл в состояние ошибки. Обычно это вызвано сбоем соединения MCU или ошибкой конфигурации. Попробуйте перезапустить прошивку."/>
   <translation tag="Klipper has entered shutdown state. This may be due to an emergency stop, thermal runaway, or configuration error." ru="Klipper перешёл в состояние остановки. Это может быть вызвано аварийной остановкой, тепловым разгоном или ошибкой конфигурации."/>
+  <translation tag="Klipper restarting - macros activating" ru="Перезапуск Klipper - активация макросов"/>
   <translation tag="Klipper will restart to apply changes" ru="Klipper перезапустится для применения изменений"/>
   <translation tag="Klipper will restart to apply changes." ru="Klipper перезапустится для применения изменений."/>
   <translation tag="Klipper will restart to apply new settings." ru="Klipper перезапустится для применения новых настроек."/>
@@ -1498,6 +1510,9 @@
   <translation tag="Macro to resume a paused print" ru="Макрос для возобновления приостановленной печати"/>
   <translation tag="Macro to unload filament from extruder" ru="Макрос для выгрузки филамента из экструдера"/>
   <translation tag="Macros" ru="Макросы"/>
+  <translation tag="Macros installed - restart pending" ru="Макросы установлены - ожидается перезапуск"/>
+  <translation tag="Macros installed. Restart Klipper after the print to activate them." ru="Макросы установлены. Перезапустите Klipper после печати, чтобы активировать их."/>
+  <translation tag="Macros updated. Restart Klipper after the print to activate them." ru="Макросы обновлены. Перезапустите Klipper после печати, чтобы активировать их."/>
   <translation tag="Macros, G-code console, calibration tools (PID, input shaper, z-offset), firmware updates, and developer utilities." ru="Макросы, консоль G-code, инструменты калибровки (PID, Input Shaper, Z-смещение), обновления прошивки и утилиты для разработчиков."/>
   <translation tag="Main LED Strip" ru="Основная LED-лента"/>
   <translation tag="Maintaining" ru="Поддержание"/>
@@ -2001,6 +2016,7 @@
   <translation tag="Printer not connected" ru="Принтер не подключен"/>
   <translation tag="Printer not ready" ru="Принтер не готов"/>
   <translation tag="Printer ready" ru="Принтер готов"/>
+  <translation tag="Printer status unknown" ru="Состояние принтера неизвестно"/>
   <translation tag="Printer type mismatch" ru="Несоответствие типа принтера"/>
   <translation tag="Printer:" ru="Принтер:"/>
   <translation tag="Printer: " ru="Принтер: "/>
@@ -2180,11 +2196,13 @@
   <translation tag="Restart HelixScreen" ru="Перезапустить HelixScreen"/>
   <translation tag="Restart Klipper" ru="Перезапустить Klipper"/>
   <translation tag="Restart Klipper without rebooting" ru="Перезапуск Klipper без перезагрузки"/>
+  <translation tag="Restart Klipper?" ru="Перезапустить Klipper?"/>
   <translation tag="Restart Moonraker" ru="Перезапустить Moonraker"/>
   <translation tag="Restart Now" ru="Перезапустить сейчас"/>
   <translation tag="Restart Required" ru="Требуется перезапуск"/>
   <translation tag="Restart failed: not connected" ru="Перезапуск не удался: нет подключения"/>
   <translation tag="Restart from the beginning to recover" ru="Чтобы восстановить печать, запустите её с начала"/>
+  <translation tag="Restart pending" ru="Ожидается перезапуск"/>
   <translation tag="Restart the display application" ru="Перезапустить приложение дисплея"/>
   <translation tag="Restart the printer or screen" ru="Перезапустить принтер или экран"/>
   <translation tag="Restarting HelixScreen..." ru="Перезапуск HelixScreen..."/>
@@ -2629,6 +2647,7 @@
   <translation tag="The filament may not have fully retracted — try again or manually pull" ru="Возможно, филамент втянут не полностью. Повторите или вытяните вручную"/>
   <translation tag="The filament system reported an error" ru="Система филамента сообщила об ошибке"/>
   <translation tag="The heater will cycle on and off several times." ru="Нагреватель будет несколько раз включаться и выключаться."/>
+  <translation tag="The helper macros are installed and activate after Klipper restarts." ru="Вспомогательные макросы установлены и активируются после перезапуска Klipper."/>
   <translation tag="The left RFID reader in this CFS unit may need service" ru="Левому RFID-считывателю этого блока CFS может требоваться обслуживание"/>
   <translation tag="The loaded spool is {}, but this file was sliced for {}. Filled filament runs at a lower flow rate and needs a hardened nozzle." ru="Загружена катушка {}, но файл нарезан для {}. Филамент с наполнителем печатается с меньшим потоком и требует закалённого сопла."/>
   <translation tag="The print is paused. Changing tools now moves the toolhead and swaps the filament at the nozzle. Resume the print once the change finishes." ru="Печать на паузе. Смена инструмента сейчас переместит печатающую головку и заменит филамент в сопле. Возобновите печать после завершения смены."/>
@@ -2675,6 +2694,8 @@
   <translation tag="This filament system does not report buffer or flow data." ru="Эта система филамента не сообщает данные буфера и потока."/>
   <translation tag="This file was sliced for {} but {} is loaded." ru="Файл нарезан для {}, но загружен {}."/>
   <translation tag="This file was sliced for {}, but {} is loaded. It will print slower and hotter than the loaded spool needs." ru="Файл нарезан для {}, но загружен {}. Печать будет медленнее и горячее, чем требуется загруженной катушке."/>
+  <translation tag="This installs the HelixScreen helper macros on the printer and adds them to printer.cfg. A print is running, so Klipper restarts after it finishes." ru="Это установит вспомогательные макросы HelixScreen на принтер и добавит их в printer.cfg. Идёт печать, поэтому Klipper перезапустится после её завершения."/>
+  <translation tag="This installs the HelixScreen helper macros on the printer, adds them to printer.cfg, and restarts Klipper." ru="Это установит вспомогательные макросы HelixScreen на принтер, добавит их в printer.cfg и перезапустит Klipper."/>
   <translation tag="This is exactly the data that will be sent" ru="Это именно те данные, которые будут отправлены"/>
   <translation tag="This is what data would be sent if enabled" ru="Эти данные были бы отправлены при включении"/>
   <translation tag="This may take up to 30 seconds" ru="Это может занять до 30 секунд"/>
@@ -2682,6 +2703,8 @@
   <translation tag="This print needs about %.0fg but the spool has about %.0fg remaining. Start anyway?" ru="Для этой печати нужно около %.0fг, но на катушке осталось около %.0fг. Всё равно начать?"/>
   <translation tag="This printer looks like a {} ({}% confidence), but it is set up as a {}. A wrong type applies incorrect pre-print options and presets." ru="Этот принтер похож на {} (уверенность {}%), но настроен как {}. Неверный тип применяет неправильные параметры перед печатью и пресеты."/>
   <translation tag="This removes the plugin&apos;s macros and its Moonraker component from the printer and restarts Klipper." ru="Удаляет макросы плагина и его компонент Moonraker с принтера и перезапускает Klipper."/>
+  <translation tag="This replaces the printer&apos;s helper macros with the current version and restarts Klipper." ru="Это заменит вспомогательные макросы принтера текущей версией и перезапустит Klipper."/>
+  <translation tag="This replaces the printer&apos;s helper macros with the current version. A print is running, so Klipper restarts after it finishes." ru="Это заменит вспомогательные макросы принтера текущей версией. Идёт печать, поэтому Klipper перезапустится после её завершения."/>
   <translation tag="This tool probes each bed screw and tells you how much to adjust." ru="Этот инструмент проверяет каждый винт стола и показывает, насколько его нужно отрегулировать."/>
   <translation tag="This will apply the Z-offset to your endstop and restart Klipper to save the configuration. The printer will briefly disconnect." ru="Z-offset будет применён к вашему концевику, и Klipper перезапустится для сохранения конфигурации. Принтер ненадолго отключится."/>
   <translation tag="This will apply the Z-offset to your probe and restart Klipper to save the configuration. The printer will briefly disconnect." ru="Z-offset будет применён к вашему зонду, и Klipper перезапустится для сохранения конфигурации. Принтер ненадолго отключится."/>
@@ -2829,6 +2852,8 @@
   <translation tag="Update Available" ru="Доступно обновление"/>
   <translation tag="Update Channel" ru="Канал обновлений"/>
   <translation tag="Update Failed" ru="Ошибка обновления"/>
+  <translation tag="Update Helper Macros" ru="Обновить вспомогательные макросы"/>
+  <translation tag="Update Helper Macros?" ru="Обновить вспомогательные макросы?"/>
   <translation tag="Update Success" ru="Обновление успешно"/>
   <translation tag="Update from a Terminal" ru="Обновление через терминал"/>
   <translation tag="Update installed!" ru="Обновление установлено!"/>

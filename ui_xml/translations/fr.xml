@@ -101,7 +101,9 @@
   <translation tag="A backup of %s is created before applying" fr="Une sauvegarde de %s est créée avant l&apos;application"/>
   <translation tag="A motor IO pin couldn&apos;t be restored. Power-cycle the printer to recover" fr="Une broche d&apos;E/S moteur n&apos;a pas pu être restaurée. Éteignez et rallumez l&apos;imprimante pour récupérer"/>
   <translation tag="A motor&apos;s parameters couldn&apos;t be written. Power-cycle the printer to retry" fr="Les paramètres d&apos;un moteur n&apos;ont pas pu être écrits. Éteignez et rallumez l&apos;imprimante pour réessayer"/>
+  <translation tag="A newer version of the helper macros is available" fr="Une version plus récente des macros d&apos;aide est disponible"/>
   <translation tag="A picture of your printer" fr="Une photo de votre imprimante"/>
+  <translation tag="A print is in progress - restart still pending" fr="Une impression est en cours - redémarrage en attente"/>
   <translation tag="A spool may be tangled or the drive gear is jammed" fr="Une bobine est peut-être emmêlée ou l&apos;engrenage d&apos;entraînement est bloqué"/>
   <translation tag="ABS" fr="ABS"/>
   <translation tag="ACCELEROMETERS" fr="ACCÉLÉROMÈTRES"/>
@@ -815,6 +817,7 @@
   <translation tag="Enable Brush Wipe" fr="Activer l&apos;essuyage par brosse"/>
   <translation tag="Enable Bypass" fr="Activer le bypass"/>
   <translation tag="Enable Bypass Controls" fr="Activer les contrôles du bypass"/>
+  <translation tag="Enable Clean Nozzle and other print helpers" fr="Activer Nettoyer la buse et autres aides à l&apos;impression"/>
   <translation tag="Enable Monitoring" fr="Activer la surveillance"/>
   <translation tag="Enable Purge" fr="Activer la purge"/>
   <translation tag="Enable Retraction" fr="Activer la rétraction"/>
@@ -951,6 +954,7 @@
   <translation tag="Failed to get limits" fr="Échec de la récupération des limites"/>
   <translation tag="Failed to initialize Bluetooth" fr="Échec de l&apos;initialisation Bluetooth"/>
   <translation tag="Failed to initialize Bluetooth context" fr="Échec de l&apos;initialisation du contexte Bluetooth"/>
+  <translation tag="Failed to install helper macros" fr="Échec de l&apos;installation des macros d&apos;aide"/>
   <translation tag="Failed to load G-code preview" fr="Échec du chargement de l&apos;aperçu G-code"/>
   <translation tag="Failed to load devices" fr="Échec du chargement des appareils"/>
   <translation tag="Failed to load fan configuration screen" fr="Échec du chargement de la configuration ventilateur"/>
@@ -980,6 +984,7 @@
   <translation tag="Failed to render label" fr="Échec du rendu de l&apos;étiquette"/>
   <translation tag="Failed to reprint: {}" fr="Échec de la réimpression : {}"/>
   <translation tag="Failed to reset theme" fr="Échec de la réinitialisation du thème"/>
+  <translation tag="Failed to restart Klipper" fr="Échec du redémarrage de Klipper"/>
   <translation tag="Failed to restart Moonraker." fr="Échec du redémarrage de Moonraker."/>
   <translation tag="Failed to restart: {}" fr="Échec du redémarrage : {}"/>
   <translation tag="Failed to resume: {}" fr="Échec de la reprise : {}"/>
@@ -1220,6 +1225,9 @@
   <translation tag="Help &amp; About" fr="Aide et à propos"/>
   <translation tag="Help Improve HelixScreen" fr="Aidez à améliorer HelixScreen"/>
   <translation tag="Help improve HelixScreen?" fr="Aider à améliorer HelixScreen ?"/>
+  <translation tag="Helper Macros" fr="Macros d&apos;aide"/>
+  <translation tag="Helper macros already installed" fr="Les macros d&apos;aide sont déjà installées"/>
+  <translation tag="Helper macros are up to date" fr="Les macros d&apos;aide sont à jour"/>
   <translation tag="Hide Firmware Noise" fr="Masquer le bruit du firmware"/>
   <translation tag="Hide Temperature Reports" fr="Masquer les rapports de température"/>
   <translation tag="High Water Mark" fr="Pic d&apos;utilisation"/>
@@ -1304,6 +1312,8 @@
   <translation tag="Inspecting bed..." fr="Inspection du plateau..."/>
   <translation tag="Install" fr="Installer"/>
   <translation tag="Install HelixPrint Plugin" fr="Installer le plugin HelixPrint"/>
+  <translation tag="Install Helper Macros" fr="Installer les macros d&apos;aide"/>
+  <translation tag="Install Helper Macros?" fr="Installer les macros d&apos;aide ?"/>
   <translation tag="Install Older Version?" fr="Installer une version plus ancienne ?"/>
   <translation tag="Install Plugin" fr="Installer le plugin"/>
   <translation tag="Install Root" fr="Racine d&apos;installation"/>
@@ -1321,6 +1331,7 @@
   <translation tag="Installation takes about 30 seconds." fr="L&apos;installation prend environ 30 secondes."/>
   <translation tag="Installation timed out" fr="Installation — délai dépassé"/>
   <translation tag="Installation timed out. The script may be stuck." fr="Installation — délai dépassé. Le script est peut-être bloqué."/>
+  <translation tag="Installed" fr="Installé"/>
   <translation tag="Installing..." fr="Installation..."/>
   <translation tag="Intensity" fr="Intensité"/>
   <translation tag="Interactive calibration for all lanes" fr="Calibration interactive pour toutes les voies"/>
@@ -1360,6 +1371,7 @@
   <translation tag="Klipper firmware has disconnected from the host. Try restarting Klipper or performing a firmware restart." fr="Le firmware Klipper s&apos;est déconnecté de l&apos;hôte. Essayez de redémarrer Klipper ou d&apos;effectuer un redémarrage du firmware."/>
   <translation tag="Klipper has entered an error state. This is typically caused by an MCU connection failure or configuration error. Try a firmware restart." fr="Klipper est entré dans un état d&apos;erreur. Cela est généralement causé par un échec de connexion MCU ou une erreur de configuration. Essayez un redémarrage du firmware."/>
   <translation tag="Klipper has entered shutdown state. This may be due to an emergency stop, thermal runaway, or configuration error." fr="Klipper est passé en état d&apos;arrêt. Cela peut être dû à un arrêt d&apos;urgence, à un emballement thermique ou à une erreur de configuration."/>
+  <translation tag="Klipper restarting - macros activating" fr="Redémarrage de Klipper - activation des macros"/>
   <translation tag="Klipper will restart to apply changes" fr="Klipper redémarrera pour appliquer les modifications"/>
   <translation tag="Klipper will restart to apply changes." fr="Klipper redémarrera pour appliquer les modifications."/>
   <translation tag="Klipper will restart to apply new settings." fr="Klipper va redémarrer pour appliquer les nouveaux paramètres."/>
@@ -1498,6 +1510,9 @@
   <translation tag="Macro to resume a paused print" fr="Macro pour reprendre une impression en pause"/>
   <translation tag="Macro to unload filament from extruder" fr="Macro pour décharger le filament de l&apos;extrudeur"/>
   <translation tag="Macros" fr="Macros"/>
+  <translation tag="Macros installed - restart pending" fr="Macros installées - redémarrage en attente"/>
+  <translation tag="Macros installed. Restart Klipper after the print to activate them." fr="Macros installées. Redémarrez Klipper après l&apos;impression pour les activer."/>
+  <translation tag="Macros updated. Restart Klipper after the print to activate them." fr="Macros mises à jour. Redémarrez Klipper après l&apos;impression pour les activer."/>
   <translation tag="Macros, G-code console, calibration tools (PID, input shaper, z-offset), firmware updates, and developer utilities." fr="Macros, console G-code, outils de calibration (PID, Input Shaper, Z-offset), mises à jour du firmware et utilitaires pour développeurs."/>
   <translation tag="Main LED Strip" fr="Bandeau LED principal"/>
   <translation tag="Maintaining" fr="Maintien"/>
@@ -2001,6 +2016,7 @@
   <translation tag="Printer not connected" fr="Imprimante non connectée"/>
   <translation tag="Printer not ready" fr="Imprimante non prête"/>
   <translation tag="Printer ready" fr="Imprimante prête"/>
+  <translation tag="Printer status unknown" fr="État de l&apos;imprimante inconnu"/>
   <translation tag="Printer type mismatch" fr="Type d&apos;imprimante incompatible"/>
   <translation tag="Printer:" fr="Imprimante :"/>
   <translation tag="Printer: " fr="Imprimante : "/>
@@ -2180,11 +2196,13 @@
   <translation tag="Restart HelixScreen" fr="Redémarrer HelixScreen"/>
   <translation tag="Restart Klipper" fr="Redémarrer Klipper"/>
   <translation tag="Restart Klipper without rebooting" fr="Redémarrer Klipper, pas l&apos;hôte"/>
+  <translation tag="Restart Klipper?" fr="Redémarrer Klipper ?"/>
   <translation tag="Restart Moonraker" fr="Redémarrer Moonraker"/>
   <translation tag="Restart Now" fr="Redémarrer maintenant"/>
   <translation tag="Restart Required" fr="Redémarrage requis"/>
   <translation tag="Restart failed: not connected" fr="Échec du redémarrage : non connecté"/>
   <translation tag="Restart from the beginning to recover" fr="Relancez depuis le début pour récupérer l&apos;impression"/>
+  <translation tag="Restart pending" fr="Redémarrage en attente"/>
   <translation tag="Restart the display application" fr="Redémarrer l&apos;application d&apos;affichage"/>
   <translation tag="Restart the printer or screen" fr="Redémarrer l&apos;imprimante ou l&apos;écran"/>
   <translation tag="Restarting HelixScreen..." fr="Redémarrage de HelixScreen..."/>
@@ -2629,6 +2647,7 @@
   <translation tag="The filament may not have fully retracted — try again or manually pull" fr="Le filament n&apos;est peut-être pas entièrement rétracté. Réessayez ou tirez à la main"/>
   <translation tag="The filament system reported an error" fr="Le système de filament a signalé une erreur"/>
   <translation tag="The heater will cycle on and off several times." fr="Le chauffage s&apos;allumera et s&apos;éteindra plusieurs fois."/>
+  <translation tag="The helper macros are installed and activate after Klipper restarts." fr="Les macros d&apos;aide sont installées et s&apos;activent après un redémarrage de Klipper."/>
   <translation tag="The left RFID reader in this CFS unit may need service" fr="Le lecteur RFID gauche de cette unité CFS nécessite peut-être une intervention"/>
   <translation tag="The loaded spool is {}, but this file was sliced for {}. Filled filament runs at a lower flow rate and needs a hardened nozzle." fr="La bobine chargée est {}, mais ce fichier a été tranché pour {}. Un filament chargé fonctionne à un débit plus faible et nécessite une buse durcie."/>
   <translation tag="The print is paused. Changing tools now moves the toolhead and swaps the filament at the nozzle. Resume the print once the change finishes." fr="L&apos;impression est en pause. Changer d&apos;outil maintenant déplace la tête d&apos;impression et remplace le filament au niveau de la buse. Reprenez l&apos;impression une fois le changement terminé."/>
@@ -2675,6 +2694,8 @@
   <translation tag="This filament system does not report buffer or flow data." fr="Ce système de filament ne fournit ni données de tampon ni données de débit."/>
   <translation tag="This file was sliced for {} but {} is loaded." fr="Ce fichier a été tranché pour {} mais {} est chargé."/>
   <translation tag="This file was sliced for {}, but {} is loaded. It will print slower and hotter than the loaded spool needs." fr="Ce fichier a été tranché pour {}, mais {} est chargé. L&apos;impression sera plus lente et plus chaude que ce qu&apos;exige la bobine chargée."/>
+  <translation tag="This installs the HelixScreen helper macros on the printer and adds them to printer.cfg. A print is running, so Klipper restarts after it finishes." fr="Cela installe les macros d&apos;aide HelixScreen sur l&apos;imprimante et les ajoute à printer.cfg. Une impression est en cours, Klipper redémarrera une fois terminée."/>
+  <translation tag="This installs the HelixScreen helper macros on the printer, adds them to printer.cfg, and restarts Klipper." fr="Cela installe les macros d&apos;aide HelixScreen sur l&apos;imprimante, les ajoute à printer.cfg et redémarre Klipper."/>
   <translation tag="This is exactly the data that will be sent" fr="Voici exactement les données qui seront envoyées"/>
   <translation tag="This is what data would be sent if enabled" fr="Voici les données qui seraient envoyées si activé"/>
   <translation tag="This may take up to 30 seconds" fr="Cela peut prendre jusqu&apos;à 30 secondes"/>
@@ -2682,6 +2703,8 @@
   <translation tag="This print needs about %.0fg but the spool has about %.0fg remaining. Start anyway?" fr="Cette impression nécessite environ %.0fg mais il reste environ %.0fg sur la bobine. Démarrer quand même ?"/>
   <translation tag="This printer looks like a {} ({}% confidence), but it is set up as a {}. A wrong type applies incorrect pre-print options and presets." fr="Cette imprimante ressemble à un {} ({} % de confiance), mais elle est configurée en {}. Un type erroné applique des options et des préréglages de pré-impression incorrects."/>
   <translation tag="This removes the plugin&apos;s macros and its Moonraker component from the printer and restarts Klipper." fr="Supprime les macros du plugin et son composant Moonraker de l&apos;imprimante, puis redémarre Klipper."/>
+  <translation tag="This replaces the printer&apos;s helper macros with the current version and restarts Klipper." fr="Cela remplace les macros d&apos;aide de l&apos;imprimante par la version actuelle et redémarre Klipper."/>
+  <translation tag="This replaces the printer&apos;s helper macros with the current version. A print is running, so Klipper restarts after it finishes." fr="Cela remplace les macros d&apos;aide de l&apos;imprimante par la version actuelle. Une impression est en cours, Klipper redémarrera une fois terminée."/>
   <translation tag="This tool probes each bed screw and tells you how much to adjust." fr="Cet outil palpe chaque vis du plateau et vous indique combien ajuster."/>
   <translation tag="This will apply the Z-offset to your endstop and restart Klipper to save the configuration. The printer will briefly disconnect." fr="Cela appliquera le Z-offset à votre butée et redémarrera Klipper pour enregistrer la configuration. L&apos;imprimante se déconnectera brièvement."/>
   <translation tag="This will apply the Z-offset to your probe and restart Klipper to save the configuration. The printer will briefly disconnect." fr="Cela appliquera le Z-offset à votre sonde et redémarrera Klipper pour enregistrer la configuration. L&apos;imprimante se déconnectera brièvement."/>
@@ -2829,6 +2852,8 @@
   <translation tag="Update Available" fr="Mise à jour disponible"/>
   <translation tag="Update Channel" fr="Canal de mise à jour"/>
   <translation tag="Update Failed" fr="Mise à jour échouée"/>
+  <translation tag="Update Helper Macros" fr="Mettre à jour les macros d&apos;aide"/>
+  <translation tag="Update Helper Macros?" fr="Mettre à jour les macros d&apos;aide ?"/>
   <translation tag="Update Success" fr="Mise à jour réussie"/>
   <translation tag="Update from a Terminal" fr="Mettre à jour depuis un terminal"/>
   <translation tag="Update installed!" fr="Mise à jour installée !"/>

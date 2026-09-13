@@ -32,6 +32,7 @@
 #include "lvgl.h"
 #include "lvgl/src/display/lv_display_private.h" // For rendering_in_progress check
 #include "lvgl_debug_invalidate.h"
+#include "macro_manager.h"
 #include "printer_cache_registry.h"
 #include "probe_sensor_manager.h"
 #include "runtime_config.h"
@@ -801,6 +802,25 @@ void PrinterState::set_hardware(helix::PrinterDiscovery hardware) {
     // Delegate capability subject updates to capabilities_state_ component
     capabilities_state_.set_hardware(discovery_, capability_overrides_);
 
+    // Fold the helper-macro install status in with the same snapshot. An
+    // Installed base also clears any restart-pending flag held for a staged
+    // install or update (PrinterPluginStatusState); Outdated keeps it, since
+    // the staged pack is not loaded until the restart.
+    switch (MacroManager::evaluate_status(discovery_)) {
+    case MacroInstallStatus::NOT_INSTALLED:
+        plugin_status_state_.set_helix_macros_base_status(HelixMacrosStatus::NotInstalled);
+        break;
+    case MacroInstallStatus::INSTALLED:
+        plugin_status_state_.set_helix_macros_base_status(HelixMacrosStatus::Installed);
+        break;
+    case MacroInstallStatus::OUTDATED:
+        plugin_status_state_.set_helix_macros_base_status(HelixMacrosStatus::Outdated);
+        break;
+    case MacroInstallStatus::UNKNOWN:
+        plugin_status_state_.set_helix_macros_base_status(HelixMacrosStatus::Unknown);
+        break;
+    }
+
     // Re-synthesize dynamic pre-print options now that hardware capabilities are
     // known. The bed_mesh option's adaptive_active flag (which relabels it to
     // "Adaptive Bed Mesh" and enables the adaptive param) depends on
@@ -995,6 +1015,11 @@ bool PrinterState::service_has_helix_plugin() const {
 void PrinterState::set_phase_tracking_enabled(bool enabled) {
     // Delegate to plugin_status_state_ component (handles async dispatch internally)
     plugin_status_state_.set_phase_tracking_enabled(enabled);
+}
+
+void PrinterState::set_helix_macros_restart_pending(bool pending) {
+    // Main thread only; the install flow reaches this from deferred callbacks
+    plugin_status_state_.set_helix_macros_restart_pending(pending);
 }
 
 bool PrinterState::is_phase_tracking_enabled() const {

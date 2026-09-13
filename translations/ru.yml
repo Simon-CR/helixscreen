@@ -106,7 +106,9 @@ translations:
   A backup of %s is created before applying: 'Перед применением создаётся резервная копия %s'
   A motor IO pin couldn't be restored. Power-cycle the printer to recover: Не удалось восстановить вывод ввода-вывода двигателя. Выключите и включите принтер
   A motor's parameters couldn't be written. Power-cycle the printer to retry: Не удалось записать параметры двигателя. Выключите и включите принтер и повторите попытку
+  A newer version of the helper macros is available: 'Доступна более новая версия вспомогательных макросов'
   A picture of your printer: Изображение вашего принтера
+  A print is in progress - restart still pending: 'Идёт печать - перезапуск ещё отложен'
   A spool may be tangled or the drive gear is jammed: Катушка может быть запутана или заклинило приводную шестерню
   ABS: ABS
   ACCELEROMETERS: АКСЕЛЕРОМЕТРЫ
@@ -897,6 +899,7 @@ translations:
   Enable Brush Wipe: 'Включить очистку щёткой'
   Enable Bypass: Включить байпас
   Enable Bypass Controls: Включить управление байпасом
+  Enable Clean Nozzle and other print helpers: 'Включить очистку сопла и другие вспомогательные функции печати'
   Enable Monitoring: Включить мониторинг
   Enable Purge: 'Включить продувку'
   Enable Retraction: Включить аппаратный ретракт
@@ -1044,6 +1047,7 @@ translations:
   Failed to get limits: Не удалось получить ограничения
   Failed to initialize Bluetooth: Не удалось инициализировать Bluetooth
   Failed to initialize Bluetooth context: Не удалось инициализировать контекст Bluetooth
+  Failed to install helper macros: 'Не удалось установить вспомогательные макросы'
   Failed to load G-code preview: Не удалось загрузить предпросмотр G-code
   Failed to load devices: Не удалось загрузить устройства
   Failed to load fan configuration screen: Не удалось загрузить экран настройки вентилятора
@@ -1075,6 +1079,7 @@ translations:
   Failed to render label: Не удалось отрендерить этикетку
   'Failed to reprint: {}': 'Не удалось перепечатать: {}'
   Failed to reset theme: Не удалось сбросить тему
+  Failed to restart Klipper: 'Не удалось перезапустить Klipper'
   Failed to restart Moonraker.: Не удалось перезапустить Moonraker.
   'Failed to restart: {}': 'Не удалось перезапустить: {}'
   'Failed to resume: {}': 'Не удалось возобновить: {}'
@@ -1335,6 +1340,9 @@ translations:
   Help & About: Помощь и о программе
   Help Improve HelixScreen: Помогите улучшить HelixScreen
   Help improve HelixScreen?: Помочь улучшить HelixScreen?
+  Helper Macros: 'Вспомогательные макросы'
+  Helper macros already installed: 'Вспомогательные макросы уже установлены'
+  Helper macros are up to date: 'Вспомогательные макросы актуальны'
   Hide Firmware Noise: Скрыть служебные сообщения прошивки
   Hide Temperature Reports: Скрыть отчёты о температуре
   High Water Mark: Пиковое значение
@@ -1432,6 +1440,8 @@ translations:
   Inspecting bed...: Осмотр стола...
   Install: Установить
   Install HelixPrint Plugin: Установить плагин HelixPrint
+  Install Helper Macros: 'Установить вспомогательные макросы'
+  Install Helper Macros?: 'Установить вспомогательные макросы?'
   Install Older Version?: 'Установить более старую версию?'
   Install Plugin: Установить плагин
   Install Root: Корень установки
@@ -1457,6 +1467,7 @@ translations:
   Installation timed out: Время установки истекло
   Installation timed out. The script may be stuck.: Время установки истекло. Скрипт
     мог зависнуть.
+  Installed: 'Установлено'
   Installing...: Установка...
   Intensity: Интенсивность
   Interactive calibration for all lanes: 'Интерактивная калибровка всех слотов'
@@ -1506,6 +1517,7 @@ translations:
   Klipper has entered shutdown state. This may be due to an emergency stop, thermal runaway, or configuration error.: Klipper
     перешёл в состояние остановки. Это может быть вызвано аварийной остановкой, тепловым
     разгоном или ошибкой конфигурации.
+  Klipper restarting - macros activating: 'Перезапуск Klipper - активация макросов'
   Klipper will restart to apply changes: Klipper перезапустится для применения изменений
   Klipper will restart to apply changes.: Klipper перезапустится для применения изменений.
   Klipper will restart to apply new settings.: Klipper перезапустится для применения
@@ -1657,6 +1669,9 @@ translations:
   Macro to resume a paused print: Макрос для возобновления приостановленной печати
   Macro to unload filament from extruder: Макрос для выгрузки филамента из экструдера
   Macros: Макросы
+  Macros installed - restart pending: 'Макросы установлены - ожидается перезапуск'
+  Macros installed. Restart Klipper after the print to activate them.: 'Макросы установлены. Перезапустите Klipper после печати, чтобы активировать их.'
+  Macros updated. Restart Klipper after the print to activate them.: 'Макросы обновлены. Перезапустите Klipper после печати, чтобы активировать их.'
   'Macros, G-code console, calibration tools (PID, input shaper, z-offset), firmware updates, and developer utilities.': 'Макросы, консоль G-code, инструменты калибровки (PID, Input Shaper, Z-смещение), обновления прошивки и утилиты для разработчиков.'
   Main LED Strip: Основная LED-лента
   Maintaining: Поддержание
@@ -2199,6 +2214,7 @@ translations:
   Printer not connected: Принтер не подключен
   Printer not ready: Принтер не готов
   Printer ready: Принтер готов
+  Printer status unknown: 'Состояние принтера неизвестно'
   Printer type mismatch: Несоответствие типа принтера
   'Printer:': 'Принтер:'
   'Printer: ': 'Принтер: '
@@ -2393,11 +2409,13 @@ translations:
   Restart HelixScreen: Перезапустить HelixScreen
   Restart Klipper: Перезапустить Klipper
   Restart Klipper without rebooting: Перезапуск Klipper без перезагрузки
+  Restart Klipper?: 'Перезапустить Klipper?'
   Restart Moonraker: Перезапустить Moonraker
   Restart Now: Перезапустить сейчас
   Restart Required: Требуется перезапуск
   'Restart failed: not connected': 'Перезапуск не удался: нет подключения'
   Restart from the beginning to recover: Чтобы восстановить печать, запустите её с начала
+  Restart pending: 'Ожидается перезапуск'
   Restart the display application: Перезапустить приложение дисплея
   Restart the printer or screen: Перезапустить принтер или экран
   Restarting HelixScreen...: Перезапуск HelixScreen...
@@ -2909,6 +2927,7 @@ translations:
   The filament system reported an error: Система филамента сообщила об ошибке
   The heater will cycle on and off several times.: Нагреватель будет несколько раз
     включаться и выключаться.
+  The helper macros are installed and activate after Klipper restarts.: 'Вспомогательные макросы установлены и активируются после перезапуска Klipper.'
   The left RFID reader in this CFS unit may need service: Левому RFID-считывателю этого блока CFS может требоваться обслуживание
   ? The loaded spool is {}, but this file was sliced for {}. Filled filament runs at a lower flow rate and needs a hardened nozzle.
   : Загружена катушка {}, но файл нарезан для {}. Филамент с наполнителем печатается с меньшим потоком и требует закалённого сопла.
@@ -2971,6 +2990,9 @@ translations:
   This file was sliced for {} but {} is loaded.: Файл нарезан для {}, но загружен
     {}.
   This file was sliced for {}, but {} is loaded. It will print slower and hotter than the loaded spool needs.: Файл нарезан для {}, но загружен {}. Печать будет медленнее и горячее, чем требуется загруженной катушке.
+  ? This installs the HelixScreen helper macros on the printer and adds them to printer.cfg. A print is running, so Klipper restarts after it finishes.
+  : 'Это установит вспомогательные макросы HelixScreen на принтер и добавит их в printer.cfg. Идёт печать, поэтому Klipper перезапустится после её завершения.'
+  This installs the HelixScreen helper macros on the printer, adds them to printer.cfg, and restarts Klipper.: 'Это установит вспомогательные макросы HelixScreen на принтер, добавит их в printer.cfg и перезапустит Klipper.'
   This is exactly the data that will be sent: Это именно те данные, которые будут
     отправлены
   This is what data would be sent if enabled: Эти данные были бы отправлены при включении
@@ -2985,6 +3007,9 @@ translations:
   ? This printer looks like a {} ({}% confidence), but it is set up as a {}. A wrong type applies incorrect pre-print options and presets.
   : Этот принтер похож на {} (уверенность {}%), но настроен как {}. Неверный тип применяет неправильные параметры перед печатью и пресеты.
   This removes the plugin's macros and its Moonraker component from the printer and restarts Klipper.: Удаляет макросы плагина и его компонент Moonraker с принтера и перезапускает Klipper.
+  This replaces the printer's helper macros with the current version and restarts Klipper.: 'Это заменит вспомогательные макросы принтера текущей версией и перезапустит Klipper.'
+  ? This replaces the printer's helper macros with the current version. A print is running, so Klipper restarts after it finishes.
+  : 'Это заменит вспомогательные макросы принтера текущей версией. Идёт печать, поэтому Klipper перезапустится после её завершения.'
   This tool probes each bed screw and tells you how much to adjust.: Этот инструмент
     проверяет каждый винт стола и показывает, насколько его нужно отрегулировать.
   ? This will apply the Z-offset to your endstop and restart Klipper to save the configuration.
@@ -3155,6 +3180,8 @@ translations:
   Update Available: Доступно обновление
   Update Channel: Канал обновлений
   Update Failed: Ошибка обновления
+  Update Helper Macros: 'Обновить вспомогательные макросы'
+  Update Helper Macros?: 'Обновить вспомогательные макросы?'
   Update Success: Обновление успешно
   Update from a Terminal: Обновление через терминал
   Update installed!: Обновление установлено!

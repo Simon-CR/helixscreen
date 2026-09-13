@@ -9,13 +9,31 @@
 namespace helix {
 
 /**
+ * @brief UI-facing status of the HelixScreen helper macro pack
+ *
+ * Extends the printer-side detection states (MacroInstallStatus) with
+ * RESTART_PENDING — the post-staging truth: the files are on the printer
+ * but the macros only load at the next Klipper restart. Numeric values are
+ * the helix_macros_status subject values the XML rows bind against.
+ */
+enum class HelixMacrosStatus {
+    Unknown = -1,       ///< No objects list from the printer yet
+    NotInstalled = 0,   ///< Discovered; the printer has no Helix macros
+    Installed = 1,      ///< Current pack version active
+    Outdated = 2,       ///< Older pack active; the update offer applies
+    RestartPending = 3, ///< Files staged; activate at the next Klipper restart
+};
+
+/**
  * @brief Manages HelixPrint plugin status subjects for UI feature gating
  *
- * Tracks whether the HelixPrint Klipper plugin is installed and whether
- * phase tracking is enabled. Both subjects use tri-state semantics:
+ * Tracks whether the HelixPrint Klipper plugin is installed, whether phase
+ * tracking is enabled, and the install status of the HelixScreen helper
+ * macro pack. The plugin subjects use tri-state semantics:
  * -1=unknown, 0=disabled/not installed, 1=enabled/installed.
  *
- * Extracted from PrinterState as part of god class decomposition.
+ * The macro status subject composes a discovery-derived base value with a
+ * restart-pending flag set by the install flow (see HelixMacrosStatus).
  *
  * The unknown (-1) state allows the UI to distinguish between:
  * - "Still checking" (show loading/spinner)
@@ -68,6 +86,31 @@ class PrinterPluginStatusState {
      */
     void set_phase_tracking_enabled(bool enabled);
 
+    /**
+     * @brief Set the discovery-derived helper-macro install status
+     *
+     * Called from PrinterState::set_hardware() on the main thread once a
+     * discovery snapshot has been folded in. Only an Installed base clears
+     * the restart-pending flag: discovery reporting the CURRENT pack active
+     * means a restart landed. An Outdated base keeps it — until the restart,
+     * discovery still reports the old rung.
+     *
+     * @param base Status derived via MacroManager::evaluate_status()
+     */
+    void set_helix_macros_base_status(HelixMacrosStatus base);
+
+    /**
+     * @brief Mark helper-macro files as staged and awaiting a Klipper restart
+     *
+     * Set by the install flow after install_files()/update_files() succeeded
+     * while a print made an immediate restart unsafe; cleared when discovery
+     * reports the macros active at the current version. Main thread only
+     * (fired from deferred callbacks).
+     *
+     * @param pending True while the staged files still await a restart
+     */
+    void set_helix_macros_restart_pending(bool pending);
+
     // ========================================================================
     // Subject accessors
     // ========================================================================
@@ -80,6 +123,11 @@ class PrinterPluginStatusState {
     /// Tri-state: -1=unknown, 0=disabled, 1=enabled
     lv_subject_t* get_phase_tracking_enabled_subject() {
         return &phase_tracking_enabled_;
+    }
+
+    /// HelixMacrosStatus value the XML rows bind against
+    lv_subject_t* get_helix_macros_status_subject() {
+        return &helix_macros_status_;
     }
 
     // ========================================================================
@@ -118,6 +166,15 @@ class PrinterPluginStatusState {
     // Plugin status subjects (tri-state: -1=unknown, 0=no, 1=yes)
     lv_subject_t helix_plugin_installed_{}; // HelixPrint Klipper plugin
     lv_subject_t phase_tracking_enabled_{}; // Phase tracking toggle in plugin
+
+    /// Composed HelixMacrosStatus; see publish_helix_macros_status()
+    lv_subject_t helix_macros_status_{};
+    int macros_base_status_ = static_cast<int>(HelixMacrosStatus::Unknown);
+    bool macros_restart_pending_ = false;
+
+    /// RestartPending only masks NotInstalled: once discovery reports the
+    /// macros active, the pending flag is stale by definition.
+    void publish_helix_macros_status();
 };
 
 } // namespace helix

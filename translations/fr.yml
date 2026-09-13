@@ -109,7 +109,9 @@ translations:
   A backup of %s is created before applying: 'Une sauvegarde de %s est créée avant l''application'
   A motor IO pin couldn't be restored. Power-cycle the printer to recover: Une broche d'E/S moteur n'a pas pu être restaurée. Éteignez et rallumez l'imprimante pour récupérer
   A motor's parameters couldn't be written. Power-cycle the printer to retry: Les paramètres d'un moteur n'ont pas pu être écrits. Éteignez et rallumez l'imprimante pour réessayer
+  A newer version of the helper macros is available: 'Une version plus récente des macros d''aide est disponible'
   A picture of your printer: Une photo de votre imprimante
+  A print is in progress - restart still pending: 'Une impression est en cours - redémarrage en attente'
   A spool may be tangled or the drive gear is jammed: Une bobine est peut-être emmêlée ou l'engrenage d'entraînement est bloqué
   ABS: ABS
   ACCELEROMETERS: ACCÉLÉROMÈTRES
@@ -918,6 +920,7 @@ translations:
   Enable Brush Wipe: 'Activer l''essuyage par brosse'
   Enable Bypass: Activer le bypass
   Enable Bypass Controls: Activer les contrôles du bypass
+  Enable Clean Nozzle and other print helpers: 'Activer Nettoyer la buse et autres aides à l''impression'
   Enable Monitoring: Activer la surveillance
   Enable Purge: 'Activer la purge'
   Enable Retraction: Activer la rétraction
@@ -1070,6 +1073,7 @@ translations:
   Failed to get limits: Échec de la récupération des limites
   Failed to initialize Bluetooth: Échec de l'initialisation Bluetooth
   Failed to initialize Bluetooth context: Échec de l'initialisation du contexte Bluetooth
+  Failed to install helper macros: 'Échec de l''installation des macros d''aide'
   Failed to load G-code preview: Échec du chargement de l'aperçu G-code
   Failed to load devices: Échec du chargement des appareils
   Failed to load fan configuration screen: Échec du chargement de la configuration
@@ -1103,6 +1107,7 @@ translations:
   Failed to render label: Échec du rendu de l'étiquette
   'Failed to reprint: {}': 'Échec de la réimpression : {}'
   Failed to reset theme: Échec de la réinitialisation du thème
+  Failed to restart Klipper: 'Échec du redémarrage de Klipper'
   Failed to restart Moonraker.: Échec du redémarrage de Moonraker.
   'Failed to restart: {}': 'Échec du redémarrage : {}'
   'Failed to resume: {}': 'Échec de la reprise : {}'
@@ -1367,6 +1372,9 @@ translations:
   Help & About: Aide et à propos
   Help Improve HelixScreen: Aidez à améliorer HelixScreen
   Help improve HelixScreen?: Aider à améliorer HelixScreen ?
+  Helper Macros: 'Macros d''aide'
+  Helper macros already installed: 'Les macros d''aide sont déjà installées'
+  Helper macros are up to date: 'Les macros d''aide sont à jour'
   Hide Firmware Noise: Masquer le bruit du firmware
   Hide Temperature Reports: Masquer les rapports de température
   High Water Mark: Pic d'utilisation
@@ -1465,6 +1473,8 @@ translations:
   Inspecting bed...: Inspection du plateau...
   Install: Installer
   Install HelixPrint Plugin: Installer le plugin HelixPrint
+  Install Helper Macros: 'Installer les macros d''aide'
+  Install Helper Macros?: 'Installer les macros d''aide ?'
   Install Older Version?: 'Installer une version plus ancienne ?'
   Install Plugin: Installer le plugin
   Install Root: Racine d'installation
@@ -1490,6 +1500,7 @@ translations:
   Installation timed out: Installation — délai dépassé
   Installation timed out. The script may be stuck.: Installation — délai dépassé.
     Le script est peut-être bloqué.
+  Installed: 'Installé'
   Installing...: Installation...
   Intensity: Intensité
   Interactive calibration for all lanes: 'Calibration interactive pour toutes les voies'
@@ -1539,6 +1550,7 @@ translations:
   Klipper has entered shutdown state. This may be due to an emergency stop, thermal runaway, or configuration error.: Klipper
     est passé en état d'arrêt. Cela peut être dû à un arrêt d'urgence, à un emballement
     thermique ou à une erreur de configuration.
+  Klipper restarting - macros activating: 'Redémarrage de Klipper - activation des macros'
   Klipper will restart to apply changes: Klipper redémarrera pour appliquer les modifications
   Klipper will restart to apply changes.: Klipper redémarrera pour appliquer les modifications.
   Klipper will restart to apply new settings.: Klipper va redémarrer pour appliquer
@@ -1690,6 +1702,9 @@ translations:
   Macro to resume a paused print: Macro pour reprendre une impression en pause
   Macro to unload filament from extruder: Macro pour décharger le filament de l'extrudeur
   Macros: Macros
+  Macros installed - restart pending: 'Macros installées - redémarrage en attente'
+  Macros installed. Restart Klipper after the print to activate them.: 'Macros installées. Redémarrez Klipper après l''impression pour les activer.'
+  Macros updated. Restart Klipper after the print to activate them.: 'Macros mises à jour. Redémarrez Klipper après l''impression pour les activer.'
   'Macros, G-code console, calibration tools (PID, input shaper, z-offset), firmware updates, and developer utilities.': 'Macros, console G-code, outils de calibration (PID, Input Shaper, Z-offset), mises à jour du firmware et utilitaires pour développeurs.'
   Main LED Strip: Bandeau LED principal
   Maintaining: Maintien
@@ -2243,6 +2258,7 @@ translations:
   Printer not connected: Imprimante non connectée
   Printer not ready: Imprimante non prête
   Printer ready: Imprimante prête
+  Printer status unknown: 'État de l''imprimante inconnu'
   Printer type mismatch: Type d'imprimante incompatible
   'Printer:': 'Imprimante :'
   'Printer: ': 'Imprimante : '
@@ -2440,11 +2456,13 @@ translations:
   Restart HelixScreen: Redémarrer HelixScreen
   Restart Klipper: Redémarrer Klipper
   Restart Klipper without rebooting: Redémarrer Klipper, pas l'hôte
+  Restart Klipper?: 'Redémarrer Klipper ?'
   Restart Moonraker: Redémarrer Moonraker
   Restart Now: Redémarrer maintenant
   Restart Required: Redémarrage requis
   'Restart failed: not connected': 'Échec du redémarrage : non connecté'
   Restart from the beginning to recover: Relancez depuis le début pour récupérer l'impression
+  Restart pending: 'Redémarrage en attente'
   Restart the display application: Redémarrer l'application d'affichage
   Restart the printer or screen: Redémarrer l'imprimante ou l'écran
   Restarting HelixScreen...: Redémarrage de HelixScreen...
@@ -2966,6 +2984,7 @@ translations:
   The filament system reported an error: Le système de filament a signalé une erreur
   The heater will cycle on and off several times.: Le chauffage s'allumera et s'éteindra
     plusieurs fois.
+  The helper macros are installed and activate after Klipper restarts.: 'Les macros d''aide sont installées et s''activent après un redémarrage de Klipper.'
   The left RFID reader in this CFS unit may need service: Le lecteur RFID gauche de cette unité CFS nécessite peut-être une intervention
   ? The loaded spool is {}, but this file was sliced for {}. Filled filament runs at a lower flow rate and needs a hardened nozzle.
   : La bobine chargée est {}, mais ce fichier a été tranché pour {}. Un filament chargé fonctionne à un débit plus faible et nécessite une buse durcie.
@@ -3036,6 +3055,9 @@ translations:
   This file was sliced for {} but {} is loaded.: Ce fichier a été tranché pour {}
     mais {} est chargé.
   This file was sliced for {}, but {} is loaded. It will print slower and hotter than the loaded spool needs.: Ce fichier a été tranché pour {}, mais {} est chargé. L'impression sera plus lente et plus chaude que ce qu'exige la bobine chargée.
+  ? This installs the HelixScreen helper macros on the printer and adds them to printer.cfg. A print is running, so Klipper restarts after it finishes.
+  : 'Cela installe les macros d''aide HelixScreen sur l''imprimante et les ajoute à printer.cfg. Une impression est en cours, Klipper redémarrera une fois terminée.'
+  This installs the HelixScreen helper macros on the printer, adds them to printer.cfg, and restarts Klipper.: 'Cela installe les macros d''aide HelixScreen sur l''imprimante, les ajoute à printer.cfg et redémarre Klipper.'
   This is exactly the data that will be sent: Voici exactement les données qui seront
     envoyées
   This is what data would be sent if enabled: Voici les données qui seraient envoyées
@@ -3052,6 +3074,9 @@ translations:
   ? This printer looks like a {} ({}% confidence), but it is set up as a {}. A wrong type applies incorrect pre-print options and presets.
   : Cette imprimante ressemble à un {} ({} % de confiance), mais elle est configurée en {}. Un type erroné applique des options et des préréglages de pré-impression incorrects.
   This removes the plugin's macros and its Moonraker component from the printer and restarts Klipper.: Supprime les macros du plugin et son composant Moonraker de l'imprimante, puis redémarre Klipper.
+  This replaces the printer's helper macros with the current version and restarts Klipper.: 'Cela remplace les macros d''aide de l''imprimante par la version actuelle et redémarre Klipper.'
+  ? This replaces the printer's helper macros with the current version. A print is running, so Klipper restarts after it finishes.
+  : 'Cela remplace les macros d''aide de l''imprimante par la version actuelle. Une impression est en cours, Klipper redémarrera une fois terminée.'
   This tool probes each bed screw and tells you how much to adjust.: Cet outil palpe
     chaque vis du plateau et vous indique combien ajuster.
   ? This will apply the Z-offset to your endstop and restart Klipper to save the configuration.
@@ -3227,6 +3252,8 @@ translations:
   Update Available: Mise à jour disponible
   Update Channel: Canal de mise à jour
   Update Failed: Mise à jour échouée
+  Update Helper Macros: 'Mettre à jour les macros d''aide'
+  Update Helper Macros?: 'Mettre à jour les macros d''aide ?'
   Update Success: Mise à jour réussie
   Update from a Terminal: Mettre à jour depuis un terminal
   Update installed!: Mise à jour installée !

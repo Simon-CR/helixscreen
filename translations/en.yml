@@ -102,7 +102,9 @@ translations:
   A backup of %s is created before applying: A backup of %s is created before applying
   A motor IO pin couldn't be restored. Power-cycle the printer to recover: A motor IO pin couldn't be restored. Power-cycle the printer to recover
   A motor's parameters couldn't be written. Power-cycle the printer to retry: A motor's parameters couldn't be written. Power-cycle the printer to retry
+  A newer version of the helper macros is available: A newer version of the helper macros is available
   A picture of your printer: A picture of your printer
+  A print is in progress - restart still pending: A print is in progress - restart still pending
   A spool may be tangled or the drive gear is jammed: A spool may be tangled or the drive gear is jammed
   ABS: ABS
   ACCELEROMETERS: ACCELEROMETERS
@@ -883,6 +885,7 @@ translations:
   Enable Brush Wipe: Enable Brush Wipe
   Enable Bypass: Enable Bypass
   Enable Bypass Controls: Enable Bypass Controls
+  Enable Clean Nozzle and other print helpers: Enable Clean Nozzle and other print helpers
   Enable Monitoring: Enable Monitoring
   Enable Purge: Enable Purge
   Enable Retraction: Enable Retraction
@@ -1030,6 +1033,7 @@ translations:
   Failed to get limits: Failed to get limits
   Failed to initialize Bluetooth: Failed to initialize Bluetooth
   Failed to initialize Bluetooth context: Failed to initialize Bluetooth context
+  Failed to install helper macros: Failed to install helper macros
   Failed to load G-code preview: Failed to load G-code preview
   Failed to load devices: Failed to load devices
   Failed to load fan configuration screen: Failed to load fan configuration screen
@@ -1060,6 +1064,7 @@ translations:
   Failed to render label: Failed to render label
   'Failed to reprint: {}': 'Failed to reprint: {}'
   Failed to reset theme: Failed to reset theme
+  Failed to restart Klipper: Failed to restart Klipper
   Failed to restart Moonraker.: Failed to restart Moonraker.
   'Failed to restart: {}': 'Failed to restart: {}'
   'Failed to resume: {}': 'Failed to resume: {}'
@@ -1319,6 +1324,9 @@ translations:
   Help & About: Help & About
   Help Improve HelixScreen: Help Improve HelixScreen
   Help improve HelixScreen?: Help improve HelixScreen?
+  Helper Macros: Helper Macros
+  Helper macros already installed: Helper macros already installed
+  Helper macros are up to date: Helper macros are up to date
   Hide Firmware Noise: Hide Firmware Noise
   Hide Temperature Reports: Hide Temperature Reports
   High Water Mark: High Water Mark
@@ -1415,6 +1423,8 @@ translations:
   'Inspecting bed...': 'Inspecting bed...'
   Install: Install
   Install HelixPrint Plugin: Install HelixPrint Plugin
+  Install Helper Macros: Install Helper Macros
+  Install Helper Macros?: Install Helper Macros?
   Install Older Version?: Install Older Version?
   Install Plugin: Install Plugin
   Install Root: Install Root
@@ -1440,6 +1450,7 @@ translations:
   Installation timed out: Installation timed out
   Installation timed out. The script may be stuck.: Installation timed out. The script
     may be stuck.
+  Installed: Installed
   Installing...: Installing...
   Intensity: Intensity
   Interactive calibration for all lanes: Interactive calibration for all lanes
@@ -1489,6 +1500,7 @@ translations:
   Klipper has entered shutdown state. This may be due to an emergency stop, thermal runaway, or configuration error.: Klipper
     has entered shutdown state. This may be due to an emergency stop, thermal runaway,
     or configuration error.
+  Klipper restarting - macros activating: Klipper restarting - macros activating
   Klipper will restart to apply changes: Klipper will restart to apply changes
   Klipper will restart to apply changes.: Klipper will restart to apply changes.
   Klipper will restart to apply new settings.: Klipper will restart to apply new settings.
@@ -1635,6 +1647,9 @@ translations:
   Macro to resume a paused print: Macro to resume a paused print
   Macro to unload filament from extruder: Macro to unload filament from extruder
   Macros: Macros
+  Macros installed - restart pending: Macros installed - restart pending
+  Macros installed. Restart Klipper after the print to activate them.: Macros installed. Restart Klipper after the print to activate them.
+  Macros updated. Restart Klipper after the print to activate them.: Macros updated. Restart Klipper after the print to activate them.
   'Macros, G-code console, calibration tools (PID, input shaper, z-offset), firmware updates, and developer utilities.': 'Macros, G-code console, calibration tools (PID, input shaper, z-offset), firmware updates, and developer utilities.'
   Main LED Strip: Main LED Strip
   Maintaining: Maintaining
@@ -2176,6 +2191,7 @@ translations:
   Printer not connected: Printer not connected
   Printer not ready: Printer not ready
   Printer ready: Printer ready
+  Printer status unknown: Printer status unknown
   Printer type mismatch: Printer type mismatch
   'Printer:': 'Printer:'
   'Printer: ': 'Printer: '
@@ -2368,11 +2384,13 @@ translations:
   Restart HelixScreen: Restart HelixScreen
   Restart Klipper: Restart Klipper
   Restart Klipper without rebooting: Restart Klipper without rebooting
+  Restart Klipper?: Restart Klipper?
   Restart Moonraker: Restart Moonraker
   Restart Now: Restart Now
   Restart Required: Restart Required
   'Restart failed: not connected': 'Restart failed: not connected'
   Restart from the beginning to recover: Restart from the beginning to recover
+  Restart pending: Restart pending
   Restart the display application: Restart the display application
   Restart the printer or screen: Restart the printer or screen
   Restarting HelixScreen...: Restarting HelixScreen...
@@ -2878,6 +2896,7 @@ translations:
   The filament system reported an error: The filament system reported an error
   The heater will cycle on and off several times.: The heater will cycle on and off
     several times.
+  The helper macros are installed and activate after Klipper restarts.: The helper macros are installed and activate after Klipper restarts.
   The left RFID reader in this CFS unit may need service: The left RFID reader in this CFS unit may need service
   ? The loaded spool is {}, but this file was sliced for {}. Filled filament runs at a lower flow rate and needs a hardened nozzle.
   : The loaded spool is {}, but this file was sliced for {}. Filled filament runs at a lower flow rate and needs a hardened nozzle.
@@ -2938,6 +2957,9 @@ translations:
   This file was sliced for {} but {} is loaded.: This file was sliced for {} but {}
     is loaded.
   This file was sliced for {}, but {} is loaded. It will print slower and hotter than the loaded spool needs.: This file was sliced for {}, but {} is loaded. It will print slower and hotter than the loaded spool needs.
+  ? This installs the HelixScreen helper macros on the printer and adds them to printer.cfg. A print is running, so Klipper restarts after it finishes.
+  : This installs the HelixScreen helper macros on the printer and adds them to printer.cfg. A print is running, so Klipper restarts after it finishes.
+  This installs the HelixScreen helper macros on the printer, adds them to printer.cfg, and restarts Klipper.: This installs the HelixScreen helper macros on the printer, adds them to printer.cfg, and restarts Klipper.
   This is exactly the data that will be sent: This is exactly the data that will be
     sent
   This is what data would be sent if enabled: This is what data would be sent if enabled
@@ -2951,6 +2973,9 @@ translations:
   ? This printer looks like a {} ({}% confidence), but it is set up as a {}. A wrong type applies incorrect pre-print options and presets.
   : This printer looks like a {} ({}% confidence), but it is set up as a {}. A wrong type applies incorrect pre-print options and presets.
   This removes the plugin's macros and its Moonraker component from the printer and restarts Klipper.: This removes the plugin's macros and its Moonraker component from the printer and restarts Klipper.
+  This replaces the printer's helper macros with the current version and restarts Klipper.: This replaces the printer's helper macros with the current version and restarts Klipper.
+  ? This replaces the printer's helper macros with the current version. A print is running, so Klipper restarts after it finishes.
+  : This replaces the printer's helper macros with the current version. A print is running, so Klipper restarts after it finishes.
   This tool probes each bed screw and tells you how much to adjust.: This tool probes
     each bed screw and tells you how much to adjust.
   ? This will apply the Z-offset to your endstop and restart Klipper to save the configuration.
@@ -3123,6 +3148,8 @@ translations:
   Update Available: Update Available
   Update Channel: Update Channel
   Update Failed: Update Failed
+  Update Helper Macros: Update Helper Macros
+  Update Helper Macros?: Update Helper Macros?
   Update Success: Update Success
   Update from a Terminal: Update from a Terminal
   Update installed!: Update installed!
