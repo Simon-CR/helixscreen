@@ -30,9 +30,9 @@ After installation, the setup wizard runs on the touchscreen. Moonraker is alrea
 
 ## What the Installer Does Here
 
-- Installs to `/opt/helixscreen/`, with a boot service at `/etc/init.d/S99helixscreen`
-- Stops and persistently disables the stock Creality UI service (`/etc/init.d/app`). Creality's `web-server` is intentionally left running, so the Creality Cloud app and its camera stream keep working after the install. Known issue: on the next reboot, disabling the stock UI service also stops `web-server`, and Creality Cloud stops working (prestonbrown/helixscreen#1617)
-- Stages the download, caches, and logs on `/mnt/UDISK` (the large user partition): `/opt` sits on a small system overlay that a release archive would fill
+- Installs to `/mnt/UDISK/helixscreen/` (the large user partition), with a boot service at `/etc/init.d/S99helixscreen`; an install from an earlier release keeps its existing location
+- Stops and persistently disables the stock Creality UI service (`/etc/init.d/app`). Creality's `web-server` is intentionally left running and restored at every boot, so the Creality Cloud app and its camera stream keep working
+- Keeps the download staging, caches, and logs on `/mnt/UDISK` as well; the small system overlay beneath `/opt` cannot hold a release archive
 - Waits up to two minutes for Moonraker during boot, then starts the UI anyway; it reconnects on its own
 
 ## Service Control and Logs
@@ -45,10 +45,10 @@ Two log streams; collect both when reporting an issue:
 
 ```bash
 # Structured app log (on the UDISK data partition, rotated):
-tail -100 /mnt/UDISK/helixscreen/logs/helix.log
+tail -100 /mnt/UDISK/helixscreen-state/logs/helix.log
 # Launcher / crash capture (lives beside the install; on builds whose
 # /var/log is persistent it lands at /var/log/helixscreen/launcher.log):
-tail -100 /opt/helixscreen/logs/launcher.log
+tail -100 /mnt/UDISK/helixscreen/logs/launcher.log
 # Anything that reached the OpenWrt syslog:
 logread | grep helix-screen | tail -100
 ```
@@ -58,7 +58,7 @@ logread | grep helix-screen | tail -100
 Use the bundled installer (no need to download it again):
 
 ```bash
-/opt/helixscreen/install.sh --update
+/mnt/UDISK/helixscreen/install.sh --update
 ```
 
 To pin a specific version, add `--version vX.Y.Z` (find the latest on the [releases page](https://github.com/prestonbrown/helixscreen/releases/latest)). Your settings are preserved; see [UPGRADING.md](../UPGRADING.md) for what `--update` keeps and what `--clean` resets.
@@ -66,13 +66,13 @@ To pin a specific version, add `--version vX.Y.Z` (find the latest on the [relea
 Check the current version over SSH:
 
 ```bash
-/opt/helixscreen/bin/helix-screen --version
+/mnt/UDISK/helixscreen/bin/helix-screen --version
 ```
 
 ## Uninstalling
 
 ```bash
-cp /opt/helixscreen/install.sh /tmp/install.sh && sh /tmp/install.sh --uninstall
+cp /mnt/UDISK/helixscreen/install.sh /tmp/install.sh && sh /tmp/install.sh --uninstall
 ```
 
 This removes HelixScreen, re-enables and starts the stock Creality UI service (`/etc/init.d/app`), and hands the chamber camera back to the stock camera app, which also restores Creality's stock AI failure detection (see the note below).

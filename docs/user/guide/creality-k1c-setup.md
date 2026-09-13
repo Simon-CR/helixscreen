@@ -118,19 +118,17 @@ The installer automatically:
 
 ---
 
-> **Installing HelixScreen stops Creality Print from reaching the printer.**
-> HelixScreen and the stock Creality UI cannot share the framebuffer, so the
-> installer stops the stock UI. On the K1 the same init script also runs
-> `master-server`, `app-server` and `web-server`, which are the backend Creality
-> Print and the Creality Cloud app connect to, so those stop too. (This applies
-> to a rooted stock printer or Guilouz firmware; on a Simple AF install the
-> stock stack is already disabled, and HelixScreen stops only GuppyScreen.)
+> **Creality Print and Creality Cloud keep working.**
+> HelixScreen and the stock Creality screen UI cannot share the framebuffer, so the
+> installer stops the stock screen UI, but it keeps the backend servers (`master-server`,
+> `app-server`, `web-server`) running and starts them on boot, so Creality Print and the
+> Creality Cloud app keep reaching the printer as before. (This applies to a rooted stock
+> printer or Guilouz firmware; on a Simple AF install the stock stack is already disabled,
+> and HelixScreen stops only GuppyScreen.)
 >
-> Sending prints still works through Fluidd or Mainsail, HelixScreen's own file
-> browser, or any slicer that uploads to Moonraker (OrcaSlicer, or PrusaSlicer
-> with the Moonraker plugin). Creality Print can still slice; it just cannot
-> upload over the network. To get the stock network stack back, uninstall
-> HelixScreen (see [Uninstalling](#uninstalling)).
+> If Creality Print cannot reach the printer after installing, update HelixScreen: the
+> backend startup script ships with it, and an install from before the backend was kept
+> alive will not have it. See [Troubleshooting: Creality Print cannot connect](../TROUBLESHOOTING.md#creality-print-can-no-longer-find-or-connect-to-the-printer).
 
 ## Step 5: Complete Setup on the Touchscreen
 

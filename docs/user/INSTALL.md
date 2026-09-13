@@ -390,7 +390,7 @@ The BTT Pad 7 and similar "Klipper Pad" devices are complete units, with the sin
 
 ### Screen Rotation
 
-**Prefer rotating the display itself when it can.** If your monitor has a rotation option (usually a button or an OSD menu), use it. On a Pi with a DSI panel, the kernel can rotate the panel in hardware: add `video=DSI-1:panel_orientation=upside_down` to `/boot/firmware/cmdline.txt` (HelixScreen detects this automatically on first boot; see [TROUBLESHOOTING: display upside down or rotated](TROUBLESHOOTING.md#display-upside-down-or-rotated)). Rotation done by the display is free. HelixScreen's `rotate` setting below is software rotation: it costs CPU on every frame, and on the Pi it also switches the display to the framebuffer backend (see the note on backends below). Use it when your display cannot rotate itself.
+**Prefer rotating the display itself when it can.** If your monitor has a rotation option (usually a button or an OSD menu), use it. On a Pi with a DSI panel, the kernel can rotate the panel in hardware: add `video=DSI-1:panel_orientation=upside_down` to /boot/firmware/cmdline.txt (HelixScreen detects this automatically on first boot; see [TROUBLESHOOTING: display upside down or rotated](TROUBLESHOOTING.md#display-upside-down-or-rotated)). Rotation done by the display is free. HelixScreen's `rotate` setting below is software rotation: it costs CPU on every frame, and on the Pi it also switches the display to the framebuffer backend (see the note on backends below). Use it when your display cannot rotate itself.
 
 To rotate in software (e.g., a screen mounted upside-down that has no rotation of its own), add to your `settings.json` (typically at `~/helixscreen/config/settings.json`):
 

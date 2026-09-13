@@ -1797,26 +1797,23 @@ Covers the K1, K1C and K1 Max on stock or Guilouz Helper Script firmware.
 - HelixScreen, Fluidd, Mainsail and Moonraker all work normally
 
 **Cause:**
-This is a deliberate trade-off, not a fault. HelixScreen and the stock Creality UI cannot share the framebuffer, so the installer stops the stock UI stack. On the K1 that stack is started by `/etc/init.d/S99start_app`, which also launches `master-server`, `app-server` and `web-server` — the backend Creality Print and the Creality Cloud app talk to. Stopping the stock UI takes those with it. This is the stock-firmware and Guilouz case; on a Simple AF install the stock stack is already disabled and the installer stops only GuppyScreen, so a lost Creality Print connection there predates HelixScreen. Full setup path and background: [K1 / K1C / K1 Max setup guide](guide/creality-k1c-setup.md).
+Current HelixScreen installs keep the stock Creality backend (`master-server`, `app-server`, `web-server`) running beside the screen UI, so Creality Print and Creality Cloud work normally. If they cannot reach the printer, the backend is not running: most often the installed HelixScreen predates the backend support, or the backend init script (`/etc/init.d/S99creality-backend`) failed to start. On a Simple AF install the stock stack was already disabled before HelixScreen arrived, so a lost Creality Print connection there predates HelixScreen. Full setup path and background: [K1 / K1C / K1 Max setup guide](guide/creality-k1c-setup.md).
 
-**What still works for sending prints:**
-- Fluidd or Mainsail in a browser
-- HelixScreen's own file browser, including USB
-- Any slicer that can upload to Moonraker — OrcaSlicer, and PrusaSlicer with the Moonraker plugin
-- Creality Print can still *slice*; it just cannot upload to the printer over the network. Export the G-code and send it by one of the routes above.
-
-**Solution:**
-If you need the stock Creality network stack back, uninstall HelixScreen:
+**Fix:** update to the current HelixScreen release; the update installs and starts the backend script:
 
 ```bash
-/usr/data/helixscreen/install.sh --uninstall
+cp /usr/data/helixscreen/install.sh /tmp/install.sh && sh /tmp/install.sh --update
 ```
 
-Uninstalling re-enables the services the installer disabled and restores the stock UI.
+After the update (and after a reboot), `pidof web-server` should answer with a PID. If it does not, check `/etc/init.d/S99creality-backend` exists and start it with `/etc/init.d/S99creality-backend start`.
 
-> **Do not just run `chmod +x /etc/init.d/S99start_app`.** It appears to work until the next reboot. HelixScreen's own init script runs `platform_stop_competing_uis` on every start, which re-applies `chmod a-x` to that file — and `S99helixscreen` sorts before `S99start_app`, so it runs first. To restore the stock stack without uninstalling, stop and disable the HelixScreen service first, then re-enable `S99start_app`.
+**If you would rather have the stock screen back:** uninstalling removes the backend script and re-enables the stock UI services it replaced:
 
-Tracked as [#1447](https://github.com/prestonbrown/helixscreen/issues/1447); keeping the Creality backend alive alongside HelixScreen is [#1468](https://github.com/prestonbrown/helixscreen/issues/1468).
+```bash
+cp /usr/data/helixscreen/install.sh /tmp/install.sh && sh /tmp/install.sh --uninstall
+```
+
+Keeping the Creality backend alive alongside HelixScreen is prestonbrown/helixscreen#1468; the original breakage was #1447.
 
 ## Flashforge Adventurer 5M Issues
 
