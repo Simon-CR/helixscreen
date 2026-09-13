@@ -234,6 +234,39 @@ http.server.HTTPServer(('127.0.0.1', $port), H).serve_forever()
     rm -rf "$tmp"
 }
 
+# The restore that follows /etc/init.d/app's stop+disable races the dying
+# web-server pid: procd leaves the pid in the table for seconds after the
+# kill, so a pidof sampled at restore time reads the port as served and the
+# pidof-guarded restore declines to relaunch - the carve-out then stays down
+# until the next HelixScreen start (prestonbrown/helixscreen#1617). The
+# restore must poll until the table actually clears.
+@test "k2 stop-and-restore waits out a dying web-server pid" {
+    local calls="$BATS_TEST_TMPDIR/pidof_calls"
+    # The first two polls answer with a pid (the dying process), then the
+    # table clears: the shape procd leaves behind right after `app disable`.
+    mock_command_script "pidof" '
+        n=$(cat "'"$calls"'" 2>/dev/null || echo 0)
+        n=$((n + 1))
+        echo "$n" > "'"$calls"'"
+        [ "$n" -le 2 ] && echo 4242
+        [ "$n" -le 2 ]
+    '
+    mock_command_script "killall" 'exit 0'
+    mock_command_script "sleep" 'exit 0'
+
+    # Neither /etc/init.d path exists on a test host, so the restore falls
+    # through to the pidof-guarded elif; the function's return value is the
+    # guard's, not the thing under test.
+    run bash -c ". '$HOOKS_DIR/hooks-k2.sh'; platform_stop_competing_uis || true"
+
+    [ "$status" -eq 0 ]
+    # A single sample reads the lingering pid and moves on; polling reads
+    # through it to the cleared table. Two lingering answers demand at least
+    # a third poll before any restore guard may sample.
+    n=$(cat "$calls")
+    [ "$n" -ge 3 ]
+}
+
 # --- Init script integration tests ---
 
 INIT_SCRIPT="config/helixscreen.init"
