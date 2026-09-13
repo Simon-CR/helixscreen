@@ -708,4 +708,21 @@ bool ui_gcode_viewer_adopt_palette_if_empty(lv_obj_t* obj, std::vector<std::stri
  */
 float ui_gcode_viewer_get_load_progress(lv_obj_t* obj);
 
+/**
+ * @brief Advance a hidden 2D preview's build; true once it can be revealed.
+ *
+ * The viewer normally builds as a side effect of being drawn, so a widget kept
+ * hidden until it has real content would never start. A caller that stacks a
+ * thumbnail over the viewer and swaps on readiness drives this from a timer
+ * instead, then shows the viewer when it returns true.
+ *
+ * 2D only. The 3D path uploads VBOs during the draw pass and cannot progress
+ * while hidden, so this reports ready immediately there and the caller reveals
+ * as before.
+ *
+ * @param obj Viewer widget
+ * @return true when there is content worth swapping in.
+ */
+bool ui_gcode_viewer_pump_offscreen_2d(lv_obj_t* obj);
+
 #endif

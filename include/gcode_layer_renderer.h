@@ -366,6 +366,22 @@ class GCodeLayerRenderer {
      */
     bool has_first_output() const;
 
+    /**
+     * @brief Advance a ghost build with no draw pass; true once it can be shown.
+     *
+     * render() starts the ghost worker and copies its result onto the canvas as
+     * a side effect of being drawn, which ties the build to visibility. A
+     * preview that stays hidden until it has real content would then never
+     * start: no draw, no worker, no output, no reveal. This performs the same
+     * three steps from a timer so the widget can stay hidden while it builds.
+     *
+     * Main thread only, like the render() path it mirrors. Safe to call after
+     * the reveal - it neither restarts the build nor drops the result.
+     *
+     * @return has_first_output(): there is content worth swapping in.
+     */
+    bool pump_offscreen_build(int width, int height);
+
     /// View mode alias — uses shared enum from gcode_projection.h
     using ViewMode = helix::gcode::ViewMode;
 
