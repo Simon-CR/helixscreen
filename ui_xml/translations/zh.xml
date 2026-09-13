@@ -2839,6 +2839,7 @@
   <translation tag="Upload Debug Bundle" zh="上传调试捆绑包"/>
   <translation tag="Upload Failed" zh="上传失败"/>
   <translation tag="Upload gcode files to get started" zh="上传 gcode 文件开始使用"/>
+  <translation tag="Upload unavailable in this build" zh="此构建版本无法上传"/>
   <translation tag="Uptime" zh="运行时长"/>
   <translation tag="Use Android native keyboard for text input" zh="使用 Android 原生键盘进行文本输入"/>
   <translation tag="Use G10/G11 firmware retraction" zh="使用 G10/G11 固件回抽"/>

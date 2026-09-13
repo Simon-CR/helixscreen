@@ -665,7 +665,7 @@ refusal — this is how the toast's layout gets checked on a 480x272 panel.
 | `wait_idle [--timeout N]` | Block until `UpdateQueue` and `HttpExecutor` are both quiet (default 10s), so a script can gate on real async work instead of a fixed `sleep` |
 | `freeze` | Stop the moving parts for a reproducible capture: `lv_anim_delete_all()` plus `animations_enabled = 0`, pause every periodic `lv_timer` except two, and park the mock printer's simulation loop (see below). Returns `{"frozen": true, "timers_paused": N}` |
 | `unfreeze` | Reverse `freeze`: resume exactly the timers it paused, re-enable animations. Returns `{"frozen": false, "timers_resumed": N}` |
-| `log [-n N]` | Tail the app's in-memory log ring buffer (default 50 lines). Printed as raw lines, so it pipes to `grep` |
+| `log [-n N]` | Tail the app's in-memory log ring buffer (default 50 lines). Printed as raw lines, so it pipes to `grep`. **Gated**: same diagnostic-upload switch as the bundle/crash pipes — refused with a JSON-RPC error in any build that may not ship diagnostics (see below) |
 | `shutdown` | Ask the app to exit its main loop (`app_request_quit`), running the normal shutdown path |
 | `reset` | Return to the home panel with no overlays or modals open. Returns `{"panel": "home", "overlays_popped": N, "modals_cleared": N, "toasts_cleared": N}` |
 
@@ -675,6 +675,18 @@ means a scripted run can read the app's own log without redirecting stdout to a
 file first. The ring is installed by `init_early()`, so on a short-lived instance
 it still holds the Phase 2 config-load trail that runs before the full logger
 exists (`LOGGING.md` § "Ring-Buffer Sink Lifecycle").
+
+The gate: the log ring is the densest diagnostics surface the app holds, so `log`
+is refused in any build that may not ship diagnostics
+(prestonbrown/helixscreen#1410) — plain local `make` included, which is what a
+dev desktop runs. The refusal is a **real JSON-RPC error** (`Handler error:
+Diagnostic log RPC is disabled in this build`), so `ctl log` exits non-zero with
+the message on stderr rather than printing anything to stdout. A rig deployed
+via `make deploy-*` (or any build/run opted in with `HELIX_DIAGNOSTIC_UPLOADS=1`)
+serves the ring normally; the switch and its default are
+`docs/devel/ENVIRONMENT_VARIABLES.md` § `HELIX_DIAGNOSTIC_UPLOADS`. On a gated
+build, read the log file instead — the tee recipe in
+`docs/devel/LOGGING.md` § "Console sink" is the substitute for scripted runs.
 
 #### `reset` — a cheap alternative to rebooting between tests
 

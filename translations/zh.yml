@@ -2934,6 +2934,7 @@ translations:
   Upload Debug Bundle: 上传调试捆绑包
   Upload Failed: 上传失败
   Upload gcode files to get started: 上传 gcode 文件开始使用
+  Upload unavailable in this build: 此构建版本无法上传
   Uptime: 运行时长
   Use Android native keyboard for text input: 使用 Android 原生键盘进行文本输入
   Use G10/G11 firmware retraction: 使用 G10/G11 固件回抽

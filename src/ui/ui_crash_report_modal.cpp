@@ -9,6 +9,7 @@
 #include "lvgl/src/others/translation/lv_translation.h"
 #include "system/crash_reporter.h"
 #include "system/debug_bundle_collector.h"
+#include "system/diag_upload_gate.h"
 #include "system/telemetry_manager.h"
 
 #include <spdlog/spdlog.h>
@@ -220,6 +221,16 @@ void CrashReportModal::attempt_delivery() {
     }
     sending_ = true;
 
+    // A build that may not ship diagnostics goes straight to the local
+    // fallback: neither the bundle nor the report would leave the machine, so
+    // "Sending..." followed by a refusal would be a lie (prestonbrown/helixscreen#1410).
+    if (!helix::diag::uploads_enabled()) {
+        spdlog::info("[CrashReportModal] Diagnostic uploads disabled in this build — "
+                     "using local fallback");
+        show_local_fallback(report_, lv_tr("Upload unavailable in this build"));
+        return;
+    }
+
     // Phase 1: collect + upload a debug bundle first. The bundle captures the
     // pre-crash log tail, sanitized settings, crash history, and Moonraker
     // state — context the bare crash report doesn't carry. We pass the share
@@ -284,14 +295,20 @@ void CrashReportModal::send_with_bundle(const std::string& share_code) {
     }
 
     // Auto-send failed — fall back to QR code for phone-based submission.
-    std::string url = cr.generate_github_url(report);
+    show_local_fallback(report, lv_tr("No network. Scan QR code to report on your phone."));
+}
+
+void CrashReportModal::show_local_fallback(const CrashReporter::CrashReport& report,
+                                           const char* status) {
+    auto& cr = CrashReporter::instance();
+
+    const std::string url = cr.generate_github_url(report);
     if (!url.empty()) {
         show_qr_code(url);
-        lv_subject_copy_string(&status_subject_,
-                               lv_tr("No network. Scan QR code to report on your phone."));
     } else {
-        lv_subject_copy_string(&status_subject_, lv_tr("Report saved to crash_report.txt"));
+        status = lv_tr("Report saved to crash_report.txt");
     }
+    lv_subject_copy_string(&status_subject_, status);
 
     cr.save_to_file(report);
     cr.consume_crash_file();

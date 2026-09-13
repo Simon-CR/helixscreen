@@ -2839,6 +2839,7 @@
   <translation tag="Upload Debug Bundle" de="Debug-Paket hochladen"/>
   <translation tag="Upload Failed" de="Hochladen fehlgeschlagen"/>
   <translation tag="Upload gcode files to get started" de="Laden Sie G-Code-Dateien hoch, um zu beginnen"/>
+  <translation tag="Upload unavailable in this build" de="Hochladen in diesem Build nicht verfügbar"/>
   <translation tag="Uptime" de="Betriebszeit"/>
   <translation tag="Use Android native keyboard for text input" de="Native Android-Tastatur für Texteingabe verwenden"/>
   <translation tag="Use G10/G11 firmware retraction" de="G10/G11-Firmware-Retraktion verwenden"/>

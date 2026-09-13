@@ -3165,6 +3165,7 @@ translations:
   Upload Debug Bundle: Отправить пакет диагностики
   Upload Failed: Ошибка отправки
   Upload gcode files to get started: Загрузите gcode-файлы для начала
+  Upload unavailable in this build: Отправка недоступна в этой сборке
   Uptime: Время работы
   Use Android native keyboard for text input: Использовать нативную клавиатуру Android
     для ввода текста

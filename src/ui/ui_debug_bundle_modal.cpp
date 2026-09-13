@@ -223,7 +223,12 @@ void DebugBundleModal::handle_upload() {
                                  "share code: {}",
                                  result.share_code);
                 } else {
-                    lv_subject_copy_string(&error_subject_, result.error_message.c_str());
+                    // A build-gate refusal shows the translated message; a
+                    // transport failure shows the collector's detail verbatim.
+                    lv_subject_copy_string(&error_subject_,
+                                           result.uploads_disabled
+                                               ? lv_tr("Upload unavailable in this build")
+                                               : result.error_message.c_str());
                     lv_subject_set_int(&state_subject_, 3);
                     spdlog::warn("[DebugBundleModal] Upload failed: {}", result.error_message);
                 }

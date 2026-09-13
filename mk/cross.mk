@@ -1029,6 +1029,15 @@ DOCKER_GIT_HASH_ENV = $(if $(HELIX_GIT_HASH_HOST),-e HELIX_GIT_HASH=$(HELIX_GIT_
 CROSS_REMOTE_CONTROL_DEFAULT = $(if $(filter 1,$(HELIX_PACKAGING)),no,yes)
 DOCKER_REMOTE_CONTROL = ENABLE_REMOTE_CONTROL=$(if $(filter-out default file undefined,$(origin ENABLE_REMOTE_CONTROL)),$(ENABLE_REMOTE_CONTROL),$(CROSS_REMOTE_CONTROL_DEFAULT))
 
+# Same forwarding for the diagnostic-upload gate (see the
+# ENABLE_DIAGNOSTIC_UPLOADS block in Makefile). Inside the container only the
+# define matters — the runtime switch is env-based — so what crosses is the
+# compile default: yes under HELIX_PACKAGING=1 (official builds are marked),
+# no otherwise. A dev build deployed from this tree gets its upload switch
+# stamped on the device by sync-device-features instead.
+CROSS_DIAG_UPLOADS_DEFAULT = $(if $(filter 1,$(HELIX_PACKAGING)),yes,no)
+DOCKER_DIAG_UPLOADS = ENABLE_DIAGNOSTIC_UPLOADS=$(if $(filter-out default file undefined,$(origin ENABLE_DIAGNOSTIC_UPLOADS)),$(ENABLE_DIAGNOSTIC_UPLOADS),$(CROSS_DIAG_UPLOADS_DEFAULT))
+
 DOCKER_HOST_CONTEXT = $(DOCKER_WORKTREE_MOUNT) $(DOCKER_GIT_HASH_ENV)
 
 # Direct cross-compilation (requires toolchain installed)
@@ -1155,7 +1164,7 @@ pi-docker: ensure-docker
 	fi
 	$(call ensure-ccache-dir,pi)
 	$(Q)scripts/cross-compile-lock.sh docker run --rm --user $$(id -u):$$(id -g) -v "$(CURDIR)":/src $(DOCKER_HOST_CONTEXT) -w /src $(call docker-ccache-args,pi) helixscreen/toolchain-pi \
-		make PLATFORM_TARGET=pi SKIP_OPTIONAL_DEPS=1 $(DOCKER_REMOTE_CONTROL) -j$(NPROC_DOCKER_RUN)
+		make PLATFORM_TARGET=pi SKIP_OPTIONAL_DEPS=1 $(DOCKER_REMOTE_CONTROL) $(DOCKER_DIAG_UPLOADS) -j$(NPROC_DOCKER_RUN)
 	@$(MAKE) --no-print-directory maybe-stop-colima
 
 # AddressSanitizer build for the Pi (DRM). Output lands in build/pi-asan/.
@@ -1170,7 +1179,7 @@ pi-asan-docker: ensure-docker
 	fi
 	$(call ensure-ccache-dir,pi-asan)
 	$(Q)scripts/cross-compile-lock.sh docker run --rm --user $$(id -u):$$(id -g) -v "$(CURDIR)":/src $(DOCKER_HOST_CONTEXT) -w /src $(call docker-ccache-args,pi-asan) helixscreen/toolchain-pi \
-		make PLATFORM_TARGET=pi SANITIZE=address SKIP_OPTIONAL_DEPS=1 $(DOCKER_REMOTE_CONTROL) -j$(NPROC_DOCKER_RUN)
+		make PLATFORM_TARGET=pi SANITIZE=address SKIP_OPTIONAL_DEPS=1 $(DOCKER_REMOTE_CONTROL) $(DOCKER_DIAG_UPLOADS) -j$(NPROC_DOCKER_RUN)
 	@$(MAKE) --no-print-directory maybe-stop-colima
 
 pi-fbdev-docker: ensure-docker
@@ -1181,7 +1190,7 @@ pi-fbdev-docker: ensure-docker
 	fi
 	$(call ensure-ccache-dir,pi-fbdev)
 	$(Q)scripts/cross-compile-lock.sh docker run --rm --user $$(id -u):$$(id -g) -v "$(CURDIR)":/src $(DOCKER_HOST_CONTEXT) -w /src $(call docker-ccache-args,pi-fbdev) helixscreen/toolchain-pi \
-		make PLATFORM_TARGET=pi-fbdev SKIP_OPTIONAL_DEPS=1 $(DOCKER_REMOTE_CONTROL) -j$(NPROC_DOCKER_RUN)
+		make PLATFORM_TARGET=pi-fbdev SKIP_OPTIONAL_DEPS=1 $(DOCKER_REMOTE_CONTROL) $(DOCKER_DIAG_UPLOADS) -j$(NPROC_DOCKER_RUN)
 	@$(MAKE) --no-print-directory maybe-stop-colima
 
 pi-all-docker: ensure-docker
@@ -1192,7 +1201,7 @@ pi-all-docker: ensure-docker
 	fi
 	$(call ensure-ccache-dir,pi)
 	$(Q)scripts/cross-compile-lock.sh docker run --rm --user $$(id -u):$$(id -g) -v "$(CURDIR)":/src $(DOCKER_HOST_CONTEXT) -w /src $(call docker-ccache-args,pi) helixscreen/toolchain-pi \
-		make PLATFORM_TARGET=pi-both SKIP_OPTIONAL_DEPS=1 $(DOCKER_REMOTE_CONTROL) -j$(NPROC_DOCKER_RUN)
+		make PLATFORM_TARGET=pi-both SKIP_OPTIONAL_DEPS=1 $(DOCKER_REMOTE_CONTROL) $(DOCKER_DIAG_UPLOADS) -j$(NPROC_DOCKER_RUN)
 	@$(MAKE) --no-print-directory maybe-stop-colima
 
 pi32-docker: ensure-docker
@@ -1203,7 +1212,7 @@ pi32-docker: ensure-docker
 	fi
 	$(call ensure-ccache-dir,pi32)
 	$(Q)scripts/cross-compile-lock.sh docker run --rm --user $$(id -u):$$(id -g) -v "$(CURDIR)":/src $(DOCKER_HOST_CONTEXT) -w /src $(call docker-ccache-args,pi32) helixscreen/toolchain-pi32 \
-		make PLATFORM_TARGET=pi32 SKIP_OPTIONAL_DEPS=1 $(DOCKER_REMOTE_CONTROL) -j$(NPROC_DOCKER_RUN)
+		make PLATFORM_TARGET=pi32 SKIP_OPTIONAL_DEPS=1 $(DOCKER_REMOTE_CONTROL) $(DOCKER_DIAG_UPLOADS) -j$(NPROC_DOCKER_RUN)
 	@$(MAKE) --no-print-directory maybe-stop-colima
 
 # AddressSanitizer build for the Pi 32-bit (DRM). Output lands in build/pi32-asan/.
@@ -1218,7 +1227,7 @@ pi32-asan-docker: ensure-docker
 	fi
 	$(call ensure-ccache-dir,pi32-asan)
 	$(Q)scripts/cross-compile-lock.sh docker run --rm --user $$(id -u):$$(id -g) -v "$(CURDIR)":/src $(DOCKER_HOST_CONTEXT) -w /src $(call docker-ccache-args,pi32-asan) helixscreen/toolchain-pi32 \
-		make PLATFORM_TARGET=pi32 SANITIZE=address SKIP_OPTIONAL_DEPS=1 $(DOCKER_REMOTE_CONTROL) -j$(NPROC_DOCKER_RUN)
+		make PLATFORM_TARGET=pi32 SANITIZE=address SKIP_OPTIONAL_DEPS=1 $(DOCKER_REMOTE_CONTROL) $(DOCKER_DIAG_UPLOADS) -j$(NPROC_DOCKER_RUN)
 	@$(MAKE) --no-print-directory maybe-stop-colima
 
 pi32-fbdev-docker: ensure-docker
@@ -1229,7 +1238,7 @@ pi32-fbdev-docker: ensure-docker
 	fi
 	$(call ensure-ccache-dir,pi32-fbdev)
 	$(Q)scripts/cross-compile-lock.sh docker run --rm --user $$(id -u):$$(id -g) -v "$(CURDIR)":/src $(DOCKER_HOST_CONTEXT) -w /src $(call docker-ccache-args,pi32-fbdev) helixscreen/toolchain-pi32 \
-		make PLATFORM_TARGET=pi32-fbdev SKIP_OPTIONAL_DEPS=1 $(DOCKER_REMOTE_CONTROL) -j$(NPROC_DOCKER_RUN)
+		make PLATFORM_TARGET=pi32-fbdev SKIP_OPTIONAL_DEPS=1 $(DOCKER_REMOTE_CONTROL) $(DOCKER_DIAG_UPLOADS) -j$(NPROC_DOCKER_RUN)
 	@$(MAKE) --no-print-directory maybe-stop-colima
 
 pi32-all-docker: ensure-docker
@@ -1240,7 +1249,7 @@ pi32-all-docker: ensure-docker
 	fi
 	$(call ensure-ccache-dir,pi32)
 	$(Q)scripts/cross-compile-lock.sh docker run --rm --user $$(id -u):$$(id -g) -v "$(CURDIR)":/src $(DOCKER_HOST_CONTEXT) -w /src $(call docker-ccache-args,pi32) helixscreen/toolchain-pi32 \
-		make PLATFORM_TARGET=pi32-both SKIP_OPTIONAL_DEPS=1 $(DOCKER_REMOTE_CONTROL) -j$(NPROC_DOCKER_RUN)
+		make PLATFORM_TARGET=pi32-both SKIP_OPTIONAL_DEPS=1 $(DOCKER_REMOTE_CONTROL) $(DOCKER_DIAG_UPLOADS) -j$(NPROC_DOCKER_RUN)
 	@$(MAKE) --no-print-directory maybe-stop-colima
 
 ad5m-docker: ensure-docker
@@ -1251,7 +1260,7 @@ ad5m-docker: ensure-docker
 	fi
 	$(call ensure-ccache-dir,ad5m)
 	$(Q)scripts/cross-compile-lock.sh docker run --rm --user $$(id -u):$$(id -g) -v "$(CURDIR)":/src $(DOCKER_HOST_CONTEXT) -w /src $(call docker-ccache-args,ad5m) helixscreen/toolchain-ad5m \
-		make PLATFORM_TARGET=ad5m SKIP_OPTIONAL_DEPS=1 $(DOCKER_REMOTE_CONTROL) -j$(NPROC_DOCKER_RUN)
+		make PLATFORM_TARGET=ad5m SKIP_OPTIONAL_DEPS=1 $(DOCKER_REMOTE_CONTROL) $(DOCKER_DIAG_UPLOADS) -j$(NPROC_DOCKER_RUN)
 	@# Extract CA certificates from Docker image for HTTPS verification on device
 	@mkdir -p build/ad5m/certs
 	@docker run --rm helixscreen/toolchain-ad5m cat /etc/ssl/certs/ca-certificates.crt > build/ad5m/certs/ca-certificates.crt 2>/dev/null \
@@ -1267,7 +1276,7 @@ ad5x-docker: ensure-docker
 	fi
 	$(call ensure-ccache-dir,ad5x)
 	$(Q)scripts/cross-compile-lock.sh docker run --rm --user $$(id -u):$$(id -g) -v "$(CURDIR)":/src $(DOCKER_HOST_CONTEXT) -w /src $(call docker-ccache-args,ad5x) helixscreen/toolchain-ad5x \
-		make PLATFORM_TARGET=ad5x SKIP_OPTIONAL_DEPS=1 $(DOCKER_REMOTE_CONTROL) -j$(NPROC_DOCKER_RUN)
+		make PLATFORM_TARGET=ad5x SKIP_OPTIONAL_DEPS=1 $(DOCKER_REMOTE_CONTROL) $(DOCKER_DIAG_UPLOADS) -j$(NPROC_DOCKER_RUN)
 	@# Extract CA certificates from Docker image for HTTPS verification on device
 	@mkdir -p build/ad5x/certs
 	@docker run --rm helixscreen/toolchain-ad5x cat /etc/ssl/certs/ca-certificates.crt > build/ad5x/certs/ca-certificates.crt 2>/dev/null \
@@ -1286,7 +1295,7 @@ cc1-docker: ensure-docker
 	@$(MAKE) --no-print-directory PLATFORM_TARGET=cc1 $(TRANS_XML)
 	$(call ensure-ccache-dir,cc1)
 	$(Q)scripts/cross-compile-lock.sh docker run --rm --user $$(id -u):$$(id -g) -v "$(CURDIR)":/src $(DOCKER_HOST_CONTEXT) -w /src $(call docker-ccache-args,cc1) helixscreen/toolchain-cc1 \
-		make PLATFORM_TARGET=cc1 SKIP_OPTIONAL_DEPS=1 $(DOCKER_REMOTE_CONTROL) -j$(NPROC_DOCKER_RUN)
+		make PLATFORM_TARGET=cc1 SKIP_OPTIONAL_DEPS=1 $(DOCKER_REMOTE_CONTROL) $(DOCKER_DIAG_UPLOADS) -j$(NPROC_DOCKER_RUN)
 	@# Extract CA certificates from Docker image for HTTPS verification on device
 	@mkdir -p build/cc1/certs
 	@docker run --rm helixscreen/toolchain-cc1 cat /etc/ssl/certs/ca-certificates.crt > build/cc1/certs/ca-certificates.crt 2>/dev/null \
@@ -1309,7 +1318,7 @@ mips-docker: ensure-docker
 	$(call ensure-ccache-dir,k1)
 	# Do not inherit host jobserver flags into containerized make.
 	$(Q)scripts/cross-compile-lock.sh docker run --rm --user $$(id -u):$$(id -g) -e MAKEFLAGS= -v "$(CURDIR)":/src $(DOCKER_HOST_CONTEXT) -w /src $(call docker-ccache-args,k1) helixscreen/toolchain-k1 \
-		make PLATFORM_TARGET=mips SKIP_OPTIONAL_DEPS=1 $(DOCKER_REMOTE_CONTROL) -j$(NPROC_DOCKER_RUN)
+		make PLATFORM_TARGET=mips SKIP_OPTIONAL_DEPS=1 $(DOCKER_REMOTE_CONTROL) $(DOCKER_DIAG_UPLOADS) -j$(NPROC_DOCKER_RUN)
 	@# Extract CA certificates from Docker image for HTTPS verification on device
 	@mkdir -p build/mips/certs
 	@docker run --rm helixscreen/toolchain-k1 cat /etc/ssl/certs/ca-certificates.crt > build/mips/certs/ca-certificates.crt 2>/dev/null \
@@ -1328,7 +1337,7 @@ k1-dynamic-docker: ensure-docker
 	fi
 	$(call ensure-ccache-dir,k1-dynamic)
 	$(Q)scripts/cross-compile-lock.sh docker run --rm --user $$(id -u):$$(id -g) -v "$(CURDIR)":/src $(DOCKER_HOST_CONTEXT) -w /src $(call docker-ccache-args,k1-dynamic) helixscreen/toolchain-k1-dynamic \
-		make PLATFORM_TARGET=k1-dynamic SKIP_OPTIONAL_DEPS=1 $(DOCKER_REMOTE_CONTROL) -j$(NPROC_DOCKER_RUN)
+		make PLATFORM_TARGET=k1-dynamic SKIP_OPTIONAL_DEPS=1 $(DOCKER_REMOTE_CONTROL) $(DOCKER_DIAG_UPLOADS) -j$(NPROC_DOCKER_RUN)
 	@$(MAKE) --no-print-directory maybe-stop-colima
 
 k2-docker: ensure-docker
@@ -1339,7 +1348,7 @@ k2-docker: ensure-docker
 	fi
 	$(call ensure-ccache-dir,k2)
 	$(Q)scripts/cross-compile-lock.sh docker run --platform linux/amd64 --rm --user $$(id -u):$$(id -g) -v "$(CURDIR)":/src $(DOCKER_HOST_CONTEXT) -w /src $(call docker-ccache-args,k2) helixscreen/toolchain-k2 \
-		make PLATFORM_TARGET=k2 SKIP_OPTIONAL_DEPS=1 $(DOCKER_REMOTE_CONTROL) -j$(NPROC_DOCKER_RUN)
+		make PLATFORM_TARGET=k2 SKIP_OPTIONAL_DEPS=1 $(DOCKER_REMOTE_CONTROL) $(DOCKER_DIAG_UPLOADS) -j$(NPROC_DOCKER_RUN)
 	@$(MAKE) --no-print-directory maybe-stop-colima
 
 # Cross-build the static armv7 ustreamer (MJPEG camera server) for K2.
@@ -1366,7 +1375,7 @@ snapmaker-u1-docker: ensure-docker
 	fi
 	$(call ensure-ccache-dir,snapmaker-u1)
 	$(Q)scripts/cross-compile-lock.sh docker run --rm --user $$(id -u):$$(id -g) -v "$(CURDIR)":/src $(DOCKER_HOST_CONTEXT) -w /src $(call docker-ccache-args,snapmaker-u1) helixscreen/toolchain-snapmaker-u1 \
-		make PLATFORM_TARGET=snapmaker-u1 SKIP_OPTIONAL_DEPS=1 $(DOCKER_REMOTE_CONTROL) -j$(NPROC_DOCKER_RUN)
+		make PLATFORM_TARGET=snapmaker-u1 SKIP_OPTIONAL_DEPS=1 $(DOCKER_REMOTE_CONTROL) $(DOCKER_DIAG_UPLOADS) -j$(NPROC_DOCKER_RUN)
 	@# Extract CA certificates from Docker image for HTTPS verification on device
 	@mkdir -p build/snapmaker-u1/certs
 	@docker run --rm helixscreen/toolchain-snapmaker-u1 cat /etc/ssl/certs/ca-certificates.crt > build/snapmaker-u1/certs/ca-certificates.crt 2>/dev/null \
@@ -1382,7 +1391,7 @@ x86-docker: ensure-docker
 	fi
 	$(call ensure-ccache-dir,x86)
 	$(Q)scripts/cross-compile-lock.sh docker run --platform linux/amd64 --rm --user $$(id -u):$$(id -g) -v "$(CURDIR)":/src $(DOCKER_HOST_CONTEXT) -w /src $(call docker-ccache-args,x86) helixscreen/toolchain-x86 \
-		make PLATFORM_TARGET=x86 SKIP_OPTIONAL_DEPS=1 $(DOCKER_REMOTE_CONTROL) -j$(NPROC_DOCKER_RUN)
+		make PLATFORM_TARGET=x86 SKIP_OPTIONAL_DEPS=1 $(DOCKER_REMOTE_CONTROL) $(DOCKER_DIAG_UPLOADS) -j$(NPROC_DOCKER_RUN)
 	@$(MAKE) --no-print-directory maybe-stop-colima
 
 x86-fbdev-docker: ensure-docker
@@ -1393,7 +1402,7 @@ x86-fbdev-docker: ensure-docker
 	fi
 	$(call ensure-ccache-dir,x86-fbdev)
 	$(Q)scripts/cross-compile-lock.sh docker run --platform linux/amd64 --rm --user $$(id -u):$$(id -g) -v "$(CURDIR)":/src $(DOCKER_HOST_CONTEXT) -w /src $(call docker-ccache-args,x86-fbdev) helixscreen/toolchain-x86 \
-		make PLATFORM_TARGET=x86-fbdev SKIP_OPTIONAL_DEPS=1 $(DOCKER_REMOTE_CONTROL) -j$(NPROC_DOCKER_RUN)
+		make PLATFORM_TARGET=x86-fbdev SKIP_OPTIONAL_DEPS=1 $(DOCKER_REMOTE_CONTROL) $(DOCKER_DIAG_UPLOADS) -j$(NPROC_DOCKER_RUN)
 	@$(MAKE) --no-print-directory maybe-stop-colima
 
 x86-all-docker: ensure-docker
@@ -1404,7 +1413,7 @@ x86-all-docker: ensure-docker
 	fi
 	$(call ensure-ccache-dir,x86)
 	$(Q)scripts/cross-compile-lock.sh docker run --platform linux/amd64 --rm --user $$(id -u):$$(id -g) -v "$(CURDIR)":/src $(DOCKER_HOST_CONTEXT) -w /src $(call docker-ccache-args,x86) helixscreen/toolchain-x86 \
-		make PLATFORM_TARGET=x86-both SKIP_OPTIONAL_DEPS=1 $(DOCKER_REMOTE_CONTROL) -j$(NPROC_DOCKER_RUN)
+		make PLATFORM_TARGET=x86-both SKIP_OPTIONAL_DEPS=1 $(DOCKER_REMOTE_CONTROL) $(DOCKER_DIAG_UPLOADS) -j$(NPROC_DOCKER_RUN)
 	@$(MAKE) --no-print-directory maybe-stop-colima
 
 # Stop Colima after build to free up RAM (macOS only)
@@ -1653,6 +1662,17 @@ define sync-device-features
 		scripts/device-env-set.sh "$(1)" "$(2)/config/helixscreen.env" HELIX_REMOTE_CONTROL 1; \
 		echo "$(DIM)  drive it: ssh $(1) 'cd $(2) && ./bin/helix-screen ctl navigate settings'$(RESET)"; \
 	fi
+	@# Diagnostic uploads default OFF in every non-packaging binary (the
+	@# compile-time gate is the only thing a fork build cannot tell from ours),
+	@# so the dev deploy turns the runtime switch on here — this flow is how
+	@# our test rigs are deployed, and helixscreen.env is excluded from every
+	@# rsync/tar, so nothing else writes this key. Official packages never run
+	@# this target: their binaries carry the marker at build time
+	@# (HELIX_PACKAGING=1). Opt back out with HELIX_DIAGNOSTIC_UPLOADS=0 in the
+	@# device env; note a later deploy restamps it to 1, same as remote
+	@# control.
+	@echo "$(DIM)Dev deploy — enabling diagnostic uploads on the device...$(RESET)"
+	@scripts/device-env-set.sh "$(1)" "$(2)/config/helixscreen.env" HELIX_DIAGNOSTIC_UPLOADS 1
 endef
 
 # Deploy the platform hook file the init script sources at boot.
@@ -2846,13 +2866,34 @@ define assert-no-remote-control
 	fi
 endef
 
+# The upload-gate twin of the above, with the polarity flipped: a release
+# binary MUST carry the diagnostic-upload marker (HELIX_PACKAGING=1 sets
+# ENABLE_DIAGNOSTIC_UPLOADS=yes). The installed fleet is the crash telemetry;
+# a release silently assembled from a developer binary would ship with every
+# upload pipe defaulted off, and nothing downstream would look wrong.
+#
+#   $(1) build/<plat>/bin
+define assert-diag-uploads
+	@feat=$$(sed -n 's/^diag_uploads=//p' $(1)/.build-features 2>/dev/null); \
+	if [ -z "$$feat" ]; then \
+		echo "$(YELLOW)  WARNING: $(1)/.build-features missing or unstamped — cannot confirm this binary carries the upload marker$(RESET)"; \
+	elif [ "$$feat" != "yes" ]; then \
+		echo "$(RED)$(BOLD)✗ $(1)/helix-screen was built WITHOUT diagnostic uploads enabled.$(RESET)"; \
+		echo "$(YELLOW)  A release must upload crash telemetry. Rebuild with HELIX_PACKAGING=1$(RESET)"; \
+		echo "$(YELLOW)  (what package-* sets) or ENABLE_DIAGNOSTIC_UPLOADS=yes, then re-run this target.$(RESET)"; \
+		exit 1; \
+	fi
+endef
+
 .PHONY: release-pi release-pi32 release-ad5m release-cc1 release-k1 release-ad5x release-k1-dynamic release-k2 release-snapmaker-u1 release-x86 release-all release-clean pi-fbdev-docker pi32-fbdev-docker pi-all-docker pi32-all-docker x86-fbdev-docker x86-all-docker
 
 # Package Pi release
 release-pi: | build/pi/bin/helix-screen build/pi/bin/helix-splash build/pi-fbdev/bin/helix-screen
 	@echo "$(CYAN)$(BOLD)Packaging Pi release v$(VERSION)...$(RESET)"
 	$(call assert-no-remote-control,build/pi/bin)
+	$(call assert-diag-uploads,build/pi/bin)
 	$(call assert-no-remote-control,build/pi-fbdev/bin)
+	$(call assert-diag-uploads,build/pi-fbdev/bin)
 	@mkdir -p $(RELEASE_DIR)/helixscreen/bin
 	@cp build/pi/bin/helix-screen build/pi/bin/helix-splash $(RELEASE_DIR)/helixscreen/bin/
 	@if [ -f build/pi/bin/helix-watchdog ]; then cp build/pi/bin/helix-watchdog $(RELEASE_DIR)/helixscreen/bin/; fi
@@ -2899,7 +2940,9 @@ release-pi: | build/pi/bin/helix-screen build/pi/bin/helix-splash build/pi-fbdev
 release-pi32: | build/pi32/bin/helix-screen build/pi32/bin/helix-splash build/pi32-fbdev/bin/helix-screen
 	@echo "$(CYAN)$(BOLD)Packaging Pi 32-bit release v$(VERSION)...$(RESET)"
 	$(call assert-no-remote-control,build/pi32/bin)
+	$(call assert-diag-uploads,build/pi32/bin)
 	$(call assert-no-remote-control,build/pi32-fbdev/bin)
+	$(call assert-diag-uploads,build/pi32-fbdev/bin)
 	@mkdir -p $(RELEASE_DIR)/helixscreen/bin
 	@cp build/pi32/bin/helix-screen build/pi32/bin/helix-splash $(RELEASE_DIR)/helixscreen/bin/
 	@if [ -f build/pi32/bin/helix-watchdog ]; then cp build/pi32/bin/helix-watchdog $(RELEASE_DIR)/helixscreen/bin/; fi
@@ -2947,6 +2990,7 @@ release-pi32: | build/pi32/bin/helix-screen build/pi32/bin/helix-splash build/pi
 release-ad5m: | build/ad5m/bin/helix-screen build/ad5m/bin/helix-splash
 	@echo "$(CYAN)$(BOLD)Packaging AD5M release v$(VERSION)...$(RESET)"
 	$(call assert-no-remote-control,build/ad5m/bin)
+	$(call assert-diag-uploads,build/ad5m/bin)
 	@mkdir -p $(RELEASE_DIR)/helixscreen/bin
 	@cp build/ad5m/bin/helix-screen build/ad5m/bin/helix-splash $(RELEASE_DIR)/helixscreen/bin/
 	@if [ -f build/ad5m/bin/helix-watchdog ]; then cp build/ad5m/bin/helix-watchdog $(RELEASE_DIR)/helixscreen/bin/; fi
@@ -2997,6 +3041,7 @@ release-ad5m: | build/ad5m/bin/helix-screen build/ad5m/bin/helix-splash
 release-ad5x: | build/ad5x/bin/helix-screen build/ad5x/bin/helix-splash
 	@echo "$(CYAN)$(BOLD)Packaging AD5X release v$(VERSION)...$(RESET)"
 	$(call assert-no-remote-control,build/ad5x/bin)
+	$(call assert-diag-uploads,build/ad5x/bin)
 	@mkdir -p $(RELEASE_DIR)/helixscreen/bin
 	@cp build/ad5x/bin/helix-screen build/ad5x/bin/helix-splash $(RELEASE_DIR)/helixscreen/bin/
 	@if [ -f build/ad5x/bin/helix-watchdog ]; then cp build/ad5x/bin/helix-watchdog $(RELEASE_DIR)/helixscreen/bin/; fi
@@ -3048,6 +3093,7 @@ release-ad5x: | build/ad5x/bin/helix-screen build/ad5x/bin/helix-splash
 release-cc1: | build/cc1/bin/helix-screen build/cc1/bin/helix-splash
 	@echo "$(CYAN)$(BOLD)Packaging CC1 release v$(VERSION)...$(RESET)"
 	$(call assert-no-remote-control,build/cc1/bin)
+	$(call assert-diag-uploads,build/cc1/bin)
 	@mkdir -p $(RELEASE_DIR)/helixscreen/bin
 	@cp build/cc1/bin/helix-screen build/cc1/bin/helix-splash $(RELEASE_DIR)/helixscreen/bin/
 	@if [ -f build/cc1/bin/helix-watchdog ]; then cp build/cc1/bin/helix-watchdog $(RELEASE_DIR)/helixscreen/bin/; fi
@@ -3099,6 +3145,7 @@ release-cc1: | build/cc1/bin/helix-screen build/cc1/bin/helix-splash
 release-k1: | build/mips/bin/helix-screen build/mips/bin/helix-splash
 	@echo "$(CYAN)$(BOLD)Packaging K1 release v$(VERSION)...$(RESET)"
 	$(call assert-no-remote-control,build/mips/bin)
+	$(call assert-diag-uploads,build/mips/bin)
 	@mkdir -p $(RELEASE_DIR)/helixscreen/bin
 	@cp build/mips/bin/helix-screen build/mips/bin/helix-splash $(RELEASE_DIR)/helixscreen/bin/
 	@if [ -f build/mips/bin/helix-watchdog ]; then cp build/mips/bin/helix-watchdog $(RELEASE_DIR)/helixscreen/bin/; fi
@@ -3150,6 +3197,7 @@ release-k1: | build/mips/bin/helix-screen build/mips/bin/helix-splash
 release-k1-dynamic: | build/k1-dynamic/bin/helix-screen build/k1-dynamic/bin/helix-splash
 	@echo "$(CYAN)$(BOLD)Packaging K1 Dynamic release v$(VERSION)...$(RESET)"
 	$(call assert-no-remote-control,build/k1-dynamic/bin)
+	$(call assert-diag-uploads,build/k1-dynamic/bin)
 	@mkdir -p $(RELEASE_DIR)/helixscreen/bin
 	@cp build/k1-dynamic/bin/helix-screen build/k1-dynamic/bin/helix-splash $(RELEASE_DIR)/helixscreen/bin/
 	@if [ -f build/k1-dynamic/bin/helix-watchdog ]; then cp build/k1-dynamic/bin/helix-watchdog $(RELEASE_DIR)/helixscreen/bin/; fi
@@ -3192,6 +3240,7 @@ release-k1-dynamic: | build/k1-dynamic/bin/helix-screen build/k1-dynamic/bin/hel
 release-k2: | build/k2/bin/helix-screen build/k2/bin/helix-splash
 	@echo "$(CYAN)$(BOLD)Packaging K2 release v$(VERSION)...$(RESET)"
 	$(call assert-no-remote-control,build/k2/bin)
+	$(call assert-diag-uploads,build/k2/bin)
 	@mkdir -p $(RELEASE_DIR)/helixscreen/bin
 	@cp build/k2/bin/helix-screen build/k2/bin/helix-splash $(RELEASE_DIR)/helixscreen/bin/
 	@if [ -f build/k2/bin/helix-watchdog ]; then cp build/k2/bin/helix-watchdog $(RELEASE_DIR)/helixscreen/bin/; fi
@@ -3245,6 +3294,7 @@ release-k2: | build/k2/bin/helix-screen build/k2/bin/helix-splash
 release-snapmaker-u1: | build/snapmaker-u1/bin/helix-screen
 	@echo "$(CYAN)$(BOLD)Packaging Snapmaker U1 release v$(VERSION)...$(RESET)"
 	$(call assert-no-remote-control,build/snapmaker-u1/bin)
+	$(call assert-diag-uploads,build/snapmaker-u1/bin)
 	@mkdir -p $(RELEASE_DIR)/helixscreen/bin
 	@cp build/snapmaker-u1/bin/helix-screen $(RELEASE_DIR)/helixscreen/bin/
 	@if [ -f build/snapmaker-u1/bin/helix-splash ]; then cp build/snapmaker-u1/bin/helix-splash $(RELEASE_DIR)/helixscreen/bin/; fi
@@ -3296,7 +3346,9 @@ release-snapmaker-u1: | build/snapmaker-u1/bin/helix-screen
 release-x86: | build/x86/bin/helix-screen build/x86/bin/helix-splash build/x86-fbdev/bin/helix-screen
 	@echo "$(CYAN)$(BOLD)Packaging x86 release v$(VERSION)...$(RESET)"
 	$(call assert-no-remote-control,build/x86/bin)
+	$(call assert-diag-uploads,build/x86/bin)
 	$(call assert-no-remote-control,build/x86-fbdev/bin)
+	$(call assert-diag-uploads,build/x86-fbdev/bin)
 	@mkdir -p $(RELEASE_DIR)/helixscreen/bin
 	@cp build/x86/bin/helix-screen build/x86/bin/helix-splash $(RELEASE_DIR)/helixscreen/bin/
 	@if [ -f build/x86/bin/helix-watchdog ]; then cp build/x86/bin/helix-watchdog $(RELEASE_DIR)/helixscreen/bin/; fi

@@ -19,6 +19,7 @@
 #include "platform_info.h"
 #include "printer_state.h"
 #include "system/crash_history.h"
+#include "system/diag_upload_gate.h"
 #include "system/helix_paths.h"
 #include "system/log_collector.h"
 #include "system/moonraker_local_probe.h"
@@ -53,6 +54,11 @@ json DebugBundleCollector::collect(const BundleOptions& options) {
     json bundle;
 
     bundle["version"] = HELIX_VERSION;
+
+    // Compile-time channel marker: the endpoint rejects or flags bundles whose
+    // client was not built to upload (prestonbrown/helixscreen#1410). Always
+    // present so "old client" and "fork client" are the same server-side test.
+    bundle["diag_upload_marked"] = diag::marked_build();
 
     if (!options.user_note.empty()) {
         bundle["user_note"] = sanitize_value(options.user_note);
@@ -2141,7 +2147,29 @@ std::vector<uint8_t> DebugBundleCollector::gzip_compress(const std::string& data
 // Async upload
 // =============================================================================
 
+const char* DebugBundleCollector::worker_url() {
+    if (const char* u = std::getenv("HELIX_BUNDLE_WORKER_URL")) {
+        return u;
+    }
+    return WORKER_URL;
+}
+
 void DebugBundleCollector::upload_async(const BundleOptions& options, ResultCallback callback) {
+    // The upload gate, before any collection or worker submission: a build that
+    // may not ship diagnostics must not even assemble a bundle off-device
+    // (prestonbrown/helixscreen#1410). The callback fires synchronously on the
+    // caller's thread here, which every caller already handles — the async
+    // paths marshal to the UI thread themselves.
+    if (!diag::uploads_enabled()) {
+        spdlog::info("[DebugBundle] Upload refused: diagnostic uploads are disabled "
+                     "in this build");
+        BundleResult result;
+        result.uploads_disabled = true;
+        result.error_message = "Diagnostic uploads are disabled in this build";
+        callback(result);
+        return;
+    }
+
     // Read PrinterState and its subjects HERE, on the main thread, and carry the
     // result into the worker as plain data. Everything past submit() runs on the
     // slow lane, where touching either is a data race (see PrinterSnapshot).
@@ -2183,13 +2211,13 @@ void DebugBundleCollector::upload_async(const BundleOptions& options, ResultCall
             // mangle arbitrary binary. Same pattern as update_checker and
             // crash_reporter.
             auto [s, body] = helix::android::https_post_binary(
-                WORKER_URL, compressed, "application/json", "gzip", ua, INGEST_API_KEY, 30);
+                worker_url(), compressed, "application/json", "gzip", ua, INGEST_API_KEY, 30);
             status = s;
             response_body = body;
 #else
             auto req = std::make_shared<HttpRequest>();
             req->method = HTTP_POST;
-            req->url = WORKER_URL;
+            req->url = worker_url();
             req->timeout = 30;
             req->headers["Content-Type"] = "application/json";
             req->headers["Content-Encoding"] = "gzip";
