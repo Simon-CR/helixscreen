@@ -361,3 +361,69 @@ TEST_CASE("A declared brand survives the private cache round-trip", "[lane][migr
     CHECK(*sources.local_user->brand == "Hatchbox");
     CHECK_FALSE(sources.remembered.has_value());
 }
+
+TEST_CASE("The declared set cannot carry colour or material", "[lane][migration]") {
+    // Colour and material keep their authorship on their lock flags, and the
+    // auto-mirror reads those flags directly rather than through the routing
+    // predicate. A second copy of either in the declared set would leave those
+    // reads answering from the older of two truths, so the set holds neither
+    // however a document spells itself.
+    using helix::ams::from_lane_data_record;
+    using helix::ams::sources_from_record;
+    using helix::ams::to_json;
+
+    SECTION("a record naming them in helix_declared does not get them declared") {
+        const nlohmann::json wire{{"lane", 0},
+                                  {"color", "#3355FF"},
+                                  {"helix_material", "PETG"},
+                                  {"vendor", "Hatchbox"},
+                                  {"helix_locked_color", false},
+                                  {"helix_locked_material", false},
+                                  {"helix_declared", {"brand", "material", "color_rgb"}}};
+        const auto parsed = from_lane_data_record(wire);
+        REQUIRE(parsed.has_value());
+
+        const auto sources = sources_from_record(parsed->second, wire, LegacyLockKeys::LaneData);
+
+        // brand answers from the set and is the user's.
+        REQUIRE(sources.local_user.has_value());
+        REQUIRE(sources.local_user->brand.has_value());
+        CHECK(*sources.local_user->brand == "Hatchbox");
+
+        // Colour and material answer from their false lock flags, not from the
+        // names the document put in the set.
+        CHECK_FALSE(sources.local_user->material.has_value());
+        CHECK_FALSE(sources.local_user->color_rgb.has_value());
+        REQUIRE(sources.remembered.has_value());
+        REQUIRE(sources.remembered->material.has_value());
+        CHECK(*sources.remembered->material == "PETG");
+        REQUIRE(sources.remembered->color_rgb.has_value());
+        CHECK(*sources.remembered->color_rgb == 0x3355FFu);
+
+        // The set never took the two names in the first place. Re-emitting it
+        // is what shows that: the emitter mirrors the set without a filter of
+        // its own, so a name in here would be a name the reader admitted.
+        const nlohmann::json reemitted = to_json(parsed->second)["declared"];
+        REQUIRE(reemitted.is_array());
+        CHECK(reemitted.size() == 1);
+        CHECK(reemitted.at(0) == "brand");
+    }
+
+    SECTION("an edit that supplies all three names only the one in the set") {
+        helix::SlotInfo edited;
+        edited.brand = "Hatchbox";
+        edited.material = "PETG";
+        edited.color_rgb = 0x3355FF;
+        const auto ovr = helix::ams::override_from_user_edit(edited);
+
+        // The two locks carry colour and material.
+        CHECK(ovr.user_locked_color);
+        CHECK(ovr.user_locked_material);
+
+        // The set carries brand and names neither of the other two.
+        const nlohmann::json declared = to_json(ovr)["declared"];
+        REQUIRE(declared.is_array());
+        CHECK(declared.size() == 1);
+        CHECK(declared.at(0) == "brand");
+    }
+}

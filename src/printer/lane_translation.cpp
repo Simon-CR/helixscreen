@@ -168,6 +168,36 @@ static_assert(COLOR_INDEX < std::tuple_size_v<decltype(FIELD_ROSTER)>, "colour r
 static_assert(MATERIAL_INDEX < std::tuple_size_v<decltype(FIELD_ROSTER)>,
               "material row went missing");
 
+/// Every roster position whose authorship the declared set carries. The two
+/// walks that build a set admit these rows and no others, so this is also the
+/// full set of bits any DeclaredFields can hold.
+constexpr uint16_t declared_set_mask() {
+    uint16_t mask = 0;
+    size_t index = 0;
+    std::apply(
+        [&](const auto&... rows) {
+            ((mask |= (std::decay_t<decltype(rows)>::authorship == Authorship::DeclaredSet
+                           ? static_cast<uint16_t>(uint16_t{1} << index)
+                           : uint16_t{0}),
+              ++index),
+             ...);
+        },
+        FIELD_ROSTER);
+    return mask;
+}
+
+// Colour and material keep their authorship on their lock flags, and the
+// auto-mirror reads those flags directly rather than through the routing
+// predicate. A second copy of either field's authorship in the declared set
+// would leave those reads answering from the older of two truths, so the set
+// may not carry them at all.
+static_assert((declared_set_mask() & (uint16_t{1} << COLOR_INDEX)) == 0,
+              "colour's authorship lives on user_locked_color alone: giving its roster row "
+              "Authorship::DeclaredSet would put a second copy in the declared set");
+static_assert((declared_set_mask() & (uint16_t{1} << MATERIAL_INDEX)) == 0,
+              "material's authorship lives on user_locked_material alone: giving its roster row "
+              "Authorship::DeclaredSet would put a second copy in the declared set");
+
 /// True when this row's translation does not carry the field.
 template <typename Member> constexpr bool skipped = std::is_null_pointer_v<Member>;
 
@@ -436,16 +466,15 @@ DeclaredFields declared_fields_supplied(const FilamentSlotOverride& record) {
 }
 
 nlohmann::json declared_field_names(const DeclaredFields& declared) {
-    // Only the fields that keep their authorship in the set are named. A field
-    // whose authorship lives on a lock flag is already on the wire under that
-    // flag's own key, and naming it here would put one answer in two places.
+    // A faithful mirror of the set, with no filter of its own. Refusing a field
+    // here as well would mean two places decide what the set may hold, and
+    // either one could then stop working without anything to show for it. The
+    // two functions that build a set are where that is decided, and neither
+    // admits a field whose authorship lives on a lock flag.
     nlohmann::json names = nlohmann::json::array();
     for_each_field_indexed([&](const auto& f, size_t index) {
-        using Row = std::decay_t<decltype(f)>;
-        if constexpr (Row::authorship == Authorship::DeclaredSet) {
-            if (declared.test(index)) {
-                names.push_back(std::string(f.name));
-            }
+        if (declared.test(index)) {
+            names.push_back(std::string(f.name));
         }
     });
     return names;
@@ -461,12 +490,19 @@ DeclaredFields declared_fields_from_names(const nlohmann::json& names) {
             continue;
         }
         const std::string name = entry.get<std::string>();
+        // Only rows that keep their authorship here are admitted. A record
+        // naming colour or material is naming a field whose authorship lives
+        // on a lock flag, and taking it would put a second copy in the set.
+        //
         // A name this build has no row for is a field a newer one declares.
         // Dropping it loses only authorship this build could not act on
         // anyway, where refusing the whole record would lose the rest of it.
         for_each_field_indexed([&](const auto& f, size_t index) {
-            if (f.name == name) {
-                declared.set(index);
+            using Row = std::decay_t<decltype(f)>;
+            if constexpr (Row::authorship == Authorship::DeclaredSet) {
+                if (f.name == name) {
+                    declared.set(index);
+                }
             }
         });
     }

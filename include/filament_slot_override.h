@@ -16,6 +16,16 @@ struct SlotInfo;
 
 namespace helix::ams {
 
+struct FilamentSlotOverride;
+class DeclaredFields;
+
+// The only two functions that may put a bit in a DeclaredFields. Both walk the
+// field roster in lane_translation.cpp and admit only the rows that roster
+// marks as keeping their authorship in the set, which is what keeps colour and
+// material out of it. Declared here so the class below can befriend them.
+[[nodiscard]] DeclaredFields declared_fields_supplied(const FilamentSlotOverride& record);
+[[nodiscard]] DeclaredFields declared_fields_from_names(const nlohmann::json& names);
+
 // Which of a stored record's fields the user declared, one bit per row of the
 // field roster in lane_translation.cpp.
 //
@@ -27,9 +37,13 @@ namespace helix::ams {
 //
 // Colour and material are the two fields whose authorship does NOT live here:
 // each owns a lock flag below, which a reader of the shared lane_data
-// namespace also keys on to recognise a HelixScreen record. helix::ams::
-// declared_fields_supplied() is the one producer, and lane_translation.cpp is
-// the one place that knows which of the two homes a given field uses.
+// namespace also keys on to recognise a HelixScreen record. Two homes for one
+// concept drift, so the set is built so it CANNOT hold those two: the only way
+// to set a bit is through the two roster walks befriended below, both of which
+// admit only rows the roster marks as belonging to the set, and the roster
+// static_asserts that colour and material are not among them. The auto-mirror
+// reads the two lock flags directly, so the bool staying the sole truth for
+// its field is what keeps those reads correct.
 class DeclaredFields {
   public:
     /// Rows the bitmask can address. The roster static_asserts against it.
@@ -37,11 +51,6 @@ class DeclaredFields {
 
     [[nodiscard]] bool test(size_t index) const {
         return index < CAPACITY && (bits_ & (uint16_t{1} << index)) != 0;
-    }
-    void set(size_t index) {
-        if (index < CAPACITY) {
-            bits_ |= static_cast<uint16_t>(uint16_t{1} << index);
-        }
     }
     [[nodiscard]] bool any() const {
         return bits_ != 0;
@@ -51,6 +60,15 @@ class DeclaredFields {
     }
 
   private:
+    void set(size_t index) {
+        if (index < CAPACITY) {
+            bits_ |= static_cast<uint16_t>(uint16_t{1} << index);
+        }
+    }
+
+    friend DeclaredFields declared_fields_supplied(const FilamentSlotOverride&);
+    friend DeclaredFields declared_fields_from_names(const nlohmann::json&);
+
     uint16_t bits_ = 0;
 };
 
