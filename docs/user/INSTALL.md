@@ -370,13 +370,11 @@ For SPI displays (like many small LCDs):
 
 See the [MainsailOS display documentation](https://docs.mainsail.xyz/) for specific display setup.
 
-### BTT Pad 7, CB2, and Similar
+### BTT Pad 7 and Similar All-in-One Pads
 
-The BTT Pad 7, CB2, and similar "Klipper Pad" devices typically include:
-- Pre-configured display output
-- Touch input via USB
+The BTT Pad 7 and similar "Klipper Pad" devices are complete units, with the single-board computer and touchscreen integrated in one housing. Display output and USB touch input come pre-configured, and HelixScreen should detect and use them automatically.
 
-HelixScreen should detect and use these automatically.
+A BTT CB1 or CB2 by itself is a single-board computer like a Raspberry Pi, not an all-in-one pad. It follows the generic Linux install above: attach a touchscreen over HDMI (plus USB for touch input), and it behaves like any other SBC.
 
 ### Screen Rotation
 
