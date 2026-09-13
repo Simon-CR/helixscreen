@@ -21,6 +21,7 @@
 #include "printer_state.h"
 #include "spoolman_types.h" // SpoolInfo + apply_spool_to_slot (the picker-side writer)
 #include "test_helpers/registered_backend.h"
+#include "test_helpers/seeded_override.h"
 #include "tool_state.h"
 #include "translation_loader.h"
 
@@ -1413,6 +1414,7 @@ TEST_CASE_METHOD(SnapmakerFixture,
     edit.color_rgb = 0xFF5500;
 
     auto err = backend.set_slot_info(0, edit, /*persist=*/true);
+    helix::test::edit_slot_as_user(backend, 0, edit);
     REQUIRE(err.success());
 
     // Override is staged in-memory AND written to the Moonraker DB.

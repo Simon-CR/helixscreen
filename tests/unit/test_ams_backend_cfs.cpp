@@ -21,6 +21,7 @@
 #include "test_helpers/cfs_test_access.h"
 #include "test_helpers/print_state_test_drivers.h"
 #include "test_helpers/registered_backend.h"
+#include "test_helpers/seeded_override.h"
 
 #include <filesystem>
 #include <memory>
@@ -2611,7 +2612,7 @@ TEST_CASE("CFS user edit survives the firmware echo of our own color push",
     edit.material = "ASA-CF";
     edit.color_name = "Dark Gray";
     edit.color_rgb = 0x1A1A1A;
-    REQUIRE(rig.backend->set_slot_info(0, edit, /*persist=*/true).success());
+    helix::test::edit_slot_as_user(*rig.backend, 0, edit);
 
     auto staged = CfsTestAccess::get_override(*rig.backend, 0);
     REQUIRE(staged.has_value());
@@ -2695,7 +2696,7 @@ TEST_CASE("CFS genuine swap while a color push is in flight still clears the ove
     SlotInfo edit;
     edit.material = "ASA-CF";
     edit.color_rgb = 0x1A1A1A;
-    REQUIRE(rig.backend->set_slot_info(0, edit, /*persist=*/true).success());
+    helix::test::edit_slot_as_user(*rig.backend, 0, edit);
     REQUIRE(CfsTestAccess::get_override(*rig.backend, 0).has_value());
 
     // Before the echo arrives the user yanks the spool and inserts another one.
@@ -3081,7 +3082,7 @@ TEST_CASE("CFS: a labeled untagged spool stays AVAILABLE while it is seated",
     edit.brand = "Ambrosia";
     edit.spool_name = "Black ASA-GF";
     edit.color_rgb = 0x000000;
-    REQUIRE(rig.backend->set_slot_info(0, edit, /*persist=*/true).success());
+    helix::test::edit_slot_as_user(*rig.backend, 0, edit);
     rig.poll(box_seated);
 
     SECTION("seated + labeled renders solid, not ghosted") {
@@ -3138,7 +3139,7 @@ TEST_CASE("CFS: labeling an untagged bay does not blank it on vender-sentinel fi
     edit.material = "ASA-GF";
     edit.spool_name = "Black ASA-GF";
     edit.color_rgb = 0x000000;
-    REQUIRE(rig.backend->set_slot_info(0, edit, /*persist=*/true).success());
+    helix::test::edit_slot_as_user(*rig.backend, 0, edit);
 
     // Firmware now echoes our own code back on every frame, byte-identical to
     // a tag read. Nothing about the physical bay changed.
@@ -3192,7 +3193,7 @@ TEST_CASE("CFS: relabeling a TAGGED bay still suppresses the untagged fallback",
     edit.material = "ASA-CF";
     edit.color_name = "Dark Gray";
     edit.color_rgb = 0x1A1A1A;
-    REQUIRE(rig.backend->set_slot_info(0, edit, /*persist=*/true).success());
+    helix::test::edit_slot_as_user(*rig.backend, 0, edit);
     rig.poll(box_seated);
 
     SECTION("still AVAILABLE while seated") {

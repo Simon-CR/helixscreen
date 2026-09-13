@@ -21,6 +21,7 @@
 #include "test_helpers/ad5x_ifs_test_access.h"
 #include "test_helpers/registered_backend.h"
 #include "test_helpers/scoped_home_confirm_prompter.h"
+#include "test_helpers/seeded_override.h"
 
 #include <algorithm>
 #include <chrono>
@@ -5220,7 +5221,7 @@ TEST_CASE("AD5X IFS set_slot_info(persist=true) survives a matching firmware par
     edit.brand = "Polymaker";
     edit.material = "PLA";
     edit.color_rgb = 0xFF5500;
-    backend.set_slot_info(0, edit, /*persist=*/true);
+    helix::test::edit_slot_as_user(backend, 0, edit);
 
     // Simulate a subsequent firmware parse that mirrors the user's edit
     // (production: write_adventurer_json succeeded). The override's brand
@@ -5269,7 +5270,7 @@ TEST_CASE("AD5X IFS user-edited slot survives firmware FFMInfo revert (#965 regr
     edit.brand = "Polymaker";
     edit.material = "PLA";
     edit.color_rgb = 0xFF5500;
-    backend.set_slot_info(0, edit, /*persist=*/true);
+    helix::test::edit_slot_as_user(backend, 0, edit);
     REQUIRE(Ad5xIfsTestAccess::last_firmware_color(backend, 0) == 0xFF5500u);
 
     {
@@ -5405,7 +5406,7 @@ TEST_CASE("AD5X IFS set_slot_info(persist=true) with pre-existing override repla
     edit.spoolman_id = 99;
     edit.material = "PLA";
     edit.color_rgb = 0xAABBCC;
-    backend.set_slot_info(0, edit, /*persist=*/true);
+    helix::test::edit_slot_as_user(backend, 0, edit);
 
     auto info = backend.get_slot_info(0);
     CHECK(info.brand == "NewBrand");
@@ -6091,7 +6092,7 @@ TEST_CASE("AD5X IFS set_slot_info(persist=true) does not wipe override on color 
     edit.color_rgb = 0x00FF00;
     edit.material = "PLA";
     edit.brand = "Polymaker";
-    backend.set_slot_info(0, edit, /*persist=*/true);
+    helix::test::edit_slot_as_user(backend, 0, edit);
 
     // Assert override is present and unharmed.
     {
