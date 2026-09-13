@@ -2468,6 +2468,18 @@ class AmsBackend {
     ///     survives because the echo may still be in flight.
     std::pair<int, int> own_write_expectation(int slot_index, int firmware_id);
 
+    /// The same answer own_write_expectation() would give, without ending the
+    /// expectation.
+    ///
+    /// For a reader that is not the authority on the binding verdict. Only one
+    /// consult per frame may consume, and it must be the one that sees
+    /// FIRMWARE's own spool id: a reader passing a SlotInfo field carries the
+    /// stored record's id back after an override merge, and consuming on that
+    /// ends the expectation an id early, leaving the next frame to read our
+    /// own in-flight write as somebody else's re-bind.
+    [[nodiscard]] std::pair<int, int> peek_own_write_expectation(int slot_index,
+                                                                 int firmware_id) const;
+
     /// Check this lane's declared binding against the spool id firmware just
     /// stated, dropping the declaring records when it no longer holds.
     ///
@@ -2486,6 +2498,25 @@ class AmsBackend {
     /// record can clear that too; the lane sources alone do not outlive a
     /// restart.
     helix::ams::BindingVerdict reconcile_lane_binding(int slot_index, int firmware_spool_id);
+
+    /// Lay this lane's resolved identity, presence and weights onto @p slot.
+    ///
+    /// The lane source model is the authority on what a lane shows, so this is
+    /// where a backend hands its freshly parsed SlotInfo over to it. The fields
+    /// SlotInfo carries that the resolver does not own - tool mapping, extruder
+    /// name, endless-spool group, error, environment, remaining length, temps,
+    /// indices - are left exactly as the backend set them.
+    ///
+    /// A lane no source has written is left alone entirely. resolve() answers
+    /// for such a lane with its own defaults, and writing those would paint
+    /// grey over the values the backend just built rather than report anything
+    /// observed.
+    ///
+    /// @warning **The caller must already hold the backend's own mutex_.** This
+    ///          performs no I/O and never calls back into a backend, so a lock
+    ///          inversion is not reachable through it; the precondition is the
+    ///          one that guards the SlotInfo being written.
+    void apply_resolved_lane(SlotInfo& slot, int slot_index);
 
     /// Pending per-slot own-write expectation: {id firmware reported before
     /// the write, id we wrote}. Guarded by the subclass's mutex_ (above).

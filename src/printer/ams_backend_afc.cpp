@@ -4928,7 +4928,9 @@ void AmsBackendAfc::apply_overrides(SlotInfo& slot, int slot_index) {
     // semantics): if we just re-linked this lane's spool id, in-flight
     // frames keep reporting the old firmware id for a poll or two — Rule 1
     // must not read that stale frame as an external re-bind.
-    const auto [own_old_id, own_new_id] = own_write_expectation(slot_index, slot.spoolman_id);
+    // A peek, not a consult: reconcile_lane_binding() is the one reader that
+    // sees firmware's own id, so it is the one that may end the expectation.
+    const auto [own_old_id, own_new_id] = peek_own_write_expectation(slot_index, slot.spoolman_id);
     opts.suppress_rebind_firmware_old_id = own_old_id;
     opts.suppress_rebind_firmware_new_id = own_new_id;
     const auto result = helix::ams::merge_override(slot, it->second, opts);

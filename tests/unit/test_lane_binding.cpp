@@ -478,6 +478,40 @@ TEST_CASE_METHOD(LVGLTestFixture, "AFC's own re-link is not read back as someone
     CHECK(resolve(lane_sources(harness.lane(0))).spoolman_id == 200);
 }
 
+TEST_CASE_METHOD(LVGLTestFixture, "a frame silent about the spool id cannot end an own write",
+                 "[lane][binding][afc]") {
+    // AFC sends deltas, so most frames between our write and its echo say
+    // nothing about spool_id. Only the reader holding firmware's own id may
+    // end the expectation: a reader passing the merged SlotInfo sees the id we
+    // just wrote, and consuming on that would leave this frame reading our own
+    // in-flight write as somebody else's re-bind.
+    SettingsManager::instance().init_subjects();
+
+    AfcHarness harness(nullptr, nullptr);
+    init_afc_lanes(*harness);
+
+    user_links(harness.lane(0), 169);
+    {
+        std::lock_guard<std::mutex> lock(AfcTestAccess::mutex(*harness));
+        helix::ams::FilamentSlotOverride stored;
+        stored.spoolman_id = 169;
+        stored.brand = "Polymaker";
+        AfcTestAccess::overrides(*harness)[0] = stored;
+        AfcTestAccess::record_own_spool_write(*harness, 0, 169, 42);
+    }
+
+    // A stale pre-echo frame. The merge writes the stored 169 into the
+    // SlotInfo, so from here the merged struct and firmware disagree.
+    feed_afc_lane(*harness, "lane1", {{"prep", true}, {"status", "Loaded"}, {"spool_id", 42}});
+    REQUIRE(lane_sources(harness.lane(0)).local_user.has_value());
+
+    // The commonest AFC frame: a status delta naming no spool.
+    feed_afc_lane(*harness, "lane1", {{"status", "Tooled"}});
+
+    REQUIRE(lane_sources(harness.lane(0)).local_user.has_value());
+    CHECK(lane_sources(harness.lane(0)).local_user->spoolman_id == 169);
+}
+
 TEST_CASE_METHOD(LVGLTestFixture, "AFC honours the retention setting when a lane is ejected",
                  "[lane][binding][afc]") {
     auto& settings = SettingsManager::instance();
