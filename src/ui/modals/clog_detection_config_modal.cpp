@@ -51,7 +51,7 @@ void ClogDetectionConfigModal::init_subjects() {
     lv_subject_init_int(&mode_subject_, 2); // default auto
 
     lv_subject_init_string(&threshold_text_subject_, threshold_text_buf_, nullptr,
-                           sizeof(threshold_text_buf_), "Default");
+                           sizeof(threshold_text_buf_), lv_tr("Default"));
 
     lv_subject_init_string(&det_length_text_subject_, det_length_text_buf_, nullptr,
                            sizeof(det_length_text_buf_), "---");
@@ -239,7 +239,7 @@ void ClogDetectionConfigModal::update_source_visibility() {
 
 void ClogDetectionConfigModal::sync_threshold_text() {
     if (danger_threshold_ == 0)
-        snprintf(threshold_text_buf_, sizeof(threshold_text_buf_), "Default");
+        snprintf(threshold_text_buf_, sizeof(threshold_text_buf_), "%s", lv_tr("Default"));
     else
         snprintf(threshold_text_buf_, sizeof(threshold_text_buf_), "%d%%", danger_threshold_);
     lv_subject_copy_string(&threshold_text_subject_, threshold_text_buf_);

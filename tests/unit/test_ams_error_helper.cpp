@@ -8,6 +8,7 @@
  */
 
 #include "../lvgl_test_fixture.h"
+#include "../test_helpers/ams_backend_mock_timing_test_access.h"
 #include "ams_backend_happy_hare.h"
 #include "ams_backend_mock.h"
 #include "ams_error.h"
@@ -168,4 +169,39 @@ TEST_CASE("the mock backend reports a bad index without deadlocking", "[ams][num
     const auto err = mock.set_slot_info(9, helix::SlotInfo{}, /*persist=*/false);
     CHECK(err.result == AmsResult::INVALID_SLOT);
     CHECK(err.user_msg == "Gate: Invalid number");
+}
+
+TEST_CASE_METHOD(LVGLTestFixture, "unloading an empty toolhead says it in the locale",
+                 "[ams][numbering][i18n]") {
+    ScopedLanguage restore_lang;
+
+    helix::ui::ensure_translation_loaded("ru");
+    lv_translation_set_language("ru");
+
+    // Guard the setup: with no pack loaded lv_tr() returns the English tag and
+    // the assertions below would pass vacuously against English.
+    REQUIRE(std::string(lv_tr("Nothing loaded")) != "Nothing loaded");
+
+    AmsBackendMock mock(4);
+    AmsBackendMockTimingTestAccess::force_started(mock);
+    AmsBackendMockTimingTestAccess::force_filament_loaded(mock, false);
+    const auto err = mock.unload_filament(0);
+    CHECK(err.result == AmsResult::WRONG_STATE);
+    CHECK(err.user_msg == std::string(lv_tr("Nothing loaded")));
+    CHECK(err.suggestion == std::string(lv_tr("Load a filament first before trying to unload")));
+}
+
+TEST_CASE_METHOD(LVGLTestFixture, "the enum fallback names translate with the locale",
+                 "[ams][numbering][i18n]") {
+    ScopedLanguage restore_lang;
+
+    helix::ui::ensure_translation_loaded("ru");
+    lv_translation_set_language("ru");
+
+    // Guard the setup: with no pack loaded lv_tr() returns the English tag and
+    // the assertion below would pass vacuously against English.
+    REQUIRE(std::string(lv_tr("Busy")) != "Busy");
+
+    CHECK(std::string(ams_result_to_string(AmsResult::BUSY)) == lv_tr("Busy"));
+    CHECK(std::string(ams_result_to_string(AmsResult::UNKNOWN_ERROR)) == lv_tr("Unknown Error"));
 }

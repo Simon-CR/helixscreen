@@ -2365,8 +2365,7 @@ AmsError AmsBackendHappyHare::do_unload_filament(int /*slot_index*/) {
         std::lock_guard<std::mutex> lock(mutex_);
 
         if (!system_info_.filament_loaded) {
-            return AmsError(AmsResult::WRONG_STATE, "No filament loaded", "No filament to unload",
-                            "Load filament first");
+            return AmsErrorHelper::not_loaded();
         }
     }
 
@@ -2867,9 +2866,9 @@ AmsError AmsBackendHappyHare::set_slot_info(int slot_index, const SlotInfo& info
                         "Material '" + rejected_material +
                             "' contains characters that cannot be "
                             "sent as a G-code parameter",
-                        "Couldn't save the material name",
-                        "Everything else was saved. Rename the material using letters, digits, "
-                        "spaces, and + - _ . ( ) /");
+                        lv_tr("Couldn't save the material name"),
+                        lv_tr("Everything else was saved. Rename the material using letters, "
+                              "digits, spaces, and + - _ . ( ) /"));
     }
 
     return AmsErrorHelper::success();
@@ -2928,7 +2927,7 @@ AmsError AmsBackendHappyHare::enable_bypass() {
 
         if (!helix::bypass_available_for(system_info_.supports_bypass)) {
             return AmsError(AmsResult::WRONG_STATE, "Bypass not supported",
-                            "This Happy Hare system does not support bypass mode", "");
+                            lv_tr("This Happy Hare system does not support bypass mode"), "");
         }
 
         // Twin of the AFC guard in AmsBackendAfc::enable_bypass(), and required
@@ -2947,7 +2946,8 @@ AmsError AmsBackendHappyHare::enable_bypass() {
         // position (mid-bowden, mid-unload) has to refuse here too.
         if (filament_pos_ != HAPPY_HARE_POS_UNLOADED && filament_pos_ != HAPPY_HARE_POS_UNKNOWN) {
             return AmsError(AmsResult::WRONG_STATE, "Unload filament first",
-                            "Filament is still loaded. Unload it before enabling bypass.", "");
+                            lv_tr("Filament is still loaded. Unload it before enabling bypass."),
+                            "");
         }
     }
 
@@ -2966,7 +2966,7 @@ AmsError AmsBackendHappyHare::disable_bypass() {
 
         if (system_info_.current_slot != -2) {
             return AmsError(AmsResult::WRONG_STATE, "Bypass not active",
-                            "Bypass mode is not currently active", "");
+                            lv_tr("Bypass mode is not currently active"), "");
         }
     }
 
@@ -3055,8 +3055,8 @@ AmsError AmsBackendHappyHare::apply_endless_spool_backup(int slot_index, int bac
         if (!system_info_.endless_spool_enabled) {
             return AmsError(AmsResult::WRONG_STATE,
                             "MMU_ENDLESS_SPOOL ignores GROUPS while endless spool is disabled",
-                            "Endless spool is turned off on this MMU",
-                            "Turn endless spool on, then set the backup gate");
+                            lv_tr("Endless spool is turned off on this MMU"),
+                            lv_tr("Turn endless spool on, then set the backup gate"));
         }
 
         const int n = slots_.slot_count();
@@ -3459,13 +3459,14 @@ AmsError AmsBackendHappyHare::execute_device_action(const std::string& action_id
     auto require_string = [&](const char* label) -> std::pair<std::string, AmsError> {
         if (!value.has_value()) {
             return {"", AmsError(AmsResult::WRONG_STATE, fmt::format("{} value required", label),
-                                 "Missing value", fmt::format("Select a {}", label))};
+                                 lv_tr("Missing value"), fmt::format(lv_tr("Select a {}"), label))};
         }
         try {
             return {std::any_cast<std::string>(value), AmsErrorHelper::success()};
         } catch (const std::bad_any_cast&) {
             return {"", AmsError(AmsResult::WRONG_STATE, fmt::format("Invalid {} type", label),
-                                 "Invalid value type", fmt::format("Select a valid {}", label))};
+                                 lv_tr("Invalid value type"),
+                                 fmt::format(lv_tr("Select a valid {}"), label))};
         }
     };
 
@@ -3482,30 +3483,32 @@ AmsError AmsBackendHappyHare::execute_device_action(const std::string& action_id
     // Helper to extract double from std::any (UI sends doubles)
     auto require_double = [&](const char* label) -> std::pair<double, AmsError> {
         if (!value.has_value()) {
-            return {0.0, AmsError(AmsResult::WRONG_STATE, fmt::format("{} value required", label),
-                                  "Missing value", fmt::format("Provide a {}", label))};
+            return {0.0,
+                    AmsError(AmsResult::WRONG_STATE, fmt::format("{} value required", label),
+                             lv_tr("Missing value"), fmt::format(lv_tr("Provide a {}"), label))};
         }
         try {
             return {std::any_cast<double>(value), AmsErrorHelper::success()};
         } catch (const std::bad_any_cast&) {
-            return {0.0,
-                    AmsError(AmsResult::WRONG_STATE, fmt::format("Invalid {} type", label),
-                             "Invalid value type", fmt::format("Provide a numeric {}", label))};
+            return {0.0, AmsError(AmsResult::WRONG_STATE, fmt::format("Invalid {} type", label),
+                                  lv_tr("Invalid value type"),
+                                  fmt::format(lv_tr("Provide a numeric {}"), label))};
         }
     };
 
     // Helper to extract bool from std::any
     auto require_bool = [&](const char* label) -> std::pair<bool, AmsError> {
         if (!value.has_value()) {
-            return {false, AmsError(AmsResult::WRONG_STATE, fmt::format("{} value required", label),
-                                    "Missing value", fmt::format("Provide {}", label))};
+            return {false,
+                    AmsError(AmsResult::WRONG_STATE, fmt::format("{} value required", label),
+                             lv_tr("Missing value"), fmt::format(lv_tr("Provide {}"), label))};
         }
         try {
             return {std::any_cast<bool>(value), AmsErrorHelper::success()};
         } catch (const std::bad_any_cast&) {
-            return {false,
-                    AmsError(AmsResult::WRONG_STATE, fmt::format("Invalid {} type", label),
-                             "Invalid value type", fmt::format("Provide a boolean {}", label))};
+            return {false, AmsError(AmsResult::WRONG_STATE, fmt::format("Invalid {} type", label),
+                                    lv_tr("Invalid value type"),
+                                    fmt::format(lv_tr("Provide a boolean {}"), label))};
         }
     };
 

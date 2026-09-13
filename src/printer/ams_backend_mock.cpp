@@ -754,8 +754,7 @@ AmsError AmsBackendMock::unload_filament(int /*slot_index*/) {
         }
 
         if (!system_info_.filament_loaded) {
-            return AmsError(AmsResult::WRONG_STATE, "No filament loaded", "No filament to unload",
-                            "Load filament first");
+            return AmsErrorHelper::not_loaded();
         }
 
         // Start unloading
@@ -1184,7 +1183,7 @@ AmsError AmsBackendMock::enable_bypass() {
 
         if (!helix::bypass_available_for(system_info_.supports_bypass)) {
             return AmsError(AmsResult::WRONG_STATE, "Bypass not supported",
-                            "This system does not support bypass mode", "");
+                            lv_tr("This system does not support bypass mode"), "");
         }
 
         if (system_info_.action != AmsAction::IDLE) {
@@ -1212,7 +1211,7 @@ AmsError AmsBackendMock::disable_bypass() {
 
         if (system_info_.current_slot != -2) {
             return AmsError(AmsResult::WRONG_STATE, "Bypass not active",
-                            "Bypass mode is not currently active", "");
+                            lv_tr("Bypass mode is not currently active"), "");
         }
 
         // Disable bypass mode
@@ -1279,9 +1278,10 @@ AmsError AmsBackendMock::resume() {
 
         // Can only resume from PAUSED state
         if (system_info_.action != AmsAction::PAUSED) {
-            return AmsError(AmsResult::WRONG_STATE, "Cannot resume - not in PAUSED state",
-                            "System is " + std::string(ams_action_to_string(system_info_.action)),
-                            "Wait for current operation to complete or use cancel");
+            return AmsError(
+                AmsResult::WRONG_STATE, "Cannot resume - not in PAUSED state",
+                fmt::format(lv_tr("System is {}"), ams_action_to_string(system_info_.action)),
+                lv_tr("Wait for current operation to complete or use cancel"));
         }
 
         // Resume to IDLE

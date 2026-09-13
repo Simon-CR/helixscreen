@@ -1538,15 +1538,15 @@ AmsError AmsBackendQidi::start_drying(float temp_c, int duration_min, int fan_pc
     if (temp_c < min_temp || temp_c > max_temp) {
         return AmsError(AmsResult::COMMAND_FAILED,
                         "Temperature out of range: " + std::to_string(temp_c),
-                        "Invalid temperature",
-                        "Set temperature between " + std::to_string(static_cast<int>(min_temp)) +
-                            "°C and " + std::to_string(static_cast<int>(max_temp)) + "°C");
+                        lv_tr("Invalid temperature"),
+                        fmt::format(lv_tr("Set temperature between {}°C and {}°C"),
+                                    static_cast<int>(min_temp), static_cast<int>(max_temp)));
     }
     if (duration_min <= 0 || duration_min > max_duration) {
         return AmsError(AmsResult::COMMAND_FAILED,
                         "Duration out of range: " + std::to_string(duration_min),
-                        "Invalid duration",
-                        "Set duration between 1 and " + std::to_string(max_duration) + " minutes");
+                        lv_tr("Invalid duration"),
+                        fmt::format(lv_tr("Set duration between 1 and {} minutes"), max_duration));
     }
 
     const int temp_i = static_cast<int>(temp_c);
