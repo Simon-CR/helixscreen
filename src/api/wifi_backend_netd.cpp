@@ -956,7 +956,8 @@ WiFiError WifiBackendNetd::get_scan_results(std::vector<WiFiNetwork>& networks) 
     return WiFiErrorHelper::success();
 }
 
-WiFiError WifiBackendNetd::connect_network(const std::string& ssid, const std::string& password) {
+WiFiError WifiBackendNetd::connect_network(const std::string& ssid, const std::string& password,
+                                           bool) {
     if (ssid.empty()) {
         return WiFiError(WiFiResult::INVALID_PARAMETERS, "SSID must not be empty",
                          "Enter a network name");

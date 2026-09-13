@@ -6,7 +6,13 @@
 
 #include <spdlog/spdlog.h>
 
+#include <algorithm>
+#include <atomic>
 #include <chrono>
+#include <cstdlib>
+#include <filesystem>
+#include <fstream>
+#include <sys/stat.h>
 #include <thread>
 
 #include "../catch_amalgamated.hpp"
@@ -35,6 +41,7 @@
 class TestableNMBackend : public WifiBackendNetworkManager {
   public:
     // Expose private methods for unit testing via public wrappers
+    using WifiBackendNetworkManager::connect_argv;
     using WifiBackendNetworkManager::is_polkit_permission_error;
     using WifiBackendNetworkManager::parse_scan_output;
     using WifiBackendNetworkManager::split_nmcli_fields;
@@ -67,6 +74,14 @@ class TestableNMBackend : public WifiBackendNetworkManager {
         st.mac_address = "de:ad:be:ef:ca:fe";
 
         return apply_polled_status(st);
+    }
+
+    /// Seed the state start() would have established — a resolved interface
+    /// and a live backend — since start() itself shells out to nmcli and
+    /// refuses without a real NetworkManager.
+    void force_running(const char* iface) {
+        running_ = true;
+        wifi_interface_ = iface;
     }
 };
 
@@ -135,6 +150,181 @@ TEST_CASE("NM backend: split_nmcli_fields", "[network][nm][parsing]") {
         REQUIRE(fields.size() == 2);
         CHECK(fields[0] == "path\\dir");
         CHECK(fields[1] == "value");
+    }
+}
+
+namespace {
+
+/// A throwaway dir holding a fake `nmcli` that records the argv it is exec'd
+/// with. Prepended to PATH, it stands in for NetworkManager: the only way to
+/// observe what the backend's fork/exec actually sends.
+struct FakeNmcliDir {
+    std::string dir;
+    std::string argv_file;
+    std::string count_file;
+
+    FakeNmcliDir() {
+        char tmpl[] = "/tmp/helix-fake-nmcli-XXXXXX";
+        dir = ::mkdtemp(tmpl);
+        argv_file = dir + "/argv.txt";
+        count_file = dir + "/count";
+
+        std::string script = R"SH(#!/bin/sh
+n=$(($(cat "$NMCLI_COUNT" 2>/dev/null || echo 0) + 1))
+echo "$n" > "$NMCLI_COUNT"
+if [ "$n" -eq 1 ] && [ "$NMCLI_FAIL_FIRST" = "1" ]; then
+  echo "Error: 802-11-wireless-security.key-mgmt: property is missing." >&2
+  exit 1
+fi
+printf '%s\n' "$@" > "$NMCLI_ARGV"
+exit 0
+)SH";
+        std::ofstream(dir + "/nmcli") << script;
+        ::chmod((dir + "/nmcli").c_str(), 0755);
+
+        ::setenv("NMCLI_ARGV", argv_file.c_str(), 1);
+        ::setenv("NMCLI_COUNT", count_file.c_str(), 1);
+    }
+    ~FakeNmcliDir() {
+        for (const char* var : {"NMCLI_ARGV", "NMCLI_COUNT", "NMCLI_FAIL_FIRST"}) {
+            ::unsetenv(var);
+        }
+        std::error_code ec;
+        std::filesystem::remove_all(dir, ec);
+    }
+
+    /// First nmcli invocation fails with the stale-profile key-mgmt error, so
+    /// the backend's self-heal delete + retry path runs.
+    void fail_first() {
+        ::setenv("NMCLI_FAIL_FIRST", "1", 1);
+    }
+
+    /// How many times the fake nmcli was exec'd.
+    int call_count() {
+        std::ifstream f(count_file);
+        int n = 0;
+        f >> n;
+        return n;
+    }
+
+    /// The argv of the LAST invocation, one argument per line.
+    std::vector<std::string> argv_lines() {
+        std::ifstream f(argv_file);
+        std::vector<std::string> lines;
+        std::string line;
+        while (std::getline(f, line)) {
+            lines.push_back(line);
+        }
+        return lines;
+    }
+};
+
+/// Prepends a dir to PATH for its lifetime; the forked nmcli child inherits it.
+struct ScopedPathPrepend {
+    std::string old_path;
+
+    explicit ScopedPathPrepend(const std::string& prepend) {
+        const char* cur = ::getenv("PATH");
+        old_path = cur ? cur : "";
+        std::string merged = prepend + ":" + old_path;
+        ::setenv("PATH", merged.c_str(), 1);
+    }
+    ~ScopedPathPrepend() {
+        ::setenv("PATH", old_path.c_str(), 1);
+    }
+};
+
+bool wait_for(std::atomic<bool>& flag, int timeout_ms) {
+    auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
+    while (std::chrono::steady_clock::now() < deadline) {
+        if (flag.load())
+            return true;
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    return flag.load();
+}
+
+} // namespace
+
+// ============================================================================
+// Connect Argument Vector Tests
+// ============================================================================
+//
+// `nmcli device wifi connect <ssid>` matches the SSID against NetworkManager's
+// scan cache. A hidden network broadcasts no SSID, so it is never in that
+// cache and the connect can only end in "No network with SSID found" (exit 10)
+// unless the `hidden yes` pair tells nmcli to associate anyway. These cases
+// pin the exact argv the exec path builds.
+
+TEST_CASE("NM backend: connect_argv", "[network][nm][hidden]") {
+    SECTION("Visible secured network: ssid, password pair, ifname last") {
+        auto argv = TestableNMBackend::connect_argv("HomeNet", "secret", false, "wlan0");
+        std::vector<std::string> expected{"device",   "wifi",   "connect", "HomeNet",
+                                          "password", "secret", "ifname",  "wlan0"};
+        REQUIRE(argv == expected);
+        CHECK(argv.back() == "wlan0");
+    }
+
+    SECTION("Hidden network inserts 'hidden yes' between password and ifname") {
+        auto argv = TestableNMBackend::connect_argv("HiddenNet", "secret", true, "wlan0");
+        std::vector<std::string> expected{"device", "wifi",   "connect", "HiddenNet", "password",
+                                          "secret", "hidden", "yes",     "ifname",    "wlan0"};
+        REQUIRE(argv == expected);
+    }
+
+    SECTION("Hidden open network omits the password pair entirely") {
+        auto argv = TestableNMBackend::connect_argv("HiddenOpen", "", true, "wlan0");
+        std::vector<std::string> expected{"device", "wifi", "connect", "HiddenOpen",
+                                          "hidden", "yes",  "ifname",  "wlan0"};
+        REQUIRE(argv == expected);
+    }
+
+    SECTION("Visible open network has neither password nor hidden pair") {
+        auto argv = TestableNMBackend::connect_argv("OpenNet", "", false, "wlan0");
+        std::vector<std::string> expected{"device",  "wifi",   "connect",
+                                          "OpenNet", "ifname", "wlan0"};
+        REQUIRE(argv == expected);
+    }
+
+    SECTION("Hidden flag does not leak into a visible connect") {
+        auto argv = TestableNMBackend::connect_argv("HomeNet", "secret", false, "wlan0");
+        CHECK(std::find(argv.begin(), argv.end(), "hidden") == argv.end());
+    }
+}
+
+// The argv above only proves the helper; this drives the whole fork/exec path
+// through connect_network() against a fake nmcli, so what NetworkManager would
+// actually receive is on the wire.
+TEST_CASE("NM backend: hidden connect execs nmcli with 'hidden yes'", "[network][nm][hidden]") {
+    FakeNmcliDir fake;
+    ScopedPathPrepend path_prepend(fake.dir);
+
+    TestableNMBackend backend;
+    backend.force_running("wlan0");
+    std::atomic<bool> connected{false};
+    backend.register_event_callback("CONNECTED", [&](const std::string&) { connected = true; });
+
+    std::vector<std::string> expected{"device",  "wifi",   "connect", "StealthNet", "password",
+                                      "pw12345", "hidden", "yes",     "ifname",     "wlan0"};
+
+    SECTION("plain hidden join") {
+        REQUIRE(backend.connect_network("StealthNet", "pw12345", /*is_hidden=*/true).success());
+        REQUIRE(wait_for(connected, 8000));
+
+        CHECK(fake.argv_lines() == expected);
+    }
+
+    SECTION("stale-profile self-heal retry keeps the hidden flag") {
+        fake.fail_first();
+
+        REQUIRE(backend.connect_network("StealthNet", "pw12345", /*is_hidden=*/true).success());
+        REQUIRE(wait_for(connected, 8000));
+
+        // The retry really ran: call 1 failed with the key-mgmt error, call 2
+        // deleted the stale profile, call 3 retried the connect.
+        REQUIRE(fake.call_count() == 3);
+        // The fake nmcli's argv file holds its LAST invocation: the retry.
+        CHECK(fake.argv_lines() == expected);
     }
 }
 
@@ -448,7 +638,7 @@ TEST_CASE("NM backend: lifecycle basics", "[network][nm][lifecycle]") {
         REQUIRE_FALSE(results_err.success());
         REQUIRE(results_err.result == WiFiResult::NOT_INITIALIZED);
 
-        WiFiError connect_err = backend.connect_network("Test", "pass");
+        WiFiError connect_err = backend.connect_network("Test", "pass", /*is_hidden=*/false);
         REQUIRE_FALSE(connect_err.success());
         REQUIRE(connect_err.result == WiFiResult::NOT_INITIALIZED);
 

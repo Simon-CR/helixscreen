@@ -177,7 +177,13 @@ void WifiBackendMock::scan_thread_func() {
 // Connection Management
 // ============================================================================
 
-WiFiError WifiBackendMock::connect_network(const std::string& ssid, const std::string& password) {
+WiFiError WifiBackendMock::connect_network(const std::string& ssid, const std::string& password,
+                                           bool is_hidden) {
+    // Recorded before any early return: a hidden SSID is by definition absent
+    // from the scan list the lookup below rejects on, so the observable ask
+    // must not depend on that lookup's outcome.
+    last_connect_hidden_ = is_hidden;
+
     if (!running_) {
         LOG_WARN_INTERNAL("[WifiBackend] Mock: connect_network called but not running");
         return WiFiError(WiFiResult::NOT_INITIALIZED, "Mock backend not running",

@@ -53,6 +53,11 @@ class NetworkSettingsOverlayTestAccess {
     static void password_connect_clicked(NetworkSettingsOverlay& o) {
         o.handle_password_connect_clicked();
     }
+    /// Open the hidden-network modal, exactly as the "Add other network"
+    /// button does.
+    static void add_other_clicked(NetworkSettingsOverlay& o) {
+        o.handle_add_other_clicked();
+    }
     /// The production handler behind the hidden-network modal's Connect button.
     static void hidden_connect_clicked(NetworkSettingsOverlay& o) {
         o.handle_hidden_connect_clicked();

@@ -386,7 +386,7 @@ class WifiBackendEsp : public WifiBackend {
         return WiFiErrorHelper::success();
     }
 
-    WiFiError connect_network(const std::string& ssid, const std::string& password) override {
+    WiFiError connect_network(const std::string& ssid, const std::string& password, bool) override {
         if (!running_) {
             return WiFiError(WiFiResult::NOT_INITIALIZED, "Backend not started",
                              "WiFi system not ready");
