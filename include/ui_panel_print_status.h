@@ -463,6 +463,11 @@ class PrintStatusPanel : public OverlayBase {
     // widget.
     std::string displayed_file_;       // file whose image is in the thumbnail
     std::string gcode_displayed_file_; // file whose geometry is in the viewer
+    // Print whose gcode the current fetch/scan is for. The load callback
+    // publishes the scan's pauses under THIS name, not the effective name at
+    // completion time, so a scan finishing after a print switch publishes a
+    // list that will not match the new print and stays hidden.
+    std::string gcode_scan_filename_;
 
     // Deferred G-code loading: filename to load when panel becomes visible
     // Set in set_filename(), consumed in on_activate() - avoids downloading

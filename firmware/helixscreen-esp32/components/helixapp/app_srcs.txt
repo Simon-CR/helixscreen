@@ -459,6 +459,7 @@ src/ui/ui_printer_status_icon.cpp
 src/ui/ui_printer_switch_menu.cpp
 src/ui/ui_probe_overlay.cpp
 src/ui/ui_progress_arc.cpp
+src/ui/ui_pause_markers.cpp
 src/ui/ui_resume_dispatch.cpp
 src/ui/ui_runout_guidance_modal.cpp
 src/ui/ui_settings_about.cpp

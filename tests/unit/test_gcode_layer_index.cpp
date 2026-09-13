@@ -5,6 +5,7 @@
 
 #include <fstream>
 #include <sstream>
+#include <unistd.h>
 
 #include "../catch_amalgamated.hpp"
 
@@ -15,7 +16,13 @@ using Catch::Approx;
 class TempGCodeFile {
   public:
     explicit TempGCodeFile(const std::string& content) {
-        path_ = "/tmp/test_layer_index_" + std::to_string(rand()) + ".gcode";
+        // rand() is unseeded, so every process draws the same sequence: two
+        // concurrently running helix-tests (the mutation gate shards the suite
+        // into 8) would pick the same name and overwrite each other's file
+        // mid-test. The pid keeps processes apart; rand() keeps tests within a
+        // process apart.
+        path_ = "/tmp/test_layer_index_" + std::to_string(getpid()) + "_" + std::to_string(rand()) +
+                ".gcode";
         std::ofstream file(path_);
         file << content;
         file.close();

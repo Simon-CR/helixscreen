@@ -105,6 +105,13 @@ what gets saved.
 - **Runout dialogs can hide manual actions mid-print** and carry an advisory rather than a
   warning header, so a dialog that is telling you something reads differently from one asking
   you to act.
+- **Scheduled pauses are marked on the progress indicator (#1509)** - filament changes (`M600`),
+  explicit `PAUSE`/`M601`, and slicer pause-at-layer stops each draw a tick where they sit in
+  the print, on both the home print-status card's bar and arc and the print panel's bar. The
+  tick's position follows the same axis the bar fills on: a file sliced with `M73` progress
+  lines places ticks at the slicer's own percentages, anything else at file position. A print
+  whose gcode was never fetched (an external start during the setup wizard, or a file too
+  large to preview) simply shows no ticks.
 
 ### Changed
 

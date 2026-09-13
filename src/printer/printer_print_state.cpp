@@ -67,6 +67,7 @@ void PrinterPrintState::init_subjects(bool register_xml) {
     INIT_SUBJECT_INT(print_progress, 0, subjects_, register_xml);
     INIT_SUBJECT_INT(print_progress_display, 0, subjects_, register_xml);
     INIT_SUBJECT_STRING(print_progress_text, "0%", subjects_, register_xml);
+    INIT_SUBJECT_INT(pause_markers_version, 0, subjects_, register_xml);
     INIT_SUBJECT_STRING(print_filename, "", subjects_, register_xml);
     INIT_SUBJECT_STRING(print_state, "standby", subjects_, register_xml);
     // RAW_PRINT_STATE_OK: declaring the wire subject itself.
@@ -238,6 +239,19 @@ void PrinterPrintState::freeze_progress_display(bool complete) {
                   lv_subject_get_int(&print_progress_display_));
 }
 
+void PrinterPrintState::set_scheduled_pauses(std::vector<helix::gcode::ScheduledPause> pauses,
+                                             helix::gcode::ProgressAxis axis,
+                                             const std::string& source_filename) {
+    scheduled_pauses_ = std::move(pauses);
+    pause_marker_axis_ = axis;
+    pause_source_filename_ = source_filename;
+    int version = lv_subject_get_int(&pause_markers_version_) + 1;
+    lv_subject_set_int(&pause_markers_version_, version);
+    spdlog::debug("[PrinterPrintState] Scheduled pauses published: {} (axis={})",
+                  scheduled_pauses_.size(),
+                  axis == helix::gcode::ProgressAxis::SlicerTime ? "slicer" : "bytes");
+}
+
 void PrinterPrintState::unfreeze_progress_display() {
     progress_frozen_ = false;
     publish_progress_display(0);
@@ -251,6 +265,16 @@ void PrinterPrintState::reset_for_new_print() {
     // Filename is Moonraker's source of truth - it updates when the print actually starts.
     lv_subject_set_int(&print_progress_, 0);
     unfreeze_progress_display();
+    // Scheduled pauses belong to the previous job's file. A scan for the new
+    // file may still be in flight; the publish-side filename guard keeps its
+    // late result off the new print if the file differs.
+    if (!scheduled_pauses_.empty()) {
+        scheduled_pauses_.clear();
+        pause_source_filename_.clear();
+        pause_marker_axis_ = helix::gcode::ProgressAxis::BytePosition;
+        int version = lv_subject_get_int(&pause_markers_version_) + 1;
+        lv_subject_set_int(&pause_markers_version_, version);
+    }
     lv_subject_set_int(&print_layer_current_, 0);
     has_real_layer_data_ = false;
     // Commanded Z belongs to the print run, not the file — clear it. Do NOT

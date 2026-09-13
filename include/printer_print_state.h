@@ -4,6 +4,7 @@
 #include "ui_observer_guard.h" // SubjectLifetime
 
 #include "async_lifetime_guard.h"
+#include "gcode_pause_scan.h"
 #include "print_job_ref.h"
 #include "print_lifecycle_state.h"
 #include "subject_managed_panel.h"
@@ -109,6 +110,49 @@ class PrinterPrintState {
     /// writes the int, so a bar and its label can never disagree.
     lv_subject_t* get_print_progress_text_subject() {
         return &print_progress_text_;
+    }
+
+    // ========================================================================
+    // Scheduled-pause markers (prestonbrown/helixscreen#1509)
+    //
+    // The pauses found in the active print's gcode, when a path already
+    // reading that file scanned for them (see gcode_pause_scan.h for why each
+    // pause carries two fractions). Absent by default: an external start
+    // whose file was never fetched, a file over the 2D-streaming gate, or a
+    // print begun during the setup wizard all simply have no list — never a
+    // wrong one.
+    // ========================================================================
+
+    /// Publish a scan result. The list stays hidden unless the print's
+    /// identity (get_effective_print_filename()) still equals @p
+    /// source_filename, so a scan that finishes after a print switch can
+    /// never paint the new print with the old file's pauses.
+    void set_scheduled_pauses(std::vector<helix::gcode::ScheduledPause> pauses,
+                              helix::gcode::ProgressAxis axis, const std::string& source_filename);
+
+    /// The collected pauses of the scanned file; empty when none were found.
+    const std::vector<helix::gcode::ScheduledPause>& get_scheduled_pauses() const {
+        return scheduled_pauses_;
+    }
+
+    /// Which axis the progress bar fills on for the scanned file; marker
+    /// placement must use helix::gcode::display_fraction() with this axis.
+    helix::gcode::ProgressAxis get_pause_marker_axis() const {
+        return pause_marker_axis_;
+    }
+
+    /// True when the collected list belongs to the print now identified by
+    /// get_effective_print_filename(). This is the draw-side gate: markers
+    /// render only while it holds.
+    bool pause_markers_match_current_file() const {
+        return !scheduled_pauses_.empty() && pause_source_filename_ == effective_print_filename_;
+    }
+
+    /// Bumped whenever the pause list is published or cleared so marker
+    /// renderers can invalidate. The list itself is read via
+    /// get_scheduled_pauses(); the subject only signals change.
+    lv_subject_t* get_pause_markers_version_subject() {
+        return &pause_markers_version_;
     }
 
     /// Raw filename from Moonraker
@@ -852,6 +896,15 @@ class PrinterPrintState {
     lv_subject_t print_progress_{};         // Integer 0-100
     lv_subject_t print_progress_display_{}; // Integer 0-100, frozen after completion
     lv_subject_t print_progress_text_{};    // String: print_progress_display_ as "N%"
+
+    // Scheduled-pause markers: pauses collected from the active print's gcode
+    // by whichever path parsed the file. All writes happen on the main thread
+    // (publish from the viewer load callback, clear from
+    // reset_for_new_print()), so the vector needs no lock.
+    std::vector<helix::gcode::ScheduledPause> scheduled_pauses_;
+    std::string pause_source_filename_;
+    helix::gcode::ProgressAxis pause_marker_axis_{helix::gcode::ProgressAxis::BytePosition};
+    lv_subject_t pause_markers_version_{};  // Integer: bumped on publish/clear
     lv_subject_t print_filename_{};         // String buffer
     lv_subject_t print_state_{};            // String buffer (for UI display)
     lv_subject_t print_state_enum_{};       // Integer: PrintJobState enum

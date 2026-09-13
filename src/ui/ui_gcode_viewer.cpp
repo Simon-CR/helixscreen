@@ -17,6 +17,7 @@
 #include "gcode_color_metadata.h"
 #include "gcode_layer_renderer.h"
 #include "gcode_parser.h"
+#include "gcode_pause_scan.h"
 #include "gcode_render_mode_policy.h"
 #include "gcode_ssao_policy.h"
 #include "gcode_streaming_config.h"
@@ -318,6 +319,14 @@ class GCodeViewerState {
     /// When set, renderer uses this instead of gcode_file for layer data.
     /// Mutually exclusive with gcode_file - exactly one should hold data.
     std::unique_ptr<helix::gcode::GCodeStreamingController> streaming_controller_;
+
+    /// Scheduled pauses of the loaded file + the axis its progress bar fills
+    /// on, collected by whichever path read it (streaming layer-index scan or
+    /// full-load parse loop). The panel's load callback publishes them into
+    /// PrinterPrintState, which knows which print the file belongs to.
+    std::vector<helix::gcode::ScheduledPause> scheduled_pauses;
+    helix::gcode::ProgressAxis scheduled_pauses_axis{helix::gcode::ProgressAxis::BytePosition};
+    bool has_pause_scan{false};
 
     /// Print progress layer (set via ui_gcode_viewer_set_print_progress)
     /// -1 means "show all layers" (preview mode), >= 0 means "show up to this layer"
@@ -1536,6 +1545,9 @@ struct AsyncBuildResult {
 #ifdef ENABLE_3D_RENDERER
     std::unique_ptr<helix::gcode::RibbonGeometry> geometry; ///< Full detail geometry
 #endif
+    /// Scheduled pauses + their axis, from the same parse pass (full-load mode).
+    std::vector<helix::gcode::ScheduledPause> scheduled_pauses;
+    helix::gcode::ProgressAxis scheduled_pauses_axis{helix::gcode::ProgressAxis::BytePosition};
     std::string error_msg;
     bool success{true};
     bool force_2d = false; ///< Budget system forced 2D fallback
@@ -1576,6 +1588,9 @@ static void ui_gcode_viewer_load_file_async(lv_obj_t* obj, const char* file_path
     crash_handler::breadcrumb::note("layer_renderer", "file_reset_pre");
     st->gcode_file.reset();
     crash_handler::breadcrumb::note("layer_renderer", "file_reset_post");
+    st->scheduled_pauses.clear();
+    st->scheduled_pauses_axis = helix::gcode::ProgressAxis::BytePosition;
+    st->has_pause_scan = false;
 
     // =========================================================================
     // PHASE 0: Streaming Mode Detection (Phase 6)
@@ -1696,6 +1711,15 @@ static void ui_gcode_viewer_load_file_async(lv_obj_t* obj, const char* file_path
                     st->streaming_controller_->is_open()) {
                     spdlog::info("[GCode Viewer] Streaming mode: indexed {} layers",
                                  st->streaming_controller_->get_layer_count());
+
+                    // The layer scan collected this file's scheduled pauses on
+                    // the same pass; remember them for the load callback.
+                    const auto& stats = st->streaming_controller_->get_index_stats();
+                    st->scheduled_pauses = stats.scheduled_pauses;
+                    st->scheduled_pauses_axis = stats.has_m73
+                                                    ? helix::gcode::ProgressAxis::SlicerTime
+                                                    : helix::gcode::ProgressAxis::BytePosition;
+                    st->has_pause_scan = true;
 
                     // Initialize 2D renderer with streaming controller
                     st->layer_renderer_2d_ = std::make_unique<helix::gcode::GCodeLayerRenderer>();
@@ -1855,8 +1879,22 @@ static void ui_gcode_viewer_load_file_async(lv_obj_t* obj, const char* file_path
                 bool cancelled_mid_parse = false;
                 size_t lines_since_cancel_check = 0;
 
+                // Same pass, second collector: scheduled pauses and the M73
+                // running state (see gcode_pause_scan.h). Offsets follow
+                // getline framing (line length + 1). current_layer() wraps to
+                // SIZE_MAX before the first layer; narrowing that to int32_t
+                // lands on -1, the scan's prologue sentinel.
+                helix::gcode::PauseScan pause_scan;
+                std::error_code size_ec;
+                const auto scan_total = std::filesystem::file_size(path, size_ec);
+                pause_scan.begin(size_ec ? 0 : static_cast<size_t>(scan_total));
+                uint64_t line_offset = 0;
+
                 while (std::getline(file, line)) {
                     parser.parse_line(line);
+                    pause_scan.feed_line(line, line_offset,
+                                         static_cast<int32_t>(parser.current_layer()));
+                    line_offset += line.length() + 1;
 
                     if (++lines_since_cancel_check >= CANCEL_POLL_LINES) {
                         lines_since_cancel_check = 0;
@@ -1868,6 +1906,8 @@ static void ui_gcode_viewer_load_file_async(lv_obj_t* obj, const char* file_path
                 }
 
                 file.close();
+                result->scheduled_pauses = pause_scan.pauses();
+                result->scheduled_pauses_axis = pause_scan.axis();
 
                 if (cancelled_mid_parse) {
                     spdlog::debug("[GCode Viewer] Build cancelled mid-parse, discarding");
@@ -1944,6 +1984,9 @@ static void ui_gcode_viewer_load_file_async(lv_obj_t* obj, const char* file_path
 
                     // Store G-code data
                     st->gcode_file = std::move(r->gcode_file);
+                    st->scheduled_pauses = std::move(r->scheduled_pauses);
+                    st->scheduled_pauses_axis = r->scheduled_pauses_axis;
+                    st->has_pause_scan = true;
 
                     // Update 2D renderer if it exists (prevents dangling pointer).
                     // The whole colour chain runs here, not just the palette:
@@ -2823,6 +2866,22 @@ bool ui_gcode_viewer_adopt_palette_if_empty(lv_obj_t* obj, std::vector<std::stri
     return true;
 }
 
+namespace helix {
+bool ui_gcode_viewer_get_scheduled_pauses(lv_obj_t* obj,
+                                          std::vector<helix::gcode::ScheduledPause>& out_pauses,
+                                          helix::gcode::ProgressAxis& out_axis) {
+    out_pauses.clear();
+    out_axis = helix::gcode::ProgressAxis::BytePosition;
+    gcode_viewer_state_t* st = get_state(obj);
+    if (!st || !st->has_pause_scan) {
+        return false;
+    }
+    out_pauses = st->scheduled_pauses;
+    out_axis = st->scheduled_pauses_axis;
+    return true;
+}
+} // namespace helix
+
 float ui_gcode_viewer_get_load_progress(lv_obj_t* obj) {
     gcode_viewer_state_t* st = get_state(obj);
     if (!st || !st->streaming_controller_) {
@@ -3233,6 +3292,16 @@ std::set<int> ui_gcode_viewer_get_tools_used(lv_obj_t*) {
 bool ui_gcode_viewer_adopt_palette_if_empty(lv_obj_t*, std::vector<std::string>&) {
     return false;
 }
+
+namespace helix {
+bool ui_gcode_viewer_get_scheduled_pauses(lv_obj_t*,
+                                          std::vector<helix::gcode::ScheduledPause>& out_pauses,
+                                          helix::gcode::ProgressAxis& out_axis) {
+    out_pauses.clear();
+    out_axis = helix::gcode::ProgressAxis::BytePosition;
+    return false;
+}
+} // namespace helix
 
 float ui_gcode_viewer_get_load_progress(lv_obj_t*) {
     return 0.0f;
