@@ -267,6 +267,30 @@ TEST_CASE_METHOD(DiagUploadGateFixture,
     CHECK(bundle_stub_.request_count() == 1);
 }
 
+TEST_CASE_METHOD(DiagUploadGateFixture,
+                 "upload_async: worker URL is captured at submit; guard death cannot retarget",
+                 "[diag-uploads][debug-bundle]") {
+    opt_in_.set("1");
+
+    std::atomic<bool> done{false};
+    helix::BundleResult got;
+
+    helix::DebugBundleCollector::upload_async(helix::BundleOptions{},
+                                              [&](const helix::BundleResult& r) {
+                                                  got = r;
+                                                  done = true;
+                                              });
+
+    // What an EnvVarGuard's death restores once the binary-wide loopback pin
+    // is in place: if the worker lane resolves the URL at execution time
+    // rather than submit time, this retargets the in-flight upload.
+    bundle_url_.set("http://127.0.0.1:9/");
+
+    REQUIRE(settle_done(done));
+    CHECK(got.success);
+    CHECK(bundle_stub_.request_count() == 1);
+}
+
 // ============================================================================
 // Pipe B: CrashReporter::try_auto_send [diag-uploads][crash_reporter]
 // ============================================================================

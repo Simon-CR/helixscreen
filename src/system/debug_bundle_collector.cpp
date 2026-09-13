@@ -2176,10 +2176,16 @@ void DebugBundleCollector::upload_async(const BundleOptions& options, ResultCall
     BundleOptions opts = options;
     opts.printer = snapshot_printer_state();
 
+    // Resolve the worker URL on the submitting thread, with the rest of the
+    // caller-thread state: the slow lane can execute after the caller's
+    // environment has changed, and an env read at execution time would
+    // retarget an upload that was already accepted.
+    const std::string url = worker_url();
+
     // Large compressed upload — route through HttpExecutor::slow() (1-worker lane)
     // to avoid head-of-line blocking REST calls AND to avoid raw std::thread spawn,
     // which crashes with std::terminate on AD5M under thread exhaustion (#837, #724).
-    helix::http::HttpExecutor::slow().submit([opts, callback = std::move(callback)]() {
+    helix::http::HttpExecutor::slow().submit([opts, callback = std::move(callback), url]() {
         BundleResult result;
 
         try {
@@ -2210,14 +2216,14 @@ void DebugBundleCollector::upload_async(const BundleOptions& options, ResultCall
             // String — the existing httpsPost takes String body and would
             // mangle arbitrary binary. Same pattern as update_checker and
             // crash_reporter.
-            auto [s, body] = helix::android::https_post_binary(
-                worker_url(), compressed, "application/json", "gzip", ua, INGEST_API_KEY, 30);
+            auto [s, body] = helix::android::https_post_binary(url, compressed, "application/json",
+                                                               "gzip", ua, INGEST_API_KEY, 30);
             status = s;
             response_body = body;
 #else
             auto req = std::make_shared<HttpRequest>();
             req->method = HTTP_POST;
-            req->url = worker_url();
+            req->url = url;
             req->timeout = 30;
             req->headers["Content-Type"] = "application/json";
             req->headers["Content-Encoding"] = "gzip";

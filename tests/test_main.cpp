@@ -76,6 +76,22 @@ __attribute__((constructor(101))) static void helix_pin_test_cache_sandbox() {
     snprintf(g_cache_sandbox, sizeof(g_cache_sandbox), "%s", root);
 }
 
+/// Pin both diagnostic ingest endpoints to a refused loopback port, so no run
+/// of this binary can reach the production ingest under any environment.
+///
+/// Unconditional by design, unlike the cache pins above: for these two
+/// variables an inherited value is itself the hazard, and the suite must fail
+/// fast against a refused port rather than succeed against the real worker.
+///
+/// The side effect is load-bearing: with this pin in place, every test's
+/// EnvVarGuard saves the loopback as its restore target, so a guard that dies
+/// before a deferred upload executes can only ever retarget to a refused
+/// port, never to production.
+__attribute__((constructor(101))) static void helix_pin_test_ingest_loopback() {
+    setenv("HELIX_BUNDLE_WORKER_URL", "http://127.0.0.1:9/", 1);
+    setenv("HELIX_CRASH_WORKER_URL", "http://127.0.0.1:9/", 1);
+}
+
 namespace {
 
 /// Remove the sandbox once the run is over. Only the teardown lives in a
