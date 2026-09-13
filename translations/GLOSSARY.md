@@ -31,7 +31,8 @@ translation agents (the relevant column is injected into their prompts).
   idea for the printing end rather than the filament position.
 - **Loanword policy for these four.** `Gate` is Happy Hare's English term of art
   and stays untranslated in de, es, fr, it and pt; ja transliterates it (`ゲート`),
-  zh translates it (`通道`), ru transliterates to Cyrillic (`Шлюз`). The evidence:
+  zh translates it (`通道`), and ru translates it (`Шлюз`, a native Russian
+  noun for a sluice; the transliteration would be `Гейт`). The evidence:
   Happy Hare ships no translations at all and its own touchscreen frontend
   hardcodes English "Gate", mainsail's German translator kept and compounded it
   (`Gate-Zuweisung`), and Bambu's own catalogue keeps English `slot` in de (23/23),
@@ -39,7 +40,10 @@ translation agents (the relevant column is injected into their prompts).
   So those locales demonstrably take English hardware nouns in this domain.
   Gate and Lane in es, fr, it, ja and pt rest on NO direct evidence - there is
   almost no native-language writing about these projects - so they are defaults,
-  not findings, and a native speaker may overturn any of them.
+  not findings, and a native speaker may overturn any of them. One Russian
+  speaker consulted 2026-09-13 suggested `канал` for slot/lane (unsure) and
+  personally keeps the English terms; `Шлюз`/`Канал` stand until a confident
+  native ruling replaces them.
 - **Do not reason from OrcaSlicer or wiki.bambulab.com.** Orca is a fork with its
   own catalogue and disagrees with Bambu (it ships fr `Emplacement` and pt_BR
   `Espaço`, neither of which Bambu uses). The Bambu wiki is self-declared machine

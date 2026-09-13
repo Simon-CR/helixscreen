@@ -395,7 +395,7 @@ translations:
   Calibrate All: Калибровать всё
   Calibrate Bowden: 'Калибровать боуден'
   Calibrate Encoder: 'Калибровать энкодер'
-  Calibrate Gates: 'Калибровать слоты'
+  Calibrate Gates: 'Калибровать шлюзы'
   Calibrate Gear: 'Калибровать шестерню'
   Calibrate X: Калибровать X
   Calibrate Y: Калибровать Y
@@ -834,7 +834,7 @@ translations:
   'Display: ': 'Дисплей: '
   Distance for hub cutter operation: 'Расстояние для работы резака хаба'
   Distance from hub to toolhead: 'Расстояние от хаба до печатающей головки'
-  Distance from lane extruder to hub: 'Расстояние от экструдера слота до хаба'
+  Distance from lane extruder to hub: 'Расстояние от канала экструдера до хаба'
   Distance from toolhead sensor to nozzle tip: 'Расстояние от датчика печатающей головки до кончика сопла'
   Do not power off your printer.: Не выключайте принтер.
   Do not touch the printer during calibration: Не трогайте принтер во время калибровки
@@ -1470,7 +1470,7 @@ translations:
   Installed: 'Установлено'
   Installing...: Установка...
   Intensity: Интенсивность
-  Interactive calibration for all lanes: 'Интерактивная калибровка всех слотов'
+  Interactive calibration for all lanes: 'Интерактивная калибровка всех каналов'
   Interactive probe calibration: Интерактивная калибровка зонда
   Interface size. Applies after restart.: Размер интерфейса. Применяется после перезапуска.
   'Internal error: API not available': 'Внутренняя ошибка: API недоступен'
@@ -1545,7 +1545,7 @@ translations:
   Labels: Этикетки
   Labels Per Sheet: Этикеток на листе
   Lane: Канал
-  Lane tests and motor resets: 'Тесты слотов и сброс моторов'
+  Lane tests and motor resets: 'Тесты каналов и сброс моторов'
   Lanes: Каналы
   Language: Язык
   Language, theme, brightness, and sound: Язык, тема, яркость и звук
@@ -1765,7 +1765,7 @@ translations:
   : Перемещает печатающую головку для измерения частот вибрации по каждой оси. Занимает
     2-3 минуты. Принтер будет шуметь — это нормально.
   Moving gantry: Перемещение портала
-  Moving lane: Перемещение слота
+  Moving lane: Перемещение канала
   Multi-Filament: Мульти-филамент
   Multi-Filament Overview: Обзор мульти-филамента
   Multi-Filament System: Мультифиламентная система
@@ -2481,7 +2481,7 @@ translations:
   Run filament load/unload even when the nozzle is cold (for macros that heat the nozzle themselves): Выполнять
     загрузку/выгрузку филамента даже при холодном сопле (для макросов, которые сами
     нагревают сопло)
-  Run test sequence on all lanes: 'Запустить тестовую последовательность на всех слотах'
+  Run test sequence on all lanes: 'Запустить тестовую последовательность на всех каналах'
   Run the HelixScreen installer with --update from a terminal on this printer. Scan for the command for your platform.: Запустите установщик HelixScreen с ключом --update в терминале на этом принтере. Отсканируйте код, чтобы получить команду для вашей платформы.
   Run {}?: Запустить {}?
   Running {}...: Выполнение {}...
@@ -2592,7 +2592,7 @@ translations:
   Select a valid number (1-{}): Выберите корректный номер (1-{})
   Select a valid tool: Выберите корректный инструмент
   Select fan: Выберите вентилятор
-  Select gate: 'Выбор слота'
+  Select gate: 'Выбор шлюза'
   Select macro for first button: Выберите макрос для первой кнопки
   Select macro for fourth button: Выберите макрос для четвёртой кнопки
   Select macro for second button: Выберите макрос для второй кнопки
@@ -2797,8 +2797,8 @@ translations:
   ? "Stop printing \"{}\"?\n\nThis cannot be undone after 5 seconds."
   : "Остановить печать \"{}\"?\n\nЭто нельзя будет отменить через 5 секунд."
   Stopped between Hub and Toolhead: Остановка между хабом и печатающей головкой
-  Stopped between Lane and Hub: Остановка между слотом и хабом
-  Stopped between Spool and Lane: Остановка между катушкой и слотом
+  Stopped between Lane and Hub: Остановка между каналом и хабом
+  Stopped between Spool and Lane: Остановка между катушкой и каналом
   Stops all motion. Requires firmware restart.: Останавливает всё движение. Требуется
     перезапуск прошивки.
   Stow: Убрать
@@ -2883,7 +2883,7 @@ translations:
   Temporary adjustment for this print, unless saved on Controls panel: Временная настройка
     для этой печати, если не сохранена в панели управления
   Tertiary: Третичный
-  Test All Lanes: 'Проверить все слоты'
+  Test All Lanes: 'Проверить все каналы'
   Test Connection: Тест соединения
   Test Grip: 'Проверить захват'
   Test Load: 'Проверить загрузку'

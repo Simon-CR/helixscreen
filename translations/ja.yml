@@ -371,7 +371,7 @@ translations:
   Calibrate All: すべてキャリブレート
   Calibrate Bowden: 'ボーデンをキャリブレート'
   Calibrate Encoder: 'エンコーダーをキャリブレート'
-  Calibrate Gates: 'スロットをキャリブレート'
+  Calibrate Gates: 'ゲートをキャリブレート'
   Calibrate Gear: 'ギアをキャリブレート'
   Calibrate X: X軸をキャリブレート
   Calibrate Y: Y軸をキャリブレート
@@ -2428,7 +2428,7 @@ translations:
   Select a valid number (1-{}): 有効な番号を選択してください（1-{}）
   Select a valid tool: 有効なツールを選択してください
   Select fan: ファンを選択
-  Select gate: 'スロットを選択'
+  Select gate: 'ゲートを選択'
   Select macro for first button: 最初のボタンのマクロを選択
   Select macro for fourth button: 4番目のボタンのマクロを選択
   Select macro for second button: 2番目のボタンのマクロを選択

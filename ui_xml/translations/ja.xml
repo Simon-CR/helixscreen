@@ -367,7 +367,7 @@
   <translation tag="Calibrate All" ja="すべてキャリブレート"/>
   <translation tag="Calibrate Bowden" ja="ボーデンをキャリブレート"/>
   <translation tag="Calibrate Encoder" ja="エンコーダーをキャリブレート"/>
-  <translation tag="Calibrate Gates" ja="スロットをキャリブレート"/>
+  <translation tag="Calibrate Gates" ja="ゲートをキャリブレート"/>
   <translation tag="Calibrate Gear" ja="ギアをキャリブレート"/>
   <translation tag="Calibrate X" ja="X軸をキャリブレート"/>
   <translation tag="Calibrate Y" ja="Y軸をキャリブレート"/>
@@ -2357,7 +2357,7 @@
   <translation tag="Select a valid number (1-{})" ja="有効な番号を選択してください（1-{}）"/>
   <translation tag="Select a valid tool" ja="有効なツールを選択してください"/>
   <translation tag="Select fan" ja="ファンを選択"/>
-  <translation tag="Select gate" ja="スロットを選択"/>
+  <translation tag="Select gate" ja="ゲートを選択"/>
   <translation tag="Select macro for first button" ja="最初のボタンのマクロを選択"/>
   <translation tag="Select macro for fourth button" ja="4番目のボタンのマクロを選択"/>
   <translation tag="Select macro for second button" ja="2番目のボタンのマクロを選択"/>

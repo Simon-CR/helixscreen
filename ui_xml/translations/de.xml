@@ -367,7 +367,7 @@
   <translation tag="Calibrate All" de="Alle kalibrieren"/>
   <translation tag="Calibrate Bowden" de="Bowden kalibrieren"/>
   <translation tag="Calibrate Encoder" de="Encoder kalibrieren"/>
-  <translation tag="Calibrate Gates" de="Slots kalibrieren"/>
+  <translation tag="Calibrate Gates" de="Gates kalibrieren"/>
   <translation tag="Calibrate Gear" de="Zahnrad kalibrieren"/>
   <translation tag="Calibrate X" de="X kalibrieren"/>
   <translation tag="Calibrate Y" de="Y kalibrieren"/>
@@ -2357,7 +2357,7 @@
   <translation tag="Select a valid number (1-{})" de="Wählen Sie eine gültige Nummer (1-{})"/>
   <translation tag="Select a valid tool" de="Wählen Sie ein gültiges Werkzeug"/>
   <translation tag="Select fan" de="Lüfter auswählen"/>
-  <translation tag="Select gate" de="Slot auswählen"/>
+  <translation tag="Select gate" de="Gate auswählen"/>
   <translation tag="Select macro for first button" de="Makro für erste Taste auswählen"/>
   <translation tag="Select macro for fourth button" de="Makro für vierte Taste auswählen"/>
   <translation tag="Select macro for second button" de="Makro für zweite Taste auswählen"/>

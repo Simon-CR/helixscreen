@@ -367,7 +367,7 @@
   <translation tag="Calibrate All" ru="Калибровать всё"/>
   <translation tag="Calibrate Bowden" ru="Калибровать боуден"/>
   <translation tag="Calibrate Encoder" ru="Калибровать энкодер"/>
-  <translation tag="Calibrate Gates" ru="Калибровать слоты"/>
+  <translation tag="Calibrate Gates" ru="Калибровать шлюзы"/>
   <translation tag="Calibrate Gear" ru="Калибровать шестерню"/>
   <translation tag="Calibrate X" ru="Калибровать X"/>
   <translation tag="Calibrate Y" ru="Калибровать Y"/>
@@ -756,7 +756,7 @@
   <translation tag="Display: " ru="Дисплей: "/>
   <translation tag="Distance for hub cutter operation" ru="Расстояние для работы резака хаба"/>
   <translation tag="Distance from hub to toolhead" ru="Расстояние от хаба до печатающей головки"/>
-  <translation tag="Distance from lane extruder to hub" ru="Расстояние от экструдера слота до хаба"/>
+  <translation tag="Distance from lane extruder to hub" ru="Расстояние от канала экструдера до хаба"/>
   <translation tag="Distance from toolhead sensor to nozzle tip" ru="Расстояние от датчика печатающей головки до кончика сопла"/>
   <translation tag="Do not power off your printer." ru="Не выключайте принтер."/>
   <translation tag="Do not touch the printer during calibration" ru="Не трогайте принтер во время калибровки"/>
@@ -1334,7 +1334,7 @@
   <translation tag="Installed" ru="Установлено"/>
   <translation tag="Installing..." ru="Установка..."/>
   <translation tag="Intensity" ru="Интенсивность"/>
-  <translation tag="Interactive calibration for all lanes" ru="Интерактивная калибровка всех слотов"/>
+  <translation tag="Interactive calibration for all lanes" ru="Интерактивная калибровка всех каналов"/>
   <translation tag="Interactive probe calibration" ru="Интерактивная калибровка зонда"/>
   <translation tag="Interface size. Applies after restart." ru="Размер интерфейса. Применяется после перезапуска."/>
   <translation tag="Internal error: API not available" ru="Внутренняя ошибка: API недоступен"/>
@@ -1397,7 +1397,7 @@
   <translation tag="Labels" ru="Этикетки"/>
   <translation tag="Labels Per Sheet" ru="Этикеток на листе"/>
   <translation tag="Lane" ru="Канал"/>
-  <translation tag="Lane tests and motor resets" ru="Тесты слотов и сброс моторов"/>
+  <translation tag="Lane tests and motor resets" ru="Тесты каналов и сброс моторов"/>
   <translation tag="Lanes" ru="Каналы"/>
   <translation tag="Language" ru="Язык"/>
   <translation tag="Language, theme, brightness, and sound" ru="Язык, тема, яркость и звук"/>
@@ -1599,7 +1599,7 @@
   <translation tag="Move the toolhead, home axes, level the bed, and fine-tune temperatures, fans, and other motion settings." ru="Перемещайте печатающую головку, паркуйте оси, выравнивайте стол и точно настраивайте температуры, вентиляторы и другие параметры движения."/>
   <translation tag="Moves the print head to measure vibration frequencies on each axis. Takes 2-3 minutes. The printer will make noise — this is normal." ru="Перемещает печатающую головку для измерения частот вибрации по каждой оси. Занимает 2-3 минуты. Принтер будет шуметь — это нормально."/>
   <translation tag="Moving gantry" ru="Перемещение портала"/>
-  <translation tag="Moving lane" ru="Перемещение слота"/>
+  <translation tag="Moving lane" ru="Перемещение канала"/>
   <translation tag="Multi-Filament" ru="Мульти-филамент"/>
   <translation tag="Multi-Filament Overview" ru="Обзор мульти-филамента"/>
   <translation tag="Multi-Filament System" ru="Мультифиламентная система"/>
@@ -2261,7 +2261,7 @@
   <translation tag="Run a macro you choose, in one tap" ru="Выбранный макрос одним нажатием"/>
   <translation tag="Run brush cleaning sequence" ru="Запустить последовательность очистки щёткой"/>
   <translation tag="Run filament load/unload even when the nozzle is cold (for macros that heat the nozzle themselves)" ru="Выполнять загрузку/выгрузку филамента даже при холодном сопле (для макросов, которые сами нагревают сопло)"/>
-  <translation tag="Run test sequence on all lanes" ru="Запустить тестовую последовательность на всех слотах"/>
+  <translation tag="Run test sequence on all lanes" ru="Запустить тестовую последовательность на всех каналах"/>
   <translation tag="Run the HelixScreen installer with --update from a terminal on this printer. Scan for the command for your platform." ru="Запустите установщик HelixScreen с ключом --update в терминале на этом принтере. Отсканируйте код, чтобы получить команду для вашей платформы."/>
   <translation tag="Run {}?" ru="Запустить {}?"/>
   <translation tag="Running {}..." ru="Выполнение {}..."/>
@@ -2357,7 +2357,7 @@
   <translation tag="Select a valid number (1-{})" ru="Выберите корректный номер (1-{})"/>
   <translation tag="Select a valid tool" ru="Выберите корректный инструмент"/>
   <translation tag="Select fan" ru="Выберите вентилятор"/>
-  <translation tag="Select gate" ru="Выбор слота"/>
+  <translation tag="Select gate" ru="Выбор шлюза"/>
   <translation tag="Select macro for first button" ru="Выберите макрос для первой кнопки"/>
   <translation tag="Select macro for fourth button" ru="Выберите макрос для четвёртой кнопки"/>
   <translation tag="Select macro for second button" ru="Выберите макрос для второй кнопки"/>
@@ -2539,8 +2539,8 @@
   <translation tag="Stop failed" ru="Ошибка остановки"/>
   <translation tag="Stop printing &quot;{}&quot;?&#10;&#10;This cannot be undone after 5 seconds." ru="Остановить печать &quot;{}&quot;?&#10;&#10;Это нельзя будет отменить через 5 секунд."/>
   <translation tag="Stopped between Hub and Toolhead" ru="Остановка между хабом и печатающей головкой"/>
-  <translation tag="Stopped between Lane and Hub" ru="Остановка между слотом и хабом"/>
-  <translation tag="Stopped between Spool and Lane" ru="Остановка между катушкой и слотом"/>
+  <translation tag="Stopped between Lane and Hub" ru="Остановка между каналом и хабом"/>
+  <translation tag="Stopped between Spool and Lane" ru="Остановка между катушкой и каналом"/>
   <translation tag="Stops all motion. Requires firmware restart." ru="Останавливает всё движение. Требуется перезапуск прошивки."/>
   <translation tag="Stow" ru="Убрать"/>
   <translation tag="Subtle" ru="Сдержанный"/>
@@ -2614,7 +2614,7 @@
   <translation tag="Template" ru="Шаблон"/>
   <translation tag="Temporary adjustment for this print, unless saved on Controls panel" ru="Временная настройка для этой печати, если не сохранена в панели управления"/>
   <translation tag="Tertiary" ru="Третичный"/>
-  <translation tag="Test All Lanes" ru="Проверить все слоты"/>
+  <translation tag="Test All Lanes" ru="Проверить все каналы"/>
   <translation tag="Test Connection" ru="Тест соединения"/>
   <translation tag="Test Grip" ru="Проверить захват"/>
   <translation tag="Test Load" ru="Проверить загрузку"/>

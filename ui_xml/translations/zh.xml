@@ -367,7 +367,7 @@
   <translation tag="Calibrate All" zh="全部校准"/>
   <translation tag="Calibrate Bowden" zh="校准波顿管"/>
   <translation tag="Calibrate Encoder" zh="校准编码器"/>
-  <translation tag="Calibrate Gates" zh="校准槽位"/>
+  <translation tag="Calibrate Gates" zh="校准通道"/>
   <translation tag="Calibrate Gear" zh="校准齿轮"/>
   <translation tag="Calibrate X" zh="校准 X 轴"/>
   <translation tag="Calibrate Y" zh="校准 Y 轴"/>
@@ -756,7 +756,7 @@
   <translation tag="Display: " zh="显示: "/>
   <translation tag="Distance for hub cutter operation" zh="集线器切刀动作的距离"/>
   <translation tag="Distance from hub to toolhead" zh="从集线器到工具头的距离"/>
-  <translation tag="Distance from lane extruder to hub" zh="从槽位挤出机到集线器的距离"/>
+  <translation tag="Distance from lane extruder to hub" zh="从耗材通道挤出机到集线器的距离"/>
   <translation tag="Distance from toolhead sensor to nozzle tip" zh="从工具头传感器到喷嘴尖端的距离"/>
   <translation tag="Do not power off your printer." zh="请勿关闭打印机电源。"/>
   <translation tag="Do not touch the printer during calibration" zh="校准期间请勿触碰打印机"/>
@@ -1334,7 +1334,7 @@
   <translation tag="Installed" zh="已安装"/>
   <translation tag="Installing..." zh="正在安装..."/>
   <translation tag="Intensity" zh="强度"/>
-  <translation tag="Interactive calibration for all lanes" zh="所有槽位的交互式校准"/>
+  <translation tag="Interactive calibration for all lanes" zh="所有耗材通道的交互式校准"/>
   <translation tag="Interactive probe calibration" zh="交互式探针校准"/>
   <translation tag="Interface size. Applies after restart." zh="界面大小。重启后生效。"/>
   <translation tag="Internal error: API not available" zh="内部错误: API 不可用"/>
@@ -1397,7 +1397,7 @@
   <translation tag="Labels" zh="标签"/>
   <translation tag="Labels Per Sheet" zh="每页标签数"/>
   <translation tag="Lane" zh="耗材通道"/>
-  <translation tag="Lane tests and motor resets" zh="槽位测试与电机重置"/>
+  <translation tag="Lane tests and motor resets" zh="耗材通道测试与电机重置"/>
   <translation tag="Lanes" zh="耗材通道"/>
   <translation tag="Language" zh="语言"/>
   <translation tag="Language, theme, brightness, and sound" zh="语言、主题、亮度和声音"/>
@@ -1599,7 +1599,7 @@
   <translation tag="Move the toolhead, home axes, level the bed, and fine-tune temperatures, fans, and other motion settings." zh="移动打印头、归位轴、调平热床，并微调温度、风扇及其他运动设置。"/>
   <translation tag="Moves the print head to measure vibration frequencies on each axis. Takes 2-3 minutes. The printer will make noise — this is normal." zh="移动打印头以测量每个轴上的振动频率。需要 2-3 分钟。打印机会发出噪音——这是正常的。"/>
   <translation tag="Moving gantry" zh="正在移动龙门"/>
-  <translation tag="Moving lane" zh="正在移动槽位"/>
+  <translation tag="Moving lane" zh="正在移动耗材通道"/>
   <translation tag="Multi-Filament" zh="多耗材"/>
   <translation tag="Multi-Filament Overview" zh="多耗材概览"/>
   <translation tag="Multi-Filament System" zh="多耗材系统"/>
@@ -2261,7 +2261,7 @@
   <translation tag="Run a macro you choose, in one tap" zh="一键运行选定的宏"/>
   <translation tag="Run brush cleaning sequence" zh="运行刷子清洁流程"/>
   <translation tag="Run filament load/unload even when the nozzle is cold (for macros that heat the nozzle themselves)" zh="即使喷嘴处于冷态也执行耗材加载/卸载（适用于自行加热喷嘴的宏）"/>
-  <translation tag="Run test sequence on all lanes" zh="在所有槽位运行测试流程"/>
+  <translation tag="Run test sequence on all lanes" zh="在所有耗材通道运行测试流程"/>
   <translation tag="Run the HelixScreen installer with --update from a terminal on this printer. Scan for the command for your platform." zh="在本打印机的终端中运行 HelixScreen 安装程序并加上 --update。扫码获取适用于你的平台的命令。"/>
   <translation tag="Run {}?" zh="运行 {}？"/>
   <translation tag="Running {}..." zh="正在运行 {}..."/>
@@ -2357,7 +2357,7 @@
   <translation tag="Select a valid number (1-{})" zh="请选择有效编号（1-{}）"/>
   <translation tag="Select a valid tool" zh="请选择有效工具"/>
   <translation tag="Select fan" zh="选择风扇"/>
-  <translation tag="Select gate" zh="选择槽位"/>
+  <translation tag="Select gate" zh="选择通道"/>
   <translation tag="Select macro for first button" zh="为第一个按钮选择宏"/>
   <translation tag="Select macro for fourth button" zh="为第四个按钮选择宏"/>
   <translation tag="Select macro for second button" zh="为第二个按钮选择宏"/>
@@ -2539,8 +2539,8 @@
   <translation tag="Stop failed" zh="停止失败"/>
   <translation tag="Stop printing &quot;{}&quot;?&#10;&#10;This cannot be undone after 5 seconds." zh="停止打印 &quot;{}&quot;？&#10;&#10;5秒后将无法撤销。"/>
   <translation tag="Stopped between Hub and Toolhead" zh="停在集线器与工具头之间"/>
-  <translation tag="Stopped between Lane and Hub" zh="停在槽位与集线器之间"/>
-  <translation tag="Stopped between Spool and Lane" zh="停在料盘与槽位之间"/>
+  <translation tag="Stopped between Lane and Hub" zh="停在耗材通道与集线器之间"/>
+  <translation tag="Stopped between Spool and Lane" zh="停在料盘与耗材通道之间"/>
   <translation tag="Stops all motion. Requires firmware restart." zh="停止所有运动。需要固件重启。"/>
   <translation tag="Stow" zh="收回"/>
   <translation tag="Subtle" zh="微妙"/>
@@ -2614,7 +2614,7 @@
   <translation tag="Template" zh="模板"/>
   <translation tag="Temporary adjustment for this print, unless saved on Controls panel" zh="此打印的临时调整，除非在控制面板上保存"/>
   <translation tag="Tertiary" zh="第三"/>
-  <translation tag="Test All Lanes" zh="测试所有槽位"/>
+  <translation tag="Test All Lanes" zh="测试所有耗材通道"/>
   <translation tag="Test Connection" zh="测试连接"/>
   <translation tag="Test Grip" zh="测试夹持"/>
   <translation tag="Test Load" zh="测试装载"/>

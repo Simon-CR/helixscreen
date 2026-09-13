@@ -400,7 +400,7 @@ translations:
   Calibrate All: Calibrar Todo
   Calibrate Bowden: 'Calibrar el bowden'
   Calibrate Encoder: 'Calibrar el encoder'
-  Calibrate Gates: 'Calibrar las ranuras'
+  Calibrate Gates: 'Calibrar gates'
   Calibrate Gear: 'Calibrar el engranaje'
   Calibrate X: Calibrar X
   Calibrate Y: Calibrar Y
@@ -2621,7 +2621,7 @@ translations:
   Select a valid number (1-{}): Seleccione un número válido (1-{})
   Select a valid tool: Seleccione una herramienta válida
   Select fan: Seleccionar ventilador
-  Select gate: 'Seleccionar ranura'
+  Select gate: 'Seleccionar gate'
   Select macro for first button: Seleccionar macro para el primer botón
   Select macro for fourth button: Seleccionar macro para el cuarto botón
   Select macro for second button: Seleccionar macro para el segundo botón
