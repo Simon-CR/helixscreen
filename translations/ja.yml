@@ -1555,6 +1555,7 @@ translations:
   Macros: マクロ
   Macros installed - restart pending: 'マクロをインストールしました - 再起動は保留中'
   Macros installed. Restart Klipper after the print to activate them.: 'マクロをインストールしました。印刷後に Klipper を再起動すると有効になります。'
+  Macros updated. Restart Klipper after the print to activate them.: 'マクロを更新しました。印刷後に Klipper を再起動すると有効になります。'
   'Macros, G-code console, calibration tools (PID, input shaper, z-offset), firmware updates, and developer utilities.': マクロ、G-code コンソール、キャリブレーションツール（PID、入力シェイパー、Z オフセット）、ファームウェア更新、開発者向けユーティリティ。
   Main LED Strip: メインLEDストリップ
   Maintaining: 維持中

@@ -4,7 +4,6 @@
 #include "ui_update_queue.h"
 
 #include "../lvgl_test_fixture.h"
-#include "helix_plugin_installer.h"
 #include "macro_manager.h"
 #include "moonraker_api.h"
 #include "moonraker_api_mock.h"
@@ -303,41 +302,6 @@ TEST_CASE("MacroManager - filename constant is valid", "[config][constants]") {
 // instead. CONNECTION_LOST here is the assertion that the upload got past
 // validation and failed only for want of a configured server.
 
-TEST_CASE_METHOD(MacroManagerTestFixture, "MacroManager - install reaches the upload step",
-                 "[config][install]") {
-    set_no_helix_macros();
-
-    bool success_called = false;
-    std::optional<MoonrakerError> error;
-
-    manager_.install_files([&]() { success_called = true; },
-                           [&](const MoonrakerError& err) { error = err; });
-
-    REQUIRE_FALSE(success_called); // nothing can have succeeded without a server
-    REQUIRE(error.has_value());
-    CHECK(error->method == "upload_file"); // it got as far as the upload
-    // Not VALIDATION_ERROR: the empty config-root path must not be refused.
-    CHECK(error->type == MoonrakerErrorType::CONNECTION_LOST);
-    CHECK_FALSE(error->message.empty());
-}
-
-TEST_CASE_METHOD(MacroManagerTestFixture, "MacroManager - update reaches the upload step",
-                 "[config][install]") {
-    set_helix_macros_installed();
-
-    bool success_called = false;
-    std::optional<MoonrakerError> error;
-
-    manager_.update_files([&]() { success_called = true; },
-                          [&](const MoonrakerError& err) { error = err; });
-
-    REQUIRE_FALSE(success_called);
-    REQUIRE(error.has_value());
-    CHECK(error->method == "upload_file");
-    CHECK(error->type == MoonrakerErrorType::CONNECTION_LOST);
-    CHECK_FALSE(error->message.empty());
-}
-
 // Direct coverage of the validation contract that the two tests above depend on,
 // so a regression is attributable to upload_file_with_name() rather than to
 // MacroManager. The fixture's MoonrakerAPI has no HTTP base URL configured, so
@@ -439,6 +403,73 @@ class MacroStageFixture : public LVGLTestFixture {
 
 } // namespace
 
+// Real-transfer fixture: the REAL MoonrakerFileTransferAPI over a mock
+// client with no HTTP server, on the LVGL base so the queued error
+// continuation can drain. This is the fixture the CONNECTION_LOST-vs-
+// VALIDATION_ERROR contract below depends on - the mock transfer API
+// succeeds unconditionally and could never express it.
+class MacroUploadFixture : public LVGLTestFixture {
+  public:
+    ~MacroUploadFixture() override {
+        helix::ui::UpdateQueue::instance().drain();
+    }
+
+    void settle() {
+        for (int i = 0; i < 4; ++i) {
+            helix::ui::UpdateQueue::instance().drain();
+        }
+    }
+
+  protected:
+    MoonrakerClientMock client_;
+    PrinterState state_;
+    MoonrakerAPI api_{client_, state_};
+    PrinterDiscovery hardware_;
+    MacroManager manager_{api_, hardware_};
+};
+
+TEST_CASE_METHOD(MacroUploadFixture, "MacroManager - install reaches the upload step",
+                 "[config][install]") {
+    hardware_.parse_objects(
+        json::array({"gcode_macro START_PRINT", "gcode_macro CLEAN_NOZZLE", "bed_mesh"}));
+
+    bool success_called = false;
+    std::optional<MoonrakerError> error;
+
+    manager_.install_files([&]() { success_called = true; },
+                           [&](const MoonrakerError& err) { error = err; });
+    // The error continuation hops through the UpdateQueue even on failure.
+    settle();
+
+    REQUIRE_FALSE(success_called); // nothing can have succeeded without a server
+    REQUIRE(error.has_value());
+    CHECK(error->method == "upload_file"); // it got as far as the upload
+    // Not VALIDATION_ERROR: the empty config-root path must not be refused.
+    CHECK(error->type == MoonrakerErrorType::CONNECTION_LOST);
+    CHECK_FALSE(error->message.empty());
+}
+
+TEST_CASE_METHOD(MacroUploadFixture, "MacroManager - update reaches the upload step",
+                 "[config][install]") {
+    hardware_.parse_objects(
+        json::array({"gcode_macro HELIX_READY", "gcode_macro HELIX_START_PRINT",
+                     "gcode_macro HELIX_CLEAN_NOZZLE", "gcode_macro HELIX_BED_MESH_IF_NEEDED",
+                     "gcode_macro HELIX_UNLOAD_FILAMENT"}));
+
+    bool success_called = false;
+    std::optional<MoonrakerError> error;
+
+    manager_.update_files([&]() { success_called = true; },
+                          [&](const MoonrakerError& err) { error = err; });
+    settle();
+
+    REQUIRE_FALSE(success_called);
+    REQUIRE(error.has_value());
+    CHECK(error->method == "upload_file");
+    CHECK(error->type == MoonrakerErrorType::CONNECTION_LOST);
+    CHECK_FALSE(error->message.empty());
+}
+
 TEST_CASE_METHOD(MacroStageFixture,
                  "install_files uploads the pack, backs up printer.cfg, splices the include",
                  "[config][install][1271]") {
@@ -509,37 +540,35 @@ TEST_CASE_METHOD(MacroStageFixture, "update_files replaces only the macro file",
               .find("[gcode_macro HELIX_UNLOAD_FILAMENT]") != std::string::npos);
 }
 
-// The whole point of the HTTP path over the plugin installer's shell: it has
-// no local-Moonraker gate. Stage the files while the topology reads remote.
-TEST_CASE_METHOD(MacroStageFixture, "install_files works with a remote Moonraker URL",
-                 "[config][install][1271]") {
+// The mock's transfer API completes synchronously on the calling thread, so
+// the ONLY thing that can delay the continuation is the main-thread hop. If
+// that hop is dropped, these callbacks run inline and the first CHECK fails.
+TEST_CASE_METHOD(MacroStageFixture,
+                 "staging and restart completions land via the main-thread queue",
+                 "[config][install][1271][threading]") {
     hardware_.parse_objects(json::array({"gcode_macro START_PRINT", "bed_mesh"}));
 
-    HelixPluginInstaller installer;
-    installer.set_websocket_url("ws://192.168.1.50:7125");
-    REQUIRE_FALSE(installer.is_local_moonraker());
+    SECTION("install_files") {
+        bool staged = false;
+        manager_.install_files([&] { staged = true; }, [](const MoonrakerError&) {});
+        CHECK_FALSE(staged); // still queued
+        settle();
+        CHECK(staged);
+    }
 
-    bool staged = false;
-    std::optional<MoonrakerError> error;
-    manager_.install_files([&] { staged = true; }, [&](const MoonrakerError& err) { error = err; });
-    settle();
+    SECTION("update_files") {
+        bool staged = false;
+        manager_.update_files([&] { staged = true; }, [](const MoonrakerError&) {});
+        CHECK_FALSE(staged);
+        settle();
+        CHECK(staged);
+    }
 
-    REQUIRE_FALSE(error.has_value());
-    REQUIRE(staged);
-    CHECK(api_.get_uploaded_config("printer.cfg").value_or("").find("[include helix_macros.cfg]") !=
-          std::string::npos);
-}
-
-// The shell path's own gate still answers local for the loopback spellings,
-// which is what makes the two installers' topologies comparable in --test.
-TEST_CASE("HelixPluginInstaller is_local_moonraker distinguishes loopback from remote",
-          "[config][install][1271]") {
-    HelixPluginInstaller installer;
-
-    installer.set_websocket_url("ws://127.0.0.1:7125");
-    CHECK(installer.is_local_moonraker());
-    installer.set_websocket_url("ws://localhost:7125");
-    CHECK(installer.is_local_moonraker());
-    installer.set_websocket_url("ws://192.168.1.50:7125");
-    CHECK_FALSE(installer.is_local_moonraker());
+    SECTION("request_restart") {
+        bool done = false;
+        manager_.request_restart([&] { done = true; }, [](const MoonrakerError&) {});
+        CHECK_FALSE(done);
+        settle();
+        CHECK(done);
+    }
 }

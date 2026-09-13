@@ -296,8 +296,11 @@ void AdvancedPanel::handle_timelapse_setup_clicked() {
 // HELIX HELPER MACRO HANDLERS (helix_macros.cfg)
 // ============================================================================
 
-bool AdvancedPanel::macro_print_active() const {
-    return lv_subject_get_int(printer_state_.get_print_active_subject()) != 0;
+bool AdvancedPanel::macro_job_holds_machine() const {
+    // job_holds_machine, not print_active: a host-side Preparing job has
+    // print_active == 0 while the toolhead moves, and restarting Klipper
+    // through it kills a job the app has already committed to.
+    return lv_subject_get_int(printer_state_.get_job_holds_machine_subject()) != 0;
 }
 
 void AdvancedPanel::handle_helix_macros_install_clicked() {
@@ -329,7 +332,7 @@ void AdvancedPanel::handle_helix_macros_install_clicked() {
     opts.owner_token = object_lifetime_.token();
     helix::ui::modal_confirm(
         lv_tr("Install Helper Macros?"),
-        macro_print_active()
+        macro_job_holds_machine()
             ? lv_tr("This installs the HelixScreen helper macros on the printer and adds them "
                     "to printer.cfg. A print is running, so Klipper restarts after it finishes.")
             : lv_tr("This installs the HelixScreen helper macros on the printer, adds them to "
@@ -358,7 +361,7 @@ void AdvancedPanel::handle_helix_macros_update_clicked() {
     opts.owner_token = object_lifetime_.token();
     helix::ui::modal_confirm(
         lv_tr("Update Helper Macros?"),
-        macro_print_active()
+        macro_job_holds_machine()
             ? lv_tr("This replaces the printer's helper macros with the current version. A print "
                     "is running, so Klipper restarts after it finishes.")
             : lv_tr("This replaces the printer's helper macros with the current version and "
@@ -387,7 +390,10 @@ void AdvancedPanel::run_helix_macros_stage(bool update) {
         macro_restart_offer_made_ = false;
         ToastManager::instance().show(
             ToastSeverity::SUCCESS,
-            lv_tr("Macros installed. Restart Klipper after the print to activate them."), 4000);
+            update ? lv_tr("Macros updated. Restart Klipper after the print to activate them.")
+                   : lv_tr("Macros installed. Restart Klipper after the print to activate "
+                           "them."),
+            4000);
     };
     auto on_error = [this](const MoonrakerError& err) {
         spdlog::error("[{}] Helper macro staging failed: {}", get_name(), err.message);
@@ -404,7 +410,7 @@ void AdvancedPanel::run_helix_macros_stage(bool update) {
 
 bool AdvancedPanel::restart_helix_macros_when_idle() {
     // Never restart during an active print; hard-refuse, the caller queues.
-    if (macro_print_active() || !macro_manager_) {
+    if (macro_job_holds_machine() || !macro_manager_) {
         return false;
     }
 
@@ -452,10 +458,12 @@ void AdvancedPanel::wire_macro_restart_observer() {
         return;
     }
 
-    macro_print_active_observer_ = helix::ui::observe_int_sync<AdvancedPanel>(
-        printer_state_.get_print_active_subject(), this,
-        [](AdvancedPanel* self, int active) {
-            if (active != 0) {
+    macro_job_observer_ = helix::ui::observe_int_sync<AdvancedPanel>(
+        printer_state_.get_job_holds_machine_subject(), this,
+        [](AdvancedPanel* self, int holds) {
+            // The machine went idle by the same predicate the restart guard
+            // uses, so the offer can never pop into a Preparing window.
+            if (holds != 0) {
                 return;
             }
             const int status =

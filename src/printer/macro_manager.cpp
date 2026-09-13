@@ -220,19 +220,13 @@ bool MacroManager::update_available() const {
 void MacroManager::install_files(SuccessCallback on_success, ErrorCallback on_error) {
     spdlog::info("[HelixMacroManager] Staging macro files...");
 
-    auto token = lifetime_.token();
-
-    // Step 1: Upload macro file
+    // upload_macro_file() lands both callbacks on the main thread, so this
+    // continuation (and everything it chains into) runs there.
     upload_macro_file(
-        [this, token, on_success, on_error]() {
-            // L081 Mechanism C: defer chained this-> work to main thread
-            // (upload cb fires on HTTP bg thread).
-            token.defer("MacroManager::install_step2", [this, on_success, on_error]() {
-                spdlog::info("[HelixMacroManager] Macro file uploaded, adding include...");
-
-                // Step 2: Back up printer.cfg and add the include
-                add_include_to_config(on_success, on_error);
-            });
+        [this, on_success, on_error]() {
+            spdlog::info("[HelixMacroManager] Macro file uploaded, adding include...");
+            // Step 2: Back up printer.cfg and add the include
+            add_include_to_config(on_success, on_error);
         },
         on_error);
 }
@@ -245,7 +239,25 @@ void MacroManager::update_files(SuccessCallback on_success, ErrorCallback on_err
 
 void MacroManager::request_restart(SuccessCallback on_success, ErrorCallback on_error) {
     spdlog::info("[HelixMacroManager] Requesting Klipper restart...");
-    api_.restart_klipper(on_success, on_error);
+
+    // printer.restart completes on the WebSocket loop; the caller's
+    // continuation touches LVGL-adjacent state, so hop it to main.
+    api_.restart_klipper(
+        lifetime_.bg_cb("MacroManager::restart_done",
+                        [on_success]() {
+                            spdlog::info("[HelixMacroManager] Klipper restart initiated");
+                            if (on_success) {
+                                on_success();
+                            }
+                        }),
+        lifetime_.bg_cb("MacroManager::restart_failed", [on_error](const MoonrakerError& err) {
+            spdlog::error("[HelixMacroManager] Klipper restart "
+                          "request failed: {}",
+                          err.message);
+            if (on_error) {
+                on_error(err);
+            }
+        }));
 }
 
 void MacroManager::uninstall(SuccessCallback on_success, ErrorCallback on_error) {
@@ -305,24 +317,27 @@ void MacroManager::upload_macro_file(SuccessCallback on_success, ErrorCallback o
     spdlog::debug("[HelixMacroManager] Macro content size: {} bytes", content.size());
 
     // Upload to config root (not gcodes)
-    // The path is "" because we upload directly to the config directory
+    // The path is "" because we upload directly to the config directory.
+    // Completion arrives on the HttpExecutor lane; every continuation in the
+    // install/update chains touches api_ state or LVGL-adjacent subjects, so
+    // both callbacks hop to the main thread here.
     api_.transfers().upload_file_with_name(
         "config", "", HELIX_MACROS_FILENAME, content,
-        // Upload success
-        [on_success]() {
-            spdlog::info("[HelixMacroManager] Successfully uploaded {}", HELIX_MACROS_FILENAME);
-            if (on_success) {
-                on_success();
-            }
-        },
-        // Upload error
-        [on_error](const MoonrakerError& err) {
+        lifetime_.bg_cb("MacroManager::upload_done",
+                        [on_success]() {
+                            spdlog::info("[HelixMacroManager] Successfully uploaded {}",
+                                         HELIX_MACROS_FILENAME);
+                            if (on_success) {
+                                on_success();
+                            }
+                        }),
+        lifetime_.bg_cb("MacroManager::upload_failed", [on_error](const MoonrakerError& err) {
             spdlog::error("[HelixMacroManager] Failed to upload {}: {}", HELIX_MACROS_FILENAME,
                           err.message);
             if (on_error) {
                 on_error(err);
             }
-        });
+        }));
 }
 
 void MacroManager::add_include_to_config(SuccessCallback on_success, ErrorCallback on_error) {
@@ -382,52 +397,64 @@ void MacroManager::add_include_to_config(SuccessCallback on_success, ErrorCallba
 
             // Defer the upload kick-off to main thread (needs api_)
             const std::string backup_name = printer_cfg_backup_name();
-            token.defer("MacroManager::add_include_upload",
-                        [this, on_success, on_error, backup_name, original_content = content,
-                         modified_content = std::move(modified_content)]() mutable {
-                            // Back up the original first: if the backup upload
-                            // fails, the overwrite must not happen.
-                            api_.transfers().upload_file_with_name(
-                                "config", "", backup_name, original_content,
-                                [this, on_success, on_error, backup_name,
-                                 modified_content = std::move(modified_content)]() mutable {
-                                    spdlog::info("[HelixMacroManager] Backed up printer.cfg to {}",
-                                                 backup_name);
-                                    api_.transfers().upload_file_with_name(
-                                        "config", "", "printer.cfg", modified_content,
+            token.defer(
+                "MacroManager::add_include_upload",
+                [this, on_success, on_error, backup_name, original_content = content,
+                 modified_content = std::move(modified_content)]() mutable {
+                    // Back up the original first: if the backup upload
+                    // fails, the overwrite must not happen. Its
+                    // completion fires on the HTTP lane, so the
+                    // follow-up upload kick-off hops back to main.
+                    api_.transfers().upload_file_with_name(
+                        "config", "", backup_name, original_content,
+                        lifetime_.bg_cb(
+                            "MacroManager::backup_done",
+                            [this, on_success, on_error, backup_name,
+                             modified_content = std::move(modified_content)]() mutable {
+                                spdlog::info("[HelixMacroManager] Backed up printer.cfg "
+                                             "to {}",
+                                             backup_name);
+                                api_.transfers().upload_file_with_name(
+                                    "config", "", "printer.cfg", modified_content,
+                                    lifetime_.bg_cb(
+                                        "MacroManager::add_include_done",
                                         [on_success]() {
                                             spdlog::info("[HelixMacroManager] Successfully added "
                                                          "include to printer.cfg");
                                             if (on_success) {
                                                 on_success();
                                             }
-                                        },
-                                        [on_error](const MoonrakerError& err) {
-                                            spdlog::error("[HelixMacroManager] Failed to upload "
-                                                          "modified printer.cfg: {}",
-                                                          err.message);
+                                        }),
+                                    lifetime_.bg_cb("MacroManager::add_include_failed",
+                                                    [on_error](const MoonrakerError& err) {
+                                                        spdlog::error(
+                                                            "[HelixMacroManager] Failed to upload "
+                                                            "modified printer.cfg: {}",
+                                                            err.message);
+                                                        if (on_error) {
+                                                            on_error(err);
+                                                        }
+                                                    }));
+                            }),
+                        lifetime_.bg_cb("MacroManager::backup_failed",
+                                        [on_error, backup_name](const MoonrakerError& err) {
+                                            spdlog::error("[HelixMacroManager] Backup upload of {} "
+                                                          "failed - refusing to overwrite "
+                                                          "printer.cfg: {}",
+                                                          backup_name, err.message);
                                             if (on_error) {
                                                 on_error(err);
                                             }
-                                        });
-                                },
-                                [on_error, backup_name](const MoonrakerError& err) {
-                                    spdlog::error("[HelixMacroManager] Backup upload of {} failed "
-                                                  "- refusing to overwrite printer.cfg: {}",
-                                                  backup_name, err.message);
-                                    if (on_error) {
-                                        on_error(err);
-                                    }
-                                });
-                        });
+                                        }));
+                });
         },
-        // Download error
-        [on_error](const MoonrakerError& err) {
+        // Download error — fires on the HTTP lane; hop the caller's continuation.
+        lifetime_.bg_cb("MacroManager::download_failed", [on_error](const MoonrakerError& err) {
             spdlog::error("[HelixMacroManager] Failed to download printer.cfg: {}", err.message);
             if (on_error) {
                 on_error(err);
             }
-        });
+        }));
 }
 
 void MacroManager::remove_include_from_config(SuccessCallback on_success, ErrorCallback on_error) {

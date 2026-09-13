@@ -122,8 +122,9 @@ class AdvancedPanel : public PanelBase {
     void handle_helix_macros_install_clicked();
     void handle_helix_macros_update_clicked();
 
-    /// print_active subject as a bool (PRINTING or PAUSED hold a job).
-    bool macro_print_active() const;
+    /// job_holds_machine subject as a bool: PRINTING, PAUSED, or a
+    /// host-side Preparing block — everything a Klipper restart would kill.
+    bool macro_job_holds_machine() const;
 
     /// The confirmed half of the uninstall row: runs the uninstaller and
     /// reports the outcome. Blocks this thread while the script runs.
@@ -141,10 +142,10 @@ class AdvancedPanel : public PanelBase {
     bool restart_helix_macros_when_idle();
 
     /// The one-shot "restart now?" offer for files staged during a print,
-    /// popped on the print-active 1->0 transition.
+    /// popped on the job_holds_machine 1->0 transition.
     void offer_helix_macros_restart();
 
-    /// Attaches the print_active observer (idempotent). Separate from
+    /// Attaches the job_holds_machine observer (idempotent). Separate from
     /// init_subjects() because observe targets need PrinterState subjects
     /// initialized first.
     void wire_macro_restart_observer();
@@ -197,8 +198,9 @@ class AdvancedPanel : public PanelBase {
     /// Lazily built on the first install/update (needs a live api_).
     std::unique_ptr<helix::MacroManager> macro_manager_;
 
-    /// Watches print_active for the 1->0 edge that pops the restart offer.
-    ObserverGuard macro_print_active_observer_;
+    /// Watches job_holds_machine for the 1->0 edge that pops the restart
+    /// offer — the same predicate the restart guard refuses under.
+    ObserverGuard macro_job_observer_;
     bool macro_observer_wired_ = false;
 
     /// One offer per staging: set when the modal pops, cleared when a restart

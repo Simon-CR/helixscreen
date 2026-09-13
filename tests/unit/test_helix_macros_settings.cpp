@@ -75,8 +75,10 @@ struct MacrosSettingsFixture : LVGLUITestFixture {
         return lv_subject_get_int(state().get_helix_macros_status_subject());
     }
 
-    void set_print_active(int v) {
-        lv_subject_set_int(state().get_print_active_subject(), v);
+    /// The restart policy reads job_holds_machine (print_active misses a
+    /// host-side Preparing job), so that is the seam the tests drive.
+    void set_job_holds(int v) {
+        lv_subject_set_int(state().get_job_holds_machine_subject(), v);
     }
 
     bool restart_sent() const {
@@ -151,7 +153,8 @@ TEST_CASE_METHOD(MacrosSettingsFixture, "helix_macros_status maps every discover
     REQUIRE(macros_status() == static_cast<int>(S::Unknown));
 }
 
-TEST_CASE_METHOD(MacrosSettingsFixture, "restart pending composes over not-installed only",
+TEST_CASE_METHOD(MacrosSettingsFixture,
+                 "restart pending composes over not-installed and outdated, cleared by installed",
                  "[advanced][macros][1271]") {
     using S = helix::HelixMacrosStatus;
 
@@ -161,7 +164,22 @@ TEST_CASE_METHOD(MacrosSettingsFixture, "restart pending composes over not-insta
     state().set_helix_macros_restart_pending(true);
     REQUIRE(macros_status() == static_cast<int>(S::RestartPending));
 
-    // Discovery reporting the macros active means a restart landed: the
+    // Fresh scenario for the update path: clear the flag, then stage an
+    // update onto an Outdated base.
+    state().set_helix_macros_restart_pending(false);
+    state().set_hardware(
+        discovery_with({"gcode_macro HELIX_READY", "gcode_macro HELIX_START_PRINT",
+                        "gcode_macro HELIX_CLEAN_NOZZLE", "gcode_macro HELIX_BED_MESH_IF_NEEDED"}));
+    REQUIRE(macros_status() == static_cast<int>(S::Outdated)); // pending not yet set here
+    state().set_helix_macros_restart_pending(true);
+    REQUIRE(macros_status() == static_cast<int>(S::RestartPending));
+    // A re-scan while the restart is still owed must not resolve the queue.
+    state().set_hardware(
+        discovery_with({"gcode_macro HELIX_READY", "gcode_macro HELIX_START_PRINT",
+                        "gcode_macro HELIX_CLEAN_NOZZLE", "gcode_macro HELIX_BED_MESH_IF_NEEDED"}));
+    REQUIRE(macros_status() == static_cast<int>(S::RestartPending));
+
+    // Discovery reporting the CURRENT pack active means a restart landed: the
     // pending flag is stale by definition and clears.
     state().set_hardware(
         discovery_with({"gcode_macro HELIX_READY", "gcode_macro HELIX_START_PRINT",
@@ -212,7 +230,7 @@ TEST_CASE_METHOD(MacrosSettingsFixture,
                  "install during a print stages files and queues the restart",
                  "[advanced][macros][1271]") {
     state().set_hardware(discovery_with({"gcode_macro START_PRINT", "bed_mesh"}));
-    set_print_active(1);
+    set_job_holds(1);
     settle();
 
     tap_install_row();
@@ -228,13 +246,13 @@ TEST_CASE_METHOD(MacrosSettingsFixture,
 TEST_CASE_METHOD(MacrosSettingsFixture, "print completion pops the one-time restart offer",
                  "[advanced][macros][1271]") {
     state().set_hardware(discovery_with({"gcode_macro START_PRINT", "bed_mesh"}));
-    set_print_active(1);
+    set_job_holds(1);
     settle();
     tap_install_row();
     confirm_install();
     REQUIRE(macros_status() == 3);
 
-    set_print_active(0);
+    set_job_holds(0);
     settle();
 
     REQUIRE(ModalStack::instance().top_dialog() != nullptr);
@@ -248,12 +266,12 @@ TEST_CASE_METHOD(MacrosSettingsFixture,
                  "declined offer keeps the pending truth and does not re-offer",
                  "[advanced][macros][1271]") {
     state().set_hardware(discovery_with({"gcode_macro START_PRINT", "bed_mesh"}));
-    set_print_active(1);
+    set_job_holds(1);
     settle();
     tap_install_row();
     confirm_install();
 
-    set_print_active(0);
+    set_job_holds(0);
     settle();
     REQUIRE(ModalStack::instance().top_dialog() != nullptr);
     cancel_modal();
@@ -261,9 +279,9 @@ TEST_CASE_METHOD(MacrosSettingsFixture,
     CHECK(macros_status() == 3); // still staged, still honest
 
     // A later print ending does not nag: one offer per staging.
-    set_print_active(1);
+    set_job_holds(1);
     settle();
-    set_print_active(0);
+    set_job_holds(0);
     settle();
     CHECK(ModalStack::instance().stack_empty());
     CHECK(AdvancedPanelTestAccess::macro_restart_offer_made(panel));
@@ -273,17 +291,17 @@ TEST_CASE_METHOD(MacrosSettingsFixture,
                  "a print restarting before the offer is answered hard-refuses the restart",
                  "[advanced][macros][1271]") {
     state().set_hardware(discovery_with({"gcode_macro START_PRINT", "bed_mesh"}));
-    set_print_active(1);
+    set_job_holds(1);
     settle();
     tap_install_row();
     confirm_install();
 
-    set_print_active(0);
+    set_job_holds(0);
     settle();
     REQUIRE(ModalStack::instance().top_dialog() != nullptr);
 
     // A new print starts between the offer and the tap on Restart Now.
-    set_print_active(1);
+    set_job_holds(1);
     settle();
     confirm_install();
 
@@ -311,6 +329,52 @@ TEST_CASE_METHOD(MacrosSettingsFixture, "update row offers only when outdated",
     // Update stages the new pack and restarts (no print active).
     CHECK(api_.get_uploaded_config("helix_macros.cfg").has_value());
     CHECK(restart_sent());
+}
+
+TEST_CASE_METHOD(MacrosSettingsFixture,
+                 "update staged during a print queues its restart and the offer fires",
+                 "[advanced][macros][1271]") {
+    // The outdated rung: discovery reports v2.0, the shipped pack is newer.
+    state().set_hardware(
+        discovery_with({"gcode_macro HELIX_READY", "gcode_macro HELIX_START_PRINT",
+                        "gcode_macro HELIX_CLEAN_NOZZLE", "gcode_macro HELIX_BED_MESH_IF_NEEDED"}));
+    REQUIRE(macros_status() == 2);
+    set_job_holds(1);
+    settle();
+
+    tap_update_row();
+    confirm_install();
+
+    // Files staged, restart queued: the base is Outdated, but the pending
+    // flag must mask it or the toast's after-the-print promise is a lie.
+    CHECK(api_.get_uploaded_config("helix_macros.cfg").has_value());
+    CHECK_FALSE(restart_sent());
+    REQUIRE(macros_status() == 3);
+
+    set_job_holds(0);
+    settle();
+
+    REQUIRE(ModalStack::instance().top_dialog() != nullptr);
+    confirm_install(); // Restart Now
+    CHECK(restart_sent());
+}
+
+TEST_CASE_METHOD(MacrosSettingsFixture, "a host-side preparing job hard-refuses the restart too",
+                 "[advanced][macros][1271]") {
+    state().set_hardware(discovery_with({"gcode_macro START_PRINT", "bed_mesh"}));
+
+    // Preparing: job_holds_machine is 1 while print_active stays 0 - the
+    // machine is committed to a job the wire has not reported yet.
+    set_job_holds(1);
+    lv_subject_set_int(state().get_print_active_subject(), 0);
+    settle();
+
+    tap_install_row();
+    confirm_install();
+
+    CHECK(api_.get_uploaded_config("helix_macros.cfg").has_value());
+    CHECK_FALSE(restart_sent()); // refused: a restart through Preparing kills the job
+    CHECK(macros_status() == 3);
 }
 
 TEST_CASE_METHOD(MacrosSettingsFixture, "install row refuses to act on unknown status",

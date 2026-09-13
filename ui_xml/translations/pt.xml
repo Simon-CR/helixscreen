@@ -1512,6 +1512,7 @@
   <translation tag="Macros" pt="Macros"/>
   <translation tag="Macros installed - restart pending" pt="Macros instaladas - reinício pendente"/>
   <translation tag="Macros installed. Restart Klipper after the print to activate them." pt="Macros instaladas. Reinicie o Klipper após a impressão para ativá-las."/>
+  <translation tag="Macros updated. Restart Klipper after the print to activate them." pt="Macros atualizadas. Reinicie o Klipper após a impressão para ativá-las."/>
   <translation tag="Macros, G-code console, calibration tools (PID, input shaper, z-offset), firmware updates, and developer utilities." pt="Macros, console G-code, ferramentas de calibração (PID, input shaper, z-offset), atualizações de firmware e utilitários de desenvolvedor."/>
   <translation tag="Main LED Strip" pt="Fita de LED Principal"/>
   <translation tag="Maintaining" pt="Mantendo"/>

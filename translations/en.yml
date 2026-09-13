@@ -1649,6 +1649,7 @@ translations:
   Macros: Macros
   Macros installed - restart pending: Macros installed - restart pending
   Macros installed. Restart Klipper after the print to activate them.: Macros installed. Restart Klipper after the print to activate them.
+  Macros updated. Restart Klipper after the print to activate them.: Macros updated. Restart Klipper after the print to activate them.
   'Macros, G-code console, calibration tools (PID, input shaper, z-offset), firmware updates, and developer utilities.': 'Macros, G-code console, calibration tools (PID, input shaper, z-offset), firmware updates, and developer utilities.'
   Main LED Strip: Main LED Strip
   Maintaining: Maintaining

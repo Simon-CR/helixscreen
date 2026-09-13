@@ -77,9 +77,11 @@ void PrinterPluginStatusState::set_phase_tracking_enabled(bool enabled) {
 
 void PrinterPluginStatusState::set_helix_macros_base_status(HelixMacrosStatus base) {
     macros_base_status_ = static_cast<int>(base);
-    if (base == HelixMacrosStatus::Installed || base == HelixMacrosStatus::Outdated) {
-        // Discovery sees the macros active: a Klipper restart landed and any
-        // staged-install offer is resolved, whatever its fate.
+    if (base == HelixMacrosStatus::Installed) {
+        // Discovery sees the CURRENT pack active: a Klipper restart landed and
+        // any staged install/update offer is resolved. An Outdated base does
+        // NOT clear the flag — until the restart, discovery still reports the
+        // old rung, which is exactly the state the flag describes.
         macros_restart_pending_ = false;
     }
     publish_helix_macros_status();
@@ -94,8 +96,13 @@ void PrinterPluginStatusState::set_helix_macros_restart_pending(bool pending) {
 
 void PrinterPluginStatusState::publish_helix_macros_status() {
     int composed = macros_base_status_;
+    // RestartPending masks both staging bases: NotInstalled (fresh install)
+    // and Outdated (update whose new pack is not loaded yet). Installed is
+    // never masked — macros active at the current version is the one state
+    // where nothing can be pending.
     if (macros_restart_pending_ &&
-        macros_base_status_ == static_cast<int>(HelixMacrosStatus::NotInstalled)) {
+        (macros_base_status_ == static_cast<int>(HelixMacrosStatus::NotInstalled) ||
+         macros_base_status_ == static_cast<int>(HelixMacrosStatus::Outdated))) {
         composed = static_cast<int>(HelixMacrosStatus::RestartPending);
     }
     lv_subject_set_int(&helix_macros_status_, composed);

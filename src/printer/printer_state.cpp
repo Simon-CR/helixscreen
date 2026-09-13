@@ -802,9 +802,10 @@ void PrinterState::set_hardware(helix::PrinterDiscovery hardware) {
     // Delegate capability subject updates to capabilities_state_ component
     capabilities_state_.set_hardware(discovery_, capability_overrides_);
 
-    // Fold the helper-macro install status in with the same snapshot. A base
-    // status that reports the macros active also clears any restart-pending
-    // flag held for a staged install (PrinterPluginStatusState).
+    // Fold the helper-macro install status in with the same snapshot. An
+    // Installed base also clears any restart-pending flag held for a staged
+    // install or update (PrinterPluginStatusState); Outdated keeps it, since
+    // the staged pack is not loaded until the restart.
     switch (MacroManager::evaluate_status(discovery_)) {
     case MacroInstallStatus::NOT_INSTALLED:
         plugin_status_state_.set_helix_macros_base_status(HelixMacrosStatus::NotInstalled);

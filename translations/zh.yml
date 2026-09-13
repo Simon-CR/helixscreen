@@ -1548,6 +1548,7 @@ translations:
   Macros: 宏
   Macros installed - restart pending: '宏已安装 - 重启待执行'
   Macros installed. Restart Klipper after the print to activate them.: '宏已安装。打印结束后重启 Klipper 即可启用。'
+  Macros updated. Restart Klipper after the print to activate them.: '宏已更新。打印结束后重启 Klipper 即可启用。'
   'Macros, G-code console, calibration tools (PID, input shaper, z-offset), firmware updates, and developer utilities.': 宏、G-code 控制台、校准工具（PID、输入整形、Z 偏移）、固件更新以及开发者实用工具。
   Main LED Strip: 主 LED 灯带
   Maintaining: 保持中

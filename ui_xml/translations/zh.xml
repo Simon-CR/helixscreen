@@ -1512,6 +1512,7 @@
   <translation tag="Macros" zh="宏"/>
   <translation tag="Macros installed - restart pending" zh="宏已安装 - 重启待执行"/>
   <translation tag="Macros installed. Restart Klipper after the print to activate them." zh="宏已安装。打印结束后重启 Klipper 即可启用。"/>
+  <translation tag="Macros updated. Restart Klipper after the print to activate them." zh="宏已更新。打印结束后重启 Klipper 即可启用。"/>
   <translation tag="Macros, G-code console, calibration tools (PID, input shaper, z-offset), firmware updates, and developer utilities." zh="宏、G-code 控制台、校准工具（PID、输入整形、Z 偏移）、固件更新以及开发者实用工具。"/>
   <translation tag="Main LED Strip" zh="主 LED 灯带"/>
   <translation tag="Maintaining" zh="保持中"/>

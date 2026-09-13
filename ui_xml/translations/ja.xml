@@ -1512,6 +1512,7 @@
   <translation tag="Macros" ja="マクロ"/>
   <translation tag="Macros installed - restart pending" ja="マクロをインストールしました - 再起動は保留中"/>
   <translation tag="Macros installed. Restart Klipper after the print to activate them." ja="マクロをインストールしました。印刷後に Klipper を再起動すると有効になります。"/>
+  <translation tag="Macros updated. Restart Klipper after the print to activate them." ja="マクロを更新しました。印刷後に Klipper を再起動すると有効になります。"/>
   <translation tag="Macros, G-code console, calibration tools (PID, input shaper, z-offset), firmware updates, and developer utilities." ja="マクロ、G-code コンソール、キャリブレーションツール（PID、入力シェイパー、Z オフセット）、ファームウェア更新、開発者向けユーティリティ。"/>
   <translation tag="Main LED Strip" ja="メインLEDストリップ"/>
   <translation tag="Maintaining" ja="維持中"/>

@@ -90,9 +90,10 @@ class PrinterPluginStatusState {
      * @brief Set the discovery-derived helper-macro install status
      *
      * Called from PrinterState::set_hardware() on the main thread once a
-     * discovery snapshot has been folded in. A base that reports the macros
-     * active (Installed/Outdated) clears the restart-pending flag: a restart
-     * landed, so the queued offer is resolved.
+     * discovery snapshot has been folded in. Only an Installed base clears
+     * the restart-pending flag: discovery reporting the CURRENT pack active
+     * means a restart landed. An Outdated base keeps it — until the restart,
+     * discovery still reports the old rung.
      *
      * @param base Status derived via MacroManager::evaluate_status()
      */
@@ -102,9 +103,9 @@ class PrinterPluginStatusState {
      * @brief Mark helper-macro files as staged and awaiting a Klipper restart
      *
      * Set by the install flow after install_files()/update_files() succeeded
-     * while a print made an immediate restart unsafe; cleared when the caller
-     * performs the restart and discovery reports the macros active. Main
-     * thread only (fired from deferred callbacks).
+     * while a print made an immediate restart unsafe; cleared when discovery
+     * reports the macros active at the current version. Main thread only
+     * (fired from deferred callbacks).
      *
      * @param pending True while the staged files still await a restart
      */
