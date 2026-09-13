@@ -44,6 +44,20 @@ platform_stop_competing_uis() {
         /etc/init.d/app disable 2>/dev/null || true
     fi
 
+    # The disable just took a live web-server down, and the dying pid lingers
+    # in the table for seconds; a pidof sampled right now reads it as "the
+    # port is served". Both restore paths below are pidof-guarded against
+    # double-launching, so each would decline to relaunch and the carve-out
+    # would stay down until the next HelixScreen start. Poll until the pid
+    # leaves the table; on timeout a survivor really is serving, and the
+    # guards below leave a live server alone.
+    _ws_wait=0
+    while pidof web-server >/dev/null 2>&1 && [ "$_ws_wait" -lt 10 ]; do
+        sleep 1
+        _ws_wait=$((_ws_wait + 1))
+    done
+    unset _ws_wait
+
     # The carve-out's liveness is guaranteed HERE, after the disable, not by
     # a boot script beside it: procd's boot iterator dispatches this hook's
     # own S99helixscreen every boot but does not dispatch
