@@ -61,7 +61,7 @@ Add `--version vX.Y.Z` to pin a specific version. Check the current version with
 ## Uninstalling
 
 ```bash
-~/helixscreen/install.sh --uninstall
+cp ~/helixscreen/install.sh /tmp/install.sh && sh /tmp/install.sh --uninstall
 ```
 
 This removes HelixScreen and restores your previous UI (e.g., KlipperScreen).

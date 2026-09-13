@@ -95,7 +95,7 @@ chroot /usr/data/.mod/.zmod
 sh /tmp/install.sh --uninstall
 ```
 
-The bundled copy works too: `/srv/helixscreen/install.sh --uninstall` from inside the chroot.
+The bundled copy at `/srv/helixscreen/install.sh` needs the same treatment: the installer refuses `--uninstall` from inside the install directory, so copy it out first (`cp /srv/helixscreen/install.sh /tmp/install.sh && sh /tmp/install.sh --uninstall`).
 
 ## Quirks and Notes
 

@@ -145,7 +145,7 @@ This covers any Klipper printer with a Raspberry Pi running MainsailOS (or simil
 ### Prerequisites
 
 - **Hardware:**
-  - Raspberry Pi 3, 4, or 5: any of them work. Pi 3 / Zero 2 W is plenty for HelixScreen; Pi 4/5 only matters if your overall Klipper setup wants more headroom for cameras, slicing, etc.
+  - Raspberry Pi 3, 4, or 5, or a BTT CB1/CB2: any of them work. Pi 3 / Zero 2 W is plenty for HelixScreen; Pi 4/5 only matters if your overall Klipper setup wants more headroom for cameras, slicing, etc.
   - Both **64-bit** and **32-bit** Raspberry Pi OS / MainsailOS supported
   - Touchscreen display (HDMI, DSI, or SPI)
   - Network connection (Ethernet or WiFi)
@@ -198,11 +198,11 @@ The installer automatically:
 1. Detects your platform, architecture (32-bit or 64-bit), and Klipper ecosystem
 2. Downloads the correct release
 3. Stops any competing UIs (KlipperScreen, etc.)
-4. Installs to `~/helixscreen` (if Klipper ecosystem detected) or `/opt/helixscreen` (fallback)
+4. Installs to `~/helixscreen` when run as a normal user, or `/opt/helixscreen` when run as root
 5. Configures and starts the systemd service
 6. Sets up Moonraker update_manager for web UI updates
 
-> **Install path auto-detection:** The installer checks for `~/klipper`, `~/moonraker`, `~/printer_data`, or an active `moonraker.service`. If any are found, HelixScreen installs alongside them in your home directory. Override with `INSTALL_DIR=/custom/path`.
+> **Where does it install?** The installer puts HelixScreen in your home directory when it runs as a normal user (with or without a Klipper ecosystem alongside), and in `/opt` when it runs as root. Override with `INSTALL_DIR=/custom/path/helixscreen` (the directory name must contain `helixscreen`).
 
 ### Step 3: Complete the Setup Wizard
 
@@ -237,7 +237,12 @@ sudo systemctl status helixscreen     # status
 sudo journalctl -u helixscreen -f     # follow live logs
 ```
 
-> **Note:** The installer automatically stops and disables competing UIs (KlipperScreen, etc.). Printers with SysV init (K1, K2, AD5M, AD5X, CC1, Snapmaker U1) use their init script instead; see your printer's install guide.
+> **Note:** The installer automatically stops and disables competing UIs. To disable KlipperScreen by hand:
+> ```bash
+> sudo systemctl stop KlipperScreen
+> sudo systemctl disable KlipperScreen
+> ```
+> Printers with SysV init (K1, K2, AD5M, AD5X, CC1, Snapmaker U1) use their init script instead; see your printer's install guide.
 
 ### Raspberry Pi 5
 
@@ -284,7 +289,7 @@ When HelixScreen starts for the first time, a setup wizard guides you through co
 ### Step 1: Touchscreen Calibration
 Calibrate your touchscreen by tapping the targets. This ensures accurate touch input.
 
-> **Note:** This step may be skipped automatically for known tier-1 supported printers that ship with default calibration values. You can always recalibrate later from **Settings**.
+> **Note:** This step is skipped automatically when your touchscreen doesn't need calibration: most capacitive and USB touchscreens are factory-calibrated. Only resistive panels (and panels reporting broken coordinate ranges) get this step. You can always recalibrate later from **Settings**.
 
 ### Step 2: Language Selection
 Choose your preferred language.
@@ -292,8 +297,9 @@ Choose your preferred language.
 ### Step 3: Network Setup
 Connect to your wireless network or configure Ethernet. You can:
 - Select from detected WiFi networks
-- Enter a hidden network name manually
 - Skip if using Ethernet or already connected
+
+> **Note:** Hidden networks are not listed. Skip this step and join later from **Settings > System > Network Settings**, which can add a network by name.
 
 ### Step 4: Moonraker Connection
 Enter your Moonraker host. For most setups:
@@ -321,20 +327,28 @@ Select your cooling fans:
 - Hotend fan
 - Other auxiliary fans
 
-### Step 8: LED Selection (Optional)
+### Step 8: AMS Identification (If Detected)
+If a multi-filament system (AMS, CFS, IFS, ACE, and similar) is detected, confirm which lanes or slots exist and what is loaded in them.
+
+### Step 9: LED Selection (Optional)
 If your printer has controllable LEDs:
 - Chamber lights
 - Status LEDs
 - NeoPixel strips
 
-### Step 9: Input Shaper (Optional)
+### Step 10: Filament Sensor (Optional)
+If standalone filament sensors are present, choose what each one does (runout detection, motion detection).
+
+### Step 11: Input Shaper (Optional)
 Configure resonance compensation if your printer supports input shaping.
 
-### Step 10: Hardware Summary
+### Step 12: Hardware Summary
 Review your configured hardware before completing setup.
 
 ### Completion
 After the wizard, you'll be taken to the home screen. Your settings are saved automatically.
+
+> **Note:** On printers whose install package ships pre-configured hardware (K2, AD5M, and similar), the hardware steps and the summary are collapsed, and a one-time telemetry opt-in screen appears instead.
 
 ---
 
@@ -374,11 +388,11 @@ See the [MainsailOS display documentation](https://docs.mainsail.xyz/) for speci
 
 The BTT Pad 7 and similar "Klipper Pad" devices are complete units, with the single-board computer and touchscreen integrated in one housing. Display output and USB touch input come pre-configured, and HelixScreen should detect and use them automatically.
 
-A BTT CB1 or CB2 by itself is a single-board computer like a Raspberry Pi, not an all-in-one pad. It follows the generic Linux install above: attach a touchscreen over HDMI (plus USB for touch input), and it behaves like any other SBC.
-
 ### Screen Rotation
 
-To rotate the display (e.g., if your screen is mounted upside-down), add to your `settings.json` (typically at `~/helixscreen/config/settings.json`):
+**Prefer rotating the display itself when it can.** If your monitor has a rotation option (usually a button or an OSD menu), use it. On a Pi with a DSI panel, the kernel can rotate the panel in hardware: add `video=DSI-1:panel_orientation=upside_down` to `/boot/firmware/cmdline.txt` (HelixScreen detects this automatically on first boot; see [TROUBLESHOOTING: display upside down or rotated](TROUBLESHOOTING.md#display-upside-down-or-rotated)). Rotation done by the display is free. HelixScreen's `rotate` setting below is software rotation: it costs CPU on every frame, and on the Pi it also switches the display to the framebuffer backend (see the note on backends below). Use it when your display cannot rotate itself.
+
+To rotate in software (e.g., a screen mounted upside-down that has no rotation of its own), add to your `settings.json` (typically at `~/helixscreen/config/settings.json`):
 
 ```json
 {
@@ -443,9 +457,17 @@ sudo systemctl restart helixscreen
 
 > Platform-specific update commands live in your printer's install guide: the two-step offline process on printers without HTTPS fetch tools (K1, Adventurer 5M), the AD5X chroot path, bundled-installer locations. Start from [Which printer are you installing on?](#which-printer-are-you-installing-on).
 
+Three ways to update, in order of preference: in the app itself, from the Mainsail/Fluidd update manager, or from the command line.
+
+### In the App Itself (Preferred)
+
+The app can update itself: **Settings > Help & About > About > Check for Updates**. It shows the new version, downloads it with a progress bar, and installs it; a **Retry** button appears if the download fails. No SSH and no web browser needed. The **Update Channel** row beside it picks Stable or Beta.
+
+This option is hidden where something else manages updates for you, such as on the Snapmaker U1, whose firmware handles HelixScreen updates itself. On Android, the install step opens the Play Store instead of downloading in-app. See [Checking for Updates](guide/settings/help-about.md#checking-for-updates) for the full walkthrough.
+
 ### Check Current Version
 
-On the touchscreen: **Settings** → scroll down to the bottom of the page to find the version number.
+On the touchscreen: **Settings > Help & About > About** shows the current version.
 
 Or via SSH (path shown for a generic Linux install; other platforms' paths are in their guides):
 ```bash
@@ -463,9 +485,9 @@ If you installed via the installer script, it automatically configures Moonraker
 
 > **Note:** The installer adds an `[update_manager helixscreen]` section to your `moonraker.conf`. If you installed manually, see [Manual Update Manager Setup](#manual-update-manager-setup) below.
 
-### Update Using Install Script (Recommended)
+### Update Using the Install Script (Command Line)
 
-The easiest way to update is using the install script with `--update`:
+From the command line, over SSH, run the installer with `--update`:
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/prestonbrown/helixscreen/main/scripts/install.sh | sh -s -- --update
@@ -482,7 +504,7 @@ curl -sSL https://raw.githubusercontent.com/prestonbrown/helixscreen/main/script
 To reinstall a specific version with a **fresh settings.json** (instead of keeping your existing settings), swap `--update` for `--clean`:
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/prestonbrown/helixscreen/main/scripts/install.sh | sh -s -- --clean --version v1.2.0
+curl -sSL https://raw.githubusercontent.com/prestonbrown/helixscreen/main/scripts/install.sh | sh -s -- --clean --yes --version v1.2.0
 ```
 
 ### Preserving Configuration
@@ -490,15 +512,15 @@ curl -sSL https://raw.githubusercontent.com/prestonbrown/helixscreen/main/script
 The update process preserves your `settings.json` settings. If you want to reset to defaults, use the `--clean` flag; it removes your HelixScreen settings and caches everywhere they live, then does a fresh install:
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/prestonbrown/helixscreen/main/scripts/install.sh | sh -s -- --clean
+curl -sSL https://raw.githubusercontent.com/prestonbrown/helixscreen/main/scripts/install.sh | sh -s -- --clean --yes
 ```
 
-`--clean` asks for confirmation before wiping anything. Your Klipper config, Moonraker settings, print history, and G-code files are **not** touched: only HelixScreen's own settings.
+`--yes` skips the confirmation prompt, which a piped command cannot show; run the downloaded script interactively over SSH and you get the prompt instead. Your Klipper config, Moonraker settings, print history, and G-code files are **not** touched: only HelixScreen's own settings.
 
 To reset settings **and** pin a specific version in one step, combine `--clean` with `--version`:
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/prestonbrown/helixscreen/main/scripts/install.sh | sh -s -- --clean --version v1.2.0
+curl -sSL https://raw.githubusercontent.com/prestonbrown/helixscreen/main/scripts/install.sh | sh -s -- --clean --yes --version v1.2.0
 ```
 
 If you'd rather delete the settings file by hand instead of reinstalling:
@@ -542,7 +564,7 @@ sudo systemctl restart moonraker
 
 ### Using Install Script (Recommended)
 
-The install script with `--uninstall` removes HelixScreen and **restores your previous UI** (GuppyScreen, KlipperScreen, etc.):
+The install script with `--uninstall` removes HelixScreen and **restores your previous UI** (KlipperScreen, the stock printer screen, etc.):
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/prestonbrown/helixscreen/main/scripts/install.sh | sh -s -- --uninstall
@@ -592,6 +614,15 @@ sudo journalctl -u helixscreen -p err
 
 Log locations for the other platforms (K1, K2, AD5M, AD5X, CC1, Snapmaker U1) are in your printer's install guide: each has a launcher/crash log plus a platform-specific app log.
 
+### Capturing Logs for a Bug Report
+
+A problem reproduced at a higher log level gives far more to work with:
+
+1. Set **Settings > System > Log Level** to **Debug**, or **Trace** for touch or display issues (Trace is very verbose). It takes effect immediately; no restart is needed.
+2. Perform the action that misbehaves.
+3. Send a debug bundle: **Settings > Help & About > Upload Debug Bundle** collects the logs (including everything since startup), strips personal data, and gives you a share code to include in your report. See [Debug Bundles](guide/settings/help-about.md#debug-bundles).
+4. Turn the log level back to where it was. Debug and trace generate a lot of output; journald rotates and caps itself on systemd hosts, but the printer-hosted platforms write plain log files that nothing rotates.
+
 ### Common Issues
 
 See [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for solutions to:
@@ -603,12 +634,12 @@ See [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for solutions to:
 ### Still Stuck?
 
 1. Ask in the [HelixScreen Discord](https://discord.gg/RZCT2StKhr) for quick help
-2. Check [GitHub Issues](https://github.com/prestonbrown/helixscreen/issues) for known problems
-3. Open a new issue with:
-   - Your hardware (Pi model, display type)
-   - HelixScreen version
-   - Relevant log output
-   - Steps to reproduce
+1. Check [GitHub Issues](https://github.com/prestonbrown/helixscreen/issues) for known problems
+1. Open a new issue with:
+    1. Your hardware (Pi model, display type)
+    1. HelixScreen version
+    1. Relevant log output
+    1. Steps to reproduce
 
 ---
 

@@ -111,7 +111,7 @@ sh /usr/data/install.sh --local /usr/data/helixscreen-k1.zip
 
 The installer automatically:
 - Detects your K1C platform
-- Stops GuppyScreen (or whatever screen UI is running)
+- Stops the stock Creality screen UI (or whatever screen UI is running, such as GuppyScreen on a pellcorp install)
 - Installs to `/usr/data/helixscreen/`
 - Creates the boot service (`/etc/init.d/S99helixscreen`)
 - Configures Moonraker update manager for easy future updates
@@ -122,7 +122,9 @@ The installer automatically:
 > HelixScreen and the stock Creality UI cannot share the framebuffer, so the
 > installer stops the stock UI. On the K1 the same init script also runs
 > `master-server`, `app-server` and `web-server`, which are the backend Creality
-> Print and the Creality Cloud app connect to, so those stop too.
+> Print and the Creality Cloud app connect to, so those stop too. (This applies
+> to a rooted stock printer or Guilouz firmware; on a Simple AF install the
+> stock stack is already disabled, and HelixScreen stops only GuppyScreen.)
 >
 > Sending prints still works through Fluidd or Mainsail, HelixScreen's own file
 > browser, or any slicer that uploads to Moonraker (OrcaSlicer, or PrusaSlicer
@@ -150,11 +152,28 @@ HelixScreen starts automatically after install. The on-screen wizard walks you t
 /etc/init.d/S99helixscreen restart
 /etc/init.d/S99helixscreen status
 
-# View logs (K1 BusyBox keeps the app log in RAM; launcher capture is on disk)
-logread | grep helix-screen | tail -100              # structured app log
+# Installed version
+/usr/data/helixscreen/bin/helix-screen --version
+
+# View logs (both written to disk under /usr/data)
+tail -100 /usr/data/helixscreen/logs/helix.log       # structured app log
 tail -100 /usr/data/helixscreen/logs/launcher.log    # launcher / crash capture
 tail -f /usr/data/helixscreen/logs/launcher.log      # live follow launcher
 # Pre-v0.99.62 installs only: tail -f /tmp/helixscreen.log
+```
+
+The installer stops and disables the previous screen UI automatically. To do it by hand on a rooted stock printer:
+
+```bash
+/etc/init.d/S99start_app stop
+chmod -x /etc/init.d/S99start_app
+```
+
+On a Simple AF install the previous UI is GuppyScreen:
+
+```bash
+/etc/init.d/S99guppyscreen stop
+chmod -x /etc/init.d/S99guppyscreen
 ```
 
 ---
@@ -182,10 +201,52 @@ scp helixscreen-k1.zip root@<PRINTER_IP>:/usr/data/
 ## Uninstalling
 
 ```bash
-/usr/data/helixscreen/install.sh --uninstall
+cp /usr/data/helixscreen/install.sh /tmp/install.sh && sh /tmp/install.sh --uninstall
 ```
 
-This restores GuppyScreen automatically.
+(The installer refuses `--uninstall` run from inside the install directory, so the script is copied to `/tmp` first.)
+
+This removes HelixScreen and restores the screen UI that was running before: the stock Creality screen, or GuppyScreen on a pellcorp / Simple AF install.
+
+### Manual Uninstall
+
+<details>
+<summary>Rooted stock firmware</summary>
+
+```bash
+# Stop and remove the boot service
+/etc/init.d/S99helixscreen stop
+rm /etc/init.d/S99helixscreen
+
+# Remove files
+rm -rf /usr/data/helixscreen
+
+# Re-enable the stock Creality screen UI
+chmod +x /etc/init.d/S99start_app
+
+# Reboot to restore the stock screen
+reboot
+```
+</details>
+
+<details>
+<summary>Simple AF / pellcorp (GuppyScreen)</summary>
+
+```bash
+# Stop and remove the boot service
+/etc/init.d/S99helixscreen stop
+rm /etc/init.d/S99helixscreen
+
+# Remove files
+rm -rf /usr/data/helixscreen
+
+# Re-enable GuppyScreen
+chmod +x /etc/init.d/S99guppyscreen
+
+# Reboot to restore GuppyScreen
+reboot
+```
+</details>
 
 ---
 
@@ -195,7 +256,7 @@ This restores GuppyScreen automatically.
 |---------|-----|
 | Can't SSH in | Make sure root is enabled (Step 1). Password is `creality_2023` |
 | `curl` or SSL error | K1 doesn't support HTTPS downloads. Use the two-step install (Step 4): download on your computer, then `scp` to the printer |
-| Installer says "Moonraker not found" | Complete Step 3 first: Moonraker must be running |
+| Installer warns that Moonraker "does not appear to be running" | Complete Step 3 first: Moonraker must be running |
 | Blank screen after install | Check logs: `logread \| grep helix-screen \| tail -100` and `tail -100 /usr/data/helixscreen/logs/launcher.log` |
 | Touch not responding | Reboot: `reboot` |
 | Creality Print can't find the printer after install | Expected: the stock Creality backend is stopped so HelixScreen can use the screen. Use Fluidd/Mainsail, HelixScreen's file browser, or a Moonraker-capable slicer. To revert, uninstall HelixScreen. See [Troubleshooting](../TROUBLESHOOTING.md#creality-k1-series-issues) |

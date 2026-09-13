@@ -42,7 +42,7 @@ curl -sSL https://releases.helixscreen.org/install.sh | sh
 **Step 1: Download the release archive**
 
 ```bash
-wget https://releases.helixscreen.org/stable/helixscreen-snapmaker-u1.zip
+wget https://releases.helixscreen.org/releases/v<VERSION>/helixscreen-snapmaker-u1.zip
 ```
 
 **Step 2: Extract to the install directory**

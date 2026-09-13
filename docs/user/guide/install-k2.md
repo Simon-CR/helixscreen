@@ -14,7 +14,7 @@ End-to-end guide for the Creality K2, K2 Plus, and K2 Pro: install, update, and 
 - **Software:**
   - Stock firmware with root access enabled (Settings > "Root account information")
   - SSH access (`root@<printer-ip>`, password: `creality_2024`)
-  - Moonraker is included in stock firmware on port 4408
+  - Moonraker is included in stock firmware; the wizard's default port (`7125`) needs no changes (Creality's own web front also reaches Moonraker through a proxy on 4408)
 
 ## Install
 
@@ -31,7 +31,7 @@ After installation, the setup wizard runs on the touchscreen. Moonraker is alrea
 ## What the Installer Does Here
 
 - Installs to `/opt/helixscreen/`, with a boot service at `/etc/init.d/S99helixscreen`
-- Stops and persistently disables the stock Creality UI service (`/etc/init.d/app`). Creality's `web-server` is intentionally left running, so the Creality Cloud app and its camera stream keep working
+- Stops and persistently disables the stock Creality UI service (`/etc/init.d/app`). Creality's `web-server` is intentionally left running, so the Creality Cloud app and its camera stream keep working after the install. Known issue: on the next reboot, disabling the stock UI service also stops `web-server`, and Creality Cloud stops working (prestonbrown/helixscreen#1617)
 - Stages the download, caches, and logs on `/mnt/UDISK` (the large user partition): `/opt` sits on a small system overlay that a release archive would fill
 - Waits up to two minutes for Moonraker during boot, then starts the UI anyway; it reconnects on its own
 
@@ -72,7 +72,7 @@ Check the current version over SSH:
 ## Uninstalling
 
 ```bash
-/opt/helixscreen/install.sh --uninstall
+cp /opt/helixscreen/install.sh /tmp/install.sh && sh /tmp/install.sh --uninstall
 ```
 
 This removes HelixScreen, re-enables and starts the stock Creality UI service (`/etc/init.d/app`), and hands the chamber camera back to the stock camera app, which also restores Creality's stock AI failure detection (see the note below).
