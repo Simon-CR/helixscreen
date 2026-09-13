@@ -18,7 +18,7 @@ HelixScreen requires Klipper and Moonraker to already be installed and working o
   - Network connection (Ethernet)
 
 - **Software:**
-  - [SonicPad-Debian](https://github.com/Jpe230/SonicPad-Debian) (Debian 11 bullseye) - see the note above
+  - [SonicPad-Debian](https://github.com/Jpe230/SonicPad-Debian) (Debian 11 bullseye): see the note above
   - Klipper and Moonraker installed and working (via KIAUH or similar)
   - SSH access (`sonic@<pad-ip>`)
   - About 100MB free disk space
@@ -68,14 +68,14 @@ This removes HelixScreen and restores your previous UI (e.g., KlipperScreen).
 
 ## Quirks and Notes
 
-- The Pad has a Goodix GT9xx touchscreen controller - the touch calibration wizard runs automatically on first boot if needed
+- The Pad has a Goodix GT9xx touchscreen controller; the touch calibration wizard runs automatically on first boot if needed
 - Moonraker runs on `localhost:7125` (the default), so the wizard's connection step needs no changes
 - The `display-sleep` service is automatically stopped to prevent backlight conflicts
-- If the brightness slider or auto-dim do nothing, force Creality's `brightness` helper with `HELIX_BACKLIGHT_DEVICE=brightness` in `~/helixscreen/config/helixscreen.env` - see [Troubleshooting](../TROUBLESHOOTING.md#brightness-slider-or-screen-dimming-does-nothing)
+- If the brightness slider or auto-dim do nothing, force Creality's `brightness` helper with `HELIX_BACKLIGHT_DEVICE=brightness` in `~/helixscreen/config/helixscreen.env`; see [Troubleshooting](../TROUBLESHOOTING.md#brightness-slider-or-screen-dimming-does-nothing)
 
 ## See Also
 
-- [Supported Printers](supported-printers.md) - the Sonic Pad's dedicated-build row
+- [Supported Printers](supported-printers.md): the Sonic Pad's dedicated-build row
 - [Troubleshooting](../TROUBLESHOOTING.md)
-- [UPGRADING.md](../UPGRADING.md) - version pinning and reset behavior
-- [Installation overview](../INSTALL.md) - all other platforms
+- [UPGRADING.md](../UPGRADING.md): version pinning and reset behavior
+- [Installation overview](../INSTALL.md): all other platforms

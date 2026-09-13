@@ -45,7 +45,7 @@ After installation, the setup wizard will guide you through initial configuratio
 
 ## Which printer are you installing on?
 
-The one-liner above works on every supported platform, but each printer family has quirks - firmware prerequisites, different install locations, its own service and update commands. The guide for your printer has all of that:
+The one-liner above works on every supported platform, but each printer family has quirks: firmware prerequisites, different install locations, its own service and update commands. The guide for your printer has all of that:
 
 | Printer | Install guide |
 |---------|---------------|
@@ -66,8 +66,8 @@ HelixScreen does **not** have to run on your printer. You can install it on any 
 
 This is the setup to choose when:
 
-- Your printer has no built-in screen - a Voron, RatRig, or any Klipper printer whose host has no panel of its own
-- The printer lives somewhere you don't - another room, a garage, a workshop
+- Your printer has no built-in screen, like a Voron, RatRig, or any Klipper printer whose host has no panel of its own
+- The printer lives somewhere you don't: another room, a garage, a workshop
 - You run more than one printer and want a single screen for all of them: with [multi-printer support](guide/beta-features.md) (beta) enabled, the printer manager switches between every printer you've added
 - Your printer's stock panel can't be replaced (some QIDI models)
 
@@ -78,12 +78,12 @@ Common screen devices:
 - A mini PC or x86 box with an HDMI touchscreen
 - Your desktop, running the app in a window (macOS or Linux) for monitoring
 
-**How it works:** HelixScreen is a Moonraker client. It only needs network access to your printer's Moonraker instance (port `7125` by default) - it does **not** need to run on the same machine as Klipper.
+**How it works:** HelixScreen is a Moonraker client. It only needs network access to your printer's Moonraker instance (port `7125` by default); it does **not** need to run on the same machine as Klipper.
 
 **Steps:**
 
 1. Install HelixScreen on the device that will drive the display, using the [Quick Start](#quick-start) one-liner or the platform section that matches that device (e.g. a Raspberry Pi uses the [generic Linux](#generic-linux-install-raspberry-pi-btt-x86) steps). Install it on the *screen* device, not the printer.
-2. Make sure the device is on the same network as your printer and can reach it - from the device, `ping <printer-ip>` should succeed.
+2. Make sure the device is on the same network as your printer and can reach it: from the device, `ping <printer-ip>` should succeed.
 3. On first boot, the setup wizard reaches [Step 4: Moonraker Connection](#step-4-moonraker-connection). Enter your **printer's IP address** (not `localhost`), for example `192.168.1.50`. Leave the port at the default `7125` unless you've changed it.
 4. The wizard tests the connection, then discovers your printer's capabilities as usual.
 
@@ -91,7 +91,7 @@ Common screen devices:
 
 To change the host later, go to **Settings > System > Host**, or edit `moonraker_host` in `settings.json`.
 
-> **Note:** A remote screen controls the printer the same as an on-printer screen would. Features that require running *on the printer* (for example, HelixScreen taking over the printer's own physical panel, or on-device WiFi configuration in the wizard) don't apply to a remote install - but all printing, monitoring, and control features work normally.
+> **Note:** A remote screen controls the printer the same as an on-printer screen would. Features that require running *on the printer* (for example, HelixScreen taking over the printer's own physical panel, or on-device WiFi configuration in the wizard) don't apply to a remote install, but all printing, monitoring, and control features work normally.
 
 ---
 
@@ -145,7 +145,7 @@ This covers any Klipper printer with a Raspberry Pi running MainsailOS (or simil
 ### Prerequisites
 
 - **Hardware:**
-  - Raspberry Pi 3, 4, or 5 - any of them work. Pi 3 / Zero 2 W is plenty for HelixScreen; Pi 4/5 only matters if your overall Klipper setup wants more headroom for cameras, slicing, etc.
+  - Raspberry Pi 3, 4, or 5: any of them work. Pi 3 / Zero 2 W is plenty for HelixScreen; Pi 4/5 only matters if your overall Klipper setup wants more headroom for cameras, slicing, etc.
   - Both **64-bit** and **32-bit** Raspberry Pi OS / MainsailOS supported
   - Touchscreen display (HDMI, DSI, or SPI)
   - Network connection (Ethernet or WiFi)
@@ -154,14 +154,14 @@ This covers any Klipper printer with a Raspberry Pi running MainsailOS (or simil
   - MainsailOS installed and working
   - Klipper running and printing works via Mainsail web interface
   - SSH access to your Pi
-  - **Debian 11 (Bullseye) or newer** - glibc 2.31+. See the OS version note below.
+  - **Debian 11 (Bullseye) or newer**: glibc 2.31+. See the OS version note below.
   - About 100MB free disk space
 
-> **32-bit vs 64-bit:** The installer automatically detects your OS architecture and downloads the correct binary. If you're unsure which you have, run `uname -m` - `aarch64` means 64-bit, `armv7l` means 32-bit.
+> **32-bit vs 64-bit:** The installer automatically detects your OS architecture and downloads the correct binary. If you're unsure which you have, run `uname -m`: `aarch64` means 64-bit, `armv7l` means 32-bit.
 
-> **OS version - Bullseye or newer.** The `pi` and `pi32` packages are dynamically linked
+> **OS version: Bullseye or newer.** The `pi` and `pi32` packages are dynamically linked
 > against **glibc 2.31**, the version in Debian 11 (Bullseye). They will not start on an
-> older release. Debian 10 (Buster) ships glibc 2.28, which is too old - the binary fails
+> older release. Debian 10 (Buster) ships glibc 2.28, which is too old; the binary fails
 > at load with `version 'GLIBC_2.29' not found` or similar. Check yours with:
 >
 > ```bash
@@ -171,7 +171,7 @@ This covers any Klipper printer with a Raspberry Pi running MainsailOS (or simil
 >
 > This matters mainly on **stock printer images**, several of which still ship Buster even
 > though current Raspberry Pi OS and MainsailOS are well past it. If you are on one of
-> those and cannot upgrade the OS, install the **`cc1` package instead** - it is statically
+> those and cannot upgrade the OS, install the **`cc1` package instead**; it is statically
 > linked and carries its own C library, so it runs on old armv7 systems regardless of what
 > glibc they have. It has been used successfully this way on non-Creality armv7 hardware
 > (e.g. Rockchip RV1126 boards). See [TROUBLESHOOTING.md](TROUBLESHOOTING.md#binary-wont-start-glibc-version-not-found).
@@ -237,7 +237,7 @@ sudo systemctl status helixscreen     # status
 sudo journalctl -u helixscreen -f     # follow live logs
 ```
 
-> **Note:** The installer automatically stops and disables competing UIs (KlipperScreen, etc.). Printers with SysV init (K1, K2, AD5M, AD5X, CC1, Snapmaker U1) use their init script instead - see your printer's install guide.
+> **Note:** The installer automatically stops and disables competing UIs (KlipperScreen, etc.). Printers with SysV init (K1, K2, AD5M, AD5X, CC1, Snapmaker U1) use their init script instead; see your printer's install guide.
 
 ### Raspberry Pi 5
 
@@ -253,9 +253,9 @@ Pi 5 has multiple DRM devices. HelixScreen auto-detects the correct one, but if 
 ```
 
 Common Pi 5 DRM devices:
-- `/dev/dri/card0` - v3d (3D acceleration only, no display)
-- `/dev/dri/card1` - DSI touchscreen (if connected)
-- `/dev/dri/card2` - HDMI output
+- `/dev/dri/card0`: v3d (3D acceleration only, no display)
+- `/dev/dri/card1`: DSI touchscreen (if connected)
+- `/dev/dri/card2`: HDMI output
 
 ### Camera Streaming Performance
 
@@ -269,11 +269,11 @@ The installer attempts this automatically, but it's listed here in case your Pi 
 
 ### Low Memory Systems (Pi 3, Pi Zero 2 W)
 
-HelixScreen is optimized for low memory, but if you experience issues:
+HelixScreen is optimized for low memory, but if the host is still tight:
 
-1. Disable other services that aren't needed
-2. Reduce Moonraker's cache size
-3. Consider a lighter Mainsail configuration
+1. Camera streaming is usually the biggest memory consumer on a small Pi; disable it if you don't need it
+2. Reduce Moonraker's print history retention
+3. Disable other services you don't need
 
 ---
 
@@ -392,15 +392,15 @@ To rotate the display (e.g., if your screen is mounted upside-down), add to your
 
 Valid values: `0`, `90`, `180`, `270`. Restart HelixScreen after changing.
 
-Touch coordinates are automatically adjusted to match the rotation - no separate touch configuration is needed.
+Touch coordinates are automatically adjusted to match the rotation: no separate touch configuration is needed.
 
-**Rotation and display backends:** When rotation is configured on Raspberry Pi, HelixScreen checks whether your display hardware supports rotating the image directly. Most DSI/HDMI displays on Pi do not support hardware rotation. In that case, HelixScreen automatically switches from the DRM (GPU) backend to the framebuffer backend, which handles software rotation without any screen flicker. This switch is transparent - no manual configuration needed.
+**Rotation and display backends:** When rotation is configured on Raspberry Pi, HelixScreen checks whether your display hardware supports rotating the image directly. Most DSI/HDMI displays on Pi do not support hardware rotation. In that case, HelixScreen automatically switches from the DRM (GPU) backend to the framebuffer backend, which handles software rotation without any screen flicker. This switch is transparent: no manual configuration needed.
 
 If you experience any display issues with rotation, you can also force the framebuffer backend manually by setting `HELIX_DISPLAY_BACKEND=fbdev` (see below).
 
 ### Display Backends: DRM vs Framebuffer
 
-By default, HelixScreen uses the DRM/KMS backend when available. DRM presents each frame with a vsynced page flip instead of a plain memory copy, which avoids tearing - rendering itself is CPU-based on both backends. On boards where DRM is not supported, it falls back to the framebuffer (`fbdev` backend), which copies each frame directly with no vsync.
+By default, HelixScreen uses the DRM/KMS backend when available. DRM presents each frame with a vsynced page flip instead of a plain memory copy, which avoids tearing; rendering itself is CPU-based on both backends. On boards where DRM is not supported, it falls back to the framebuffer (`fbdev` backend), which copies each frame directly with no vsync.
 
 **When rotation is configured**, HelixScreen may automatically switch to the fbdev backend if the display hardware doesn't support hardware rotation. This is normal and provides flicker-free rotation.
 
@@ -443,7 +443,7 @@ sudo systemctl restart helixscreen
 
 ## Updating HelixScreen
 
-> Platform-specific update commands - the two-step offline process on printers without HTTPS fetch tools (K1, Adventurer 5M), the AD5X chroot path, bundled-installer locations - live in your printer's install guide. Start from [Which printer are you installing on?](#which-printer-are-you-installing-on).
+> Platform-specific update commands live in your printer's install guide: the two-step offline process on printers without HTTPS fetch tools (K1, Adventurer 5M), the AD5X chroot path, bundled-installer locations. Start from [Which printer are you installing on?](#which-printer-are-you-installing-on).
 
 ### Check Current Version
 
@@ -473,7 +473,7 @@ The easiest way to update is using the install script with `--update`:
 curl -sSL https://raw.githubusercontent.com/prestonbrown/helixscreen/main/scripts/install.sh | sh -s -- --update
 ```
 
-This preserves your configuration and updates to the latest version. Printers without direct internet access use a two-step process instead - see your printer's install guide.
+This preserves your configuration and updates to the latest version. Printers without direct internet access use a two-step process instead; see your printer's install guide.
 
 ### Update to Specific Version
 
@@ -489,13 +489,13 @@ curl -sSL https://raw.githubusercontent.com/prestonbrown/helixscreen/main/script
 
 ### Preserving Configuration
 
-The update process preserves your `settings.json` settings. If you want to reset to defaults, use the `--clean` flag - it removes your HelixScreen settings and caches everywhere they live, then does a fresh install:
+The update process preserves your `settings.json` settings. If you want to reset to defaults, use the `--clean` flag; it removes your HelixScreen settings and caches everywhere they live, then does a fresh install:
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/prestonbrown/helixscreen/main/scripts/install.sh | sh -s -- --clean
 ```
 
-`--clean` asks for confirmation before wiping anything. Your Klipper config, Moonraker settings, print history, and G-code files are **not** touched - only HelixScreen's own settings.
+`--clean` asks for confirmation before wiping anything. Your Klipper config, Moonraker settings, print history, and G-code files are **not** touched: only HelixScreen's own settings.
 
 To reset settings **and** pin a specific version in one step, combine `--clean` with `--version`:
 
@@ -529,7 +529,7 @@ path: ~/helixscreen
 ```
 
 > **Important:** Do not add `install_script`, `managed_services`, or `persistent_files`
-> to this section - these options are not supported with `type: web` and Moonraker will
+> to this section; these options are not supported with `type: web` and Moonraker will
 > log warnings about unparsed config options. Service restart after updates is handled
 > automatically by a systemd path unit installed during setup.
 
@@ -550,7 +550,7 @@ The install script with `--uninstall` removes HelixScreen and **restores your pr
 curl -sSL https://raw.githubusercontent.com/prestonbrown/helixscreen/main/scripts/install.sh | sh -s -- --uninstall
 ```
 
-Platform-specific details - the bundled installer's location on printers without HTTPS fetch tools, manual revert steps, what gets restored on each firmware - are in your printer's install guide.
+Platform-specific details are in your printer's install guide: the bundled installer's location on printers without HTTPS fetch tools, manual revert steps, what gets restored on each firmware.
 
 ### Manual Uninstall
 
@@ -592,7 +592,7 @@ sudo journalctl -u helixscreen -f
 sudo journalctl -u helixscreen -p err
 ```
 
-Log locations for the other platforms (K1, K2, AD5M, AD5X, CC1, Snapmaker U1) - each has a launcher/crash log plus a platform-specific app log - are in your printer's install guide.
+Log locations for the other platforms (K1, K2, AD5M, AD5X, CC1, Snapmaker U1) are in your printer's install guide: each has a launcher/crash log plus a platform-specific app log.
 
 ### Common Issues
 
@@ -614,4 +614,4 @@ See [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for solutions to:
 
 ---
 
-*Next: [User Guide](USER_GUIDE.md) - Learn how to use HelixScreen*
+*Next: [User Guide](USER_GUIDE.md) (learn how to use HelixScreen)*

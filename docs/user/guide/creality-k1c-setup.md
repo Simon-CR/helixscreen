@@ -23,7 +23,7 @@ On the K1C touchscreen:
 
 That's it. Root is now enabled.
 
-> **Newer K1C units (2025 hardware revision):** Some recent K1C units ship without the **Root Account Information** option in the Settings menu. If you don't see it, your unit needs a community rooting workaround - check the Simple AF or Guilouz project pages (Step 3) for the current method.
+> **Newer K1C units (2025 hardware revision):** Some recent K1C units ship without the **Root Account Information** option in the Settings menu. If you don't see it, your unit needs a community rooting workaround; check the Simple AF or Guilouz project pages (Step 3) for the current method.
 
 ---
 
@@ -126,7 +126,7 @@ The installer automatically:
 >
 > Sending prints still works through Fluidd or Mainsail, HelixScreen's own file
 > browser, or any slicer that uploads to Moonraker (OrcaSlicer, or PrusaSlicer
-> with the Moonraker plugin). Creality Print can still slice - it just cannot
+> with the Moonraker plugin). Creality Print can still slice; it just cannot
 > upload over the network. To get the stock network stack back, uninstall
 > HelixScreen (see [Uninstalling](#uninstalling)).
 
@@ -135,9 +135,9 @@ The installer automatically:
 HelixScreen starts automatically after install. The on-screen wizard walks you through:
 
 1. **Language** selection
-2. **Moonraker connection** - should auto-detect on `localhost:7125`
-3. **Printer identification** - the K1C is in the printer database
-4. **Hardware discovery** - heaters, fans, sensors, LEDs
+2. **Moonraker connection**: should auto-detect on `localhost:7125`
+3. **Printer identification**: the K1C is in the printer database
+4. **Hardware discovery**: heaters, fans, sensors, LEDs
 
 ---
 
@@ -194,11 +194,11 @@ This restores GuppyScreen automatically.
 | Problem | Fix |
 |---------|-----|
 | Can't SSH in | Make sure root is enabled (Step 1). Password is `creality_2023` |
-| `curl` or SSL error | K1 doesn't support HTTPS downloads. Use the two-step install (Step 4) - download on your computer, then `scp` to the printer |
-| Installer says "Moonraker not found" | Complete Step 3 first - Moonraker must be running |
+| `curl` or SSL error | K1 doesn't support HTTPS downloads. Use the two-step install (Step 4): download on your computer, then `scp` to the printer |
+| Installer says "Moonraker not found" | Complete Step 3 first: Moonraker must be running |
 | Blank screen after install | Check logs: `logread \| grep helix-screen \| tail -100` and `tail -100 /usr/data/helixscreen/logs/launcher.log` |
 | Touch not responding | Reboot: `reboot` |
-| Creality Print can't find the printer after install | Expected - the stock Creality backend is stopped so HelixScreen can use the screen. Use Fluidd/Mainsail, HelixScreen's file browser, or a Moonraker-capable slicer. To revert, uninstall HelixScreen. See [Troubleshooting](../TROUBLESHOOTING.md#creality-k1-series-issues) |
+| Creality Print can't find the printer after install | Expected: the stock Creality backend is stopped so HelixScreen can use the screen. Use Fluidd/Mainsail, HelixScreen's file browser, or a Moonraker-capable slicer. To revert, uninstall HelixScreen. See [Troubleshooting](../TROUBLESHOOTING.md#creality-k1-series-issues) |
 
 For more help: [Troubleshooting Guide](../TROUBLESHOOTING.md) | [Discord](https://discord.gg/RZCT2StKhr) | [GitHub Issues](https://github.com/prestonbrown/helixscreen/issues)
 

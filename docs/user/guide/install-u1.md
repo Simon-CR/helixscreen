@@ -4,9 +4,9 @@ The Snapmaker U1 is an all-in-one printer with a built-in touchscreen. HelixScre
 
 ## Tested With
 
-> **Requires SSH access.** Enable it on **stock firmware (1.2+)** via the **Root access** option in printer settings, or install [PAXX Extended Firmware](https://github.com/paxx12-snapmaker-u1/SnapmakerU1-Extended-Firmware) (SSH on by default). PAXX is **not** required - it's just the turnkey option.
+> **Requires SSH access.** Enable it on **stock firmware (1.2+)** via the **Root access** option in printer settings, or install [PAXX Extended Firmware](https://github.com/paxx12-snapmaker-u1/SnapmakerU1-Extended-Firmware) (SSH on by default). PAXX is **not** required; it's just the turnkey option.
 >
-> **Firmware versions:** Tested on PAXX Extended Firmware **1.2.x, 1.3.x, and 1.4.x**. The stock-firmware path has not been verified end-to-end on a real stock device. After any firmware update, **reinstall HelixScreen** - the update resets the printer's system files and the stock screen will return until you reinstall (see [Upgrading the firmware](#upgrading-the-extended-firmware-with-helixscreen-installed)).
+> **Firmware versions:** Tested on PAXX Extended Firmware **1.2.x, 1.3.x, and 1.4.x**. The stock-firmware path has not been verified end-to-end on a real stock device. After any firmware update, **reinstall HelixScreen**; the update resets the printer's system files and the stock screen will return until you reinstall (see [Upgrading the firmware](#upgrading-the-extended-firmware-with-helixscreen-installed)).
 
 ## Prerequisites
 
@@ -15,7 +15,7 @@ The Snapmaker U1 is an all-in-one printer with a built-in touchscreen. HelixScre
   - Built-in touchscreen display
   - Network connection
 - **Software:**
-  - **SSH access** - via either firmware path:
+  - **SSH access**: via either firmware path:
     - **Stock Snapmaker firmware (1.2+):** enable the **Root access** option in printer settings (added in V1.2.0). This turns on SSH. *(The stock-firmware path has not been verified end-to-end on a real stock device.)*
     - **[PAXX Extended Firmware](https://github.com/paxx12-snapmaker-u1/SnapmakerU1-Extended-Firmware):** SSH on by default. Tested on **1.2.x, 1.3.x, and 1.4.x**.
   - SSH login (`root@<printer-ip>` or `lava@<printer-ip>`, password: `snapmaker`)
@@ -71,7 +71,7 @@ killall gui 2>/dev/null; /userdata/helixscreen/bin/helix-launcher.sh &
 
 - Automatically detects the Snapmaker U1 and installs to `/userdata/helixscreen/`
 - Configures autostart so HelixScreen launches instead of the stock UI on boot
-- Disables the stock UI program (`/usr/bin/gui`) so HelixScreen owns the screen. The stock UI program lives in a read-only part of the firmware and is only disabled, never deleted - the uninstaller re-enables it
+- Disables the stock UI program (`/usr/bin/gui`) so HelixScreen owns the screen. The stock UI program lives in a read-only part of the firmware and is only disabled, never deleted; the uninstaller re-enables it
 
 ## Service Control and Logs
 
@@ -100,7 +100,7 @@ To pin a specific version add `--version vX.Y.Z`, or swap `--update` for `--clea
 
 ### Upgrading the Extended Firmware with HelixScreen installed
 
-A firmware upgrade is safe to run with HelixScreen installed - it does **not** brick the printer. HelixScreen's files live in a layer that the upgrade clears, so after upgrading you simply **reinstall HelixScreen**.
+A firmware upgrade is safe to run with HelixScreen installed; it does **not** brick the printer. HelixScreen's files live in a layer that the upgrade clears, so after upgrading you simply **reinstall HelixScreen**.
 
 Because HelixScreen replaces the stock touchscreen, the stock screen's on-device **"Local Update"** button is gone. Upgrade over the network instead:
 
@@ -110,7 +110,7 @@ Because HelixScreen replaces the stock touchscreen, the stock screen's on-device
 
 ## Uninstalling and Reverting to Stock UI
 
-Run the uninstaller - it re-enables the stock UI and removes HelixScreen:
+Run the uninstaller; it re-enables the stock UI and removes HelixScreen:
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/prestonbrown/helixscreen/main/scripts/install.sh | sh -s -- --uninstall
@@ -142,13 +142,13 @@ If something goes wrong and the printer comes up with a blank screen and is unre
 
 ## Quirks and Notes
 
-- **A firmware update resets system files** - any firmware update (stock or PAXX) can overwrite HelixScreen and bring the stock screen back; re-run the installer afterward (see [Upgrading the firmware](#upgrading-the-extended-firmware-with-helixscreen-installed))
-- **Remote screen ("gui" camera) works on PAXX firmware** - the built-in "gui" webcam in Mainsail/Fluidd shows the live HelixScreen UI, and you can tap it to control the printer remotely. Enable **Remote Screen** in the firmware settings web UI at `http://<printer-ip>/firmware-config/` - it registers the "gui" webcam and restarts HelixScreen and Moonraker for you (hand-editing the config value alone is not enough). The physical "case" camera is unaffected. Stock firmware is not yet confirmed to expose the feed. Setup steps: [Supported Printers → Snapmaker U1](supported-printers.md#snapmaker-u1-snapswap)
-- **Two harmless Moonraker warnings are expected** - after install, the Mainsail/Fluidd "Moonraker warnings found" banner may show *"Unable to find DBus PolKit Interface"* and *"Unable to initialize System Update Provider for distribution: buildroot"*. Both are inherent to Moonraker on the U1's buildroot firmware (no PolKit, no OS package manager) and do **not** affect HelixScreen or printing. They are not specific to HelixScreen - installing simply restarts Moonraker, which re-surfaces them. See [Troubleshooting](../TROUBLESHOOTING.md)
+- **A firmware update resets system files**: any firmware update (stock or PAXX) can overwrite HelixScreen and bring the stock screen back; re-run the installer afterward (see [Upgrading the firmware](#upgrading-the-extended-firmware-with-helixscreen-installed))
+- **Remote screen ("gui" camera) works on PAXX firmware**: the built-in "gui" webcam in Mainsail/Fluidd shows the live HelixScreen UI, and you can tap it to control the printer remotely. Enable **Remote Screen** in the firmware settings web UI at `http://<printer-ip>/firmware-config/`; it registers the "gui" webcam and restarts HelixScreen and Moonraker for you (hand-editing the config value alone is not enough). The physical "case" camera is unaffected. Stock firmware is not yet confirmed to expose the feed. Setup steps: [Supported Printers → Snapmaker U1](supported-printers.md#snapmaker-u1-snapswap)
+- **Two harmless Moonraker warnings are expected**: after install, the Mainsail/Fluidd "Moonraker warnings found" banner may show *"Unable to find DBus PolKit Interface"* and *"Unable to initialize System Update Provider for distribution: buildroot"*. Both are inherent to Moonraker on the U1's buildroot firmware (no PolKit, no OS package manager) and do **not** affect HelixScreen or printing. They are not specific to HelixScreen; installing simply restarts Moonraker, which re-surfaces them. See [Troubleshooting](../TROUBLESHOOTING.md)
 - **Display resolution may need manual configuration** if the screen appears stretched or misaligned (see [Display Configuration](../INSTALL.md#display-configuration))
 
 ## See Also
 
-- [Troubleshooting: Snapmaker U1 blank screen](../TROUBLESHOOTING.md#snapmaker-u1-blank-screen-and-off-the-network-after-a-reboot) - the wired-recovery companion to the section above
-- [Supported printers: Snapmaker U1 (SnapSwap)](supported-printers.md#snapmaker-u1-snapswap) - what works, and remote screen setup
-- [UPGRADING.md](../UPGRADING.md) - version pinning, resets, migrations
+- [Troubleshooting: Snapmaker U1 blank screen](../TROUBLESHOOTING.md#snapmaker-u1-blank-screen-and-off-the-network-after-a-reboot): the wired-recovery companion to the section above
+- [Supported printers: Snapmaker U1 (SnapSwap)](supported-printers.md#snapmaker-u1-snapswap): what works, and remote screen setup
+- [UPGRADING.md](../UPGRADING.md): version pinning, resets, migrations
