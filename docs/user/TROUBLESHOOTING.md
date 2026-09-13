@@ -94,7 +94,7 @@ tail -f /var/log/messages | grep helix    # AD5M / non-systemd
    ```
 4. To instead go back to the stock screen, run the uninstaller: `curl -sSL https://raw.githubusercontent.com/prestonbrown/helixscreen/main/scripts/install.sh | sh -s -- --uninstall && reboot`.
 
-See [INSTALL.md → Recovery](INSTALL.md#recovery-screen-is-blank-or-the-printer-is-off-the-network) for the full procedure and the manual reset fallback.
+See [Snapmaker U1 install guide → Recovery](guide/install-u1.md#recovery-screen-is-blank-or-the-printer-is-off-the-network) for the full procedure and the manual reset fallback.
 
 ### Update failed in Mainsail — screen won't start after update (AD5X)
 
@@ -105,7 +105,7 @@ See [INSTALL.md → Recovery](INSTALL.md#recovery-screen-is-blank-or-the-printer
 
 **What happened:** Moonraker's in-place update wiped part of `/srv/helixscreen` (including the `bin/helix-screen` binary) before something interrupted it. The install directory now has leftover files but no working binary, so the launcher can't start anything, and a retry from Mainsail trips over those leftovers.
 
-**Fix:** Re-run the CLI installer from inside the ZMOD chroot — it cleans up the broken state and lays down a fresh install while preserving your settings. Full procedure: [UPGRADING.md → Adventurer 5X (ZMOD)](UPGRADING.md#quick-upgrade).
+**Fix:** Re-run the CLI installer from inside the ZMOD chroot - it cleans up the broken state and lays down a fresh install while preserving your settings. Full procedure: [Adventurer 5X install guide → Updating](guide/install-ad5x.md#updating).
 
 Quick form, from a Mainsail Shell or SSH:
 
