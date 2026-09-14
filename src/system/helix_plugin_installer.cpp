@@ -157,6 +157,8 @@ HelixPluginInstaller::SyncInstallResult HelixPluginInstaller::install_local_sync
     state_.store(PluginInstallState::INSTALLING);
     spdlog::info("[PluginInstaller] Starting local installation: {} --auto", script_path);
 
+    // fork/exec instead of popen(): execl() never goes through a shell, so
+    // script_path cannot inject commands the way a popen() string would.
     pid_t pid = fork();
 
     if (pid < 0) {
@@ -217,6 +219,8 @@ void HelixPluginInstaller::uninstall_local(InstallCallback callback) {
     spdlog::info("[PluginInstaller] Starting local uninstallation: {} --uninstall-auto",
                  script_path);
 
+    // fork/exec instead of popen(): execl() never goes through a shell, so
+    // script_path cannot inject commands the way a popen() string would.
     pid_t pid = fork();
 
     if (pid < 0) {
