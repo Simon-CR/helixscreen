@@ -142,6 +142,13 @@ what gets saved.
 
 ### Fixed
 
+- **No ACE Pro slot ever showed as loaded on the Kobra S1 fork (#1069)** - that driver
+  ("ACEPRO") states the loaded tool only through its manager object's `current_index`, a field
+  the backend never read, so slots, colours and materials displayed while the loaded one never
+  did. The index is read on both status paths now, with -1 meaning nothing loaded; the fork's
+  `material` and `dryer_status` key spellings are accepted too, and a status frame carrying
+  both the manager and a unit no longer drops the unit's update. Confirmed from a user's live
+  captures and pinned by tests built from them; not yet verified on the hardware itself.
 - **Filament details you entered on a Happy Hare lane were gone at the next launch** - brand,
   spool name, weights, colour name and the catalog product you picked were kept on screen for
   the session and never written down, on every Happy Hare printer. Clearing a lane had the
