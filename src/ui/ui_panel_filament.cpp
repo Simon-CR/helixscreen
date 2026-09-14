@@ -2344,24 +2344,26 @@ void FilamentPanel::handle_cooldown() {
     spdlog::info("[{}] Cooldown requested - turning off heaters", get_name());
 
     if (api_) {
-        // Build default cooldown gcode, including chamber if printer has one
         std::string default_gcode = "SET_HEATER_TEMPERATURE HEATER=extruder TARGET=0\n"
                                     "SET_HEATER_TEMPERATURE HEATER=heater_bed TARGET=0";
-
-        // The resolved chamber heater name is empty when the printer has none, and
-        // then no off command is built.
-        char chamber_gcode[128];
-        if (helix::ui::temperature::build_heater_off_gcode(
-                printer_state_.temperature_state().chamber_heater_name(), chamber_gcode,
-                sizeof(chamber_gcode))) {
-            default_gcode += "\n";
-            default_gcode += chamber_gcode;
-        }
 
         // Use configured cooldown macro (user-overridable in settings.json)
         auto* cfg = helix::Config::get_instance();
         helix::MacroConfig default_cooldown{"Cool Down", default_gcode};
         auto cooldown = cfg ? cfg->get_macro("cooldown", default_cooldown) : default_cooldown;
+
+        // A platform preset's macro text is fixed at install time and can name
+        // a chamber heater that another machine sharing the same preset file
+        // doesn't have. Append the heater PrinterState actually resolved for
+        // THIS printer instead of trusting the macro to know it: empty when
+        // the printer has none, so no off command is appended.
+        char chamber_gcode[128];
+        if (helix::ui::temperature::build_heater_off_gcode(
+                printer_state_.temperature_state().chamber_heater_name(), chamber_gcode,
+                sizeof(chamber_gcode))) {
+            cooldown.gcode += "\n";
+            cooldown.gcode += chamber_gcode;
+        }
 
         api_->execute_gcode(
             cooldown.gcode, []() { NOTIFY_SUCCESS(lv_tr("Heaters off")); },

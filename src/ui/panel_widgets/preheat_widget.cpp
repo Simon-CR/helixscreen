@@ -7,6 +7,7 @@
 #include "ui_event_safety.h"
 #include "ui_overlay_temp_graph.h"
 #include "ui_split_button.h"
+#include "ui_temperature_utils.h"
 
 #include "app_globals.h"
 #include "config.h"
@@ -364,6 +365,19 @@ void PreheatWidget::handle_cooldown() {
     MacroConfig default_cooldown{"Cool Down", "SET_HEATER_TEMPERATURE HEATER=extruder TARGET=0\n"
                                               "SET_HEATER_TEMPERATURE HEATER=heater_bed TARGET=0"};
     auto cooldown = cfg ? cfg->get_macro("cooldown", default_cooldown) : default_cooldown;
+
+    // A platform preset's macro text is fixed at install time and can name a
+    // chamber heater that another machine sharing the same preset file
+    // doesn't have. Append the heater PrinterState actually resolved for THIS
+    // printer instead of trusting the macro to know it: empty when the
+    // printer has none, so no off command is appended.
+    char chamber_gcode[128];
+    if (helix::ui::temperature::build_heater_off_gcode(
+            printer_state_.temperature_state().chamber_heater_name(), chamber_gcode,
+            sizeof(chamber_gcode))) {
+        cooldown.gcode += "\n";
+        cooldown.gcode += chamber_gcode;
+    }
 
     spdlog::info("[PreheatWidget] Cooldown requested - executing: {}", cooldown.gcode);
     api->execute_gcode(
