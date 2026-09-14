@@ -4027,11 +4027,38 @@ void AmsBackendCfs::strip_spoolman_link_on_runout_locked(SlotInfo& slot, int slo
     o.spoolman_vendor_id = 0;
     o.updated_at = std::chrono::system_clock::now();
 
-    // Immediate visibility on the live SlotInfo, same pattern as
-    // clear_override_locked: apply_overrides runs after this and its sentinel
-    // rule (id 0 falls through to firmware truth) keeps the zero in place.
+    // Immediate visibility on the live SlotInfo. apply_resolved_lane runs after
+    // this, so the zero only survives if no lane source still declares the id,
+    // which is what the retraction below is for.
     slot.spoolman_id = 0;
     slot.spoolman_vendor_id = 0;
+
+    // The lane's own records lose the handle too. A retraction rather than a
+    // drop, and a second composition rather than a call to the AD5X release,
+    // because that one retracts colour and material where this must leave both
+    // standing: #1390 is exactly that a bay's identity outlives the spool and
+    // labels the one loaded next. Both declaring sources are amended, since
+    // either can carry the id: the user's record the binding they chose, the
+    // server's the spool it named.
+    const helix::ams::LaneId lane = lane_id(slot_index);
+    const helix::ams::LaneSources sources = helix::ams::lane_sources(lane);
+    if (sources.local_user.has_value()) {
+        helix::ams::Observation kept = *sources.local_user;
+        kept.spoolman_id.reset();
+        kept.spoolman_vendor_id.reset();
+        // Dropped and re-filed, because commit_slot_edit amends: filing the
+        // trimmed record onto the standing one would restore the id it just
+        // removed. A record with nothing left to declare files nothing at all.
+        helix::ams::drop_lane_source(lane, helix::ams::ObservationSource::LocalUser);
+        helix::ams::commit_slot_edit(lane, kept);
+    }
+    if (sources.spoolman.has_value()) {
+        helix::ams::Observation kept = *sources.spoolman;
+        kept.spoolman_id.reset();
+        kept.spoolman_vendor_id.reset();
+        // ingest replaces a source's record whole, so no drop is needed here.
+        helix::ams::ingest(lane, kept);
+    }
 
     spdlog::info("{} slot {} reads empty after a confirmed runout - dropping the remembered "
                  "Spoolman link (spool {}), keeping identity",
