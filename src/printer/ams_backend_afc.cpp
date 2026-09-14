@@ -5253,8 +5253,7 @@ AmsError AmsBackendAfc::recover_lane_position(int slot_index) {
 
         lane_name = slots_.name_of(slot_index);
         if (lane_name.empty()) {
-            return AmsErrorHelper::invalid_slot(
-                lane_noun(), slot_index, slots_.slot_count() > 0 ? slots_.slot_count() - 1 : 0);
+            return AmsErrorHelper::invalid_slot(lane_noun(), slot_index, slots_.slot_count() - 1);
         }
     }
 

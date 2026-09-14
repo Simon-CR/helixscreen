@@ -2328,8 +2328,7 @@ void AmsBackendHappyHare::reapply_overrides() {
 
 AmsError AmsBackendHappyHare::validate_slot_index(int gate_index) const {
     if (!slots_.is_valid_index(gate_index)) {
-        return AmsErrorHelper::invalid_slot(lane_noun(), gate_index,
-                                            slots_.slot_count() > 0 ? slots_.slot_count() - 1 : 0);
+        return AmsErrorHelper::invalid_slot(lane_noun(), gate_index, slots_.slot_count() - 1);
     }
     return AmsErrorHelper::success();
 }
@@ -2728,14 +2727,12 @@ AmsError AmsBackendHappyHare::set_slot_info(int slot_index, const SlotInfo& info
         std::lock_guard<std::mutex> lock(mutex_);
 
         if (!slots_.is_valid_index(slot_index)) {
-            return AmsErrorHelper::invalid_slot(
-                lane_noun(), slot_index, slots_.slot_count() > 0 ? slots_.slot_count() - 1 : 0);
+            return AmsErrorHelper::invalid_slot(lane_noun(), slot_index, slots_.slot_count() - 1);
         }
 
         auto* entry = slots_.get_mut(slot_index);
         if (!entry) {
-            return AmsErrorHelper::invalid_slot(
-                lane_noun(), slot_index, slots_.slot_count() > 0 ? slots_.slot_count() - 1 : 0);
+            return AmsErrorHelper::invalid_slot(lane_noun(), slot_index, slots_.slot_count() - 1);
         }
 
         auto& slot = entry->info;
@@ -2889,8 +2886,7 @@ AmsError AmsBackendHappyHare::set_tool_mapping_impl(int tool_number, int slot_in
         }
 
         if (!slots_.is_valid_index(slot_index)) {
-            return AmsErrorHelper::invalid_slot(
-                lane_noun(), slot_index, slots_.slot_count() > 0 ? slots_.slot_count() - 1 : 0);
+            return AmsErrorHelper::invalid_slot(lane_noun(), slot_index, slots_.slot_count() - 1);
         }
 
         // Check if another tool already maps to this slot
