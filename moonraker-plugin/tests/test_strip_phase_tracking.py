@@ -384,6 +384,23 @@ class TestFileDiscovery:
         discovered = strip._discover_cfg_files(str(config_dir))
         assert discovered == {str(real_file.resolve()): str(link)}
 
+    def test_two_aliases_at_different_depths_keep_the_ones_sorted_glob_order(self, tmp_path):
+        # The pre-1.1 writer located a macro with sorted(Path.glob("**/*.cfg")),
+        # which visits "a/real.cfg" before the top-level "b.cfg" (path parts
+        # ("a", "real.cfg") sort before ("b.cfg",)) - so that writer's own
+        # backup for this file always lands beside a/real.cfg. os.walk visits
+        # a root's own files before any subdirectory's, so a naive walk-order
+        # pick (first or last encountered) would keep "b.cfg" instead, and a
+        # later hint would name a backup that was never written.
+        config_dir = tmp_path / "config"
+        (config_dir / "a").mkdir(parents=True)
+        real_file = config_dir / "a" / "real.cfg"
+        write(real_file, "content")
+        (config_dir / "b.cfg").symlink_to(real_file)
+
+        discovered = strip._discover_cfg_files(str(config_dir))
+        assert discovered == {str(real_file.resolve()): str(real_file)}
+
     def test_a_symlinked_directory_is_not_descended(self, tmp_path):
         real_dir = tmp_path / "elsewhere"
         real_dir.mkdir()
@@ -855,6 +872,42 @@ def test_a_non_utf8_sibling_cfg_is_skipped_like_the_real_writers(tmp_path):
     disable_result = old_writer.disable(tmp_path)
     assert disable_result["success"] is True
     assert old_writer.TRACKING_MARKER_BEGIN not in cfg.read_text()
+
+
+def test_a_read_only_printer_cfg_fails_like_the_real_v2_writer(tmp_path):
+    # The real v2 _update_macro wraps its backup-plus-write step in
+    # try/except and returns success: False rather than raising - the
+    # fixture's docstring claims to be that logic "taken as-is", so it must
+    # match this shape for a write failure too, not just for the content it
+    # produces on the happy path.
+    _write_helix_macros_cfg(tmp_path)
+    cfg = tmp_path / "printer.cfg"
+    write(cfg, "[gcode_macro PRINT_START]\ngcode:\n    G28\n")
+    cfg.chmod(0o444)
+
+    try:
+        result = old_writer.enable(tmp_path)
+    finally:
+        cfg.chmod(0o644)  # tmp_path cleanup needs write access
+
+    assert result["success"] is False
+    assert len(list(tmp_path.glob("printer.bak.*"))) == 1
+
+
+def test_a_read_only_printer_cfg_fails_like_the_real_legacy_writer(tmp_path):
+    # Same shape, for the pre-#1268 legacy writer: its per-file try wraps the
+    # backup and write too, and moves on rather than raising.
+    _write_helix_macros_cfg(tmp_path)
+    cfg = tmp_path / "printer.cfg"
+    write(cfg, "[gcode_macro PRINT_START]\ngcode:\n    G28\n")
+    cfg.chmod(0o444)
+
+    try:
+        result = old_writer.enable_legacy(tmp_path)
+    finally:
+        cfg.chmod(0o644)
+
+    assert result["success"] is False
 
 
 def test_matches_the_old_writer_with_no_git_available(tmp_path, monkeypatch):
