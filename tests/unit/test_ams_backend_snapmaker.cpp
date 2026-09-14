@@ -1946,6 +1946,229 @@ TEST_CASE_METHOD(SnapmakerFixture,
 }
 
 // ============================================================================
+// The auto-mirror and the lane's declaring sources (prestonbrown/helixscreen#1654)
+// ============================================================================
+//
+// OverwriteAlways hands a colour or material to firmware because a user's edit
+// reaches firmware too, so the two converge. A Spoolman record never reaches
+// firmware, and neither does a value the user's record holds without a lock,
+// so the mirror leaves a field a declaring source holds on the lane, and the
+// stored record keeps agreeing with what the lane shows.
+
+namespace {
+
+/// A registered Snapmaker backend with a lane_data store behind it, which is
+/// what a case asserting on both the override and the lane records needs.
+struct SnapmakerLaneRig {
+    explicit SnapmakerLaneRig(const std::string& name)
+        : tmp(name), api(client, state), backend_reg(&api, nullptr) {
+        state.init_subjects(false);
+        auto store = std::make_unique<helix::ams::FilamentSlotOverrideStore>(
+            &api, "snapmaker", helix::ams::LaneKeyStyle::Tool);
+        FilamentSlotOverrideStoreTestAccess::set_cache_directory(*store, tmp.path);
+        SnapmakerTestAccess::inject_override_store(*backend_reg, std::move(store));
+    }
+
+    SnapmakerTmpCacheDir tmp;
+    MoonrakerClientMock client{MoonrakerClientMock::PrinterType::VORON_24};
+    helix::PrinterState state;
+    MoonrakerAPIMock api;
+    helix::test::RegisteredBackend<AmsBackendSnapmaker> backend_reg;
+};
+
+/// Slot 0 seated, its tag reading @p argb and @p main_type. The state array is
+/// what makes the slot AVAILABLE, the only status the mirror runs on, and the
+/// CARD_UID stays the same across frames so no case reads as a spool swap.
+json seated_tag_frame(uint32_t argb, const std::string& main_type) {
+    json status =
+        make_filament_detect_status(0, main_type, argb, "OtherBrand", json::array({1, 2, 3, 4}));
+    status["filament_detect"]["state"] = json::array({1, 0, 0, 0});
+    return status;
+}
+
+/// Slot 0's stored record as a link to spool 42 leaves it: the spool's colour
+/// and material rode in with the binding, so neither is locked.
+helix::ams::FilamentSlotOverride linked_to_spool_42() {
+    helix::ams::FilamentSlotOverride ovr;
+    ovr.spoolman_id = 42;
+    ovr.brand = "Polymaker";
+    ovr.color_rgb = 0xFF5500;
+    ovr.color_set = true;
+    ovr.material = "PLA";
+    ovr.user_locked_color = false;
+    ovr.user_locked_material = false;
+    return ovr;
+}
+
+SpoolInfo spool_42() {
+    SpoolInfo spool;
+    spool.id = 42;
+    spool.vendor = "Polymaker";
+    spool.material = "PLA";
+    spool.color_hex = "FF5500";
+    return spool;
+}
+
+} // namespace
+
+TEST_CASE_METHOD(SnapmakerFixture,
+                 "Snapmaker firmware restating a linked lane's colour leaves the stored record on "
+                 "the spool's",
+                 "[ams][snapmaker][lane][1654]") {
+    SnapmakerLaneRig rig("mirror_keeps_linked");
+    AmsBackendSnapmaker& backend = *rig.backend_reg;
+
+    SnapmakerTestAccess::seed_override(backend, 0, linked_to_spool_42());
+    {
+        const auto loaded = helix::ams::lane_sources(rig.backend_reg.lane(0));
+        REQUIRE(loaded.spoolman.has_value());
+        REQUIRE(loaded.spoolman->color_rgb == 0xFF5500u);
+        REQUIRE(loaded.spoolman->material == "PLA");
+    }
+
+    SnapmakerTestAccess::handle_status(backend, seated_tag_frame(0xFF112233u, "PETG"));
+    REQUIRE(backend.get_slot_info(0).status == SlotStatus::AVAILABLE);
+
+    const SlotInfo info = backend.get_slot_info(0);
+    CHECK(info.color_rgb == 0xFF5500u);
+    CHECK(info.material == "PLA");
+
+    const auto stored = SnapmakerTestAccess::get_override(backend, 0);
+    REQUIRE(stored.has_value());
+    CHECK(stored->color_rgb == 0xFF5500u);
+    CHECK(stored->material == "PLA");
+}
+
+TEST_CASE_METHOD(SnapmakerFixture,
+                 "Snapmaker a frame repeating a linked lane's values writes nothing",
+                 "[ams][snapmaker][lane][1654]") {
+    SnapmakerLaneRig rig("mirror_idle_frame");
+    AmsBackendSnapmaker& backend = *rig.backend_reg;
+
+    SnapmakerTestAccess::seed_override(backend, 0, linked_to_spool_42());
+    const int posts_before = rig.api.mock_db_post_count();
+
+    SnapmakerTestAccess::handle_status(backend, seated_tag_frame(0xFFFF5500u, "PLA"));
+
+    const auto sources = helix::ams::lane_sources(rig.backend_reg.lane(0));
+    // The frame was parsed, and the slot is one the mirror runs on.
+    REQUIRE(sources.sensed.has_value());
+    REQUIRE(sources.sensed->present == true);
+    REQUIRE(backend.get_slot_info(0).status == SlotStatus::AVAILABLE);
+
+    CHECK(rig.api.mock_db_post_count() == posts_before);
+    CHECK_FALSE(sources.local_user.has_value());
+    REQUIRE(sources.spoolman.has_value());
+    CHECK(sources.spoolman->color_rgb == 0xFF5500u);
+    CHECK(sources.spoolman->material == "PLA");
+    CHECK(sources.spoolman->spoolman_id == 42);
+}
+
+TEST_CASE_METHOD(SnapmakerFixture,
+                 "Snapmaker a linked lane holds the spool's colour across frames and a Spoolman "
+                 "poll",
+                 "[ams][snapmaker][lane][1654]") {
+    // Firmware and the Spoolman poll both keep stating their own value. Neither
+    // the lane nor the stored record may follow whichever spoke last.
+    SnapmakerLaneRig rig("mirror_no_flip_flop");
+    AmsBackendSnapmaker& backend = *rig.backend_reg;
+
+    SnapmakerTestAccess::seed_override(backend, 0, linked_to_spool_42());
+
+    const auto holds_spool_colour = [&](const char* step) {
+        INFO(step);
+        const SlotInfo info = backend.get_slot_info(0);
+        CHECK(info.color_rgb == 0xFF5500u);
+        CHECK(info.material == "PLA");
+        const auto stored = SnapmakerTestAccess::get_override(backend, 0);
+        REQUIRE(stored.has_value());
+        CHECK(stored->color_rgb == 0xFF5500u);
+        CHECK(stored->material == "PLA");
+    };
+
+    SnapmakerTestAccess::handle_status(backend, seated_tag_frame(0xFF112233u, "PETG"));
+    REQUIRE(backend.get_slot_info(0).status == SlotStatus::AVAILABLE);
+    holds_spool_colour("after the first frame");
+
+    SpoolmanManager::file_spool_on_lane(rig.backend_reg.lane(0), spool_42(),
+                                        backend.tracks_weight_locally());
+    holds_spool_colour("after the poll re-files the spool");
+
+    SnapmakerTestAccess::handle_status(backend, seated_tag_frame(0xFF112233u, "PETG"));
+    holds_spool_colour("after the second frame");
+}
+
+TEST_CASE_METHOD(SnapmakerFixture,
+                 "Snapmaker an unlinked lane with no declaration still follows firmware",
+                 "[ams][snapmaker][lane][1654]") {
+    SnapmakerLaneRig rig("mirror_unlinked_follows");
+    AmsBackendSnapmaker& backend = *rig.backend_reg;
+
+    // Unlocked and unlinked: what the store remembers, which declares nothing.
+    helix::ams::FilamentSlotOverride remembered;
+    remembered.color_rgb = 0xABCDEF;
+    remembered.color_set = true;
+    remembered.material = "PLA";
+    remembered.user_locked_color = false;
+    remembered.user_locked_material = false;
+    SnapmakerTestAccess::seed_override(backend, 0, remembered);
+    {
+        const auto loaded = helix::ams::lane_sources(rig.backend_reg.lane(0));
+        REQUIRE_FALSE(loaded.spoolman.has_value());
+        REQUIRE_FALSE(loaded.local_user.has_value());
+    }
+
+    SnapmakerTestAccess::handle_status(backend, seated_tag_frame(0xFF112233u, "PETG"));
+    REQUIRE(backend.get_slot_info(0).status == SlotStatus::AVAILABLE);
+
+    const auto stored = SnapmakerTestAccess::get_override(backend, 0);
+    REQUIRE(stored.has_value());
+    CHECK(stored->color_rgb == 0x112233u);
+    CHECK(stored->material == "PETG");
+    CHECK(backend.get_slot_info(0).color_rgb == 0x112233u);
+}
+
+TEST_CASE_METHOD(SnapmakerFixture,
+                 "Snapmaker firmware restating a colour the user's record holds leaves the stored "
+                 "record on it",
+                 "[ams][snapmaker][lane][1654]") {
+    // The stored record carries the colour with no lock, while the user's
+    // record on the lane declares it. Both are filed directly: the override
+    // through the load path, the declaration through the user's own funnel.
+    SnapmakerLaneRig rig("mirror_keeps_user_value");
+    AmsBackendSnapmaker& backend = *rig.backend_reg;
+
+    helix::ams::FilamentSlotOverride unlocked;
+    unlocked.color_rgb = 0xFFFFFF;
+    unlocked.color_set = true;
+    unlocked.material = "PLA";
+    unlocked.user_locked_color = false;
+    unlocked.user_locked_material = false;
+    SnapmakerTestAccess::seed_override(backend, 0, unlocked);
+
+    helix::ams::Observation pick(helix::ams::ObservationSource::LocalUser);
+    pick.color_rgb = 0xFFFFFF;
+    helix::ams::commit_slot_edit(rig.backend_reg.lane(0), pick);
+    {
+        const auto seeded = SnapmakerTestAccess::get_override(backend, 0);
+        REQUIRE(seeded.has_value());
+        REQUIRE_FALSE(seeded->user_locked_color);
+        const auto before = helix::ams::lane_sources(rig.backend_reg.lane(0));
+        REQUIRE(before.local_user.has_value());
+        REQUIRE(before.local_user->color_rgb == 0xFFFFFFu);
+        REQUIRE_FALSE(before.spoolman.has_value());
+    }
+
+    SnapmakerTestAccess::handle_status(backend, seated_tag_frame(0xFF112233u, "PLA"));
+    REQUIRE(backend.get_slot_info(0).status == SlotStatus::AVAILABLE);
+
+    const auto stored = SnapmakerTestAccess::get_override(backend, 0);
+    REQUIRE(stored.has_value());
+    CHECK(stored->color_rgb == 0xFFFFFFu);
+    CHECK(backend.get_slot_info(0).color_rgb == 0xFFFFFFu);
+}
+
+// ============================================================================
 // prepare_for_resume — virtual_sdcard.is_active=false with classifier (#991)
 //
 // The old blunt sdcard gate has been replaced by classify_pause(). With the

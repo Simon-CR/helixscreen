@@ -315,11 +315,25 @@ enum class MirrorPolicy {
     /// fields the user explicitly locked (user_locked_color /
     /// user_locked_material — see #965). Use when user edits propagate back to
     /// firmware so the two views stay in sync (AD5X IFS, Snapmaker paxx12).
+    /// A field the caller reports as declared on the lane is left alone the
+    /// same way; see DeclaredOnLane.
     OverwriteAlways,
     /// Only fill ovr.color_rgb / ovr.material when they're currently UNSET
     /// (color_rgb == 0, empty material). Use when user edits don't reach
     /// firmware (CFS).
     FillUnsetOnly,
+};
+
+/// Which of colour and material a declaring lane source holds: the lane's
+/// Spoolman record, or its LocalUser record, carrying a value for the field.
+///
+/// Neither reaches firmware, so firmware's reading does not stand for such a
+/// field, and every mirror policy leaves it in the override exactly as it
+/// leaves a user-locked one. The default names nothing, so a caller that does
+/// not read the lane gets the lock flags alone.
+struct DeclaredOnLane {
+    bool color = false;
+    bool material = false;
 };
 
 /// Mirror firmware-detected color/material into `overrides[slot_index]` and
@@ -343,13 +357,16 @@ enum class MirrorPolicy {
 /// `log_tag` is included in the warn log on save failure so multi-backend
 /// logs stay attributable.
 ///
+/// `declared` names the fields a declaring lane source holds; see DeclaredOnLane.
+///
 /// Returns true iff `overrides[slot_index]` was actually mutated. Callers
 /// (e.g. IFS) use this to drive secondary side-effects like _IFS_VARS sync.
 bool mirror_firmware_to_lane_data(FilamentSlotOverrideStore* store,
                                   std::unordered_map<int, FilamentSlotOverride>& overrides,
                                   int slot_index, uint32_t firmware_color,
                                   const std::string& firmware_material, bool slot_has_filament,
-                                  MirrorPolicy policy, const std::string& log_tag);
+                                  MirrorPolicy policy, const std::string& log_tag,
+                                  DeclaredOnLane declared = {});
 
 /// Discard a slot's stored override, in memory and on the printer.
 ///

@@ -1776,7 +1776,8 @@ bool mirror_firmware_to_lane_data(FilamentSlotOverrideStore* store,
                                   std::unordered_map<int, FilamentSlotOverride>& overrides,
                                   int slot_index, uint32_t firmware_color,
                                   const std::string& firmware_material, bool slot_has_filament,
-                                  MirrorPolicy policy, const std::string& log_tag) {
+                                  MirrorPolicy policy, const std::string& log_tag,
+                                  DeclaredOnLane declared) {
     // No filament = no signal. Don't establish a phantom lane_data entry for
     // an empty slot; clear_override paths handle ejection.
     //
@@ -1808,12 +1809,18 @@ bool mirror_firmware_to_lane_data(FilamentSlotOverrideStore* store,
         // subsequent firmware changes still propagate; users restore the
         // auto-track behavior on a previously-locked slot by calling
         // clear_slot_override.
-        if (!ovr.user_locked_color && (!ovr.color_set || ovr.color_rgb != firmware_color)) {
+        //
+        // A field a declaring lane source holds is left alone the same way. A
+        // Spoolman record or a user's unlocked value never reaches firmware,
+        // so the two views cannot converge on it, and overwriting it would
+        // publish a value in lane_data that the lane itself does not show.
+        if (!ovr.user_locked_color && !declared.color &&
+            (!ovr.color_set || ovr.color_rgb != firmware_color)) {
             ovr.color_rgb = firmware_color;
             ovr.color_set = true;
             changed = true;
         }
-        if (!ovr.user_locked_material && ovr.material != firmware_material) {
+        if (!ovr.user_locked_material && !declared.material && ovr.material != firmware_material) {
             ovr.material = firmware_material;
             changed = true;
         }
@@ -1833,12 +1840,14 @@ bool mirror_firmware_to_lane_data(FilamentSlotOverrideStore* store,
         // policies lock-aware means a record whose locks and value-set flags
         // ever disagree — a legacy record, a hand-edited lane_data entry, a
         // third-party writer — still cannot lose the user's choice here.
-        if (!ovr.user_locked_color && !ovr.color_set) {
+        // A field a declaring lane source holds is left alone here too.
+        if (!ovr.user_locked_color && !declared.color && !ovr.color_set) {
             ovr.color_rgb = firmware_color;
             ovr.color_set = true;
             changed = true;
         }
-        if (!ovr.user_locked_material && ovr.material.empty() && !firmware_material.empty()) {
+        if (!ovr.user_locked_material && !declared.material && ovr.material.empty() &&
+            !firmware_material.empty()) {
             ovr.material = firmware_material;
             changed = true;
         }
