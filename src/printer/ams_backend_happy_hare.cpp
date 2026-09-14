@@ -997,7 +997,7 @@ void AmsBackendHappyHare::parse_mmu_state(const nlohmann::json& mmu_data) {
                 it != gate_readings_.end() ? it->second.spoolman_id.value_or(0) : 0;
             if (reconcile_lane_binding(gate, firmware_id) != ams::BindingVerdict::Holds) {
                 helix::ams::clear_persisted_override(override_store_.get(), overrides_, gate,
-                                                     "[AMS HH]");
+                                                     backend_log_tag());
             }
         }
         spdlog::trace("[AMS HappyHare] Parsed gate_spool_id for {} gates", spool_ids.size());

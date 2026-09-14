@@ -377,7 +377,7 @@ panel — not a slicer-to-printer write.
 
 - **Wire-format spec (public):** [`../specs/filament_slots.md`](../specs/filament_slots.md)
 - **Implementation notes (internal):** [`FILAMENT_SLOT_METADATA.md`](FILAMENT_SLOT_METADATA.md)
-- **Lane source model (written, not yet read):** [`architecture/07-filament-ams.md`](architecture/07-filament-ams.md) § "Lane identity by source" - the per-source `Observation` / `resolve()` model that carries where a value came from instead of inferring it from the value's shape. All nine backends file their readings there and a human slot edit is filed as that person's declaration, but nothing reads any of it, so everything below still reads a lane through `SlotInfo` + `FilamentSlotOverride`.
+- **Lane source model (the read path):** [`architecture/07-filament-ams.md`](architecture/07-filament-ams.md) § "Lane identity by source" - the per-source `Observation` / `resolve()` model that carries where a value came from instead of inferring it from the value's shape. All nine backends file their readings there, a human slot edit is filed as that person's declaration, and every backend's parse ends by laying the resolved lane back onto the `SlotInfo` it just built, so what a user sees is what `resolve()` ranked. `FilamentSlotOverride` is what that identity is persisted as, not what the lane is rendered from.
 
 ### Material names as G-code parameter values
 
@@ -465,11 +465,19 @@ different kinds of data, and they follow different rules:
   the user; firmware knows nothing about it. Retained across an eject/insert
   cycle so a re-inserted same spool keeps its assignment (**#1071**).
 
-The `user_locked_color` / `user_locked_material` flags gate whether the
-`OverwriteAlways` auto-mirror (`mirror_firmware_to_lane_data`) may refresh the
-display fields from firmware truth. A locked field is **never** auto-refreshed —
-this exists to protect a deliberate user choice from the AD5X post-print
-`FFMInfo` revert, which re-emits the *old* type after a print (**#965**).
+The `user_locked_color` / `user_locked_material` flags are where colour's and
+material's authorship lives, and two readers consult them. The
+`OverwriteAlways` auto-mirror (`mirror_firmware_to_lane_data`) asks whether it
+may refresh the display fields from firmware truth: a locked field is **never**
+auto-refreshed, which is what protects a deliberate user choice from the AD5X
+post-print `FFMInfo` revert, which re-emits the *old* type after a print
+(**#965**). And `sources_from_record()`
+(`src/printer/lane_translation.cpp#sources_from_record`) asks whether a stored
+record's colour and material are the user's own declaration or something the
+store merely remembered, because the two rank differently against what firmware
+states on the current frame. That second reader checks the **wire document**,
+not the parsed struct: the parser defaults a missing `helix_locked_*` key from
+the field's own presence, which is a legacy guess rather than a declaration.
 
 **The reconcile detectors** live in `ams_backend_ad5x_ifs.cpp`:
 `check_external_color_change` and `check_external_type_change`, both called from
@@ -509,7 +517,8 @@ Two footguns this area has repeatedly hit (fixed in #1065; keep them fixed):
     with a deliberate Spoolman binding is left entirely alone (**#1071** retains
     it), and only auto-tracked lanes (no binding) refresh material/color from
     firmware. A lane whose firmware later reports a *different* spool id drops
-    the binding entirely (`merge_override` re-bind rule, **#1281**) — the
+    the binding entirely (`classify_binding()`'s re-bind verdict, reached through
+    `AmsBackend::reconcile_lane_binding()`, **#1281**) — the
     residual stale-binding case is now only the no-signal backends. On AFC and
     Happy Hare the eject signal itself is user-configurable ("Keep Spool Info
     on Eject", AMS Management overlay; default on).

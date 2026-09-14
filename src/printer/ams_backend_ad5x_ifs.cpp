@@ -1507,44 +1507,27 @@ void AmsBackendAd5xIfs::clear_override_locked(int slot_index, SlotInfo& slot) {
 
 void AmsBackendAd5xIfs::retract_lane_declaration_locked(int slot_index, RetractedFields fields) {
     // Caller holds mutex_. See the header for why both stores have to move
-    // together and why this composes a retraction rather than dropping one.
+    // together.
     if (!fields.color && !fields.material && !fields.catalog) {
         return;
     }
-    const helix::ams::LaneId lane = lane_id(slot_index);
-    const helix::ams::LaneSources sources = helix::ams::lane_sources(lane);
-
-    const auto trim = [&fields](helix::ams::Observation& kept) {
-        if (fields.color) {
-            kept.color_rgb.reset();
-            // The name travels with the colour it names: a swatch labelled
-            // with a different colour's name contradicts itself.
-            kept.color_name.reset();
-        }
-        if (fields.material) {
-            kept.material.reset();
-        }
-        if (fields.catalog) {
-            kept.catalog_id.reset();
-            kept.product_name.reset();
-        }
-    };
-
-    if (sources.local_user.has_value()) {
-        helix::ams::Observation kept = *sources.local_user;
-        trim(kept);
-        // Dropped and re-filed, because commit_slot_edit amends: filing the
-        // trimmed record onto the standing one would restore what it just
-        // removed.
-        helix::ams::drop_lane_source(lane, helix::ams::ObservationSource::LocalUser);
-        helix::ams::commit_slot_edit(lane, kept);
-    }
-    if (sources.spoolman.has_value()) {
-        helix::ams::Observation kept = *sources.spoolman;
-        trim(kept);
-        // ingest replaces a source's record whole, so no drop is needed here.
-        helix::ams::ingest(lane, kept);
-    }
+    helix::ams::retract_lane_declarations(lane_id(slot_index),
+                                          [&fields](helix::ams::Observation& kept) {
+                                              if (fields.color) {
+                                                  kept.color_rgb.reset();
+                                                  // The name travels with the colour it names: a
+                                                  // swatch labelled with a different colour's name
+                                                  // contradicts itself.
+                                                  kept.color_name.reset();
+                                              }
+                                              if (fields.material) {
+                                                  kept.material.reset();
+                                              }
+                                              if (fields.catalog) {
+                                                  kept.catalog_id.reset();
+                                                  kept.product_name.reset();
+                                              }
+                                          });
 }
 
 void AmsBackendAd5xIfs::release_color_material_locks_locked(int slot_index,

@@ -234,9 +234,9 @@ Loading prefers the DB and falls back to the local file, seeding the DB on the w
 ### Lane identity by source: one record per observer, resolved on read
 
 A self-contained model carries *where* a lane's values came from, instead of re-deriving it
-from the values themselves. Every AMS backend files into it and nothing reads it: the model is
-fully supplied and entirely unread, so the precedence argument can be settled in one place
-before a surface depends on it.
+from the values themselves. Every AMS backend files its readings into it, the edit path files a
+person's declarations into it, and every backend's parse ends by reading back out of it, so the
+precedence argument is settled in one place rather than restated at each surface.
 
 `Observation` ([`include/lane_observation.h#"struct Observation"`](../../../include/lane_observation.h)) is one reading
 from one source. Every field is a `std::optional`, so "this source said nothing about the
@@ -251,13 +251,20 @@ issued": that question is answered per backend family, by
 `helix::ams::OwnWriteEchoes` (`include/lane_echo.h#OwnWriteEchoes`).
 
 `ObservationSource` ([`include/lane_observation.h#ObservationSource`](../../../include/lane_observation.h))
-has five values, and the split that matters is presence against identity. `Sensed` is real
+has six values, and the split that matters is presence against identity. `Sensed` is real
 hardware, which across the fleet reports presence and motion and never a spool identity. The
-other four are declarations: `Spoolman` (the server), `LocalUser` (a human editing in
-HelixScreen), `VendorCache` (firmware-persisted metadata, itself a cache of a past
-declaration) and `Metered` (the consumption meter).
+other five carry identity or a measurement: `Spoolman` (the server), `LocalUser` (a human
+editing in HelixScreen), `VendorCache` (firmware-persisted metadata, itself a cache of a past
+declaration), `Metered` (the consumption meter) and `Remembered`.
 
-`LaneSources` ([`include/lane_sources.h#LaneSources`](../../../include/lane_sources.h)) holds one optional
+`Remembered` is what our own stored record held from before this session, and it is deliberately
+the weakest rung on the identity ladder - below `VendorCache`, which is what the machine states
+on the current frame. The two are not the same statement and cannot share a slot: a backend
+replaces its `VendorCache` record whole on every parse, so a field the stored record carries and
+the current frame is silent about would be erased on the first poll after load. Filed one rung
+down, it stands exactly where firmware says nothing and yields the moment firmware speaks.
+
+`LaneSources` ([`include/lane_sources.h#"struct LaneSources {"`](../../../include/lane_sources.h)) holds one optional
 `Observation` per source. `apply()` replaces that source's record whole, so a field a source
 stops reporting stops contributing, and no two writers share a destination - a lost update is
 structurally impossible rather than merely unlikely. `drop()` discards one source's record
@@ -266,8 +273,8 @@ while dropping the link, which `src/ui/ui_ams_edit_overlay.cpp` performs - has n
 in `LaneSources` itself. `user_edit_observation()`
 ([`src/printer/lane_translation.cpp#user_edit_observation`](../../../src/printer/lane_translation.cpp))
 gives the edit path one: a commit that changes `spoolman_id` states the binding and claims
-none of the fields the unlink cleared, in either direction. What the demoted values become
-is still unanswered, because nothing reads a `LaneSources` yet.
+none of the fields the unlink cleared, in either direction. The values the unlink leaves behind
+keep whichever source already held them; nothing promotes or demotes a record in place.
 
 `resolve()` ([`src/printer/lane_resolver.cpp#resolve`](../../../src/printer/lane_resolver.cpp)) folds the
 sources into a `ResolvedLane`, the values a surface paints. It is pure: no clock, no globals,
@@ -278,8 +285,8 @@ value standing, which is what makes the optionals load-bearing rather than decor
 | Fields | Ranked weakest to strongest | Why that order |
 |--------|-----------------------------|----------------|
 | `present` | `Sensed`, and nothing else | Identity is never evidence of presence. A vendor cache still remembering the last spool would resurrect an emptied lane on every poll. No sensed reading at all resolves to not present |
-| Identity: material, brand, spool name, catalog id, Spoolman ids, product name | `VendorCache`, `LocalUser`, `Spoolman` | A linked spool's own record is the most specific statement available about what is on the lane; the cache is weakest because it only remembers a past declaration |
-| Colour: `color_rgb` with `color_name` | `VendorCache`, `Spoolman`, `LocalUser` | The user's pick and the spool's colour are different statements - the spool record says what the vendor sells, the pick says what is loaded right now. The name travels with the value, a pick carrying no name included, because a swatch labelled with another colour's name contradicts itself |
+| Identity: material, brand, spool name, catalog id, Spoolman ids, product name | `Remembered`, `VendorCache`, `LocalUser`, `Spoolman` | A linked spool's own record is the most specific statement available about what is on the lane. `Remembered` is bottom because it is our own disk copy rather than anyone's current word: a machine stating a brand on this frame outranks it, and a machine silent about brand leaves it standing |
+| Colour: `color_rgb` with `color_name` | `Remembered`, `VendorCache`, `Spoolman`, `LocalUser` | The user's pick and the spool's colour are different statements - the spool record says what the vendor sells, the pick says what is loaded right now. The name travels with the value, a pick carrying no name included, because a swatch labelled with another colour's name contradicts itself |
 | Weight: remaining, total | `LocalUser`, `Metered`, `Spoolman` | Spoolman owns consumption for a spool the user assigned from it and Moonraker decrements it there directly, so our meter stands down. An unlinked lane has no external owner, and the meter's estimate is the only number available |
 
 Colour is the one exception to the identity ladder, and it is deliberately narrow: brand,
@@ -303,6 +310,55 @@ and [`tests/shell/test_code_lint.bats`](../../../tests/shell/test_code_lint.bats
 on a third friend, on a loosened access specifier, and on a `LaneSourceStore::instance()`
 anywhere but the funnels' own file.
 
+**A record says which of its own fields the user declared.** A persisted record carries a
+*declared set*, `DeclaredFields`
+([`include/filament_slot_override.h#"class DeclaredFields {"`](../../../include/filament_slot_override.h)),
+naming the fields its user stated themselves. It rides the field roster's axis - `FIELD_ROSTER`
+in [`src/printer/lane_translation.cpp#"constexpr auto FIELD_ROSTER"`](../../../src/printer/lane_translation.cpp),
+the one list both translations walk - one bit per row, so making a new field editable costs no
+flag of its own, no new pair of wire keys and no new routing branch: the field gains a bit by
+appearing on the roster, and the reader that routes it already walks that list. The bits are
+positional but the wire is keyed by field *name* (`helix_declared` in `lane_data`, `declared` in
+the local cache), so reordering the roster cannot invalidate a stored record. Today the set
+covers brand, spool name and Spoolman vendor id.
+
+**Colour and material are deliberately NOT in that set.** Each keeps a lock flag instead
+(`user_locked_color` / `user_locked_material`), because two homes for one concept drift: the
+auto-mirror reads those flags directly
+([`src/printer/filament_slot_override_store.cpp#mirror_firmware_to_lane_data`](../../../src/printer/filament_slot_override_store.cpp)),
+and a co-author in the shared `lane_data` namespace keys on their presence to recognise a record
+as HelixScreen's, so each flag is load-bearing past authorship. The set is built so it *cannot*
+hold them: the only two functions that can set a bit admit only roster rows marked as keeping
+their authorship there, and a `static_assert` fails the build if colour or material is ever given
+that marking.
+
+**A record declares what an edit MOVED, not what it carried.** The spool editor seeds its
+working copy from the lane's current state, so a firmware-sourced brand, colour or material
+arrives in the committed struct untouched, and a record claiming those would outrank the firmware
+that supplied them and refuse every later correction (#965). `user_edit_observation()`
+([`src/printer/lane_translation.cpp#user_edit_observation`](../../../src/printer/lane_translation.cpp))
+answers "what did this person move" from the two snapshots, and both the lock flags and the
+declared set are derived from that one answer rather than guessed again from the record's values.
+
+**Authorship accumulates.** One edit speaks only about the fields it moved, so `amend_authorship()`
+([`src/printer/lane_translation.cpp#amend_authorship`](../../../src/printer/lane_translation.cpp))
+merges what this edit declares onto what the record already declared rather than replacing it. A
+prior declaration survives only while the amended record still holds the value that declaration
+stood over: a value that moved with no declaration behind the move belongs to whoever moved it.
+Without the merge a brand-only edit would drop a colour declared before it, and the consumption
+meter's weight-only persist would drop every declaration on the lane at once.
+
+**A deliberate clear is a declaration, and it survives a restart** for the fields the set covers.
+The set is the one home that can tell "the user emptied this field" apart from "nobody ever set
+it", so `sources_from_record()`
+([`src/printer/lane_translation.cpp#sources_from_record`](../../../src/printer/lane_translation.cpp))
+files an empty value as the user's word when, and only when, the record's own set names it.
+A record written before the key existed carries no set, and its brand, spool name and vendor id
+count as declared only beside a true lock flag: that flag is the evidence a person edited the
+record at all, because the auto-mirror writes both flags false and can populate none of those
+three. Reading every value a legacy record happens to hold as a declaration would instead pin a
+mirrored firmware brand as the user's word, where no later firmware correction could land on it.
+
 **A lane id is a block, not a slot index.** `lane_id_for(backend_index, slot)`
 (`include/lane_source_store.h#lane_id_for`) gives each registered backend its own block of
 `LANES_PER_BACKEND` ids, with the bypass and the direct-drive tools in reserved blocks above
@@ -315,9 +371,9 @@ log with one line per frame.
 
 **Nine producers, and what each one's firmware actually states.** Every backend translates its
 own signal into records built from the values that parse just read, never from the `SlotInfo`
-`apply_overrides()` has already merged a user's edit into - reading that struct back would file
-a person's choice as something the machine reported. Presence is the reading they nearly all
-share; identity is where they diverge sharply:
+`apply_resolved_lane()` has already laid the lane's resolved identity onto - reading that struct
+back would file a person's choice as something the machine reported. Presence is the reading
+they nearly all share; identity is where they diverge sharply:
 
 | Backend | `Sensed` presence from | `VendorCache` identity | Other |
 |---------|------------------------|------------------------|-------|
@@ -343,8 +399,9 @@ test asserting on them is asserting on a field nothing fills.
 re-reads the `lane_data`-shaped store a backend names in `lane_record_store()`
 (`include/ams_subscription_backend.h#lane_record_store`) and files what it holds through
 `declared_from_record()` (`src/printer/lane_translation.cpp#declared_from_record`), keeping only
-what classifies as `VendorCache`: re-filing a record that names a spool, or one carrying a lock
-key, would forge a declaration out of a re-read. `firmware_publishes_lane_identity()`
+what classifies as `Remembered`: re-filing a record that names a spool, or one carrying a lock
+key, would forge a declaration out of a re-read. `Remembered` rather than `VendorCache` because
+this re-reads our own store and not a firmware frame. `firmware_publishes_lane_identity()`
 (`include/ams_subscription_backend.h#firmware_publishes_lane_identity`) gates the whole
 round-trip and defaults to **true**, because a lane whose firmware states its own identity
 already has a producer on the vendor-cache slot and a second one there races it - and whole-record
@@ -361,7 +418,7 @@ ranked rather than a merge that inferred each field's origin from its shape.
 pins every rung of both ladders, the colour exception and the empty-versus-unobserved
 distinction the model rests on, and
 [`tests/unit/test_lane_backend_observations.cpp`](../../../tests/unit/test_lane_backend_observations.cpp)
-pins what each producer files. What a read path still has to settle first is
+pins what each producer files. The questions this model still leaves open are
 prestonbrown/helixscreen#1632.
 
 ### Spoolman without AMS
@@ -383,7 +440,7 @@ For debugging, every class in this chapter logs under a stable tag: `[AMS State]
 ## Patterns & gotchas
 
 - **Never name a filament system outside its backend file.** Generic code sees `AmsBackend*` and `AmsType`. If a new feature would need `if (type == AmsType::AFC)`, the answer is a capability question on the interface (`manages_active_spool()`, `tracks_weight_locally()`, `has_firmware_spool_persistence()`, ...) — the one-file test from chapter 06.
-- **A lane record enters through one of two funnels, and a producer's record is replaced whole.** `helix::ams::ingest()` for a machine reading, `helix::ams::commit_slot_edit()` for a human edit; `LaneSourceStore::write()` is private to exactly those two and the lint gate enforces it. Build the record from the values the parse just read, never from a `SlotInfo` `apply_overrides()` has rewritten, or a user's own edit is filed as firmware truth. And remember which way a withheld field cuts: leaving one out of an `ingest()` retracts it, it does not leave the last reading standing.
+- **A lane record enters through one of two funnels, and a producer's record is replaced whole.** `helix::ams::ingest()` for a machine reading, `helix::ams::commit_slot_edit()` for a human edit; `LaneSourceStore::write()` is private to exactly those two and the lint gate enforces it. Build the record from the values the parse just read, never from a `SlotInfo` `apply_resolved_lane()` has rewritten, or a user's own edit is filed as firmware truth. And remember which way a withheld field cuts: leaving one out of an `ingest()` retracts it, it does not leave the last reading standing.
 - **Observing secondary-backend subjects requires the lifetime token.** `BackendSlotSubjects` are dynamic — destroyed in `clear_backends()`/rediscovery. Use the `SubjectLifetime`-taking accessor overloads; the plain ones are for one-frame reads on the main thread.
 - **Do not write subjects from backend-event context.** The event path queues *before* touching anything ([`src/printer/ams_state.cpp#update_slot`](../../../src/printer/ams_state.cpp#L2393)); the queued body is where mutex + subjects happen. A shortcut around `queue_update` reintroduces the bg-thread LVGL crash family (chapter 03).
 - **Don't "fix" the gram threshold.** Weight churn marking the record dirty is the L53W5PKG regression reborn; weights are re-fetched on connect, so persisting them buys nothing. Compare via `same_displayed_weight()` or not at all.

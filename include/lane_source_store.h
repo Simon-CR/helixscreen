@@ -5,6 +5,7 @@
 #include "lane_observation.h"
 #include "lane_sources.h"
 
+#include <functional>
 #include <map>
 #include <mutex>
 #include <optional>
@@ -150,6 +151,28 @@ void drop_lane_source(LaneId lane, ObservationSource source);
 ///
 /// A lane that is not a lane is dropped, silently, like drop_lane_source().
 void reset_lane_to_machine_readings(LaneId lane);
+
+/// Retract part of what a lane's declaring sources say, leaving the rest of
+/// each record standing. @p trim is handed each declaring record in turn and
+/// resets the fields being retracted. Which fields those are is the caller's
+/// decision: the fields that travel together differ per caller, and the store
+/// has no opinion about them.
+///
+/// The store offers no partial retraction, so this composes one, and the two
+/// declaring sources compose differently. commit_slot_edit() amends, so the
+/// user's record is dropped before the trimmed copy is filed; filing it onto
+/// the standing one would restore what the trim removed. A trimmed user record
+/// left declaring nothing files nothing, which retracts that declaration
+/// whole. ingest() replaces a source's record outright, so the Spoolman record
+/// is re-filed with no drop.
+///
+/// Both declaring sources are amended, because either can hold a value that
+/// outranks a machine reading: a retraction reaching one of them leaves
+/// resolve() painting what the lane has stopped declaring.
+///
+/// Narrower than reset_lane_to_machine_readings(), which discards whole
+/// records rather than fields within them.
+void retract_lane_declarations(LaneId lane, const std::function<void(Observation&)>& trim);
 
 /// This lane's records, by value. An unwritten lane reads as nothing observed.
 [[nodiscard]] LaneSources lane_sources(LaneId lane);

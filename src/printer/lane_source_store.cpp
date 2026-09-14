@@ -159,6 +159,21 @@ void reset_lane_to_machine_readings(LaneId lane) {
     drop_lane_source(lane, ObservationSource::Remembered);
 }
 
+void retract_lane_declarations(LaneId lane, const std::function<void(Observation&)>& trim) {
+    const LaneSources sources = lane_sources(lane);
+    if (sources.local_user.has_value()) {
+        Observation kept = *sources.local_user;
+        trim(kept);
+        drop_lane_source(lane, ObservationSource::LocalUser);
+        commit_slot_edit(lane, kept);
+    }
+    if (sources.spoolman.has_value()) {
+        Observation kept = *sources.spoolman;
+        trim(kept);
+        ingest(lane, kept);
+    }
+}
+
 LaneSources lane_sources(LaneId lane) {
     return LaneSourceStore::instance().get(lane);
 }
