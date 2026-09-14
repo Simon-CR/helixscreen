@@ -6,7 +6,6 @@
 #include "ui_modal.h"
 #include "ui_update_queue.h"
 
-#include "lib/lvgl/src/core/lv_global.h"
 #include "lib/lvgl/src/misc/lv_timer_private.h"
 #include "platform_info.h"
 #include "spdlog/spdlog.h"
@@ -108,31 +107,8 @@ uint32_t lv_timer_handler_safe() {
             if (t->repeat_count > 0 && (now - t->last_run >= t->period)) {
                 if (t->timer_cb) {
                     t->last_run = now;
-                    if (t->repeat_count > 0) {
-                        t->repeat_count--;
-                    }
-                    const bool exhausted = t->repeat_count == 0;
-                    // Reset LVGL's own delete-tracking flag (lv_timer_private.h)
-                    // right before the call, mirroring lv_timer_exec()'s gate
-                    // (lv_timer.c). lv_async_call's callback (lv_async.c) frees
-                    // its timer BEFORE running the user function, so a nested
-                    // lv_async_call from that user function can allocate its new
-                    // timer at the same address `t` occupied (ABA). Re-finding
-                    // `t` by pointer afterward would then delete that new timer
-                    // instead of doing nothing. The flag tells us definitively
-                    // whether anything was deleted during the call, so a spent
-                    // `t` is never touched again and a still-live `t` is deleted
-                    // directly, with no re-scan.
-                    LV_GLOBAL_DEFAULT()->timer_state.timer_deleted = false;
+                    t->repeat_count--;
                     t->timer_cb(t);
-                    // Match lv_timer_handler(): it deletes a timer whose repeat
-                    // count reached 0 (lv_timer.c:369). Leaving it behind parks
-                    // a spent lv_timer_t in LVGL's list holding the callback's
-                    // user_data, so an owner destroyed later cannot free what it
-                    // no longer has a handle to.
-                    if (exhausted && !LV_GLOBAL_DEFAULT()->timer_state.timer_deleted) {
-                        lv_timer_delete(t);
-                    }
                     found = true;
                     break; // Restart iteration since list may have changed
                 }
@@ -141,6 +117,35 @@ uint32_t lv_timer_handler_safe() {
         }
         if (!found)
             break; // No more ready one-shot timers
+    }
+
+    // Reap every one-shot left at repeat_count == 0, matching lv_timer_exec()'s
+    // own cleanup for an exhausted timer (lv_timer.c). The loop above's
+    // readiness check requires repeat_count > 0, so once a timer reaches zero
+    // it is invisible to that loop forever; without this pass it would sit in
+    // LVGL's list holding its callback's user_data until the process exits.
+    //
+    // Read by CURRENT repeat_count on a fresh list walk, never by a pointer
+    // saved before a callback ran. The common one-shot pattern (every
+    // lv_async_call included) deletes itself from inside its own callback
+    // (lib/lvgl/src/misc/lv_async.c#lv_async_timer_cb), so that node is
+    // already gone by the time this runs; a timer freshly created in its
+    // place never starts at repeat_count == 0 (lv_timer_create() defaults to
+    // -1, and lv_async_call sets 1 synchronously before returning), so this
+    // pass can only ever find a timer that is genuinely spent right now, and
+    // deletes it in the same step it is found, with no gap where a nested
+    // callback could invalidate the pointer first.
+    t = lv_timer_get_next(nullptr);
+    while (t) {
+        lv_timer_t* next = lv_timer_get_next(t);
+        if (t->repeat_count == 0) {
+            if (t->auto_delete) {
+                lv_timer_delete(t);
+            } else {
+                lv_timer_pause(t);
+            }
+        }
+        t = next;
     }
 
     // Re-pause ALL timers before calling lv_timer_handler().
