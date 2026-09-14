@@ -255,14 +255,6 @@ auto_uninstall() {
     # Find config directory
     config_dir=$(find_config_dir)
 
-    # helix_macros.cfg and its printer.cfg include are left in place: the macros
-    # are shared HelixScreen helpers (HELIX_START_PRINT, HELIX_CLEAN_NOZZLE and
-    # friends) that keep working without this plugin, and printer.cfg is
-    # Klipper's config - this uninstall only manages the Moonraker side.
-    if [ -n "$config_dir" ]; then
-        strip_phase_tracking_instrumentation "$config_dir"
-    fi
-
     # Remove symlink
     if [ -L "$target" ]; then
         rm "$target"
@@ -271,6 +263,15 @@ auto_uninstall() {
         error "Found regular file (not symlink) at $target - manual removal required"
     else
         info "Plugin symlink not found (already uninstalled?)"
+    fi
+
+    # helix_macros.cfg and its printer.cfg include are left in place: the
+    # macros are shared HelixScreen helpers (HELIX_START_PRINT,
+    # HELIX_CLEAN_NOZZLE and friends) that keep working without this plugin.
+    # Any HELIX_PHASE_*/HELIX_READY calls this plugin's own instrumentation
+    # left in PRINT_START are removed, with a backup, by the call below.
+    if [ -n "$config_dir" ]; then
+        strip_phase_tracking_instrumentation "$config_dir"
     fi
 
     # Remove config section if possible
@@ -391,8 +392,11 @@ show_help() {
     printf '\n'
     printf '%s\n' "Options:"
     printf '%s\n' "  --auto, -a              Full auto-install (updates config, restarts Moonraker)"
-    printf '%s\n' "  --uninstall, -u         Remove the plugin symlink (interactive)"
-    printf '%s\n' "  --uninstall-auto        Full auto-uninstall (removes config, restarts Moonraker)"
+    printf '%s\n' "  --uninstall, -u         Remove the plugin symlink and strip PRINT_START"
+    printf '%s\n' "                          instrumentation, if any (interactive)"
+    printf '%s\n' "  --uninstall-auto        Full auto-uninstall: removes the symlink and config"
+    printf '%s\n' "                          section, strips PRINT_START instrumentation, restarts"
+    printf '%s\n' "                          Moonraker"
     printf '%s\n' "  --help, -h              Show this help message"
     printf '\n'
     printf '%s\n' "Arguments:"
