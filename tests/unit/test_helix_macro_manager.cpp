@@ -11,12 +11,53 @@
 #include "printer_discovery.h"
 #include "printer_state.h"
 
+#include <cstdlib>
+#include <filesystem>
+#include <fstream>
 #include <optional>
 #include <thread>
+#include <unistd.h>
 
 #include "../catch_amalgamated.hpp"
 
 using namespace helix;
+
+namespace {
+
+namespace fs = std::filesystem;
+
+/// RAII guard: points HELIX_CONFIG_DIR at a scratch directory for the
+/// duration of the test and restores the previous value (or unsets it) on
+/// scope exit, including when a REQUIRE in between throws.
+struct ConfigDirGuard {
+    fs::path dir;
+    std::string saved;
+    bool had_prev = false;
+
+    explicit ConfigDirGuard(const std::string& suffix) {
+        dir = fs::temp_directory_path() /
+              ("helix_macro_manager_config_dir_" + suffix + "_" + std::to_string(::getpid()));
+        fs::remove_all(dir);
+        fs::create_directories(dir);
+        if (const char* prev = std::getenv("HELIX_CONFIG_DIR")) {
+            saved = prev;
+            had_prev = true;
+        }
+        setenv("HELIX_CONFIG_DIR", dir.string().c_str(), 1);
+    }
+
+    ~ConfigDirGuard() {
+        if (had_prev) {
+            setenv("HELIX_CONFIG_DIR", saved.c_str(), 1);
+        } else {
+            unsetenv("HELIX_CONFIG_DIR");
+        }
+        std::error_code ec;
+        fs::remove_all(dir, ec);
+    }
+};
+
+} // namespace
 
 // ============================================================================
 // Test Fixtures
@@ -223,12 +264,11 @@ TEST_CASE("MacroManager - get_macro_names returns expected macros", "[config][co
     REQUIRE(std::find(names.begin(), names.end(), "HELIX_PHASE_BED_MESH") != names.end());
 }
 
-TEST_CASE("MacroManager - every macro name legacy PRINT_START instrumentation calls stays defined",
+TEST_CASE("MacroManager - every macro name an instrumented PRINT_START calls stays defined",
           "[config][content]") {
     // A PRINT_START macro instrumented by pre-1.1 HelixScreen calls these
-    // names directly, by name, from lines it wrote into the macro itself.
-    // Nothing in the current codebase still generates that call list, so this
-    // enumerates it directly rather than deriving it from a live producer.
+    // names directly, by name, from lines it wrote into the macro itself. No
+    // producer of this list exists in the tree, so it is enumerated here.
     static const std::vector<std::string> instrumentation_macro_names = {
         "HELIX_PHASE_HOMING",         "HELIX_PHASE_QGL",         "HELIX_PHASE_Z_TILT",
         "HELIX_PHASE_BED_MESH",       "HELIX_PHASE_CLEANING",    "HELIX_PHASE_PURGING",
@@ -240,6 +280,28 @@ TEST_CASE("MacroManager - every macro name legacy PRINT_START instrumentation ca
         INFO("instrumentation calls " << macro_name);
         REQUIRE(std::find(names.begin(), names.end(), macro_name) != names.end());
     }
+}
+
+TEST_CASE("MacroManager - get_macro_names ignores a commented-out section header",
+          "[config][content]") {
+    // Klipper never defines a macro whose [gcode_macro ...] header is
+    // commented out, so the parser must not either.
+    ConfigDirGuard guard("commented_section");
+    {
+        std::ofstream out(guard.dir / "helix_macros.cfg");
+        out << "[gcode_macro HELIX_READY]\n"
+               "gcode:\n"
+               "    RESPOND MSG=\"HELIX:READY\"\n"
+               "\n"
+               "# [gcode_macro HELIX_PHASE_QGL]\n"
+               "#gcode:\n"
+               "#    RESPOND MSG=\"HELIX:PHASE:QGL\"\n";
+    }
+
+    auto names = MacroManager::get_macro_names();
+
+    CHECK(std::find(names.begin(), names.end(), "HELIX_READY") != names.end());
+    CHECK(std::find(names.begin(), names.end(), "HELIX_PHASE_QGL") == names.end());
 }
 
 // ============================================================================
