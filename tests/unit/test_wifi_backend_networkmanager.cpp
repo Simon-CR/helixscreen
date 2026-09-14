@@ -3,6 +3,7 @@
 
 #include "../../include/wifi_backend.h"
 #include "../../include/wifi_backend_networkmanager.h"
+#include "netd_test_server.h" // helix_test::wait_until
 
 #include <spdlog/spdlog.h>
 
@@ -31,7 +32,9 @@
  * - Edge cases (empty results, malformed output, hidden SSIDs)
  *
  * NOTE: These tests use a testable subclass that overrides exec_nmcli()
- * to inject canned nmcli output. No actual nmcli binary needed.
+ * to inject canned nmcli output, so most cases need no nmcli binary — the
+ * connect tests are the exception, exec'ing the fake nmcli that
+ * FakeNmcliDir puts on PATH.
  */
 
 // ============================================================================
@@ -222,27 +225,23 @@ exit 0
 /// Prepends a dir to PATH for its lifetime; the forked nmcli child inherits it.
 struct ScopedPathPrepend {
     std::string old_path;
+    bool path_was_set = false;
 
     explicit ScopedPathPrepend(const std::string& prepend) {
         const char* cur = ::getenv("PATH");
+        path_was_set = (cur != nullptr);
         old_path = cur ? cur : "";
         std::string merged = prepend + ":" + old_path;
         ::setenv("PATH", merged.c_str(), 1);
     }
     ~ScopedPathPrepend() {
-        ::setenv("PATH", old_path.c_str(), 1);
+        if (path_was_set) {
+            ::setenv("PATH", old_path.c_str(), 1);
+        } else {
+            ::unsetenv("PATH");
+        }
     }
 };
-
-bool wait_for(std::atomic<bool>& flag, int timeout_ms) {
-    auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
-    while (std::chrono::steady_clock::now() < deadline) {
-        if (flag.load())
-            return true;
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
-    }
-    return flag.load();
-}
 
 } // namespace
 
@@ -262,7 +261,6 @@ TEST_CASE("NM backend: connect_argv", "[network][nm][hidden]") {
         std::vector<std::string> expected{"device",   "wifi",   "connect", "HomeNet",
                                           "password", "secret", "ifname",  "wlan0"};
         REQUIRE(argv == expected);
-        CHECK(argv.back() == "wlan0");
     }
 
     SECTION("Hidden network inserts 'hidden yes' between password and ifname") {
@@ -285,11 +283,6 @@ TEST_CASE("NM backend: connect_argv", "[network][nm][hidden]") {
                                           "OpenNet", "ifname", "wlan0"};
         REQUIRE(argv == expected);
     }
-
-    SECTION("Hidden flag does not leak into a visible connect") {
-        auto argv = TestableNMBackend::connect_argv("HomeNet", "secret", false, "wlan0");
-        CHECK(std::find(argv.begin(), argv.end(), "hidden") == argv.end());
-    }
 }
 
 // The argv above only proves the helper; this drives the whole fork/exec path
@@ -300,9 +293,12 @@ TEST_CASE("NM backend: hidden connect execs nmcli with 'hidden yes'",
     FakeNmcliDir fake;
     ScopedPathPrepend path_prepend(fake.dir);
 
+    // Declared before the backend so it outlives the connect thread's
+    // callback: a failed wait unwinds locals in reverse order, and the
+    // backend destructor joins a thread that can still fire CONNECTED.
+    std::atomic<bool> connected{false};
     TestableNMBackend backend;
     backend.force_running("wlan0");
-    std::atomic<bool> connected{false};
     backend.register_event_callback("CONNECTED", [&](const std::string&) { connected = true; });
 
     std::vector<std::string> expected{"device",  "wifi",   "connect", "StealthNet", "password",
@@ -310,7 +306,7 @@ TEST_CASE("NM backend: hidden connect execs nmcli with 'hidden yes'",
 
     SECTION("plain hidden join") {
         REQUIRE(backend.connect_network("StealthNet", "pw12345", /*is_hidden=*/true).success());
-        REQUIRE(wait_for(connected, 8000));
+        REQUIRE(helix_test::wait_until([&connected] { return connected.load(); }, 8000));
 
         CHECK(fake.argv_lines() == expected);
     }
@@ -319,7 +315,7 @@ TEST_CASE("NM backend: hidden connect execs nmcli with 'hidden yes'",
         fake.fail_first();
 
         REQUIRE(backend.connect_network("StealthNet", "pw12345", /*is_hidden=*/true).success());
-        REQUIRE(wait_for(connected, 8000));
+        REQUIRE(helix_test::wait_until([&connected] { return connected.load(); }, 8000));
 
         // The retry really ran: call 1 failed with the key-mgmt error, call 2
         // deleted the stale profile, call 3 retried the connect.
