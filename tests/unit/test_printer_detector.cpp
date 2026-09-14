@@ -6776,3 +6776,53 @@ TEST_CASE_METHOD(
     get_printer_state().set_printer_type_sync("");
     TearDown();
 }
+
+// The installed family breaks a tie against a machine from outside it: a K2
+// preset install whose K2 Plus reading ties only with a Sovol SV06 ACE still
+// names the K2 Plus. Only a tie between two of the family's own machines is
+// left for the user (prestonbrown/helixscreen#1606).
+TEST_CASE_METHOD(
+    helix::VariantPresetFixture,
+    "auto_detect_and_save names the family's machine when it ties only outside the family",
+    "[printer_detector][preset][1606]") {
+    SetUp();
+    get_printer_state().set_printer_type_sync("");
+
+    // Hand-made: the K2 platform objects and a k2plus hostname name the K2
+    // Plus, while a smart_effector, hx711 and lis2dw on a 220mm cartesian bed
+    // give the SV06 ACE a separator that carries it past the Plus before the
+    // ceiling. The K2 Pro trails the Plus by a real margin.
+    const std::vector<std::string> objects = {"box",
+                                              "motor_control",
+                                              "fan_feedback",
+                                              "load_ai",
+                                              "filament_rack",
+                                              "heater_generic chamber_heater",
+                                              "temperature_sensor chamber_temp",
+                                              "smart_effector",
+                                              "hx711",
+                                              "lis2dw"};
+    helix::PrinterDiscovery discovery;
+    discovery.parse_objects(nlohmann::json(objects));
+    discovery.set_printer_objects(objects);
+    discovery.set_hostname("creality-k2plus");
+    discovery.parse_config_keys(nlohmann::json{{"printer", {{"kinematics", "cartesian"}}}});
+    REQUIRE(discovery.parse_build_volume(
+        nlohmann::json{{"stepper_x", {{"position_min", 0.0}, {"position_max", 220.0}}},
+                       {"stepper_y", {{"position_min", 0.0}, {"position_max", 220.0}}}}));
+
+    auto probe = PrinterDetector::auto_detect(discovery);
+    CAPTURE(probe.type_name, probe.confidence, probe.runner_up_type_name,
+            probe.runner_up_confidence, probe.margin(), probe.preset);
+    REQUIRE(probe.type_name == "Creality K2 Plus");
+    REQUIRE(probe.ambiguous());
+    REQUIRE(probe.contenders == std::vector<std::string>{"Creality K2 Plus", "Sovol SV06 ACE"});
+
+    config.set_preset("k2");
+    REQUIRE(PrinterDetector::auto_detect_and_save(discovery, &config));
+    CHECK(config.get<std::string>(config.df() + helix::wizard::PRINTER_TYPE, "") ==
+          "Creality K2 Plus");
+
+    get_printer_state().set_printer_type_sync("");
+    TearDown();
+}
