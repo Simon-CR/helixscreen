@@ -4,6 +4,7 @@
 #include "ui_update_queue.h"
 
 #include "../lvgl_test_fixture.h"
+#include "../test_helpers/config_dir_guard.h"
 #include "macro_manager.h"
 #include "moonraker_api.h"
 #include "moonraker_api_mock.h"
@@ -11,53 +12,13 @@
 #include "printer_discovery.h"
 #include "printer_state.h"
 
-#include <cstdlib>
-#include <filesystem>
 #include <fstream>
 #include <optional>
 #include <thread>
-#include <unistd.h>
 
 #include "../catch_amalgamated.hpp"
 
 using namespace helix;
-
-namespace {
-
-namespace fs = std::filesystem;
-
-/// RAII guard: points HELIX_CONFIG_DIR at a scratch directory for the
-/// duration of the test and restores the previous value (or unsets it) on
-/// scope exit, including when a REQUIRE in between throws.
-struct ConfigDirGuard {
-    fs::path dir;
-    std::string saved;
-    bool had_prev = false;
-
-    explicit ConfigDirGuard(const std::string& suffix) {
-        dir = fs::temp_directory_path() /
-              ("helix_macro_manager_config_dir_" + suffix + "_" + std::to_string(::getpid()));
-        fs::remove_all(dir);
-        fs::create_directories(dir);
-        if (const char* prev = std::getenv("HELIX_CONFIG_DIR")) {
-            saved = prev;
-            had_prev = true;
-        }
-        setenv("HELIX_CONFIG_DIR", dir.string().c_str(), 1);
-    }
-
-    ~ConfigDirGuard() {
-        if (had_prev) {
-            setenv("HELIX_CONFIG_DIR", saved.c_str(), 1);
-        } else {
-            unsetenv("HELIX_CONFIG_DIR");
-        }
-        std::error_code ec;
-        fs::remove_all(dir, ec);
-    }
-};
-
-} // namespace
 
 // ============================================================================
 // Test Fixtures
