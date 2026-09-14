@@ -8027,6 +8027,11 @@ install_k2_webserver_backend() {
     }
     chmod +x "$dest" 2>/dev/null || $SUDO chmod +x "$dest" 2>/dev/null || true
 
+    # Record the script for uninstall BEFORE any step below can fail: a
+    # carve-out left on disk without its ledger entry survives uninstall as
+    # an orphan competing with the restored stock UI.
+    record_disabled_service "sysv-created" "$dest"
+
     # Drop any existing rc.d entry before enabling — `enable` exits 0 even
     # when it produced no symlink, so the boot entry is verified by link
     # the same way install_procd_shim_k2 does. enable and start go through
@@ -8046,7 +8051,6 @@ install_k2_webserver_backend() {
         return 1
     fi
 
-    record_disabled_service "sysv-created" "$dest"
     log_info "Installed K2 web-server carve-out: $dest (boot symlink verified)"
     # Bring web-server up now — the stock instance died with the app stop
     # the service start just ran. A failed start is logged, not fatal: the
@@ -11040,8 +11044,26 @@ restore_previous_ui_platform() {
         # instance app start is about to spawn can bind its port.
         killall web-server 2>/dev/null || true
         $SUDO /etc/init.d/app enable 2>/dev/null || true
-        $SUDO /etc/init.d/app start 2>/dev/null || true
-        restored_ui="Creality stock UI (/etc/init.d/app)"
+        # rc.common's `enable` exits 0 even when it produced no symlink, so
+        # the boot entry is verified by link — the same check
+        # install_procd_shim_k2 makes. The link's S-slot comes from the
+        # stock script's own START directive, so accept any slot pointing
+        # at ../init.d/app. Without the check this block reports the stock
+        # UI restored while the K2 next boots to the logo with no UI at all.
+        local app_link app_target=""
+        for app_link in /etc/rc.d/*app; do
+            [ -L "$app_link" ] || continue
+            if [ "$(readlink "$app_link" 2>/dev/null || true)" = "../init.d/app" ]; then
+                app_target="$app_link"
+                break
+            fi
+        done
+        if [ -z "$app_target" ]; then
+            log_warn "Stock UI boot symlink missing or wrong (no /etc/rc.d/*app -> ../init.d/app); run: /etc/init.d/app enable"
+        else
+            $SUDO /etc/init.d/app start 2>/dev/null || true
+            restored_ui="Creality stock UI (/etc/init.d/app, boot via $app_link)"
+        fi
     fi
 
     # Check for K1/Simple AF GuppyScreen
