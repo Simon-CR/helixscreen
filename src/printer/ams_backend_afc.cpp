@@ -2322,7 +2322,7 @@ void AmsBackendAfc::invalidate_broken_binding(int slot_index, const SlotInfo& sl
     }
     helix::ams::clear_persisted_override(
         override_store_.get(), overrides_,
-        slot.global_index >= 0 ? slot.global_index : slot.slot_index, "[AMS AFC]");
+        slot.global_index >= 0 ? slot.global_index : slot.slot_index, backend_log_tag());
 }
 
 void AmsBackendAfc::parse_afc_stepper(int slot_index, const std::string& lane_name,
