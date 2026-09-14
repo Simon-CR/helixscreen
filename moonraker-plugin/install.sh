@@ -272,40 +272,6 @@ auto_uninstall() {
     info "Auto-uninstall complete!"
 }
 
-# Retire a legacy helix_phase_tracking.cfg: nothing loads that file, and
-# Klipper refuses config load on an include whose target is missing, so the
-# printer.cfg include must leave with the file. Both are backed up to the same
-# timestamped convention as every other config edit here. Guarded on the
-# legacy file existing: with no legacy file, a plain --auto run touches
-# moonraker.conf only.
-cleanup_legacy_phase_cfg() {
-    config_dir="$1"
-    legacy_cfg="$config_dir/helix_phase_tracking.cfg"
-
-    if [ ! -f "$legacy_cfg" ]; then
-        return 0
-    fi
-
-    warn "Found legacy helix_phase_tracking.cfg - the macros live in helix_macros.cfg"
-
-    printer_cfg="$config_dir/printer.cfg"
-    if [ -f "$printer_cfg" ] && grep -q '\[include helix_phase_tracking.cfg\]' "$printer_cfg"; then
-        backup_file="${printer_cfg}.bak.$(date +%Y%m%d_%H%M%S)"
-        cp "$printer_cfg" "$backup_file"
-        info "Created backup: $backup_file"
-
-        grep -v '\[include helix_phase_tracking.cfg\]' "$printer_cfg" > "$printer_cfg.tmp" && mv "$printer_cfg.tmp" "$printer_cfg"
-        info "Removed [include helix_phase_tracking.cfg] from printer.cfg"
-    fi
-
-    legacy_backup="${legacy_cfg}.bak.$(date +%Y%m%d_%H%M%S)"
-    cp "$legacy_cfg" "$legacy_backup"
-    info "Created backup: $legacy_backup"
-
-    rm "$legacy_cfg"
-    info "Removed legacy $legacy_cfg"
-}
-
 # Auto-install function (non-interactive, for HelixScreen integration)
 auto_install() {
     info "HelixPrint Auto-Install Mode"
@@ -355,12 +321,6 @@ auto_install() {
     # Use ln -sf for atomic replacement (removes existing symlink first)
     ln -sf "$PLUGIN_FILE" "$target"
     info "Created symlink: $target"
-
-    # First config-touching step: retire any legacy phase-tracking config
-    # before the moonraker.conf edit below.
-    if [ -n "$config_dir" ]; then
-        cleanup_legacy_phase_cfg "$config_dir"
-    fi
 
     # Auto-configure moonraker.conf if possible
     if [ -n "$config_dir" ] && [ -f "$config_dir/moonraker.conf" ]; then
