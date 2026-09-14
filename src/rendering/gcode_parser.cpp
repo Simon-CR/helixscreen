@@ -17,6 +17,29 @@
 #include <sys/stat.h>
 #include <system_error>
 
+namespace {
+
+/// Parse a G-code parameter value the way Klipper reads it: klippy's gcode.py
+/// pulls parameters through Python's float() (mathutil.safe_float), which
+/// accepts a single leading '+' that parse_decimal's from_chars-exact grammar
+/// does not. Skips at most one leading '+' and delegates to parse_decimal;
+/// a second sign right after it ("++1", "+-1") is rejected the same way
+/// float() rejects it, since parse_decimal alone would accept the '-' in
+/// "+-1" as a negative number once the '+' is stripped.
+inline helix::DecimalParseResult parse_gcode_decimal(const char* first, const char* last,
+                                                     float& value) {
+    if (first == last || *first != '+') {
+        return helix::parse_decimal(first, last, value);
+    }
+    const char* after_sign = first + 1;
+    if (after_sign == last || *after_sign == '+' || *after_sign == '-') {
+        return {first, std::errc::invalid_argument};
+    }
+    return helix::parse_decimal(after_sign, last, value);
+}
+
+} // namespace
+
 namespace helix {
 namespace gcode {
 
@@ -358,9 +381,10 @@ bool GCodeParser::parse_exclude_object_command(const std::string& line) {
             size_t comma = center_str.find(',');
             if (comma != std::string::npos) {
                 auto [px, ecx] =
-                    parse_decimal(center_str.data(), center_str.data() + comma, obj.center.x);
-                auto [py, ecy] = parse_decimal(center_str.data() + comma + 1,
-                                               center_str.data() + center_str.size(), obj.center.y);
+                    parse_gcode_decimal(center_str.data(), center_str.data() + comma, obj.center.x);
+                auto [py, ecy] =
+                    parse_gcode_decimal(center_str.data() + comma + 1,
+                                        center_str.data() + center_str.size(), obj.center.y);
                 if (ecx != std::errc{} || ecy != std::errc{}) {
                     spdlog::debug("[GCode Parser] Failed to parse CENTER for object: {}", name);
                 }
@@ -390,16 +414,16 @@ bool GCodeParser::parse_exclude_object_command(const std::string& line) {
                     size_t comma = polygon_str.find(',', pos);
                     if (comma != std::string::npos) {
                         float x = 0, y = 0;
-                        auto [px, ecx] =
-                            parse_decimal(polygon_str.data() + pos, polygon_str.data() + comma, x);
+                        auto [px, ecx] = parse_gcode_decimal(polygon_str.data() + pos,
+                                                             polygon_str.data() + comma, x);
                         if (ecx != std::errc{})
                             break;
                         pos = comma + 1;
 
                         size_t close = polygon_str.find(']', pos);
                         if (close != std::string::npos) {
-                            auto [py, ecy] = parse_decimal(polygon_str.data() + pos,
-                                                           polygon_str.data() + close, y);
+                            auto [py, ecy] = parse_gcode_decimal(polygon_str.data() + pos,
+                                                                 polygon_str.data() + close, y);
                             if (ecy != std::errc{})
                                 break;
                             obj.polygon.push_back(glm::vec2(x, y));
@@ -638,7 +662,7 @@ void GCodeParser::parse_metadata_comment(const std::string& line) {
             if (s >= sv.size())
                 return 0.0f;
             float v = 0.0f;
-            parse_decimal(sv.data() + s, sv.data() + sv.size(), v);
+            parse_gcode_decimal(sv.data() + s, sv.data() + sv.size(), v);
             return v;
         };
 
@@ -980,7 +1004,7 @@ bool GCodeParser::extract_param(const std::string& line, char param, float& out_
         return false;
     }
 
-    auto [ptr, ec] = parse_decimal(line.data() + start, line.data() + end, out_value);
+    auto [ptr, ec] = parse_gcode_decimal(line.data() + start, line.data() + end, out_value);
     return ec == std::errc{};
 }
 
