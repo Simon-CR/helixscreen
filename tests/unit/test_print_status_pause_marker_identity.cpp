@@ -342,3 +342,38 @@ TEST_CASE_METHOD(StaleLoadFixture,
     CHECK(scoped_runout() == 1);
     CHECK(layer_total() > 0);
 }
+
+TEST_CASE_METHOD(
+    StaleLoadFixture,
+    "Print status: a runout-sensor edge does not scope the badge to a stale load's tools",
+    "[print_status][pause_markers][1509][slow]") {
+    report_printing(STALE_PRINT);
+    start_fetch(STALE_PRINT);
+
+    // The stale print is cancelled and B started while its download is running.
+    report_printing(PRINT_B);
+    start_fetch(PRINT_B);
+
+    land(STALE_PRINT);
+
+    // The load callback's own guard already keeps the badge hidden here (it
+    // does not call recompute_scoped_runout() for a load whose print is no
+    // longer effective). The viewer's real content is now the stale print's
+    // geometry (tools 0-3), still sitting there because B's own load has not
+    // landed yet.
+    REQUIRE(gcode_displayed_file() == STALE_PRINT);
+    REQUIRE(scoped_runout() == -1);
+
+    // A runout-sensor edge or an AMS slots_version bump recomputes the badge
+    // independently of any load completing (the observers at
+    // scoped_runout_observer_ / scoped_runout_slots_observer_ call
+    // recompute_scoped_runout() directly). B's own gcode still has not landed,
+    // so the only tools available to scope against are the stale print's.
+    PrintStatusPanelTestAccess::recompute_scoped_runout(*panel_);
+    CHECK(scoped_runout() == -1);
+
+    // B's own load does apply the real value, so the check above is the guard
+    // holding the badge back rather than a badge that never updates.
+    land(PRINT_B);
+    CHECK(scoped_runout() == 1);
+}

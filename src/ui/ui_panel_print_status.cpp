@@ -1740,15 +1740,16 @@ void PrintStatusPanel::load_gcode_file(const char* file_path, const std::string&
 
             // A load for a print that is no longer running keeps its geometry in
             // the viewer until the preview is next refreshed, but it must not
-            // scope the running print's runout badge or supply its layer count.
+            // supply the running print's layer count from that stale geometry.
             const bool for_current_print =
                 self->gcode_load_filename_ == self->printer_state_.get_effective_print_filename();
 
             // The parsed file now carries the tools this print uses — refresh the
             // print-scoped runout badge (FIX B) so it reflects only those tools.
-            if (for_current_print) {
-                self->recompute_scoped_runout();
-            }
+            // recompute_scoped_runout() checks gcode_displayed_file_ (just set
+            // above) against the effective print itself, so a stale load is
+            // dropped there too — no separate guard needed here.
+            self->recompute_scoped_runout();
 
             // Show viewer if print is active or in terminal state (user can see
             // where print stopped). Only skip in Idle.
@@ -2008,6 +2009,17 @@ void PrintStatusPanel::recompute_scoped_runout() {
     // narrower than PrintLifecycleState::is_active().
     auto state = printer_state_.get_print_job_state();
     if (!helix::print_scopes_runout_badge(state)) {
+        fsm.set_scoped_runout(-1);
+        return;
+    }
+
+    // The viewer's parsed file can lag a print switch until ensure_preview_current()
+    // reloads it: a load's completion only advances gcode_displayed_file_ to name
+    // the print it was actually for (load_gcode_file's callback), so a mismatch
+    // here means the geometry in the viewer belongs to a different print. Reading
+    // get_tools_used() in that window would scope the badge to the wrong print's
+    // tools, so treat it the same as no file loaded yet.
+    if (gcode_displayed_file_ != printer_state_.get_effective_print_filename()) {
         fsm.set_scoped_runout(-1);
         return;
     }
