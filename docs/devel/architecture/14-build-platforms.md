@@ -194,6 +194,7 @@ they open with one hook
 Cursor direction is judged with the picture upright, the way a rotated install is used.
 lv_evdev bounds a relative position by the unrotated display, which at 90 and 270 is not the
 picture, so the hook reads the position before that bound and bounds it by the picture instead.
+
 90 and 270 never go to the plane, whatever its mask advertises: the plane is programmed at
 the panel's own width and height and LVGL keeps laying out unrotated
 ([`include/drm_rotation_strategy.h#choose_drm_rotation_strategy`](../../../include/drm_rotation_strategy.h)).
