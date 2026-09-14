@@ -800,12 +800,13 @@ AmsError AmsBackendSnapmaker::set_slot_info(int slot_index, const SlotInfo& info
         slot->spoolman_vendor_id = info.spoolman_vendor_id;
         slot->spool_name = info.spool_name;
 
-        // Previously this function IGNORED the persist parameter — user edits
-        // were in-memory only and the next Klipper status update wiped them
-        // via handle_status_update's unconditional writes from RFID and
-        // print_task_config. For persist=true, stage the override into
-        // overrides_ now so apply_overrides layers it back over firmware data
-        // on every subsequent parse. For persist=false we explicitly do NOT
+        // handle_status_update writes RFID and print_task_config fields
+        // unconditionally, so an edit kept only in memory is wiped by the next
+        // Klipper status update. For persist=true, stage the override into
+        // overrides_ so the edit survives a restart; the lane's own
+        // declaration, filed when the edit is committed, is what
+        // apply_resolved_lane lays back over firmware data on every subsequent
+        // parse. For persist=false we explicitly do NOT
         // touch overrides_ — preview edits are in-memory only and will be
         // overwritten by the next firmware parse, which is the expected
         // preview contract.
@@ -1268,8 +1269,9 @@ void AmsBackendSnapmaker::handle_status_update(const nlohmann::json& notificatio
                         // channel, so it never carries presence.
                         //
                         // Every value here is this parse's own, never slot->*.
-                        // SlotInfo persists across frames and apply_overrides
-                        // rewrites it in place at the tail of every one, so
+                        // SlotInfo persists across frames and
+                        // apply_resolved_lane rewrites it in place at the tail
+                        // of every one, so
                         // reading the struct back would file a user's edit as
                         // something the tag says.
                         //
@@ -1834,12 +1836,13 @@ void AmsBackendSnapmaker::handle_status_update(const nlohmann::json& notificatio
         }
 
         // Parse convergence point. After every firmware-sourced field on the
-        // SlotInfo has been populated above, loop through slots and apply
-        // user-configured overrides on top. check_hardware_event_clear must run
-        // FIRST so it sees firmware-truth fields (not the override-masked view)
-        // and can clear a stale override when a physical spool swap is detected.
-        // apply_overrides runs after, so the final SlotInfo the UI reads through
-        // get_slot_info / the emitted event reflects the override layer.
+        // SlotInfo has been populated above, loop through slots and lay each
+        // lane's resolved values on top. check_hardware_event_clear must run
+        // FIRST so it sees firmware-truth fields (not the resolved view) and
+        // can clear a stale override when a physical spool swap is detected.
+        // apply_resolved_lane runs after, so the final SlotInfo the UI reads
+        // through get_slot_info / the emitted event reflects what the lane
+        // resolves to.
         //
         // Snapmaker has multiple parse paths feeding the same slot (RFID info,
         // print_task_config, filament_feed). Rather than hook the override logic
@@ -1934,7 +1937,8 @@ void AmsBackendSnapmaker::check_hardware_event_clear(SlotInfo& slot, int slot_in
     //               genuine hardware swap on the next good read.
     //   Baseline  = first observation. Even when the override was saved against
     //               a different UID, the first observation is NEVER a swap
-    //               signal; apply_overrides runs after us and the override wins.
+    //               signal; apply_resolved_lane runs after us and a declared
+    //               value outranks this reading.
     //   Unchanged = same spool re-observed.
     std::string old_uid;
     const auto event = rfid_tracker_.observe(slot_index, observed_uid, &old_uid);

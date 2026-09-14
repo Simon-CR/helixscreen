@@ -782,7 +782,8 @@ AmsBackendCfs::parse_stock_box_status(const nlohmann::json& box_json,
             //
             // An override never promotes presence. It supplies IDENTITY only —
             // a bay that reads EMPTY here stays EMPTY, and the retained
-            // identity is what ui_ams_slot.cpp ghosts (see apply_overrides).
+            // identity is what ui_ams_slot.cpp ghosts (see apply_resolved_lane,
+            // which takes presence from a sensed reading and nothing else).
             const bool remain_present = slot.remaining_length_m > 0.0f;
             bool code_is_own_label = false;
             if (own_labels != nullptr) {
@@ -799,7 +800,8 @@ AmsBackendCfs::parse_stock_box_status(const nlohmann::json& box_json,
                 // Scrub the latched display fields parse populated so a removed
                 // spool's stale color/material doesn't render on the empty bay.
                 // This resets only PARSED firmware fields — not the persistent
-                // user override, which apply_overrides/clear_override_locked own.
+                // user declaration, which the lane sources and
+                // clear_override_locked own.
                 slot.brand.clear();
                 slot.material.clear();
                 slot.color_name.clear();
@@ -1270,9 +1272,9 @@ void AmsBackendCfs::handle_status_update(const nlohmann::json& notification) {
             // Firmware's own account of every bay this frame described. What
             // makes this correct is the values, not the position: new_info is
             // what the parse just built out of the payload, where the
-            // system_info_.units the override pass further down walks is the
-            // struct apply_overrides() has rewritten in place on every previous
-            // frame. A translation reading that back would file a user's own
+            // system_info_.units the resolve pass further down walks is the
+            // struct apply_resolved_lane() has rewritten in place on every
+            // previous frame. A translation reading that back would file a user's own
             // edit as something the box remembers.
             //
             // A bay this frame did not describe is not in new_info and is filed
@@ -1574,11 +1576,11 @@ void AmsBackendCfs::handle_status_update(const nlohmann::json& notification) {
                 update_runout_episode_locked();
             }
 
-            // Override integration convergence point. Firmware-sourced fields
-            // are now written to system_info_.units; run the hardware-event
-            // check FIRST (so it sees firmware truth, not override-masked
-            // data) and apply_overrides AFTER (so the final SlotInfo visible
-            // via get_slot_info reflects user edits).
+            // Lane resolve convergence point. Firmware-sourced fields are now
+            // written to system_info_.units; run the hardware-event check FIRST
+            // (so it sees firmware truth, not the resolved view) and
+            // apply_resolved_lane AFTER (so the final SlotInfo visible via
+            // get_slot_info reflects the lane's declared values).
             for (auto& unit : system_info_.units) {
                 for (size_t j = 0; j < unit.slots.size(); ++j) {
                     auto& slot = unit.slots[j];
@@ -1588,15 +1590,15 @@ void AmsBackendCfs::handle_status_update(const nlohmann::json& notification) {
                     const std::string& observed_uid =
                         (uid_it != observed_uids.end()) ? uid_it->second : std::string{};
 
-                    // Both clear paths run BEFORE apply_overrides so a clear's
-                    // field reset isn't masked by a stale override layer.
+                    // Both clear paths run BEFORE apply_resolved_lane so a
+                    // clear's field reset isn't masked by a stale declaration.
                     bool cleared = check_hardware_event_clear(slot, global_idx, observed_uid);
                     cleared |= clear_stale_override_on_removal_locked(slot, global_idx);
 
                     // Mirror firmware-truth color/material into lane_data so
                     // OrcaSlicer's MoonrakerPrinterAgent sees the spool. Runs
-                    // BEFORE apply_overrides so the values reflect firmware,
-                    // not the override-masked view. FillUnsetOnly: CFS user
+                    // BEFORE apply_resolved_lane so the values reflect firmware,
+                    // not the resolved view. FillUnsetOnly: CFS user
                     // edits don't reach firmware, so we must not let firmware
                     // overwrite them - see mirror_firmware_to_lane_data docs.
                     //
@@ -2085,9 +2087,10 @@ AmsError AmsBackendCfs::set_slot_info(int slot_index, const SlotInfo& info, bool
         target->remaining_weight_g = info.remaining_weight_g;
         target->total_weight_g = info.total_weight_g;
 
-        // For persist=true, stage the override into overrides_ so
-        // apply_overrides re-applies the new values on every subsequent parse.
-        // For persist=false we explicitly do NOT touch overrides_ — preview
+        // For persist=true, stage the override into overrides_ so the edit
+        // survives a restart; the lane's own declaration, filed when the edit
+        // is committed, is what apply_resolved_lane paints on every subsequent
+        // parse. For persist=false we explicitly do NOT touch overrides_ — preview
         // edits are in-memory only and will be overwritten by the next
         // firmware parse (expected preview contract).
         //
@@ -3848,9 +3851,9 @@ bool AmsBackendCfs::clear_stale_override_on_removal_locked(SlotInfo& slot, int s
 
     // What's left in overrides_ for an empty bay is pure firmware auto-mirror
     // residue — color/material describing a spool that is no longer seated.
-    // Erase it so the lane_data record stops advertising a stale color/material
-    // to OrcaSlicer and apply_overrides stops promoting the bay back to
-    // AVAILABLE.
+    // Erase it so the lane_data record stops advertising a stale
+    // color/material to OrcaSlicer, and so the lane stops declaring an identity
+    // the empty bay would go on ghosting.
     spdlog::info("{} Slot {} reads EMPTY — clearing auto-mirrored override for the removed spool",
                  backend_log_tag(), slot_index);
     clear_override_locked(slot_index, slot);
