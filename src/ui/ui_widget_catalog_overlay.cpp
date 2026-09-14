@@ -39,6 +39,9 @@ namespace {
 constexpr int kCatalogViewBrowse = 0; // category rows
 constexpr int kCatalogViewSearch = 1; // flat search results
 
+/// PanelWidgetManager gate-observer registration, held while the catalog is open.
+constexpr const char* kGateObserverKey = "widget_catalog";
+
 struct CatalogState {
     lv_obj_t* overlay_root = nullptr;
     lv_obj_t* backdrop = nullptr;      // Semi-transparent dark backdrop behind the catalog
@@ -54,6 +57,14 @@ struct CatalogState {
     lv_subject_t view = {};        // kCatalogView*; bound by the XML view flip
     lv_subject_t match_count = {}; // visible search rows; drives the empty message
     std::vector<ui::SelectorEntry> entries;
+
+    // What category_root lists: that category's available widgets, or the
+    // unavailable ones when empty. A gate change rebuilds the page from it.
+    std::optional<WidgetCategory> page_category;
+    // is_hardware_gated() per registry def, as the current rows were built. Gate
+    // subjects also move between non-zero values (a second power device); only a
+    // change here alters any row.
+    std::vector<bool> gated;
 };
 
 CatalogState g_catalog_state;
@@ -64,6 +75,8 @@ CatalogState g_catalog_state;
 /// handler, the NavigationManager close callback) so none of them can fire the
 /// callback twice or leave half the state behind.
 void release_catalog_state() {
+    // First, so no queued gate rebuild can reach the rows of a closing catalog.
+    PanelWidgetManager::instance().clear_gate_observers(kGateObserverKey);
     // Defer backdrop deletion — every path into here can run from inside
     // LV_EVENT_CLICKED / LV_EVENT_DELETE processing, and a synchronous delete
     // there corrupts LVGL's event linked list.
@@ -386,6 +399,23 @@ static std::vector<const PanelWidgetDef*> gated_widget_defs() {
         }
     }
     return out;
+}
+
+/// What a category sub-page lists: @p category's available widgets, or every
+/// gated widget when there is no category.
+static std::vector<const PanelWidgetDef*> page_defs(std::optional<WidgetCategory> category) {
+    return category ? available_in_category(*category) : gated_widget_defs();
+}
+
+/// is_hardware_gated() for every registry def, in registry order.
+static std::vector<bool> gate_snapshot() {
+    const auto& defs = get_all_widget_defs();
+    std::vector<bool> gated;
+    gated.reserve(defs.size());
+    for (const auto& def : defs) {
+        gated.push_back(is_hardware_gated(def));
+    }
+    return gated;
 }
 
 /// Placed instances per multi_instance base ID.
@@ -767,6 +797,7 @@ void WidgetCatalogOverlay::show(lv_obj_t* parent_screen, const PanelWidgetConfig
         return;
     }
 
+    g_catalog_state.gated = gate_snapshot();
     populate_category_rows(group);
 
     // Search results: one row per registry def, in registry order, built once
@@ -812,6 +843,11 @@ void WidgetCatalogOverlay::show(lv_obj_t* parent_screen, const PanelWidgetConfig
         }
     });
 
+    // Every row above read the gates once, and capability subjects keep landing
+    // for seconds into discovery. release_catalog_state() drops the registration.
+    PanelWidgetManager::instance().setup_gate_observers(kGateObserverKey,
+                                                        [] { refresh_gated_rows(); });
+
     spdlog::info("[WidgetCatalog] Overlay shown with {} categories over {} widget definitions",
                  get_widget_categories().size(), get_all_widget_defs().size());
 }
@@ -826,24 +862,20 @@ void WidgetCatalogOverlay::show_category(WidgetCategory category) {
         spdlog::warn("[WidgetCatalog] Unknown category requested");
         return;
     }
-    const auto defs = available_in_category(category);
-    show_widget_page(lv_tr(def->display_name), def->translation_tag, defs);
-    spdlog::info("[WidgetCatalog] Dived into category '{}' ({} widgets)", def->display_name,
-                 defs.size());
+    show_widget_page(lv_tr(def->display_name), def->translation_tag, category);
 }
 
 void WidgetCatalogOverlay::show_unavailable() {
-    const auto defs = gated_widget_defs();
-    if (defs.empty()) {
+    if (gated_widget_defs().empty()) {
         spdlog::debug("[WidgetCatalog] No gated widgets; ignoring unavailable dive");
         return;
     }
-    show_widget_page(lv_tr("Unavailable on this printer"), "Unavailable on this printer", defs);
-    spdlog::info("[WidgetCatalog] Dived into the unavailable list ({} widgets)", defs.size());
+    show_widget_page(lv_tr("Unavailable on this printer"), "Unavailable on this printer",
+                     std::nullopt);
 }
 
 void WidgetCatalogOverlay::show_widget_page(const char* title, const char* title_tag,
-                                            const std::vector<const PanelWidgetDef*>& defs) {
+                                            std::optional<WidgetCategory> category) {
     if (!g_catalog_state.overlay_root || !g_catalog_state.config ||
         !g_catalog_state.parent_screen) {
         spdlog::warn("[WidgetCatalog] show_widget_page() with no catalog open");
@@ -876,9 +908,11 @@ void WidgetCatalogOverlay::show_widget_page(const char* title, const char* title
         lv_obj_delete(page);
         return;
     }
+    const auto defs = page_defs(category);
     populate_rows(scroll, *g_catalog_state.config, defs);
 
     g_catalog_state.category_root = page;
+    g_catalog_state.page_category = category;
 
     nav.register_overlay_instance(page, nullptr);
     nav.push_overlay(page, /*hide_previous=*/false);
@@ -894,6 +928,50 @@ void WidgetCatalogOverlay::show_widget_page(const char* title, const char* title
         retire_category_page(page);
         spdlog::debug("[WidgetCatalog] Category page closed, back at the category list");
     });
+
+    spdlog::info("[WidgetCatalog] Dived into '{}' ({} widgets)", title_tag, defs.size());
+}
+
+// ============================================================================
+// Hardware gate changes
+// ============================================================================
+
+void WidgetCatalogOverlay::refresh_gated_rows() {
+    if (!g_catalog_state.overlay_root || !g_catalog_state.config) {
+        return;
+    }
+    std::vector<bool> gated = gate_snapshot();
+    if (gated == g_catalog_state.gated) {
+        return;
+    }
+    g_catalog_state.gated = std::move(gated);
+    const PanelWidgetConfig& config = *g_catalog_state.config;
+    lv_obj_t* root = g_catalog_state.overlay_root;
+
+    // Each container empties at once and refills in place; the old rows go
+    // through LVGL's async delete.
+    if (lv_obj_t* group = lv_obj_find_by_name(root, "category_group")) {
+        helix::ui::safe_clean_children(group);
+        populate_category_rows(group);
+    }
+
+    // Rebuilt result rows stay parallel to entries (one per def, registry order)
+    // and start out visible, so the query still in the box re-filters them.
+    if (lv_obj_t* results = lv_obj_find_by_name(root, "search_results")) {
+        helix::ui::safe_clean_children(results);
+        populate_rows(results, config, all_widget_def_ptrs());
+        lv_obj_t* input = lv_obj_find_by_name(root, "catalog_search_input");
+        const char* query = input ? lv_textarea_get_text(input) : nullptr;
+        apply_catalog_search(query ? query : "");
+    }
+
+    if (lv_obj_t* page = g_catalog_state.category_root) {
+        if (lv_obj_t* scroll = lv_obj_find_by_name(page, "catalog_scroll")) {
+            helix::ui::safe_clean_children(scroll);
+            populate_rows(scroll, config, page_defs(g_catalog_state.page_category));
+        }
+    }
+    spdlog::debug("[WidgetCatalog] Hardware gates changed; rebuilt the catalog rows");
 }
 
 } // namespace helix

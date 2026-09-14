@@ -993,3 +993,237 @@ TEST_CASE_METHOD(WidgetCatalogCategoryFixture,
 
     force_close();
 }
+
+// ============================================================================
+// Hardware gates that move while the catalog is open
+// ============================================================================
+
+namespace {
+
+size_t gated_count_here() {
+    size_t n = 0;
+    for (const auto& def : get_all_widget_defs()) {
+        n += def_is_gated_here(def);
+    }
+    return n;
+}
+
+/// The "{N} widgets" subtitle of the top-level row labelled @p label, or "" when
+/// there is no such row.
+std::string row_subtitle(lv_obj_t* group, const std::string& label) {
+    lv_obj_t* row = row_with_label(group, label);
+    lv_obj_t* desc = row ? lv_obj_find_by_name(row, "description") : nullptr;
+    return desc ? lv_label_get_text(desc) : std::string();
+}
+
+/// The category list the live gates call for: one row per category with an
+/// available widget, subtitled with that count, plus the unavailable row carrying
+/// the gated count while any gate is closed.
+void check_category_list_matches_gates(lv_obj_t* group) {
+    size_t category_rows = 0;
+    for (const auto& cat : get_widget_categories()) {
+        const size_t available = available_ids_in_category(cat.id).size();
+        INFO("category: " << cat.display_name);
+        if (available == 0) {
+            CHECK(row_with_label(group, cat.display_name) == nullptr);
+            continue;
+        }
+        category_rows++;
+        CHECK(row_subtitle(group, cat.display_name) == std::to_string(available) + " widgets");
+    }
+    const size_t gated = gated_count_here();
+    if (gated > 0) {
+        CHECK(row_subtitle(group, "Unavailable on this printer") ==
+              std::to_string(gated) + " widgets");
+    } else {
+        CHECK(row_with_label(group, "Unavailable on this printer") == nullptr);
+    }
+    CHECK(child_count(group) == category_rows + (gated > 0 ? 1 : 0));
+}
+
+/// Power: gated on power_device_count, a capability subject the fixture
+/// registers. Multi-instance, so "Placed" never dims it and an ungated row is
+/// always tappable.
+const PanelWidgetDef& power_device_def() {
+    const PanelWidgetDef* def = find_widget_def("power_device");
+    REQUIRE(def != nullptr);
+    REQUIRE(def->multi_instance);
+    REQUIRE(def->hardware_gate_subject != nullptr);
+    return *def;
+}
+
+} // namespace
+
+TEST_CASE_METHOD(WidgetCatalogCategoryFixture,
+                 "Widget catalog: a gate opening while it is open moves the widget into its "
+                 "category",
+                 "[widget_catalog][1016]") {
+    const PanelWidgetDef& target = power_device_def();
+    lv_subject_t* gate = lv_xml_get_subject(nullptr, target.hardware_gate_subject);
+    REQUIRE(gate != nullptr);
+    const WidgetCategoryDef* cat = find_widget_category(target.category);
+    REQUIRE(cat != nullptr);
+
+    lv_subject_set_int(gate, 0);
+    open_catalog();
+    lv_obj_t* group = category_group();
+    REQUIRE(group != nullptr);
+    const size_t available_closed = available_ids_in_category(cat->id).size();
+    const size_t gated_closed = gated_count_here();
+    REQUIRE(gated_closed > 0);
+    check_category_list_matches_gates(group);
+
+    // Discovery reports the hardware after the catalog was built.
+    lv_subject_set_int(gate, 1);
+    settle();
+
+    REQUIRE(available_ids_in_category(cat->id).size() == available_closed + 1);
+    REQUIRE(gated_count_here() == gated_closed - 1);
+    group = category_group();
+    REQUIRE(group != nullptr);
+    check_category_list_matches_gates(group);
+
+    dive_category(*cat);
+    lv_obj_t* scroll = category_scroll();
+    REQUIRE(scroll != nullptr);
+    lv_obj_t* row = lv_obj_find_by_name(scroll, target.id);
+    REQUIRE(row != nullptr);
+    CHECK(lv_obj_has_flag(row, LV_OBJ_FLAG_CLICKABLE));
+
+    force_close();
+}
+
+TEST_CASE_METHOD(WidgetCatalogCategoryFixture,
+                 "Widget catalog: search results follow a gate opening while it is open",
+                 "[widget_catalog][1016][search]") {
+    const PanelWidgetDef& target = power_device_def();
+    lv_subject_t* gate = lv_xml_get_subject(nullptr, target.hardware_gate_subject);
+    REQUIRE(gate != nullptr);
+
+    lv_subject_set_int(gate, 0);
+    open_catalog();
+    const std::string query = target.display_name;
+    type_query(query);
+    lv_obj_t* results = search_results();
+    REQUIRE(results != nullptr);
+    lv_obj_t* row = lv_obj_find_by_name(results, target.id);
+    REQUIRE(row != nullptr);
+    REQUIRE_FALSE(lv_obj_has_flag(row, LV_OBJ_FLAG_CLICKABLE));
+
+    lv_subject_set_int(gate, 1);
+    settle();
+
+    row = lv_obj_find_by_name(results, target.id);
+    REQUIRE(row != nullptr);
+    CHECK(lv_obj_has_flag(row, LV_OBJ_FLAG_CLICKABLE));
+    CHECK(lv_obj_get_style_opa(row, LV_PART_MAIN) == LV_OPA_COVER);
+
+    // Still in the search view, filtered by the query still in the box.
+    CHECK_FALSE(lv_obj_has_flag(search_level(), LV_OBJ_FLAG_HIDDEN));
+    const auto expected = expected_search_hits(query);
+    CHECK(visible_rows(results) == expected.size());
+    for (const auto& id : expected) {
+        lv_obj_t* hit = lv_obj_find_by_name(results, id.c_str());
+        INFO("expected hit: " << id);
+        REQUIRE(hit != nullptr);
+        CHECK_FALSE(lv_obj_has_flag(hit, LV_OBJ_FLAG_HIDDEN));
+    }
+
+    force_close();
+}
+
+TEST_CASE_METHOD(WidgetCatalogCategoryFixture,
+                 "Widget catalog: an open sub-page follows a gate that moves under it",
+                 "[widget_catalog][1016]") {
+    const PanelWidgetDef& target = power_device_def();
+    lv_subject_t* gate = lv_xml_get_subject(nullptr, target.hardware_gate_subject);
+    REQUIRE(gate != nullptr);
+    const WidgetCategoryDef* cat = find_widget_category(target.category);
+    REQUIRE(cat != nullptr);
+
+    lv_subject_set_int(gate, 0);
+    open_catalog();
+    dive_unavailable();
+    lv_obj_t* scroll = category_scroll();
+    REQUIRE(scroll != nullptr);
+    REQUIRE(lv_obj_find_by_name(scroll, target.id) != nullptr);
+
+    // Opening the gate takes the widget out of the unavailable page in place.
+    lv_subject_set_int(gate, 1);
+    settle();
+    scroll = category_scroll();
+    REQUIRE(scroll != nullptr);
+    CHECK(lv_obj_find_by_name(scroll, target.id) == nullptr);
+    CHECK(child_count(scroll) == gated_count_here());
+    header_back();
+
+    dive_category(*cat);
+    scroll = category_scroll();
+    REQUIRE(scroll != nullptr);
+    REQUIRE(lv_obj_find_by_name(scroll, target.id) != nullptr);
+
+    // Closing it takes the widget out of its category page the same way.
+    lv_subject_set_int(gate, 0);
+    settle();
+    scroll = category_scroll();
+    REQUIRE(scroll != nullptr);
+    CHECK(lv_obj_find_by_name(scroll, target.id) == nullptr);
+    CHECK(child_count(scroll) == available_ids_in_category(cat->id).size());
+
+    force_close();
+}
+
+TEST_CASE_METHOD(WidgetCatalogCategoryFixture,
+                 "Widget catalog: rows are rebuilt only when what is gated changes",
+                 "[widget_catalog][1016]") {
+    const PanelWidgetDef& target = power_device_def();
+    lv_subject_t* gate = lv_xml_get_subject(nullptr, target.hardware_gate_subject);
+    REQUIRE(gate != nullptr);
+
+    lv_subject_set_int(gate, 1);
+    WidgetCatalogOverlay::show(
+        lv_screen_active(), *widget_config_, [](const std::string&) {}, [] {});
+    lv_obj_t* group = category_group();
+    lv_obj_t* results = search_results();
+    REQUIRE(child_count(group) > 0);
+    REQUIRE(child_count(results) > 0);
+    // A rebuild replaces each row with a fresh object, which never carries this.
+    // Marked before the first settle, so the rows show() built must also outlive
+    // the observers' own registration firing.
+    lv_obj_add_state(lv_obj_get_child(group, 0), LV_STATE_USER_1);
+    lv_obj_add_state(lv_obj_get_child(results, 0), LV_STATE_USER_1);
+    settle();
+    CHECK(lv_obj_has_state(lv_obj_get_child(group, 0), LV_STATE_USER_1));
+    CHECK(lv_obj_has_state(lv_obj_get_child(results, 0), LV_STATE_USER_1));
+
+    // A second power device changes the subject but not what can be placed.
+    lv_subject_set_int(gate, 2);
+    settle();
+    CHECK(lv_obj_has_state(lv_obj_get_child(group, 0), LV_STATE_USER_1));
+    CHECK(lv_obj_has_state(lv_obj_get_child(results, 0), LV_STATE_USER_1));
+
+    // The mark does see a real rebuild: closing the gate replaces both rows.
+    lv_subject_set_int(gate, 0);
+    settle();
+    CHECK_FALSE(lv_obj_has_state(lv_obj_get_child(group, 0), LV_STATE_USER_1));
+    CHECK_FALSE(lv_obj_has_state(lv_obj_get_child(results, 0), LV_STATE_USER_1));
+
+    force_close();
+}
+
+TEST_CASE_METHOD(WidgetCatalogCategoryFixture,
+                 "Widget catalog: its gate observers live exactly as long as it is open",
+                 "[widget_catalog][1016]") {
+    const PanelWidgetDef& target = power_device_def();
+    lv_subject_t* gate = lv_xml_get_subject(nullptr, target.hardware_gate_subject);
+    REQUIRE(gate != nullptr);
+    const uint32_t observers_closed = lv_ll_get_len(&gate->subs_ll);
+
+    open_catalog();
+    REQUIRE(WidgetCatalogOverlay::active_root() != nullptr);
+    CHECK(lv_ll_get_len(&gate->subs_ll) == observers_closed + 1);
+
+    header_back();
+    REQUIRE(WidgetCatalogOverlay::active_root() == nullptr);
+    CHECK(lv_ll_get_len(&gate->subs_ll) == observers_closed);
+}
