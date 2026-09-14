@@ -314,6 +314,35 @@ error_handler() {
         fi
     fi
 
+    # A ledger stop_competing_uis already wrote records a disable (chmod -x on
+    # a stock UI's init script, a systemd unit taken down) that is still in
+    # effect on the live system; losing the only copy leaves nothing for a
+    # later uninstall to reverse it with (prestonbrown/helixscreen#1618). A
+    # copy surviving anywhere but here is proof one was written, so carry it
+    # forward the same way settings.json and helixscreen.env are above.
+    local _ledger_restored=true
+    if [ ! -f "${INSTALL_DIR}/config/.disabled_services" ] \
+       && type _disabled_services_ledger_candidates >/dev/null 2>&1; then
+        local _ledger_src=""
+        local _ledger_candidate
+        for _ledger_candidate in $(_disabled_services_ledger_candidates); do
+            [ "$_ledger_candidate" = "${INSTALL_DIR}/config/.disabled_services" ] && continue
+            if [ -f "$_ledger_candidate" ]; then
+                _ledger_src="$_ledger_candidate"
+                break
+            fi
+        done
+        if [ -n "$_ledger_src" ]; then
+            _ledger_restored=false
+            if $(file_sudo "${INSTALL_DIR}/config") cp "$_ledger_src" "${INSTALL_DIR}/config/.disabled_services" 2>/dev/null; then
+                log_success "Disabled-services ledger recovered from $_ledger_src"
+                _ledger_restored=true
+            else
+                log_warn "Could not recover the disabled-services ledger from $_ledger_src"
+            fi
+        fi
+    fi
+
     # Cleanup temporary files after restores are done
     if [ "$CLEANUP_TMP" = true ] && [ -d "$TMP_DIR" ]; then
         _safe_remove_tmp_dir "$TMP_DIR"
@@ -321,7 +350,12 @@ error_handler() {
 
     echo ""
     log_error "Installation was NOT completed."
-    log_error "Your system should be in its original state."
+    if [ "$_ledger_restored" = true ]; then
+        log_error "Your system should be in its original state."
+    else
+        log_error "A previously disabled system service could not be recorded for recovery."
+        log_error "Re-run this script, or run it with --uninstall, to finish reversing it."
+    fi
     echo ""
     log_info "For help, please:"
     log_info "  1. Check the error message above"
@@ -6844,28 +6878,68 @@ _sweep_uninstalling_sentinel() {
     done
 }
 
+# Every place a copy of the disabled-services ledger can end up, in the order
+# they are trusted. An interrupted install or --clean can strand the only
+# copy outside ${INSTALL_DIR}/config (prestonbrown/helixscreen#1618):
+#
+#   1. ${INSTALL_DIR}/config/.disabled_services   the live per-install path -
+#      a symlink into printer_data on a completed install (setup_config_symlink
+#      has run), a real file before that.
+#   2. $(klipper_config_dir)/helixscreen/.disabled_services   the same file
+#      reached directly, for when $INSTALL_DIR itself is gone (an interrupted
+#      extract_release swap moved it to ${INSTALL_DIR}.old).
+#   3. $(klipper_config_dir)/.disabled_services.clean-keep   the carry
+#      clean_old_installation stages before wiping printer_data/config/helixscreen;
+#      an interruption between that move and the move back strands it here.
+#   4. ${INSTALL_DIR}.old/config/.disabled_services   the backup
+#      extract_release's atomic swap leaves when a fresh install (the ledger
+#      written before setup_config_symlink ever ran) is interrupted mid-swap.
+#
+# A location this run cannot resolve (no Klipper config dir known) is omitted
+# rather than probed with an empty prefix.
+_disabled_services_ledger_candidates() {
+    local _pd_config=""
+    if type klipper_config_dir >/dev/null 2>&1; then
+        _pd_config="$(klipper_config_dir)"
+    fi
+    echo "${INSTALL_DIR}/config/.disabled_services"
+    if [ -n "$_pd_config" ]; then
+        echo "${_pd_config}/helixscreen/.disabled_services"
+        echo "${_pd_config}/.disabled_services.clean-keep"
+    fi
+    echo "${INSTALL_DIR}.old/config/.disabled_services"
+}
+
 # Re-enable services that were disabled during installation
 # Reads the state file and reverses each recorded disable action
 #
 # Publishes what it found, because $INSTALL_DIR (and the state file with it) is
 # gone by the time the standalone uninstaller restores the previous screen UI:
 #
-#   HELIX_DISABLED_RECORD_FOUND  1 when a state file existed at all. A run that
-#                                finds one knows exactly what this install
-#                                displaced, and must not go looking for more.
+#   HELIX_DISABLED_RECORD_FOUND  1 when a ledger existed at any candidate
+#                                location. A run that finds one knows exactly
+#                                what this install displaced, and must not go
+#                                looking for more.
 #   HELIX_REENABLED_UNITS        recorded systemd unit names, space separated
 #   HELIX_REENABLED_SCRIPTS      recorded sysv-chmod targets, space separated
 reenable_disabled_services() {
-    local state_file="${INSTALL_DIR}/config/.disabled_services"
+    local state_file="" _candidate
+    for _candidate in $(_disabled_services_ledger_candidates); do
+        if [ -f "$_candidate" ]; then
+            state_file="$_candidate"
+            break
+        fi
+    done
+
     # shellcheck disable=SC2034  # consumed by reenable_previous_ui (bundle-uninstaller.sh)
     HELIX_DISABLED_RECORD_FOUND=0
     HELIX_REENABLED_UNITS=""
     HELIX_REENABLED_SCRIPTS=""
-    [ -f "$state_file" ] || return 0
+    [ -n "$state_file" ] || return 0
     # shellcheck disable=SC2034  # consumed by reenable_previous_ui (bundle-uninstaller.sh)
     HELIX_DISABLED_RECORD_FOUND=1
 
-    log_info "Re-enabling previously disabled services..."
+    log_info "Re-enabling previously disabled services (ledger: $state_file)..."
     while IFS= read -r entry; do
         # Skip empty lines and comments
         case "$entry" in ""|\#*) continue ;; esac
