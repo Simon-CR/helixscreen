@@ -414,17 +414,19 @@ The device is created lazily on the first pointer command and coexists with the
 real SDL/evdev pointer; LVGL supports multiple pointer indevs. Instances that never
 receive a pointer command never register it.
 
-**A long press cannot be assembled from the shell.** `press`, `sleep`, `release` looks
-like it should work and does not: every `ctl` invocation is its own process and
-connection, so the hold elapses with no client attached, and the command that follows
-re-samples the device in a way that restarts the press. `long_press` exists because the
-hold has to happen server-side. It latches the press, holds without touching the pointer
-while LVGL keeps sampling it on its own timer - exactly as under a resting finger - and
-then releases (`src/remote/remote_control_server.cpp#handle_set_text`).
+**`press`, `sleep`, `release` assembles a long press too.** Every `ctl` invocation is its
+own process and connection, but the press stays latched between them: the synthetic
+pointer reports its latched state on every read (`src/remote/remote_pointer.cpp#read_cb`),
+so LVGL keeps sampling a held press on its own timer while the shell sleeps - exactly as
+under a resting finger. Sleep past the configured long-press time with a margin (0.7s
+covers the default). `long_press` does the whole gesture in one request: it latches the
+press, holds without touching the pointer, then releases
+(`src/remote/remote_control_server.cpp#handle_pointer_long_press`), and it sizes the hold
+itself.
 
 `hold_ms` is optional. Omitted, the server derives the hold from the **configured**
 long-press time (`InputSettingsManager::get_long_press_time()`, the Touch & Input
-setting) plus a margin - `pointer_long_press_hold_ms()` in `include/remote_pointer.h#helix::remote`.
+setting) plus a margin - `pointer_long_press_hold_ms()` in `include/remote_pointer.h#pointer_long_press_hold_ms`.
 Two reasons it is derived rather than hardcoded: LVGL starts counting from the sample
 that first reports the press, not from the moment the command ran, so a hold of exactly
 the threshold races the indev timer and intermittently lands a plain click; and raising
@@ -450,7 +452,7 @@ helix-screen ctl release
 
 Separate commands are right for those last two: what matters is where the pointer goes,
 not how long it rests, and the press stays latched between connections. `long_press`
-always ends in its own release (`src/remote/remote_control_server.cpp#handle_state`), so a
+always ends in its own release (`src/remote/remote_control_server.cpp#handle_pointer_long_press`), so a
 hold-then-slide gesture - long-press to raise a popover, then slide onto it - has no
 single-command form.
 
@@ -462,7 +464,7 @@ Get coordinates from `geom <target>` — it reports each widget's absolute `x`, 
 ```bash
 # 1. Enter Edit Mode - one long press anywhere on the home grid
 helix-screen ctl navigate home
-helix-screen ctl geom filament          # a tile's rect; its name is its PanelWidgetDef id
+helix-screen ctl geom filament          # a tile's rect; its name is its config entry id (fan:1 for an added Fan)
 # {"x": 40, "y": 120, "w": 100, "h": 50, ...}
 helix-screen ctl long_press 90 145      # centre of that rect
 
@@ -471,23 +473,80 @@ helix-screen ctl click nav_btn_edit_add
 helix-screen ctl ls
 ```
 
-The `long_pressed` handler is registered on `carousel_host`, the grid's own container
-(`ui_xml/home_panel.xml#carousel_host`), and the press reaches it by bubbling: the carousel, its
-scroll container, its tiles and the page containers all get `LV_OBJ_FLAG_EVENT_BUBBLE`
-(`src/ui/ui_panel_home.cpp#build_carousel`), and `set_event_bubble_recursive()` re-flags every
-descendant of a page container after its widgets are populated
-(`src/ui/ui_panel_home.cpp#populate_page`). So aiming at a tile is fine - it is
-not necessary to hit the gutter between tiles.
+The grid handlers are registered on `carousel_host`, the grid's own container
+(`ui_xml/home_panel.xml#carousel_host`), and a press reaches them by bubbling. Page containers
+bubble by their component (`ui_xml/components/home_page_container.xml`),
+`set_event_bubble_recursive()` re-flags every descendant of a page container after its widgets
+are populated (`src/ui/ui_panel_home.cpp#populate_page`), and the carousel keeps its scroll
+container and tiles bubbling through every page-count change because `build_carousel` sets that
+as a carousel property (`src/ui/ui_carousel.cpp#carousel_set_bubble_events`). So aiming at a
+tile is fine - it is not necessary to hit the gutter between tiles.
 
-**Open the catalog with `click nav_btn_edit_add`, not a second long press.** Entering Edit
-Mode already selects whatever widget was under the press and starts dragging it
-(`src/ui/ui_panel_home.cpp#on_home_grid_long_press`), and `GridEditMode::handle_long_press` opens the
-catalog only when nothing is selected (`src/ui/grid_edit_mode.cpp#compute_resize_result`) - so a
-second long press on a tile starts a drag instead. The nav bar's `+`
-(`ui_xml/navigation_bar.xml#nav_btn_edit_add`) goes straight to `HomePanel::open_widget_catalog()`
-(`src/xml_registration.cpp#register_xml_components`) with no such condition. A press that lands on empty
-grid selects nothing, and *then* a second long press does open the catalog - but the
-button is the case that always works.
+**Open the catalog with `click nav_btn_edit_add`, not a second long press.** The long press
+that enters Edit Mode selects the widget under the press and does not start dragging it,
+however long it is held: `enter()` marks that hold inert (`src/ui/grid_edit_mode.cpp#enter`), and
+an inert hold's long press does nothing. Inside Edit Mode a long press grabs: it picks up the
+selected widget, or the widget under the press once it selects it, and opens the catalog only on
+empty grid with nothing selected (`src/ui/grid_edit_mode.cpp#handle_long_press`). The nav bar's `+`
+(`ui_xml/navigation_bar.xml#nav_btn_edit_add`) goes straight to
+`HomePanel::open_widget_catalog()` (`src/xml_registration.cpp#register_xml_components`) with no
+such condition, so it is the case that always works.
+
+The recipes below enter Edit Mode with `long_press` and pick a widget up with `press`,
+`release`, `press`. A `press`, `sleep`, `release` is a hold like any other: on the grid outside
+Edit Mode it enters Edit Mode and only selects, however long the sleep; inside Edit Mode, on a
+widget, it grabs that widget.
+
+**Swiping works in Edit Mode as it does outside it.** While no widget gesture owns the pointer (a
+press armed on the selected widget, a drag or a resize) and the widget catalog is closed, the
+carousel swipes when there is more than one page, and a swipe stops at the last page: the
+next-page slot past it is a drop target, within reach only while a drag is live
+(`src/ui/ui_panel_home.cpp#apply_edit_swipe_policy`). A single-page home has nothing to swipe to.
+Swipe on empty grid, or starting on a widget that is not selected:
+
+```bash
+helix-screen ctl press 620 160
+helix-screen ctl move 420 160
+helix-screen ctl move 180 160
+helix-screen ctl release 180 160
+```
+
+**Moving a widget takes a second press.** A press on a widget that is not selected only selects
+it, however the pointer moves afterward. A fresh press on the selected widget arms a grab, and
+moving past the drag threshold starts the drag, or a resize when the press landed in a resizable
+widget's edge band (`src/ui/grid_edit_mode.cpp#handle_pressing`). The release commits. A
+release that lands away from its press never changes the selection, so a drop the grid rejects
+leaves the dragged widget selected (`src/ui/ui_panel_home.cpp#on_home_grid_clicked`):
+
+```bash
+helix-screen ctl geom temp_graph                  # a tile's rect: aim at its centre, CX,CY
+helix-screen ctl press $CX $CY
+helix-screen ctl release $CX $CY                  # selects
+helix-screen ctl press $CX $CY                    # arms the grab
+helix-screen ctl move $((CX - 60)) $CY            # drags
+helix-screen ctl release $((CX - 60)) $CY         # drops
+```
+
+**Dragging onto the next-page slot.** This is the only way to add a page. Carry a grabbed widget
+to the right edge of the last page and leave the pointer there: the press stays latched between
+commands and LVGL keeps sampling it, so the edge push carries the widget across the border and the
+page flips onto the slot.
+Releasing there creates the page, with the widget at the dropped cell; moving back across
+before the release creates nothing. On an 800px-wide window:
+
+```bash
+helix-screen ctl press $CX $CY
+helix-screen ctl release $CX $CY                  # selects
+helix-screen ctl press $CX $CY                    # arms the grab
+for x in 730 760 785 795; do helix-screen ctl move $x $CY; done
+sleep 1.5                                         # the push crosses, the page flips
+helix-screen ctl release 795 $CY
+helix-screen ctl get home_populated_pages         # one more than before, see below
+```
+
+The populated page count rises by one only when the dragged widget's page keeps a widget. A drag
+of a page's last widget empties that page, which then stops counting: a page other than the main
+page is removed, and the main page stays but holds no placed widget, so the count stays the same.
 
 **When the long press appears to do nothing**, check the suppressors before suspecting the
 pointer. `should_suppress_edit_mode()` (`src/ui/ui_panel_home.cpp#should_suppress_edit_mode`) drops it when:
@@ -496,8 +555,15 @@ pointer. `should_suppress_edit_mode()` (`src/ui/ui_panel_home.cpp#should_suppres
 |-----------|--------------|
 | Home edit mode is off in Touch & Input (#1245) | `ctl get settings_home_edit_mode_enabled` - check this first |
 | The lock screen is up | `ctl ls` shows the PIN pad as the topmost layer |
-| A scroll object is active on the indev | a preceding drag left the list scrolling; `ctl wait_idle` or release cleanly first |
 | The press target is an arc or slider | those consume drags for value adjustment - aim at a different part of the tile |
+
+It also refuses while a scroll object is active on the indev, but that never stops a stationary
+long press: LVGL clears the scroll object on every new press and sends LONG_PRESSED only while
+none is set (`indev_proc_press`: `lib/lvgl/src/indev/lv_indev.c#"if(indev->pointer.scroll_obj == NULL && indev->long_pr_sent == 0) {"`).
+
+The handler also ignores a long press while the carousel rests on a page it does not act on, one
+the arrow buttons paged to while the widget catalog is open
+(`src/ui/ui_panel_home.cpp#carousel_on_scoped_page`).
 
 Drift is not a factor with `long_press`: entering Edit Mode also requires a stationary
 hold (`src/ui/ui_panel_home.cpp#on_home_grid_long_press`), and the synthetic pointer never moves during it.
@@ -506,10 +572,14 @@ hold (`src/ui/ui_panel_home.cpp#on_home_grid_long_press`), and the synthetic poi
 returns success and does not enter Edit Mode. The subject is written by
 `GridEditMode::enter()` (`src/ui/grid_edit_mode.cpp#enter`) / `exit()`
 (`src/ui/grid_edit_mode.cpp#exit`); setting it by
-hand only unhides the nav bar's edit buttons, which bind to it
-(`ui_xml/navigation_bar.xml#nav_btn_edit_add`). Clicking the `+` then still does nothing, because
+hand only changes what observes it: the nav bar's edit buttons unhide
+(`ui_xml/navigation_bar.xml#nav_btn_edit_add`) and its other buttons disable
+(`ui_xml/navigation_bar.xml#nav_btn_home` and the buttons after it), the page badge shows when
+more than one page is populated (`ui_xml/home_panel.xml`), and a camera widget drops its stream
+to 2 fps (`src/ui/panel_widgets/camera_widget.cpp#update_stream_fps`). Clicking the `+` then still does nothing, because
 `HomePanel::open_widget_catalog()` no-ops unless `grid_edit_mode_.is_active()`
-(`src/ui/ui_panel_home.cpp#open_widget_catalog`). `long_press` is the only way in.
+(`src/ui/ui_panel_home.cpp#open_widget_catalog`). A long press on the grid - `long_press`, or
+`press`, `sleep`, `release` - is the only way in.
 
 A **target** is one of:
 

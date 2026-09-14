@@ -602,6 +602,9 @@ void register_xml_components() {
 
     // Main navigation and panels
     register_xml("navigation_bar.xml");
+    // Every home carousel page, then the next-page slot built around one
+    register_xml("components/home_page_container.xml");
+    register_xml("components/home_next_page_slot.xml");
     register_xml("home_panel.xml");
     register_xml("controls_panel.xml");
     // The X/Y/Z position card is shared between motion_panel.xml's landscape

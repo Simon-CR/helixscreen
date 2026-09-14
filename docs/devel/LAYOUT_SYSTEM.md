@@ -356,6 +356,10 @@ is computed in C++ (`include/grid_layout.h`, `src/ui/grid_layout.cpp`) and the s
 default placements live in `assets/config/default_layout.json`. If you are adding a home
 widget or wondering why yours vanished on a portrait screen, this is the section.
 
+Rearranging the grid in edit mode (selecting, dragging and resizing widgets, moving them
+between pages, and how pages are created and removed) is [HOME_EDIT_MODE.md](HOME_EDIT_MODE.md).
+This section is the grid those gestures land on.
+
 ### How the grid is sized
 
 The grid is square-cell: both axes are divided by the same per-breakpoint cell edge, so a

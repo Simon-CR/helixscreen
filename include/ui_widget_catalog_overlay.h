@@ -48,6 +48,10 @@ class WidgetCatalogOverlay {
     /// asserted without standing up an overlay.
     static std::vector<const PanelWidgetDef*> widgets_in_category(WidgetCategory category);
 
+    /// Close the open catalog, its category sub-page included, as a selection
+    /// does: on_close fires once. Nothing when the catalog is closed.
+    static void close();
+
     /// Root of the open catalog overlay, or nullptr when it is closed.
     static lv_obj_t* active_root();
 

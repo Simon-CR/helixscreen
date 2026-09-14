@@ -1052,6 +1052,8 @@ void app_globals_init_subjects() {
     if (!s_test_notification_subject_initialized) {
         lv_subject_init_pointer(&s_test_notification_subject, nullptr);
         lv_subject_init_int(&s_test_home_edit_mode_subject, 0);
+        // Registered by name as app_globals.cpp does, before any panel exists.
+        lv_xml_register_subject(nullptr, "home_edit_mode", &s_test_home_edit_mode_subject);
         lv_subject_init_int(&s_test_wizard_active_subject, 0);
 #if defined(HELIX_PLATFORM_ESP32)
         lv_subject_init_int(&s_test_platform_extras_subject, 0);

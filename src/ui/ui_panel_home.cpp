@@ -10,6 +10,7 @@
 #include "ui_icon_codepoints.h"
 #include "ui_modal.h"
 #include "ui_nav_manager.h"
+#include "ui_next_tick.h"
 #include "ui_panel_ams.h"
 #include "ui_update_queue.h"
 #include "ui_utils.h"
@@ -52,6 +53,11 @@ static void set_event_bubble_recursive(lv_obj_t* obj) {
     }
 }
 
+/// A home carousel page container (ui_xml/components/home_page_container.xml) in @p parent.
+static lv_obj_t* create_page_container(lv_obj_t* parent) {
+    return static_cast<lv_obj_t*>(lv_xml_create(parent, "home_page_container", nullptr));
+}
+
 // disable_widget_clicks_recursive() and clear_pressed_state_recursive() are in ui_utils.h
 using helix::ui::clear_pressed_state_recursive;
 using helix::ui::disable_widget_clicks_recursive;
@@ -66,6 +72,28 @@ HomePanel::HomePanel(PrinterState& printer_state, IMoonrakerAPI* api)
             self->last_printer_image_path_.clear();
             self->refresh_printer_image();
         });
+
+    // Wired at construction: edit mode's gesture transitions can fire before
+    // finalize_setup() runs, and every one of them must reach the swipe policy.
+    grid_edit_mode_.set_gesture_ownership_callback([this]() { apply_edit_swipe_policy(); });
+    grid_edit_mode_.set_show_page_callback([this](int page) { show_edit_page(page); });
+    // Read at call time: a carousel rebuilt at the page cap has no slot.
+    grid_edit_mode_.set_next_page_slot_callback(
+        [this]() { return next_page_container_ != nullptr; });
+    // Every page sits in the carousel viewport once the carousel is at rest.
+    // Read at call time, so a rebuilt carousel is the one measured.
+    grid_edit_mode_.set_page_frame_callback([this](lv_area_t& frame) {
+        CarouselState* cstate = carousel_ ? ui_carousel_get_state(carousel_) : nullptr;
+        if (!cstate || !cstate->scroll_container) {
+            return false;
+        }
+        lv_obj_get_content_coords(cstate->scroll_container, &frame);
+        return true;
+    });
+    grid_edit_mode_.set_pages_changed_callback(
+        [this](const helix::PageSetChange& change) { on_edit_pages_changed(change); });
+
+    init_panel_subjects();
 }
 
 HomePanel::~HomePanel() {
@@ -78,18 +106,16 @@ HomePanel::~HomePanel() {
     helix::PanelWidgetManager::instance().unregister_rebuild_callback("home");
 
     // Detach all page widget instances
-    for (auto& page : page_widgets_) {
-        for (auto& w : page) {
+    for (auto& page : pages_) {
+        for (auto& w : page.widgets) {
             if (w)
                 w->detach();
         }
     }
-    page_widgets_.clear();
-    page_containers_.clear();
-    page_visible_ids_.clear();
+    pages_.clear();
     carousel_ = nullptr;
     carousel_host_ = nullptr;
-    add_page_tile_ = nullptr;
+    next_page_container_ = nullptr;
     arrow_left_ = nullptr;
     arrow_right_ = nullptr;
 }
@@ -112,6 +138,7 @@ void HomePanel::init_subjects() {
         {"on_home_grid_clicked", on_home_grid_clicked},
         {"on_home_grid_pressing", on_home_grid_pressing},
         {"on_home_grid_released", on_home_grid_released},
+        {"on_home_grid_press_cancelled", on_home_grid_press_cancelled},
     });
 
     subjects_initialized_ = true;
@@ -124,6 +151,11 @@ void HomePanel::init_subjects() {
 }
 
 void HomePanel::deinit_subjects() {
+    // Panel subjects are construction-registered in their own manager, so
+    // they must be withdrawn here even when init_subjects() never ran. RAII
+    // withdraws the XML names and deinits the subjects; idempotent.
+    panel_subjects_.deinit_all();
+
     if (!subjects_initialized_) {
         return;
     }
@@ -134,7 +166,9 @@ void HomePanel::deinit_subjects() {
     page_observer_.reset();
 
     // Clear cached widget IDs so reconnects get a fresh rebuild
-    page_visible_ids_.clear();
+    for (auto& page : pages_) {
+        page.visible_ids.reset();
+    }
 
     // SubjectManager handles all lv_subject_deinit() calls via RAII
     subjects_.deinit_all();
@@ -146,7 +180,114 @@ void HomePanel::deinit_subjects() {
 // Carousel construction and lifecycle
 // ============================================================================
 
-void HomePanel::build_carousel() {
+void HomePanel::init_panel_subjects() {
+    UI_MANAGED_SUBJECT_STRING(page_badge_subject_, page_badge_buf_, "", "home_page_badge",
+                              panel_subjects_);
+    UI_MANAGED_SUBJECT_INT(populated_pages_subject_, 0, "home_populated_pages", panel_subjects_);
+}
+
+void HomePanel::update_page_badge() {
+    auto& config = helix::PanelWidgetManager::instance().get_widget_config("home");
+    // Format into a local first: lv_subject_copy_string copies into the
+    // subject's own buffer, and copying that buffer onto itself is not defined.
+    char text[sizeof(page_badge_buf_)];
+    snprintf(text, sizeof(text), "%d / %d", active_page_index_ + 1,
+             static_cast<int>(config.page_count()));
+    lv_subject_copy_string(&page_badge_subject_, text);
+}
+
+void HomePanel::update_populated_pages_subject() {
+    auto& config = helix::PanelWidgetManager::instance().get_widget_config("home");
+    int populated = 0;
+    for (size_t page = 0; page < config.page_count(); ++page) {
+        if (config.page_is_populated(page)) {
+            ++populated;
+        }
+    }
+    lv_subject_set_int(&populated_pages_subject_, populated);
+}
+
+lv_obj_t* HomePanel::edit_container(int page) const {
+    if (page >= 0 && page < static_cast<int>(pages_.size())) {
+        return pages_[static_cast<size_t>(page)].container;
+    }
+    if (page == static_cast<int>(pages_.size())) {
+        return next_page_container_;
+    }
+    return nullptr;
+}
+
+void HomePanel::show_edit_page(int page) {
+    lv_obj_t* container = carousel_ ? edit_container(page) : nullptr;
+    if (!container) {
+        spdlog::debug("[{}] Show edit page {}: no page there", get_name(), page);
+        return;
+    }
+    const bool slot = container == next_page_container_;
+    // Animated like a swipe: the edit session measures its cross-page rules
+    // against the page frame, not the sliding container. The slot's tile sits
+    // past the pages ui_carousel_goto_page() clamps to.
+    if (slot) {
+        helix::ui::carousel_goto_tile(carousel_, page, /*animate=*/true);
+    } else {
+        ui_carousel_goto_page(carousel_, page, /*animate=*/true);
+    }
+    // The goto set the page subject, whose observer re-scopes only on a change
+    // to a config page other than the active one: the slot, and a return to
+    // the active page, are re-scoped here.
+    rescope_edit_page(page);
+    spdlog::trace("[{}] Show edit page {} (slot={})", get_name(), page, slot);
+}
+
+void HomePanel::on_edit_pages_changed(const helix::PageSetChange& change) {
+    // The carousel has not been rebuilt, so its page is numbered as the change
+    // is, the next-page slot's tile being page_count.
+    const helix::PageSetLanding landing =
+        helix::page_set_landing(change, ui_carousel_get_current_page(carousel_));
+    spdlog::debug("[{}] Edit pages changed; rebuilding carousel on page {}, focusing page {}",
+                  get_name(), landing.shown, landing.focus);
+    rebuild_carousel(landing.shown);
+    if (pages_.empty()) {
+        // No carousel host means no rebuild happened (config is still
+        // correct); there is no page to show.
+        return;
+    }
+    // Animated, so a focus on another page is the one slide from the page that
+    // was on screen; a carousel already on the focus does not move.
+    show_edit_page(landing.focus);
+}
+
+void HomePanel::rescope_edit_page(int page) {
+    if (!grid_edit_mode_.is_active()) {
+        return;
+    }
+    lv_obj_t* container = edit_container(page);
+    if (!container) {
+        return;
+    }
+    grid_edit_mode_.switch_page(container, page);
+}
+
+void HomePanel::apply_edit_swipe_policy() {
+    if (!carousel_) {
+        return;
+    }
+    using helix::ui::CarouselSwipe;
+    // A gesture or the open widget catalog holds the page; otherwise the pages
+    // swipe by their count, in edit mode as out of it.
+    const bool edit_holds_page =
+        grid_edit_mode_.owns_gesture() || grid_edit_mode_.is_catalog_open();
+    helix::ui::carousel_set_swipe(carousel_,
+                                  edit_holds_page ? CarouselSwipe::Disabled : CarouselSwipe::Auto);
+    // The next-page slot is a drag's drop target, never a page to swipe to. A
+    // drop there that creates a page leaves the session scoped to it, and the
+    // carousel resting on it, until the page-set rebuild on the next tick.
+    const bool slot_in_reach =
+        grid_edit_mode_.is_dragging() || grid_edit_mode_.is_scoped_to(next_page_container_);
+    helix::ui::carousel_set_trailing_tiles_reachable(carousel_, slot_in_reach);
+}
+
+void HomePanel::build_carousel(int initial_page) {
     carousel_host_ = lv_obj_find_by_name(panel_, "carousel_host");
     if (!carousel_host_) {
         spdlog::error("[{}] carousel_host not found in XML", get_name());
@@ -155,9 +296,10 @@ void HomePanel::build_carousel() {
 
     auto& config = helix::PanelWidgetManager::instance().get_widget_config("home");
     int num_pages = static_cast<int>(config.page_count());
-    int main_page = static_cast<int>(config.main_page_index());
+    const int shown = std::clamp(initial_page, 0, std::max(num_pages - 1, 0));
 
-    spdlog::debug("[{}] Building carousel: {} pages, main={}", get_name(), num_pages, main_page);
+    spdlog::debug("[{}] Building carousel: {} pages, showing page {}", get_name(), num_pages,
+                  shown);
 
     // Create carousel programmatically inside the host
     carousel_ = ui_carousel_create_obj(carousel_host_);
@@ -176,85 +318,41 @@ void HomePanel::build_carousel() {
         cstate->wrap = false;
     }
 
-    // Resize vectors for page tracking
-    page_widgets_.resize(static_cast<size_t>(num_pages));
-    page_containers_.resize(static_cast<size_t>(num_pages), nullptr);
-    page_visible_ids_.resize(static_cast<size_t>(num_pages));
+    pages_.resize(static_cast<size_t>(num_pages));
 
-    // Add one tile per config page
+    // One tile per config page
     for (int i = 0; i < num_pages; ++i) {
-        lv_obj_t* container = lv_obj_create(carousel_host_);
-        lv_obj_set_size(container, LV_PCT(100), LV_PCT(100));
-        lv_obj_set_style_pad_all(container, theme_manager_get_spacing("space_sm"), LV_PART_MAIN);
-        lv_obj_set_style_border_width(container, 0, LV_PART_MAIN);
-        lv_obj_set_style_bg_opa(container, LV_OPA_TRANSP, LV_PART_MAIN);
-        lv_obj_remove_flag(container, LV_OBJ_FLAG_SCROLLABLE);
-        lv_obj_add_flag(container, LV_OBJ_FLAG_CLICKABLE);
-
+        lv_obj_t* container = create_page_container(carousel_host_);
+        if (!container) {
+            spdlog::error("[{}] Failed to create the container for page {}", get_name(), i);
+            continue;
+        }
         ui_carousel_add_item(carousel_, container);
-        page_containers_[static_cast<size_t>(i)] = container;
+        pages_[static_cast<size_t>(i)].container = container;
     }
 
-    // Add "+" tile for adding new pages
-    if (num_pages < MAX_PAGES) {
-        add_page_tile_ = lv_obj_create(carousel_host_);
-        lv_obj_set_size(add_page_tile_, LV_PCT(100), LV_PCT(100));
-        lv_obj_set_style_bg_opa(add_page_tile_, LV_OPA_TRANSP, LV_PART_MAIN);
-        lv_obj_set_style_border_width(add_page_tile_, 0, LV_PART_MAIN);
-        lv_obj_remove_flag(add_page_tile_, LV_OBJ_FLAG_SCROLLABLE);
-
-        // Plus icon centered in the tile
-        lv_obj_t* plus_btn = lv_obj_create(add_page_tile_);
-        lv_obj_set_size(plus_btn, 64, 64);
-        lv_obj_set_style_radius(plus_btn, 32, LV_PART_MAIN);
-        lv_obj_set_style_bg_color(plus_btn, theme_manager_get_color("card_bg"), LV_PART_MAIN);
-        lv_obj_set_style_bg_opa(plus_btn, LV_OPA_COVER, LV_PART_MAIN);
-        lv_obj_set_style_border_width(plus_btn, 0, LV_PART_MAIN);
-        lv_obj_align(plus_btn, LV_ALIGN_CENTER, 0, 0);
-        lv_obj_remove_flag(plus_btn, LV_OBJ_FLAG_SCROLLABLE);
-
-        lv_obj_t* plus_label = lv_label_create(plus_btn);
-        lv_label_set_text(plus_label, helix::ui::icon::lookup_codepoint("plus"));
-        lv_obj_set_style_text_font(plus_label, &mdi_icons_32, LV_PART_MAIN);
-        lv_obj_set_style_text_color(plus_label, theme_manager_get_color("secondary"), LV_PART_MAIN);
-        lv_obj_align(plus_label, LV_ALIGN_CENTER, 0, 0);
-
-        ui_carousel_add_item(carousel_, add_page_tile_);
-
-        // Click handler on the "+" button (acceptable exception for programmatic creation)
-        lv_obj_add_event_cb(
-            plus_btn,
-            [](lv_event_t* /*e*/) {
-                LVGL_SAFE_EVENT_CB_BEGIN("[HomePanel] on_add_page_clicked");
-                get_global_home_panel().on_add_page_clicked();
-                LVGL_SAFE_EVENT_CB_END();
-            },
-            LV_EVENT_CLICKED, nullptr);
+    // The next-page slot past the last page, below the page cap
+    if (config.can_add_page()) {
+        lv_obj_t* slot =
+            static_cast<lv_obj_t*>(lv_xml_create(carousel_host_, "home_next_page_slot", nullptr));
+        if (slot) {
+            ui_carousel_add_item(carousel_, slot);
+            next_page_container_ = lv_obj_find_by_name(slot, "next_page_container");
+        } else {
+            spdlog::error("[{}] Failed to create the next-page slot", get_name());
+        }
     }
 
-    // Exclude "+" tile from indicator dots
+    // The indicator dots count config pages, not the slot
     ui_carousel_set_real_page_count(carousel_, num_pages);
+    // The swipe and the slot's reach for the edit state this carousel is built in
+    apply_edit_swipe_policy();
 
-    // Enable event bubbling through the carousel LVGL tree so that
-    // long_press/click/pressing/released events from widgets inside page
-    // containers propagate up through tile -> scroll -> carousel -> carousel_host_
-    // where the edit mode handlers are registered via XML.
-    if (cstate) {
-        lv_obj_add_flag(carousel_, LV_OBJ_FLAG_EVENT_BUBBLE);
-        if (cstate->scroll_container) {
-            lv_obj_add_flag(cstate->scroll_container, LV_OBJ_FLAG_EVENT_BUBBLE);
-        }
-        for (auto* tile : cstate->real_tiles) {
-            lv_obj_add_flag(tile, LV_OBJ_FLAG_EVENT_BUBBLE);
-        }
-    }
-
-    // Also add event bubbling on the page containers themselves
-    for (auto* pc : page_containers_) {
-        if (pc) {
-            lv_obj_add_flag(pc, LV_OBJ_FLAG_EVENT_BUBBLE);
-        }
-    }
+    // Events from widgets inside page containers, which bubble by their
+    // component, propagate up through tile -> scroll -> carousel ->
+    // carousel_host_, where the edit mode handlers are registered via XML. The
+    // carousel keeps this across its own page-count changes.
+    helix::ui::carousel_set_bubble_events(carousel_, true);
 
     // Create arrow buttons for page navigation. Shown where a swipe is
     // unreliable: a mouse-driven SDL window (test mode) and resistive panels,
@@ -327,53 +425,61 @@ void HomePanel::build_carousel() {
             LV_EVENT_CLICKED, nullptr);
     }
 
-    // Observe page subject for page change callbacks.
-    // Use immediate (non-deferred) observer because the subject is set from
-    // carousel_scroll_end_cb on the UI thread, and the deferred path via
-    // observe_int_sync drops the callback (weak_alive expires before the
-    // queued lambda executes, causing active_page_index_ desync).
-    page_observer_ = helix::ui::observe_int_immediate<HomePanel>(
-        &page_subject_, this, [](HomePanel* self, int page) { self->on_page_changed(page); });
-
-    // Navigate to main page
-    if (main_page > 0) {
-        ui_carousel_goto_page(carousel_, main_page, false);
+    // The initial page, before anything observes the page subject
+    if (shown > 0) {
+        ui_carousel_goto_page(carousel_, shown, false);
     }
-    active_page_index_ = main_page;
+    active_page_index_ = shown;
 
-    // Populate all pages, activate only the main page widgets
+    // Populate all pages, activate only the shown page's widgets
     for (int i = 0; i < num_pages; ++i) {
         populate_page(i, true);
     }
 
     update_arrow_visibility(active_page_index_);
+    update_page_badge();
+    update_populated_pages_subject();
+
+    // Observed last. LVGL notifies an observer as it is added, and that
+    // notification finds active_page_index_ already naming the page on screen,
+    // so the build re-scopes no edit session into a container the population
+    // above has cleared. Immediate (non-deferred) because the subject is set
+    // from carousel_scroll_end_cb on the UI thread, and the deferred path via
+    // observe_int_sync drops the callback (weak_alive expires before the
+    // queued lambda executes, causing active_page_index_ desync).
+    page_observer_ = helix::ui::observe_int_immediate<HomePanel>(
+        &page_subject_, this, [](HomePanel* self, int page) { self->on_page_changed(page); });
 
     spdlog::debug("[{}] Carousel built with {} pages", get_name(), num_pages);
 }
 
-void HomePanel::rebuild_carousel() {
+void HomePanel::rebuild_carousel(int shown) {
     spdlog::debug("[{}] Rebuilding carousel", get_name());
 
-    int prev_page = active_page_index_;
+    // The teardown deletes every page container, so a live edit session lets go
+    // of its page first; show_edit_page() scopes it into the rebuilt carousel.
+    grid_edit_mode_.forget_scope();
+    teardown_carousel();
+    build_carousel(shown);
+}
 
+void HomePanel::teardown_carousel() {
     // Deactivate current page widgets
-    if (active_page_index_ >= 0 && active_page_index_ < static_cast<int>(page_widgets_.size())) {
-        for (auto& w : page_widgets_[static_cast<size_t>(active_page_index_)]) {
+    if (active_page_index_ >= 0 && active_page_index_ < static_cast<int>(pages_.size())) {
+        for (auto& w : pages_[static_cast<size_t>(active_page_index_)].widgets) {
             if (w)
                 w->on_deactivate();
         }
     }
 
     // Detach all widget instances across all pages
-    for (auto& page : page_widgets_) {
-        for (auto& w : page) {
+    for (auto& page : pages_) {
+        for (auto& w : page.widgets) {
             if (w)
                 w->detach();
         }
     }
-    page_widgets_.clear();
-    page_containers_.clear();
-    page_visible_ids_.clear();
+    pages_.clear();
 
     // Disconnect page observer before deiniting subject
     page_observer_.reset();
@@ -393,27 +499,13 @@ void HomePanel::rebuild_carousel() {
 
     // Null all pointers
     carousel_ = nullptr;
-    add_page_tile_ = nullptr;
+    next_page_container_ = nullptr;
     arrow_left_ = nullptr;
     arrow_right_ = nullptr;
 
-    // Unregister page subject from SubjectManager before deiniting
-    // (SubjectManager tracks it, but we need to re-init with a fresh one)
+    // The page subject is re-inited by build_carousel(); subjects_initialized_
+    // stays true, since init_subjects() registered the callbacks.
     subjects_.deinit_all();
-
-    // Re-register subjects (page_subject_ will be re-inited in build_carousel)
-    // Note: subjects_initialized_ stays true since init_subjects() registered callbacks
-
-    // Rebuild
-    build_carousel();
-
-    // Restore previous page, clamped to valid range
-    auto& config = helix::PanelWidgetManager::instance().get_widget_config("home");
-    int max_page = static_cast<int>(config.page_count()) - 1;
-    int restored = std::min(prev_page, max_page);
-    if (restored > 0 && carousel_) {
-        ui_carousel_goto_page(carousel_, restored, false);
-    }
 }
 
 void HomePanel::populate_page(int page_index, bool force) {
@@ -422,7 +514,7 @@ void HomePanel::populate_page(int page_index, bool force) {
         return;
     }
 
-    if (page_index < 0 || page_index >= static_cast<int>(page_containers_.size())) {
+    if (page_index < 0 || page_index >= static_cast<int>(pages_.size())) {
         spdlog::error("[{}] populate_page: page_index {} out of range", get_name(), page_index);
         return;
     }
@@ -430,26 +522,24 @@ void HomePanel::populate_page(int page_index, bool force) {
     populating_widgets_ = true;
     auto idx = static_cast<size_t>(page_index);
 
-    lv_obj_t* container = page_containers_[idx];
+    lv_obj_t* container = pages_[idx].container;
     if (!container) {
         spdlog::error("[{}] populate_page: null container for page {}", get_name(), page_index);
         populating_widgets_ = false;
         return;
     }
 
-    // Compute the widget ID list ONCE per populate_page call.  Re-reading gate
-    // subjects after populate_widgets (e.g. when caching at line ~510) caused a
-    // race: late-arriving capabilities (printer_has_led flipping 0→1 shortly
-    // after placement) would be baked into the cache, making the subsequent
-    // gate-observer rebuild short-circuit as "unchanged" and leaving the widget
-    // permanently in its initial ~gated placeholder.  Snapshotting here ties
-    // the cache to the snapshot driving placement.
+    // Compute the widget ID list once per populate_page call; the cache below
+    // stores this snapshot. A read taken after placement can include a
+    // capability that arrived meanwhile (printer_has_led flipping 0 to 1), and
+    // cached, it makes the next gate-observer rebuild short-circuit as
+    // "unchanged" and leaves the widget in its ~gated placeholder.
     auto snapshot_ids =
         helix::PanelWidgetManager::instance().compute_visible_widget_ids("home", page_index);
 
     // Skip rebuild if the resulting widget list would be identical
     if (!force) {
-        if (idx < page_visible_ids_.size() && snapshot_ids == page_visible_ids_[idx]) {
+        if (pages_[idx].visible_ids && snapshot_ids == *pages_[idx].visible_ids) {
             spdlog::debug("[{}] Page {} widget list unchanged, skipping rebuild", get_name(),
                           page_index);
             populating_widgets_ = false;
@@ -459,8 +549,9 @@ void HomePanel::populate_page(int page_index, bool force) {
 
     // Extract reusable widget instances
     helix::WidgetReuseMap reuse;
-    if (idx < page_widgets_.size()) {
-        for (auto& w : page_widgets_[idx]) {
+    {
+        auto& widgets = pages_[idx].widgets;
+        for (auto& w : widgets) {
             if (w) {
                 w->detach();
                 if (w->supports_reuse()) {
@@ -469,10 +560,9 @@ void HomePanel::populate_page(int page_index, bool force) {
             }
         }
         // Remove null entries
-        page_widgets_[idx].erase(std::remove_if(page_widgets_[idx].begin(),
-                                                page_widgets_[idx].end(),
-                                                [](const auto& w) { return !w; }),
-                                 page_widgets_[idx].end());
+        widgets.erase(
+            std::remove_if(widgets.begin(), widgets.end(), [](const auto& w) { return !w; }),
+            widgets.end());
     }
 
     // Flush deferred callbacks, then async-clean the LVGL tree. Gate observers
@@ -487,9 +577,7 @@ void HomePanel::populate_page(int page_index, bool force) {
         helix::ui::safe_clean_children(container);
     }
 
-    if (idx < page_widgets_.size()) {
-        page_widgets_[idx].clear();
-    }
+    pages_[idx].widgets.clear();
 
     // Populate widgets for this page
     auto widgets = helix::PanelWidgetManager::instance().populate_widgets(
@@ -511,19 +599,11 @@ void HomePanel::populate_page(int page_index, bool force) {
         }
     }
 
-    // Store widgets
-    if (idx >= page_widgets_.size()) {
-        page_widgets_.resize(idx + 1);
-    }
-    page_widgets_[idx] = std::move(widgets);
-
-    // Cache visible widget IDs — use the snapshot computed at populate_page
-    // entry so the cache matches the gate values that drove placement, not a
-    // fresh read that could include late-arriving capability flips.
-    if (idx >= page_visible_ids_.size()) {
-        page_visible_ids_.resize(idx + 1);
-    }
-    page_visible_ids_[idx] = std::move(snapshot_ids);
+    // Store widgets, and cache visible widget IDs — use the snapshot computed at
+    // populate_page entry so the cache matches the gate values that drove
+    // placement, not a fresh read that could include late-arriving capability flips.
+    pages_[idx].widgets = std::move(widgets);
+    pages_[idx].visible_ids = std::move(snapshot_ids);
 
     populating_widgets_ = false;
 }
@@ -536,7 +616,8 @@ void HomePanel::on_page_changed(int new_page) {
     auto& config = helix::PanelWidgetManager::instance().get_widget_config("home");
     int num_pages = static_cast<int>(config.page_count());
 
-    // Ignore page changes to the "+" tile
+    // The next-page slot is not a page: a drag's flip onto it re-scopes through
+    // show_edit_page()
     if (new_page >= num_pages) {
         return;
     }
@@ -544,8 +625,8 @@ void HomePanel::on_page_changed(int new_page) {
     spdlog::debug("[{}] Page changed: {} -> {}", get_name(), active_page_index_, new_page);
 
     // Deactivate old page widgets
-    if (active_page_index_ >= 0 && active_page_index_ < static_cast<int>(page_widgets_.size())) {
-        for (auto& w : page_widgets_[static_cast<size_t>(active_page_index_)]) {
+    if (active_page_index_ >= 0 && active_page_index_ < static_cast<int>(pages_.size())) {
+        for (auto& w : pages_[static_cast<size_t>(active_page_index_)].widgets) {
             if (w)
                 w->on_deactivate();
         }
@@ -554,39 +635,34 @@ void HomePanel::on_page_changed(int new_page) {
     active_page_index_ = new_page;
 
     // Activate new page widgets if panel is active
-    if (panel_active_ && new_page >= 0 && new_page < static_cast<int>(page_widgets_.size())) {
-        for (auto& w : page_widgets_[static_cast<size_t>(new_page)]) {
+    if (panel_active_ && new_page >= 0 && new_page < static_cast<int>(pages_.size())) {
+        for (auto& w : pages_[static_cast<size_t>(new_page)].widgets) {
             if (w)
                 w->on_activate();
         }
     }
 
+    rescope_edit_page(new_page);
+
+    update_page_badge();
     update_arrow_visibility(new_page);
 }
 
-void HomePanel::on_add_page_clicked() {
+void HomePanel::delete_edit_page() {
     auto& config = helix::PanelWidgetManager::instance().get_widget_config("home");
-    if (static_cast<int>(config.page_count()) >= MAX_PAGES) {
-        spdlog::info("[{}] Max page count reached ({})", get_name(), MAX_PAGES);
-        return;
+    helix::PageSetChange change;
+    change.page_count = static_cast<int>(config.page_count());
+    change.focus_page = grid_edit_mode_.page_index();
+    if (config.remove_page(static_cast<size_t>(change.focus_page))) {
+        change.removed_page = change.focus_page;
     }
-
-    std::string page_id = config.generate_page_id();
-    int new_idx = config.add_page(page_id);
-    if (new_idx < 0) {
-        spdlog::error("[{}] Failed to add page", get_name());
-        return;
-    }
-
     config.save();
-    spdlog::info("[{}] Added new page '{}' at index {}", get_name(), page_id, new_idx);
-
-    rebuild_carousel();
-
-    // Animate to the new page
-    if (carousel_) {
-        ui_carousel_goto_page(carousel_, new_idx, true);
-    }
+    exit_grid_edit_mode();
+    // On the next tick, outside the confirmation button's click, landing as
+    // every page-set change from edit mode does: on the deleted page's index,
+    // clamped to the last page.
+    helix::ui::run_next_tick(lifetime_.token(),
+                             [this, change]() { on_edit_pages_changed(change); });
 }
 
 void HomePanel::update_arrow_visibility(int page) {
@@ -625,9 +701,10 @@ void HomePanel::populate_widgets(bool force) {
     // Multi-page path: populate all pages
     auto& config = helix::PanelWidgetManager::instance().get_widget_config("home");
     int num_pages = static_cast<int>(config.page_count());
-    for (int i = 0; i < num_pages && i < static_cast<int>(page_containers_.size()); ++i) {
+    for (int i = 0; i < num_pages && i < static_cast<int>(pages_.size()); ++i) {
         populate_page(i, force);
     }
+    update_populated_pages_subject();
 }
 
 void HomePanel::setup_widget_gate_observers() {
@@ -644,8 +721,8 @@ void HomePanel::setup_widget_gate_observers() {
             return;
         }
         // Skip if any widget on any page has a fullscreen overlay open
-        for (const auto& page : page_widgets_) {
-            for (const auto& w : page) {
+        for (const auto& page : pages_) {
+            for (const auto& w : page.widgets) {
                 if (w && w->has_overlay_open()) {
                     spdlog::debug("[{}] Skipping gate rebuild while widget '{}' has overlay open",
                                   get_name(), w->id());
@@ -687,8 +764,9 @@ void HomePanel::finalize_setup() {
 
     spdlog::debug("[{}] Finalizing setup (carousel + widgets)", get_name());
 
-    // Build carousel with pages from config
-    build_carousel();
+    // Build carousel with pages from config, showing the main page
+    build_carousel(static_cast<int>(
+        helix::PanelWidgetManager::instance().get_widget_config("home").main_page_index()));
 
     // Observe hardware gate subjects so widgets appear/disappear when
     // capabilities change (e.g. power devices discovered after startup).
@@ -703,25 +781,20 @@ void HomePanel::finalize_setup() {
         populate_widgets();
     });
 
-    // Set grid edit mode rebuild callback once (used when edit mode rearranges widgets)
-    grid_edit_mode_.set_rebuild_callback([this]() { populate_widgets(); });
-
-    // Set delete page callback for edit mode
-    grid_edit_mode_.set_delete_page_callback([this]() {
-        helix::ui::modal_confirm(
-            "Delete Page", "Remove this page and all its widgets?", ModalSeverity::Warning,
-            "Delete", [] {
-                auto& panel = get_global_home_panel();
-                int page_to_delete = panel.grid_edit_mode_.page_index();
-                auto& config = helix::PanelWidgetManager::instance().get_widget_config("home");
-                config.remove_page(static_cast<size_t>(page_to_delete));
-                config.save();
-                panel.grid_edit_mode_.exit();
-                panel.rebuild_carousel();
-            });
-    });
+    wire_grid_edit_page_callbacks();
 
     spdlog::debug("[{}] Finalize complete", get_name());
+}
+
+void HomePanel::wire_grid_edit_page_callbacks() {
+    // The rebuild edit mode schedules after it rearranges widgets
+    grid_edit_mode_.set_rebuild_callback([this]() { populate_widgets(); });
+
+    grid_edit_mode_.set_delete_page_callback([]() {
+        helix::ui::modal_confirm("Delete Page", "Remove this page and all its widgets?",
+                                 ModalSeverity::Warning, "Delete",
+                                 [] { get_global_home_panel().delete_edit_page(); });
+    });
 }
 
 void HomePanel::repopulate() {
@@ -739,8 +812,8 @@ void HomePanel::on_activate() {
     panel_active_ = true;
 
     // Notify only the active page's widgets that the panel is visible
-    if (active_page_index_ >= 0 && active_page_index_ < static_cast<int>(page_widgets_.size())) {
-        for (auto& w : page_widgets_[static_cast<size_t>(active_page_index_)]) {
+    if (active_page_index_ >= 0 && active_page_index_ < static_cast<int>(pages_.size())) {
+        for (auto& w : pages_[static_cast<size_t>(active_page_index_)].widgets) {
             if (w)
                 w->on_activate();
         }
@@ -753,17 +826,19 @@ void HomePanel::on_activate() {
     helix::tour::FirstRunTour::instance().maybe_start();
 }
 
-void HomePanel::on_deactivating(DeactivateReason) {
+void HomePanel::on_deactivating(DeactivateReason reason) {
     panel_active_ = false;
-    // Exit grid edit mode if active, UNLESS the widget catalog overlay is open
-    // (push_overlay triggers on_deactivate, but edit mode must survive)
-    if (grid_edit_mode_.is_active() && !grid_edit_mode_.is_catalog_open()) {
-        grid_edit_mode_.exit();
+    // Leave edit mode. Pushing the widget catalog deactivates this panel, and
+    // the session outlives that push, since the catalog places into it. A
+    // hot-reload rebuild replaces every object the session points into, so it
+    // ends the session whether the catalog is open or not.
+    if (reason == DeactivateReason::Rebuild || !grid_edit_mode_.is_catalog_open()) {
+        exit_grid_edit_mode();
     }
 
     // Notify only the active page's widgets that the panel is going offscreen
-    if (active_page_index_ >= 0 && active_page_index_ < static_cast<int>(page_widgets_.size())) {
-        for (auto& w : page_widgets_[static_cast<size_t>(active_page_index_)]) {
+    if (active_page_index_ >= 0 && active_page_index_ < static_cast<int>(pages_.size())) {
+        for (auto& w : pages_[static_cast<size_t>(active_page_index_)].widgets) {
             if (w)
                 w->on_deactivate();
         }
@@ -785,8 +860,8 @@ void HomePanel::refresh_printer_image() {
     // one-to-one map: an id names exactly one concrete PanelWidget subclass.
     // Matching on it and then static_cast'ing is therefore equivalent to the
     // dynamic_cast this replaces, and works under -fno-rtti (firmware).
-    for (auto& page : page_widgets_) {
-        for (auto& w : page) {
+    for (auto& page : pages_) {
+        for (auto& w : page.widgets) {
             if (w && std::strcmp(w->id(), helix::PrinterImageWidget::WIDGET_ID) == 0) {
                 static_cast<helix::PrinterImageWidget*>(w.get())->refresh_printer_image();
                 return;
@@ -798,8 +873,8 @@ void HomePanel::refresh_printer_image() {
 void HomePanel::trigger_idle_runout_check() {
     // Search all pages for the PrintStatusWidget (see refresh_printer_image()
     // for why the id() match stands in for a dynamic_cast).
-    for (auto& page : page_widgets_) {
-        for (auto& w : page) {
+    for (auto& page : pages_) {
+        for (auto& w : page.widgets) {
             if (w && std::strcmp(w->id(), helix::PrintStatusWidget::WIDGET_ID) == 0) {
                 static_cast<helix::PrintStatusWidget*>(w.get())->trigger_idle_runout_check();
                 return;
@@ -914,13 +989,32 @@ void HomePanel::on_home_grid_pressed(lv_event_t* e) {
     } else {
         panel.press_point_valid_ = false;
     }
+    if (panel.grid_edit_mode_.is_active()) {
+        panel.grid_edit_mode_.begin_press();
+    }
     LVGL_SAFE_EVENT_CB_END();
+}
+
+bool HomePanel::carousel_on_scoped_page() const {
+    // The carousel's page is the one a goto chose, set as the goto starts, or
+    // the one a swipe last settled on, set as it settles, so a slide in either
+    // direction reads as the page it began from or is going to, never as a
+    // mismatch. What remains is the carousel at rest on a page the session does
+    // not follow: one the arrow buttons paged to while the widget catalog holds
+    // the session, where the scoped page's widgets are off screen and a hold or
+    // a tap must not act on them.
+    if (!carousel_) {
+        return true;
+    }
+    const int scoped =
+        grid_edit_mode_.is_active() ? grid_edit_mode_.page_index() : active_page_index_;
+    return ui_carousel_get_current_page(carousel_) == scoped;
 }
 
 void HomePanel::on_home_grid_long_press(lv_event_t* e) {
     LVGL_SAFE_EVENT_CB_BEGIN("[HomePanel] on_home_grid_long_press");
-    if (!should_suppress_edit_mode(e)) {
-        auto& panel = get_global_home_panel();
+    auto& panel = get_global_home_panel();
+    if (!should_suppress_edit_mode(e) && panel.carousel_on_scoped_page()) {
         if (!panel.grid_edit_mode_.is_active()) {
             // Entering edit mode requires a deliberate, stationary hold. LVGL
             // fires LONG_PRESSED on hold duration alone, so a press that drifted
@@ -937,8 +1031,8 @@ void HomePanel::on_home_grid_long_press(lv_event_t* e) {
             // Clear PRESSED state from active page container
             lv_obj_t* container = nullptr;
             if (panel.active_page_index_ >= 0 &&
-                panel.active_page_index_ < static_cast<int>(panel.page_containers_.size())) {
-                container = panel.page_containers_[static_cast<size_t>(panel.active_page_index_)];
+                panel.active_page_index_ < static_cast<int>(panel.pages_.size())) {
+                container = panel.pages_[static_cast<size_t>(panel.active_page_index_)].container;
             }
             if (container) {
                 clear_pressed_state_recursive(container);
@@ -948,18 +1042,29 @@ void HomePanel::on_home_grid_long_press(lv_event_t* e) {
             auto& config = helix::PanelWidgetManager::instance().get_widget_config("home");
             if (container) {
                 panel.grid_edit_mode_.enter(container, &config, panel.active_page_index_);
-                // Disable carousel swiping during edit mode
-                if (panel.carousel_) {
-                    ui_carousel_set_scroll_enabled(panel.carousel_, false);
+                // Enter() disarmed clicks on the entry page only; a swipe can
+                // settle on any other page mid-session, and its widgets must
+                // not fire their real handlers while edit mode is live.
+                for (const CarouselPage& page : panel.pages_) {
+                    if (page.container && page.container != container) {
+                        helix::ui::disable_widget_clicks_recursive(page.container);
+                    }
                 }
-                // Select the widget under the finger and start dragging immediately.
+                // State the entry's policy directly, whatever an exit that
+                // ended no gesture left: no gesture holds the page, so the
+                // pages swipe by their count and the next-page slot is out of
+                // reach. Flags only, so this dispatch creates and deletes
+                // nothing.
+                panel.apply_edit_swipe_policy();
+                // Select the widget under the finger (if any). The entry hold
+                // selects and never grabs: enter() latched this gesture as a
+                // non-grab, so moving the widget takes a fresh press on it or
+                // a hold within the session.
                 panel.grid_edit_mode_.handle_click(e);
-                if (panel.grid_edit_mode_.selected_widget()) {
-                    panel.grid_edit_mode_.handle_drag_start(e);
-                }
             }
         } else {
-            // Already in edit mode — start drag if a widget is selected
+            // Already in edit mode: the hold grabs, or opens the catalog on
+            // empty grid
             panel.grid_edit_mode_.handle_long_press(e);
         }
     }
@@ -969,7 +1074,12 @@ void HomePanel::on_home_grid_long_press(lv_event_t* e) {
 void HomePanel::on_home_grid_clicked(lv_event_t* e) {
     LVGL_SAFE_EVENT_CB_BEGIN("[HomePanel] on_home_grid_clicked");
     auto& panel = get_global_home_panel();
-    if (panel.grid_edit_mode_.is_active()) {
+    // LVGL clicks after any release no scroll took, a drag's included. In edit
+    // mode a click is a release that lands where its press did: a drag or a
+    // resize settles the selection at its own end, and a press that moved
+    // made its selection where it landed.
+    if (panel.grid_edit_mode_.is_active() && panel.carousel_on_scoped_page() &&
+        !panel.finger_drifted_since_press()) {
         panel.grid_edit_mode_.handle_click(e);
     }
     LVGL_SAFE_EVENT_CB_END();
@@ -977,8 +1087,8 @@ void HomePanel::on_home_grid_clicked(lv_event_t* e) {
 
 void HomePanel::on_home_grid_pressing(lv_event_t* e) {
     LVGL_SAFE_EVENT_CB_BEGIN("[HomePanel] on_home_grid_pressing");
-    if (!should_suppress_edit_mode(e)) {
-        auto& panel = get_global_home_panel();
+    auto& panel = get_global_home_panel();
+    if (!should_suppress_edit_mode(e) && panel.carousel_on_scoped_page()) {
         if (panel.grid_edit_mode_.is_active()) {
             panel.grid_edit_mode_.handle_pressing(e);
         }
@@ -989,12 +1099,20 @@ void HomePanel::on_home_grid_pressing(lv_event_t* e) {
 void HomePanel::on_home_grid_released(lv_event_t* e) {
     LVGL_SAFE_EVENT_CB_BEGIN("[HomePanel] on_home_grid_released");
     auto& panel = get_global_home_panel();
-    panel.press_point_valid_ = false; // press cycle ended — stop drift tracking
     if (!should_suppress_edit_mode(e)) {
         if (panel.grid_edit_mode_.is_active()) {
             panel.grid_edit_mode_.handle_released(e);
         }
     }
+    LVGL_SAFE_EVENT_CB_END();
+}
+
+void HomePanel::on_home_grid_press_cancelled(lv_event_t* e) {
+    LVGL_SAFE_EVENT_CB_BEGIN("[HomePanel] on_home_grid_press_cancelled");
+    // Ungated, unlike the handlers that classify a press: a gesture whose press
+    // LVGL took away ends wherever the carousel sits and whatever suppresses
+    // new input.
+    get_global_home_panel().grid_edit_mode_.handle_press_cancelled(e);
     LVGL_SAFE_EVENT_CB_END();
 }
 
@@ -1009,13 +1127,16 @@ void HomePanel::go_to_main_page() {
 }
 
 void HomePanel::exit_grid_edit_mode() {
-    if (grid_edit_mode_.is_active()) {
-        grid_edit_mode_.exit();
-        // Re-enable carousel swiping after edit mode
-        if (carousel_) {
-            ui_carousel_set_scroll_enabled(carousel_, true);
-        }
+    if (!grid_edit_mode_.is_active()) {
+        return;
     }
+    // A live gesture ends uncommitted first: a drag over the next-page slot is
+    // carried back to its page before the session is gone.
+    grid_edit_mode_.end_gesture_uncommitted();
+    grid_edit_mode_.exit();
+    // Hand the carousel swipe back to its page count, and take the next-page
+    // slot out of reach
+    apply_edit_swipe_policy();
 }
 
 void HomePanel::open_widget_catalog() {

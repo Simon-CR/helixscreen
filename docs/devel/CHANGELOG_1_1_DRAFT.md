@@ -72,6 +72,15 @@ what gets saved.
   drawn; the half-cell boundaries between them appear smaller and fainter only while a widget
   that supports them is selected, and only on the axes it supports. A visible dot is a legal
   drop target.
+- **Edit mode swipes between pages, and widgets move across them** (#1638) - swiping flips
+  pages in edit mode as it does outside it; it pauses while your finger is on the selected
+  widget, while you drag or resize one, and while the widget catalog is open. Drag a widget over
+  the page border, or hold it at the edge of the widget area, and the next page slides in with
+  the widget still under your finger. Drag it past your last page and an empty page slides in:
+  dropping the widget there creates the page and shows it at once. Pressing a widget that is not
+  selected only selects it, so a swipe that starts on a widget still flips the page: press the
+  selected widget again, or hold a widget, to pick it up. The long press that enters edit mode
+  only selects.
 - **The widget catalog opens by category (#1016)** - thirty-seven widgets in one flat scroll had
   stopped being a list you read and become one you hunt through, worst on the 480px panels.
   It now opens on five category rows and dives into one, with the same back button and slide
@@ -115,6 +124,15 @@ what gets saved.
 
 ### Changed
 
+- **Emptying a page in edit mode removes it from your saved layout** (#1638) - moving a page's
+  last widget to another page, or removing it, deletes the empty page. The main page stays, and
+  so does a page still holding widgets that are greyed out because their hardware is not detected.
+- **Pages are added by dragging a widget past your last page** (#1638) - swiping past the last
+  page used to show an empty page with a "+" tile that added a page when tapped, whether or not
+  you were editing. That tile is gone, and swiping stops at your last page. To add a page,
+  long-press the home screen, pick up a widget and drag it past your last page: an empty page
+  slides in, and dropping the widget there creates the page with the widget on it, in place,
+  without the home screen sliding back to the page before it first.
 - **Cancelling a print from a runout dialog asks first** - the guidance dialog cancelled on
   the first tap, while the print-status Stop button has always confirmed. One printer had two
   cancel affordances and only one of them asked, and the unconfirmed one sat in a dialog whose
@@ -219,6 +237,17 @@ what gets saved.
   an out-of-range write.
 - **Two speed and flow code paths were unreachable**, and the overrides now go through one
   clamp rather than three copies of it.
+- **A toast closing interrupted whatever your finger was doing** - when a notification timed out
+  or was dismissed, a drag, a slider or a scroll anywhere else on screen was cancelled mid-way.
+  Only a press on the toast itself is cancelled now.
+- **Dropping a widget on an occupied spot moved the selection** (#1638) - the widget under your
+  finger was selected instead of the one you dragged, which now stays selected.
+- **A one-page home kept swiping after leaving edit mode** (#1638) - after tapping Done on a home
+  with a single page, a sideways swipe slid onto an empty page with a "+" on it. A single page
+  does not swipe now, in edit mode or out of it.
+- **Tapping Done on a later home page slid back to the first page** (#1638) - leaving edit mode
+  with a second or later page showing scrolled the home screen back to its first page. The page
+  you were on stays on screen, and pages change only when you swipe or tap a page arrow.
 
 ### Internal
 

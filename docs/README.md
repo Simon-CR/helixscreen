@@ -55,6 +55,7 @@ Welcome to the HelixScreen documentation. Choose your path:
 | [**Theme System**](devel/THEME_SYSTEM.md) | Reactive theming, color tokens, responsive sizing |
 | [**Theme Contributor Guide**](devel/THEME_CONTRIBUTOR_GUIDE.md) | For people creating themes — JSON schema, palette design, no C++ needed |
 | [**Layout System**](devel/LAYOUT_SYSTEM.md) | Alternative layouts, auto-detection, CLI override, home widget grid |
+| [**Home Edit Mode**](devel/HOME_EDIT_MODE.md) | Rearranging the home grid: grab and click rules, gesture end, cross-page drag, page lifecycle |
 | [**Page Scroll Buttons**](devel/PAGE_SCROLL_BUTTONS.md) | Chevron gutter: auto-attach policy, why it stops at a home widget tile, ESP32-only default |
 | [**Translation System**](devel/TRANSLATION_SYSTEM.md) | i18n: YAML → code generation, runtime lookups |
 | [**Translation Contributor Guide**](devel/TRANSLATION_CONTRIBUTOR_GUIDE.md) | For translators — improve existing languages or add a new one, no code needed |

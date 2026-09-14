@@ -2188,10 +2188,10 @@ nlohmann::json RemoteControlServer::handle_pointer_long_press(const nlohmann::js
 
     // Hold without touching the pointer. The press is already latched in
     // RemotePointer and LVGL keeps sampling it on its own timer, so the gesture
-    // accumulates here exactly as it does under a resting finger. Doing this
-    // server-side is the whole point: a shell doing press / sleep / release spends
-    // the hold with no client connected, and any command that lands in between
-    // resamples the device and can restart the press.
+    // accumulates here exactly as it does under a resting finger, the same as
+    // it does between a shell's press and release. This request holds for a
+    // time derived from the configured long-press time and always ends in its
+    // own release.
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(hold_ms);
     while (std::chrono::steady_clock::now() < deadline) {
         if (!running_.load()) {

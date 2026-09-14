@@ -12,7 +12,15 @@
       <event_cb trigger="clicked" callback="on_home_grid_clicked"/>
       <event_cb trigger="pressing" callback="on_home_grid_pressing"/>
       <event_cb trigger="released" callback="on_home_grid_released"/>
+      <event_cb trigger="press_lost" callback="on_home_grid_press_cancelled"/>
+      <event_cb trigger="indev_reset" callback="on_home_grid_press_cancelled"/>
     </lv_obj>
+    <!-- Ghost page counter: edit mode only, more than one populated page -->
+    <text_small name="page_badge"
+                bind_text="home_page_badge" text="" floating="true" align="top_mid" style_translate_y="#space_xs"
+                style_text_color="#secondary" style_text_opa="112" clickable="false">
+      <bind_flag_if cond="home_edit_mode eq 1 and home_populated_pages gt 1" flag="hidden" invert="true"/>
+    </text_small>
     <!-- Floating E-Stop FAB: visible while printing -->
     <ui_button name="estop_fab"
                width="#button_height" height="#button_height" align="top_right" floating="true" style_radius="9999"

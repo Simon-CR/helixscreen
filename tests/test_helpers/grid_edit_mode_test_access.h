@@ -7,12 +7,14 @@
 
 namespace helix {
 
-/// Reads the snap target GridEditMode computed for the current drag.
-///
-/// snap_preview_col_/row_ are the direct output of handle_drag_move()'s cell
-/// computation and the values handle_drag_end() commits to config, so they are
-/// what a drag test needs to see. Both reset to -1 on drag start and on exit.
+/// Friend access to GridEditMode internals for tests.
 struct GridEditModeTestAccess {
+    /// The snap target GridEditMode computed for the current drag.
+    ///
+    /// snap_preview_col_/row_ are the direct output of handle_drag_move()'s cell
+    /// computation and the values handle_drag_end() commits to config, so they
+    /// are what a drag test needs to see. Both reset to -1 on drag start and on
+    /// exit.
     static int snap_col(const GridEditMode& em) {
         return em.snap_preview_col_;
     }
@@ -20,11 +22,11 @@ struct GridEditModeTestAccess {
         return em.snap_preview_row_;
     }
 
-    /// The lattice overlay, so a test can confirm it is actually rebuilt (a
-    /// new lv_obj_t*, not the one from before the selection changed) and that
-    /// its child count matches the dot lattice the current selection should draw.
-    static lv_obj_t* dots_overlay(const GridEditMode& em) {
-        return em.dots_overlay_;
+    /// The event shield, whose children are the lattice: a test can confirm the
+    /// shield object survives a selection change or a page switch, and that its
+    /// child count matches the lattice the current selection should draw.
+    static lv_obj_t* shield(const GridEditMode& em) {
+        return em.shield_;
     }
 
     /// The pixel-tracking resize overlay a live resize drag creates. Reads as
@@ -54,11 +56,17 @@ struct GridEditModeTestAccess {
     }
 
     /// The guard handle_drag_start() uses to decide whether a gesture began on
-    /// the selected widget. Driving it through a real drag would need an indev
-    /// feeding synthetic points; what the rule asserts is pure geometry.
+    /// the selected widget, as pure geometry. Which point the guard is fed is
+    /// pinned by the [1169] cases, which drive a real indev.
     static bool press_owns_widget(const GridEditMode& em, lv_point_t origin,
                                   const lv_area_t& area) {
         return em.press_owns_widget(origin, area);
+    }
+
+    /// Track geometry of the live grid, the input the cross-page edge zone and
+    /// push speed derive from.
+    static helix::CellMetrics cell_metrics(const GridEditMode& em) {
+        return em.current_metrics();
     }
 
     /// Edge grab band derived from the live grid (fallback with no container).
@@ -69,6 +77,23 @@ struct GridEditModeTestAccess {
     /// The pure cell-size -> band derivation, testable without a grid.
     static int edge_hit_band_for_cell(float cell_px) {
         return GridEditMode::edge_hit_band_for_cell(cell_px);
+    }
+
+    /// Pointer travel from the press origin that an armed press must exceed,
+    /// in px, before it becomes a drag or a resize.
+    static int drag_threshold_px() {
+        return GridEditMode::DRAG_THRESHOLD_PX;
+    }
+
+    /// The container the session is scoped to, or nullptr outside a session.
+    static lv_obj_t* container(const GridEditMode& em) {
+        return em.container_;
+    }
+
+    /// The dragged widget's top-left in screen coordinates, as the drag's snap
+    /// target and the drop's border test read it.
+    static lv_point_t drag_widget_pos(const GridEditMode& em) {
+        return em.drag_widget_pos_;
     }
 
     /// Which drag lifecycle handle_drag_start() committed the gesture to.
@@ -84,7 +109,62 @@ struct GridEditModeTestAccess {
         return em.resize_edge_;
     }
     static bool dragging(const GridEditMode& em) {
-        return em.dragging_;
+        return em.is_dragging();
+    }
+
+    /// A press on the selected widget is armed and has not yet travelled past
+    /// the drag threshold.
+    static bool press_armed(const GridEditMode& em) {
+        return em.press_armed_;
+    }
+
+    /// The selected widget's id as the edit session resolves it. The lattice
+    /// and snap preview derive their granularity from it, so a drag test can
+    /// assert it still resolves after a flip scopes the session to a page
+    /// other than the one the widget's entry lives on.
+    static std::string selected_widget_id(const GridEditMode& em) {
+        return em.selected_widget_id();
+    }
+
+    /// The selection chrome: the outline overlay and its remove and configure
+    /// buttons (the configure button exists only for a widget that offers
+    /// configuration). All three are children of the scoped container.
+    static lv_obj_t* selection_overlay(const GridEditMode& em) {
+        return em.selection_overlay_;
+    }
+    static lv_obj_t* remove_button(const GridEditMode& em) {
+        return em.remove_btn_;
+    }
+    static lv_obj_t* configure_button(const GridEditMode& em) {
+        return em.configure_btn_;
+    }
+
+    /// The live drag's grid-snapped drop preview, or nullptr when none is drawn.
+    static lv_obj_t* snap_preview(const GridEditMode& em) {
+        return em.snap_preview_;
+    }
+
+    /// Whether a release now would create the page past the last one: the
+    /// live drag resolved as its release resolves it.
+    static bool drop_wants_new_page(const GridEditMode& em) {
+        if (!em.dragging_ || !em.selected_) {
+            return false;
+        }
+        const helix::DropResolution drop = helix::resolve_drop(
+            em.drop_input(),
+            em.page_occupancy(em.selected_widget_id(), GridEditMode::Occupants::OnScreen));
+        return drop.outcome == helix::DropOutcome::CreatePage;
+    }
+
+    /// The delete-page button on the shield, or nullptr when none is drawn.
+    static lv_obj_t* delete_page_button(const GridEditMode& em) {
+        return em.delete_page_btn_;
+    }
+
+    /// A committed resize is still easing into its cell: the rebuild that lays
+    /// the resized widget out has not been scheduled yet.
+    static bool snap_animating(const GridEditMode& em) {
+        return em.snap_anim_preview_ != nullptr;
     }
 };
 

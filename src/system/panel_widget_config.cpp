@@ -629,10 +629,68 @@ bool PanelWidgetConfig::is_placed(const std::string& id) const {
         auto it = std::find_if(page.widgets.begin(), page.widgets.end(),
                                [&id](const PanelWidgetEntry& e) { return e.id == id; });
         if (it != page.widgets.end()) {
-            return it->enabled && it->has_grid_position();
+            return it->is_placed();
         }
     }
     return false;
+}
+
+bool PanelWidgetConfig::page_is_populated(size_t page_index) const {
+    const auto& entries = page_entries(page_index);
+    return std::any_of(entries.begin(), entries.end(),
+                       [](const PanelWidgetEntry& e) { return e.is_placed(); });
+}
+
+int PanelWidgetConfig::place_entry(std::string id, size_t page_index, int col, int row, int colspan,
+                                   int rowspan) {
+    if (page_index >= pages_.size()) {
+        spdlog::warn("[PanelWidgetConfig] Cannot place '{}' on page {}: {} pages exist", id,
+                     page_index, pages_.size());
+        return -1;
+    }
+
+    // The first entry named id on the landing page is kept; every other one is
+    // erased and offers its config. On the landing page the erased entries all
+    // come after the kept one, so its index stays valid.
+    int kept = -1;
+    nlohmann::json carried = nlohmann::json::object();
+    for (size_t p = 0; p < pages_.size(); ++p) {
+        auto& widgets = pages_[p].widgets;
+        size_t i = 0;
+        while (i < widgets.size()) {
+            if (widgets[i].id != id) {
+                ++i;
+                continue;
+            }
+            if (p == page_index && kept < 0) {
+                kept = static_cast<int>(i);
+                ++i;
+                continue;
+            }
+            if (carried.empty() && !widgets[i].config.empty()) {
+                carried = widgets[i].config;
+            }
+            spdlog::debug("[PanelWidgetConfig] Removing '{}' from page {}: placed on page {}", id,
+                          p, page_index);
+            widgets.erase(widgets.begin() + static_cast<ptrdiff_t>(i));
+        }
+    }
+
+    auto& landing = pages_[page_index].widgets;
+    if (kept < 0) {
+        landing.push_back({std::move(id), true, std::move(carried), col, row, colspan, rowspan});
+        return static_cast<int>(landing.size() - 1);
+    }
+    auto& entry = landing[static_cast<size_t>(kept)];
+    entry.enabled = true;
+    entry.col = col;
+    entry.row = row;
+    entry.colspan = colspan;
+    entry.rowspan = rowspan;
+    if (entry.config.empty() && !carried.empty()) {
+        entry.config = std::move(carried);
+    }
+    return kept;
 }
 
 nlohmann::json PanelWidgetConfig::get_widget_config(const std::string& id) const {
@@ -660,7 +718,7 @@ void PanelWidgetConfig::set_widget_config(const std::string& id, const nlohmann:
 }
 
 int PanelWidgetConfig::add_page(const std::string& name) {
-    if (pages_.size() >= MAX_PAGES) {
+    if (!can_add_page()) {
         spdlog::warn("[PanelWidgetConfig] Cannot add page: at maximum ({} pages)", MAX_PAGES);
         return -1;
     }
@@ -672,15 +730,16 @@ int PanelWidgetConfig::add_page(const std::string& name) {
 }
 
 bool PanelWidgetConfig::remove_page(size_t page_index) {
+    // A refusal is an expected answer: callers may offer any page that emptied.
     if (pages_.size() <= 1) {
-        spdlog::warn("[PanelWidgetConfig] Cannot remove last page");
+        spdlog::debug("[PanelWidgetConfig] Not removing the last page");
         return false;
     }
     if (page_index >= pages_.size()) {
         return false;
     }
     if (page_index == main_page_index_) {
-        spdlog::warn("[PanelWidgetConfig] Cannot remove main page (index {})", page_index);
+        spdlog::debug("[PanelWidgetConfig] Not removing the main page (index {})", page_index);
         return false;
     }
 
@@ -1153,7 +1212,7 @@ bool PanelWidgetConfig::migrate_stuck_ams_filament_swap() {
             continue;
         if (!ams->enabled || ams->has_grid_position())
             continue;
-        if (!fil->enabled || !fil->has_grid_position())
+        if (!fil->is_placed())
             continue;
 
         spdlog::info("[PanelWidgetConfig] Migrating stuck ams/filament on page '{}': "
