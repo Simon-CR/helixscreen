@@ -11,6 +11,7 @@
 #include "ams_backend_mock.h"
 #include "ams_state.h"
 #include "http_executor.h"
+#include "thumbnail_processor.h"
 
 #include <spdlog/spdlog.h>
 
@@ -372,6 +373,18 @@ static std::vector<MockScenario> build_scenarios() {
                                  std::this_thread::sleep_for(std::chrono::milliseconds(2000));
                              });
                          }});
+
+    // --- thumbnail_busy ---
+    // Same purpose as http_busy above, for ThumbnailProcessor's worker pool
+    // instead of HttpExecutor's. submit_test_task() bypasses PNG decoding
+    // entirely, so the 2s window is exact rather than however long a real
+    // thumbnail happens to take on this machine.
+    scenarios.push_back(
+        {"thumbnail_busy",
+         "Synthetic ThumbnailProcessor busy state (test-only, not a printer condition)", []() {
+             helix::ThumbnailProcessor::instance().submit_test_task(
+                 []() { std::this_thread::sleep_for(std::chrono::milliseconds(2000)); });
+         }});
 
     // --- clog / flow detection -------------------------------------------
     //

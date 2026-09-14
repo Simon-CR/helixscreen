@@ -26,6 +26,7 @@
 #include "screenshot.h"
 #include "subject_debug_registry.h"
 #include "system/diag_upload_gate.h"
+#include "thumbnail_processor.h"
 #include "widget_resolution.h"
 
 // LVGL XML subject lookup
@@ -1395,32 +1396,37 @@ nlohmann::json RemoteControlServer::handle_wait_idle(const nlohmann::json& param
     struct Counters {
         size_t queue = 0;
         size_t http = 0;
+        size_t thumbnail = 0;
         bool idle() const {
-            return queue == 0 && http == 0;
+            return queue == 0 && http == 0 && thumbnail == 0;
         }
     };
 
     auto sample = [this]() -> Counters {
         auto j = execute_on_ui_thread([]() -> nlohmann::json {
-            // Read http before queue (list-init evaluates left-to-right): a
-            // worker decrements its inflight count only after the job body
-            // returns, and any UI work that job posted via queue_update() is
-            // already sitting in pending_ by then. Reading http first means
-            // "http already dropped to 0" implies "its queued follow-up work,
-            // if any, is already visible in queue" — reading queue first
-            // could catch it empty a moment before the worker's own
-            // queue_update() call lands, then see http already decremented
-            // too, missing both signals in one sample.
-            return {{"http", helix::http::HttpExecutor::fast().inflight() +
+            // Read thumbnail and http before queue (list-init evaluates
+            // left-to-right): a worker decrements its own counter only after
+            // the job body returns, and any UI work that job posted via
+            // queue_update() is already sitting in pending_ by then. Reading
+            // the producers first means "producer already dropped to 0"
+            // implies "its queued follow-up work, if any, is already visible
+            // in queue" — reading queue first could catch it empty a moment
+            // before the worker's own queue_update() call lands, then see the
+            // producer already decremented too, missing both signals in one
+            // sample. ThumbnailProcessor::deliver_result() follows the same
+            // queue_update()-before-return shape as HttpExecutor's workers.
+            return {{"thumbnail", helix::ThumbnailProcessor::instance().pending_tasks()},
+                    {"http", helix::http::HttpExecutor::fast().inflight() +
                                  helix::http::HttpExecutor::slow().inflight()},
                     {"queue", helix::ui::UpdateQueue::instance().pending_count()}};
         });
-        return Counters{j["queue"].get<size_t>(), j["http"].get<size_t>()};
+        return Counters{j["queue"].get<size_t>(), j["http"].get<size_t>(),
+                        j["thumbnail"].get<size_t>()};
     };
 
     const auto start = std::chrono::steady_clock::now();
     const auto deadline = start + std::chrono::duration<double>(timeout_s);
-    Counters last{1, 1}; // force at least two samples before declaring idle
+    Counters last{1, 1, 1}; // force at least two samples before declaring idle
 
     while (true) {
         Counters now = sample();
@@ -1435,9 +1441,9 @@ nlohmann::json RemoteControlServer::handle_wait_idle(const nlohmann::json& param
         if (std::chrono::steady_clock::now() >= deadline) {
             // fmt::format, not std::to_string(double) — the latter renders
             // "0.000000s", unreadable in the log someone reads at 2am.
-            throw std::runtime_error(
-                fmt::format("wait_idle timed out after {:.1f}s — update_queue={} http={}",
-                            timeout_s, now.queue, now.http));
+            throw std::runtime_error(fmt::format(
+                "wait_idle timed out after {:.1f}s — update_queue={} http={} thumbnail={}",
+                timeout_s, now.queue, now.http, now.thumbnail));
         }
         last = now;
         std::this_thread::sleep_for(std::chrono::milliseconds(16));
