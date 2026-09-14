@@ -1,0 +1,39 @@
+// Copyright (C) 2025-2026 356C LLC
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+/**
+ * @file chamber_heater_assignment.h
+ * @brief Which chamber heater a printer has, given its chamber-heater assignment
+ */
+
+#pragma once
+
+#include <string>
+
+namespace helix {
+class PrinterDiscovery;
+}
+
+namespace helix::chamber {
+
+/**
+ * @brief The chamber heater this printer has under a chamber-heater assignment.
+ *
+ * The single answer to "does this printer have a chamber heater, and which object
+ * is it". PrinterState publishes the result as the resolved chamber heater name and
+ * the printer_has_chamber_heater capability; every other consumer reads what it
+ * published rather than discovery's own pick.
+ *
+ * A named heater counts only while Klipper reports that object. Presets seed a
+ * model family's heater name before the wizard runs, so a family member without
+ * the heater carries an assignment for hardware it lacks; that name falls back to
+ * discovery's pick and can never make a chamber heater appear on its own.
+ *
+ * @param assignment "auto" takes discovery's pick, "none" disables the chamber
+ *                   heater, any other value names a Klipper object
+ * @param discovery  The printer's discovered hardware
+ * @return Full Klipper object name, or empty when the printer has no chamber heater
+ */
+std::string resolve_heater(const std::string& assignment, const PrinterDiscovery& discovery);
+
+} // namespace helix::chamber

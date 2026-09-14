@@ -173,6 +173,57 @@ TEST_CASE("TemperatureController reports an error when the chamber heater is not
     }
 }
 
+TEST_CASE("TemperatureController refuses a chamber target for a heater Klipper does not report",
+          "[temp_controller][chamber]") {
+    // A model preset names its family's chamber heater before the wizard runs; this
+    // member of the family has only a chamber thermistor.
+    struct AssignmentRestore {
+        ~AssignmentRestore() {
+            helix::SettingsManager::instance().set_chamber_heater_assignment("auto");
+        }
+    } restore;
+    ControllerFixture f;
+    helix::SettingsManager::instance().set_chamber_heater_assignment(
+        "heater_generic chamber_heater");
+    helix::PrinterDiscovery hardware;
+    nlohmann::json objects = {"temperature_sensor chamber_temp", "extruder", "heater_bed"};
+    hardware.parse_objects(objects);
+    f.state.set_hardware(hardware);
+    f.state.set_klippy_state_sync(helix::KlippyState::READY);
+
+    CHECK(f.controller.resolved_name(HeaterType::Chamber).empty());
+
+    const auto sent_chamber_gcode = [&f] {
+        for (const auto& gcode : f.client.gcode_script_history()) {
+            if (gcode.find("chamber_heater") != std::string::npos) {
+                return true;
+            }
+        }
+        return false;
+    };
+
+    SECTION("a chamber target is refused and nothing reaches Klipper") {
+        f.client.clear_gcode_script_history();
+        bool error_fired = false;
+        f.controller.set_target(
+            HeaterType::Chamber, 50.0,
+            helix::SendOptions{.toast = true,
+                               .on_error = [&](const MoonrakerError&) { error_fired = true; }});
+
+        CHECK(error_fired);
+        CHECK(f.client.gcode_script_history().empty());
+    }
+
+    SECTION("a material's chamber temperature is left out of apply_material") {
+        f.client.clear_gcode_script_history();
+        f.controller.apply_material(210.0, 60.0, 50.0, helix::SendOptions{.toast = false});
+
+        // The nozzle send proves apply_material ran.
+        REQUIRE_FALSE(f.client.gcode_script_history().empty());
+        CHECK_FALSE(sent_chamber_gcode());
+    }
+}
+
 // --------------------------------------------------------------------------
 // Swap-preheat guard: keep_previous_hot floors the nozzle target at the hotter
 // of the latched last-nonzero target and the current actual nozzle temp so a
