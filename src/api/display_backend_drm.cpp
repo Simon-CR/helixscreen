@@ -497,6 +497,16 @@ lv_display_t* DisplayBackendDRM::create_display(int width, int height) {
 lv_indev_t* DisplayBackendDRM::create_input_pointer() {
     open_pointer_devices();
 
+    // The calibration wrapper places its affine on a panel-space sample, so it
+    // has to sit beneath the rotation hook. Device opening installs it for a
+    // discovered touch panel; every other path installs it here, a passthrough
+    // until a valid calibration is set.
+    if (pointer_ != nullptr && !calibration_wrapper_installed_) {
+        helix::install_calibration_wrapper(pointer_, calibration_context_, calibration_,
+                                           screen_width_, screen_height_);
+        calibration_wrapper_installed_ = true;
+    }
+
     // LVGL rotates pointer input from the display's rotation, which the plane
     // path clears, so the transform is chained onto each device's own read
     // instead. Every device open_pointer_devices() opens passes through here,
@@ -1519,17 +1529,12 @@ bool DisplayBackendDRM::set_calibration(const helix::TouchCalibration& cal) {
     // and writing cal through a non-null garbage pointer faults.
     calibration_context_.calibration = cal;
 
-    if (pointer_ && !calibration_wrapper_installed_) {
-        // Wrapper not yet installed — install it now
-        helix::install_calibration_wrapper(pointer_, calibration_context_, calibration_,
-                                           screen_width_, screen_height_);
-        calibration_wrapper_installed_ = true;
-        spdlog::info("[DRM Backend] Calibration callback installed at runtime");
-    } else {
-        spdlog::info("[DRM Backend] Calibration updated: a={:.4f} b={:.4f} c={:.4f} d={:.4f} "
-                     "e={:.4f} f={:.4f}",
-                     cal.a, cal.b, cal.c, cal.d, cal.e, cal.f);
-    }
+    // Never installs the wrapper: installing it now would put it above the
+    // rotation hook. create_input_pointer() installs it beneath the hook, and a
+    // calibration set before any pointer exists reaches it through calibration_.
+    spdlog::info("[DRM Backend] Calibration updated: a={:.4f} b={:.4f} c={:.4f} d={:.4f} "
+                 "e={:.4f} f={:.4f}",
+                 cal.a, cal.b, cal.c, cal.d, cal.e, cal.f);
 
     return true;
 }

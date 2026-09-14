@@ -23,6 +23,7 @@
 // Include it even without HELIX_DISPLAY_DRM — the enum and function
 // are deliberately kept hardware-independent for testability.
 #include "drm_rotation_strategy.h"
+#include "touch_calibration.h"
 
 // DRM rotation constants (mirrored from drm_mode.h so tests compile
 // without libdrm headers)
@@ -121,4 +122,48 @@ TEST_CASE("Plane may not own rotation until touch follows it", "[display][drm][r
     // samples itself instead of relying on LVGL's display rotation, which the
     // HARDWARE path clears.
     REQUIRE(plane_may_own_rotation());
+}
+
+TEST_CASE("The plane transform composes over an affine placed in panel space",
+          "[display][drm][rotation][touch-calibration]") {
+    // DisplayBackendDRM chains the plane transform P over the calibration
+    // wrapper, which places a logical-space affine A on the panel-space sample
+    // it is handed. Composed that way a sample lands at A(P(raw)), the frame the
+    // wizard solved A in. Composed the other way A runs on a sample P already
+    // turned, and a translation lands doubled and mirrored.
+    static constexpr int32_t PANEL_W = 800;
+    static constexpr int32_t PANEL_H = 480;
+    static constexpr int PLANE_DEGREES = 180;
+
+    helix::TouchCalibration cal;
+    cal.valid = true;
+    cal.c = 12.0f; // a = e = 1 and b = d = 0: a pure translation
+    cal.f = -7.0f;
+    // The wizard stamps display_rotation_degrees(), which is the plane's angle.
+    cal.capture_rotation = PLANE_DEGREES;
+
+    const helix::Point raw{100, 50};
+
+    const auto plane = [](helix::Point p) {
+        const PointerXY turned =
+            rotate_pointer_for_plane({p.x, p.y}, PLANE_DEGREES, PANEL_W, PANEL_H);
+        return helix::Point{turned.x, turned.y};
+    };
+    const auto calibrate = [&cal](helix::Point p) {
+        return helix::apply_calibration_in_panel_space(cal, p, cal.capture_rotation, PANEL_W,
+                                                       PANEL_H);
+    };
+
+    const helix::Point expected = helix::transform_point(cal, plane(raw), PANEL_W - 1, PANEL_H - 1);
+    // Inside the panel on both axes, so no clamp can hide the translation.
+    REQUIRE(expected.x == 799 - 100 + 12);
+    REQUIRE(expected.y == 479 - 50 - 7);
+
+    const helix::Point hook_over_calibration = plane(calibrate(raw));
+    CHECK(hook_over_calibration.x == expected.x);
+    CHECK(hook_over_calibration.y == expected.y);
+
+    const helix::Point calibration_over_hook = calibrate(plane(raw));
+    CHECK(calibration_over_hook.x == expected.x - 2 * 12);
+    CHECK(calibration_over_hook.y == expected.y + 2 * 7);
 }
