@@ -3588,6 +3588,17 @@ AmsError AmsState::commit_slot_edit(int slot_index, const SlotInfo& original,
         return err;
     }
 
+    // A changed binding leaves the lane's Spoolman record describing a spool
+    // that is no longer on it. That record outranks the user's, so standing it
+    // would keep naming the old spool over an unlink, and would make a relink's
+    // own echo read as someone else's rebind, which erases the stored record the
+    // user just saved. Only after the backend accepted: a refused edit leaves
+    // the old binding in place, which the record still describes truly.
+    if (original.spoolman_id != info.spoolman_id) {
+        helix::ams::drop_lane_source(backend->lane_id(slot_index),
+                                     helix::ams::ObservationSource::Spoolman);
+    }
+
     // Record the user's statement in the lane model, once the backend has
     // accepted it. The lane is the one this edit was written through, so the
     // declaration cannot land on a backend the edit never reached, and a slot
