@@ -785,6 +785,19 @@ write_shim_source() {
     grep -q '/etc/init.d/helix-k2-webserver start' "$CROSSMK"
 }
 
+@test "k2 deploy records the carve-out in the disabled-services ledger" {
+    # A dev-deployed K2 must be uninstallable without orphaning the script
+    # and its boot links: the deploy appends the same sysv-created entry
+    # the installer records, with the same dedupe (prestonbrown/helixscreen#1667).
+    grep -q 'grep -qF "sysv-created:/etc/init.d/helix-k2-webserver"' "$CROSSMK"
+    grep -q 'sysv-created:/etc/init.d/helix-k2-webserver" >> ' "$CROSSMK"
+    grep -q '\.disabled_services' "$CROSSMK"
+}
+
+@test "k2 deploy verifies the carve-out's K01 boot link like the installer" {
+    grep -q 'readlink /etc/rc.d/K01helix-k2-webserver' "$CROSSMK"
+}
+
 # --- uninstall ---
 
 @test "k2 uninstall: sysv-created removal disables an rc.common script before rm" {
