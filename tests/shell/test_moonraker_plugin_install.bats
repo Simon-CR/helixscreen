@@ -307,3 +307,61 @@ setup_instrumented_home() {
     contains "failed to strip" "$output"
     [ ! -e "$home/moonraker/moonraker/components/helix_print.py" ]
 }
+
+@test "auto_uninstall reports a clean exit even when moonraker never comes back" {
+    # curl always failing means wait_for_moonraker's own 30-attempt loop runs
+    # to completion; sleep is stubbed to a no-op so that costs no real time.
+    # A slow or unreachable Moonraker restart must not turn a completed,
+    # clean uninstall into a reported failure.
+    local home="$BATS_TEST_TMPDIR/home"
+    setup_instrumented_home "$home"
+    mock_command_script "curl" 'exit 1'
+    mock_command_script "sleep" 'exit 0'
+    local expected="$BATS_TEST_TMPDIR/expected_printer.cfg"
+    write_original_printer_cfg "$expected"
+
+    run env HOME="$home" sh "$SCRIPT" --uninstall-auto
+
+    [ "$status" -eq 0 ]
+    contains "did not come back up in time" "$output"
+    contains "plugin removal itself completed" "$output"
+    local c="$home/printer_data/config"
+    diff "$expected" "$c/printer.cfg"
+    [ ! -e "$home/moonraker/moonraker/components/helix_print.py" ]
+}
+
+@test "auto_uninstall's needs-attention outcome survives an unreachable moonraker" {
+    local home="$BATS_TEST_TMPDIR/home"
+    setup_instrumented_home "$home"
+    local c="$home/printer_data/config"
+    printf '[gcode_macro PRINT_START]\ngcode:\n    G28\n    # <<< HELIX_TRACKING v2 >>>\n    HELIX_PHASE_HOMING\n' \
+        > "$c/printer.cfg"
+    mock_command_script "curl" 'exit 1'
+    mock_command_script "sleep" 'exit 0'
+
+    run env HOME="$home" sh "$SCRIPT" --uninstall-auto
+
+    [ "$status" -eq 2 ]
+    contains "next step" "$output"
+    contains "did not come back up in time" "$output"
+    [ ! -e "$home/moonraker/moonraker/components/helix_print.py" ]
+}
+
+@test "auto_uninstall reports needs-attention when moonraker.conf cannot be backed up" {
+    [ "$(id -u)" -ne 0 ] || skip "running as root ignores the read-only mode"
+    local home="$BATS_TEST_TMPDIR/home"
+    setup_instrumented_home "$home"
+    local c="$home/printer_data/config"
+    # A clean (non-instrumented) printer.cfg so the phase-tracking strip has
+    # nothing to write and exits 0 on its own - isolating this test to the
+    # moonraker.conf backup/edit step.
+    write_original_printer_cfg "$c/printer.cfg"
+    chmod 0555 "$c"
+
+    run env HOME="$home" sh "$SCRIPT" --uninstall-auto
+    chmod 0755 "$c"  # restore so bats can clean up the tmpdir
+
+    [ "$status" -eq 2 ]
+    contains "Could not back up moonraker.conf" "$output"
+    [ ! -e "$home/moonraker/moonraker/components/helix_print.py" ]
+}

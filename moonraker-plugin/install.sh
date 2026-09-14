@@ -301,32 +301,44 @@ auto_uninstall() {
         strip_phase_tracking_instrumentation "$config_dir" || exit_status=$EXIT_UNINSTALL_NEEDS_ATTENTION
     fi
 
-    # Remove config section if possible
+    # Remove config section if possible. The plugin itself is already gone
+    # at this point, so a failure backing up or editing moonraker.conf here
+    # is "needs attention", not a failed uninstall, and must not trip set -e
+    # and skip the rest of this function.
     if [ -n "$config_dir" ] && [ -f "$config_dir/moonraker.conf" ]; then
         moonraker_conf="$config_dir/moonraker.conf"
 
         if grep -q '^\[helix_print\]' "$moonraker_conf"; then
-            # Create backup before modifying config
             backup_file="${moonraker_conf}.bak.$(date +%Y%m%d_%H%M%S)"
-            cp "$moonraker_conf" "$backup_file"
-            info "Created backup: $backup_file"
+            if cp "$moonraker_conf" "$backup_file"; then
+                info "Created backup: $backup_file"
 
-            info "Removing [helix_print] section from moonraker.conf"
-            # Use awk for cross-platform config section removal
-            # This correctly handles helix_print as the last section in the file
-            awk '
-                /^\[helix_print\]/ { skip = 1; next }
-                /^\[/ { skip = 0 }
-                !skip { print }
-            ' "$moonraker_conf" > "$moonraker_conf.tmp" && mv "$moonraker_conf.tmp" "$moonraker_conf"
+                info "Removing [helix_print] section from moonraker.conf"
+                # Use awk for cross-platform config section removal
+                # This correctly handles helix_print as the last section in the file
+                if ! (awk '
+                    /^\[helix_print\]/ { skip = 1; next }
+                    /^\[/ { skip = 0 }
+                    !skip { print }
+                ' "$moonraker_conf" > "$moonraker_conf.tmp" && mv "$moonraker_conf.tmp" "$moonraker_conf"); then
+                    warn "Could not remove [helix_print] from moonraker.conf - see $backup_file"
+                    exit_status=$EXIT_UNINSTALL_NEEDS_ATTENTION
+                fi
+            else
+                warn "Could not back up moonraker.conf - leaving the [helix_print] section in place"
+                exit_status=$EXIT_UNINSTALL_NEEDS_ATTENTION
+            fi
         fi
     fi
 
     # Restart Moonraker
     restart_moonraker
 
-    # Wait for Moonraker to come back up
-    wait_for_moonraker
+    # Wait for Moonraker to come back up. A slow or unreachable restart here
+    # must not turn a completed uninstall into a reported failure: the
+    # plugin is already gone, and this timeout is about restart timing, not
+    # the uninstall's own outcome.
+    wait_for_moonraker || warn "Moonraker did not come back up in time, but the plugin removal itself completed"
 
     printf '\n'
     if [ "$exit_status" -eq "$EXIT_UNINSTALL_OK" ]; then
