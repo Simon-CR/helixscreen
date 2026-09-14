@@ -104,9 +104,9 @@ constexpr auto FIELD_ROSTER = std::make_tuple(
     // auto-highlights a product and Save copies whatever is highlighted, so
     // both arrive on commits no person touched them in.
     //
-    // Neither needs an authorship bit: firmware has no concept of a catalog
-    // product, so a value in either can only be a user pick and the record
-    // path files it as one outright.
+    // Neither needs an authorship bit: neither firmware nor Spoolman has the
+    // concept of a catalog product, so a value in either can only be a user
+    // pick and the record path files it as one outright, linked or not.
     field<FieldKind::Text>("catalog_id", nullptr, &FilamentSlotOverride::catalog_id,
                            &Observation::catalog_id),
     field<FieldKind::Text>("product_name", nullptr, &FilamentSlotOverride::product_name,
@@ -225,6 +225,20 @@ constexpr const char* declared_key_name(LegacyLockKeys keys) {
     return keys == LegacyLockKeys::LocalCache ? "declared" : "helix_declared";
 }
 
+/// File a stored record's catalog pick on @p user, answering whether the
+/// record held one. Neither firmware nor Spoolman has the concept of a catalog
+/// product, so a value in either field is a person's pick whatever the lock
+/// keys or the binding say, and the editor reopens on the exact product from it.
+bool file_catalog_pick(const FilamentSlotOverride& record, Observation& user) {
+    if (!record.catalog_id.empty()) {
+        user.catalog_id = record.catalog_id;
+    }
+    if (!record.product_name.empty()) {
+        user.product_name = record.product_name;
+    }
+    return !record.catalog_id.empty() || !record.product_name.empty();
+}
+
 } // namespace
 
 Observation user_edit_observation(const SlotInfo& original, const SlotInfo& edited) {
@@ -338,16 +352,24 @@ LaneSources sources_from_record(const FilamentSlotOverride& record, const nlohma
     }
 
     if (record.spoolman_id > 0) {
-        // The rest of a linked lane's identity is wholly the server's; its
-        // lock flags record that a colour rode in on the binding, not that a
-        // person chose it, so they are not consulted here either. The weight
-        // fields are stripped back off: they were already filed above, and
-        // declared_from_record's uniform per-field walk would otherwise
-        // refile them under Spoolman too.
+        // A linked lane's identity is the server's; its lock flags record that
+        // a colour rode in on the binding, not that a person chose it, so they
+        // are not consulted here either. declared_from_record walks every
+        // field, so two kinds are stripped back off the server's record: the
+        // weights, already filed above, and the catalog pick, which a spool
+        // record cannot state. A fetch replaces the server's record whole, so
+        // the pick is filed as the user's or it would not survive the first.
         Observation server = declared_from_record(record, wire, keys);
         server.remaining_weight_g.reset();
         server.total_weight_g.reset();
+        server.catalog_id.reset();
+        server.product_name.reset();
         sources.apply(server);
+
+        Observation user(ObservationSource::LocalUser);
+        if (file_catalog_pick(record, user)) {
+            sources.apply(user);
+        }
         return sources;
     }
 
@@ -435,15 +457,7 @@ LaneSources sources_from_record(const FilamentSlotOverride& record, const nlohma
         }
     });
 
-    // Firmware has no concept of a catalog product, so a value here is always
-    // a user pick regardless of what the lock keys say.
-    if (!record.catalog_id.empty() || !record.product_name.empty()) {
-        if (!record.catalog_id.empty()) {
-            user.catalog_id = record.catalog_id;
-        }
-        if (!record.product_name.empty()) {
-            user.product_name = record.product_name;
-        }
+    if (file_catalog_pick(record, user)) {
         have_user = true;
     }
 

@@ -14,6 +14,7 @@
 #include "ui_update_queue.h"
 
 #include "../test_helpers/registered_backend.h"
+#include "../test_helpers/seeded_override.h"
 #include "../test_helpers/update_queue_test_access.h"
 #include "../ui_test_utils.h"
 #include "ams_backend_mock.h"
@@ -660,6 +661,36 @@ TEST_CASE_METHOD(SpoolmanLaneFixture, "SpoolmanManager: the weights a fetch file
         CHECK_FALSE(record->total_weight_g.has_value());
         CHECK_FALSE(record->remaining_weight_g.has_value());
     }
+}
+
+TEST_CASE_METHOD(SpoolmanLaneFixture,
+                 "SpoolmanManager: a linked lane's catalog pick survives a fetch of its spool",
+                 "[spoolman][lane][1653]") {
+    helix::test::RegisteredBackend<AmsBackendMock> backend(2);
+    link(*backend, 0, 1);
+    state_polymaker_pla(server_spool(1));
+
+    // What a backend's start reloads: the identity the spool had when it was
+    // last fetched, beside the product the person picked for it.
+    helix::ams::FilamentSlotOverride stored;
+    stored.spoolman_id = 1;
+    stored.brand = "Stored Brand";
+    stored.material = "PETG";
+    stored.color_rgb = 0xFF0000;
+    stored.color_set = true;
+    stored.catalog_id = "polymaker-polyterra-pla-charcoal";
+    stored.product_name = "PolyTerra PLA Charcoal";
+    helix::test::file_override_as_lane_records(*backend, 0, stored);
+
+    SpoolmanManager::file_spool_on_lane(backend.lane(0), server_spool(1),
+                                        backend->tracks_weight_locally());
+
+    const auto shown = helix::ams::resolve(helix::ams::lane_sources(backend.lane(0)));
+    CHECK(shown.catalog_id == "polymaker-polyterra-pla-charcoal");
+    CHECK(shown.product_name == "PolyTerra PLA Charcoal");
+    CHECK(shown.brand == "Polymaker");
+    CHECK(shown.material == "PLA");
+    CHECK(shown.color_rgb == 0x1A1A2EU);
 }
 
 TEST_CASE_METHOD(SpoolmanLaneFixture,

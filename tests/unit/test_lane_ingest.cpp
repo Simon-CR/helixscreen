@@ -765,6 +765,30 @@ TEST_CASE("A linked record's weight still migrates to the meter, not to Spoolman
     CHECK_FALSE(sources.spoolman->remaining_weight_g.has_value());
 }
 
+TEST_CASE("A linked record's catalog pick is the user's, not the server's", "[lane][ingest]") {
+    const nlohmann::json wire = {{"lane", "0"},
+                                 {"spool_id", 7},
+                                 {"color", "#1A1A2E"},
+                                 {"vendor", "Polymaker"},
+                                 {"helix_catalog_id", "polymaker-polyterra-pla-charcoal"},
+                                 {"helix_product_name", "PolyTerra PLA Charcoal"}};
+    const auto rec = record_from(wire);
+
+    const auto sources = sources_from_record(rec, wire);
+
+    // Spoolman has no catalog product to state, and a fetch replaces the
+    // server's record whole, so a pick filed there is gone after the first one.
+    REQUIRE(sources.spoolman.has_value());
+    CHECK(sources.spoolman->brand == "Polymaker");
+    CHECK(sources.spoolman->color_rgb == 0x1A1A2EU);
+    CHECK_FALSE(sources.spoolman->catalog_id.has_value());
+    CHECK_FALSE(sources.spoolman->product_name.has_value());
+
+    REQUIRE(sources.local_user.has_value());
+    CHECK(sources.local_user->catalog_id == "polymaker-polyterra-pla-charcoal");
+    CHECK(sources.local_user->product_name == "PolyTerra PLA Charcoal");
+}
+
 TEST_CASE("Nothing a stored record migrates is ever evidence that a lane is occupied",
           "[lane][ingest]") {
     // The scenario the split exists for: an ejected lane whose stored record
