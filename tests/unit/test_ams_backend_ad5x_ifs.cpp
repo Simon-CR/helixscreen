@@ -5414,7 +5414,13 @@ TEST_CASE("AD5X IFS set_slot_info(persist=true) with pre-existing override repla
     edit.spoolman_id = 99;
     edit.material = "PLA";
     edit.color_rgb = 0xAABBCC;
-    helix::test::spool_states(backend, 0, edit);
+    SpoolInfo spool;
+    spool.id = 99;
+    spool.vendor = "NewBrand";
+    spool.filament_name = "NewSpool";
+    spool.material = "PLA";
+    spool.color_hex = "AABBCC";
+    helix::test::spool_states(backend, 0, spool);
     helix::test::edit_slot_as_user(backend, 0, edit);
 
     auto info = backend.get_slot_info(0);

@@ -2932,7 +2932,15 @@ void link_lane_four_to_spool_137(AmsBackendCfs& backend) {
     edit.spoolman_id = 137;
     edit.spoolman_vendor_id = 21;
     helix::test::edit_slot_as_user(backend, 3, edit);
-    helix::test::spool_states(backend, 3, edit);
+
+    SpoolInfo spool;
+    spool.id = 137;
+    spool.vendor_id = 21;
+    spool.vendor = "Elegoo";
+    spool.filament_name = "Black ASA";
+    spool.material = "ASA-CF";
+    spool.color_hex = "1A1A1A";
+    helix::test::spool_states(backend, 3, spool);
 }
 
 } // namespace

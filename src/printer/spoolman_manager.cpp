@@ -23,6 +23,7 @@
 #include "ams_state.h"
 #include "app_globals.h"
 #include "i_moonraker_api.h"
+#include "lane_source_store.h"
 #include "lvgl/src/others/translation/lv_translation.h"
 #include "observer_factory.h"
 #include "printer_state.h"
@@ -59,6 +60,33 @@ helix::SpoolIdentity identity_from_spool(const SpoolInfo& spool) {
     identity.filament_id = spool.filament_id;
     identity.vendor_id = spool.vendor_id;
     return identity;
+}
+
+/// A slot's backend and its current state, taken when the slot still names the
+/// spool a fetch asked about. An answer describes the binding its request was
+/// made for, so a slot re-bound while the request was in flight takes nothing
+/// from it.
+struct BoundSlot {
+    AmsBackend* owner;
+    SlotInfo slot;
+};
+
+std::optional<BoundSlot> slot_still_bound_to(int backend_index, int slot_index, int spoolman_id) {
+    // The backend this slot belongs to - NOT get_backend(0). A slot index is
+    // meaningful only within its own backend, so writing a second AMS's answer
+    // onto the primary's same-numbered bay corrupts both.
+    AmsBackend* owner = AmsState::instance().get_backend(backend_index);
+    if (!owner) {
+        return std::nullopt;
+    }
+    SlotInfo slot = owner->get_slot_info(slot_index);
+    if (slot.spoolman_id != spoolman_id) {
+        spdlog::debug("[SpoolmanManager] Slot {} spoolman_id changed ({} -> {}), skipping stale "
+                      "Spoolman answer",
+                      slot_index, spoolman_id, slot.spoolman_id);
+        return std::nullopt;
+    }
+    return BoundSlot{owner, std::move(slot)};
 }
 
 } // namespace
@@ -313,10 +341,25 @@ void SpoolmanManager::refresh_spoolman_weights() {
                             spdlog::warn("[SpoolmanManager] Spoolman spool {} not found",
                                          spoolman_id);
                             // "No such spool" is an answer, not a transport
-                            // failure — the circuit breaker must not see it, but
-                            // the id must stop being polled.
-                            helix::ui::queue_update(
-                                [spoolman_id]() { note_identity_unresolvable(spoolman_id); });
+                            // failure: the circuit breaker must not see it, but
+                            // the id must stop being polled. It also proves the
+                            // lane's Spoolman record describes a spool that does
+                            // not exist, so that record goes. An unreachable
+                            // server proves nothing about the record and takes
+                            // the error path instead, leaving it standing.
+                            helix::ui::queue_update([spoolman_id, slot_index, backend_index]() {
+                                note_identity_unresolvable(spoolman_id);
+                                if (s_shutdown_flag.load(std::memory_order_acquire)) {
+                                    return;
+                                }
+                                const auto bound =
+                                    slot_still_bound_to(backend_index, slot_index, spoolman_id);
+                                if (bound) {
+                                    helix::ams::drop_lane_source(
+                                        bound->owner->lane_id(slot_index),
+                                        helix::ams::ObservationSource::Spoolman);
+                                }
+                            });
                             return;
                         }
 
@@ -330,10 +373,10 @@ void SpoolmanManager::refresh_spoolman_weights() {
                             float remaining_weight_g;
                             float total_weight_g;
                             bool local_weight; // Backend tracks remaining weight locally
-                            // Whole record, carried only so the identity side
-                            // channel can be filled on the UI thread. NOTHING
-                            // from here is written onto the slot — see the
-                            // persist=false note below.
+                            // Whole record, carried so the identity cache and
+                            // the lane's Spoolman record are filled on the UI
+                            // thread. Nothing from it is written onto the slot:
+                            // see the persist=false note below.
                             SpoolInfo spool;
                         };
 
@@ -385,24 +428,22 @@ void SpoolmanManager::refresh_spoolman_weights() {
                                 // is every poll once a spool settles (#1264).
                                 ams.bump_slots_version();
                             }
-                            // The backend this slot belongs to - NOT get_backend(0).
-                            // A slot index is meaningful only within its own
-                            // backend, so writing a second AMS's weight onto the
-                            // primary's same-numbered bay corrupts both.
-                            auto* owner = ams.get_backend(d->backend_index);
-                            if (!owner) {
+                            const auto bound = slot_still_bound_to(d->backend_index, d->slot_index,
+                                                                   d->expected_spoolman_id);
+                            if (!bound) {
                                 return;
                             }
+                            AmsBackend* owner = bound->owner;
+                            const SlotInfo& slot = bound->slot;
 
-                            // Get current slot info and verify it wasn't reassigned
-                            SlotInfo slot = owner->get_slot_info(d->slot_index);
-                            if (slot.spoolman_id != d->expected_spoolman_id) {
-                                spdlog::debug(
-                                    "[SpoolmanManager] Slot {} spoolman_id changed ({} -> {}), "
-                                    "skipping stale weight update",
-                                    d->slot_index, d->expected_spoolman_id, slot.spoolman_id);
-                                return;
-                            }
+                            // Every answer reaches the lane, not only one that
+                            // carries a new identity: a spool edited on the
+                            // server keeps its id, so cache_identity() has
+                            // already seen it. Ahead of the weights-unchanged
+                            // return for the same reason. Refiling an unchanged
+                            // record is harmless, since it replaces the old one.
+                            file_spool_on_lane(owner->lane_id(d->slot_index), d->spool,
+                                               d->local_weight);
 
                             // When backend tracks weight locally, only update total_weight
                             // (initial weight from Spoolman). Preserve the backend's
@@ -559,6 +600,21 @@ void SpoolmanManager::refresh_spoolman_weights() {
         spdlog::trace("[SpoolmanManager] Refreshing Spoolman weights for {} linked slots",
                       linked_count);
     }
+}
+
+void SpoolmanManager::file_spool_on_lane(helix::ams::LaneId lane, const SpoolInfo& spool,
+                                         bool backend_tracks_weight_locally) {
+    helix::ams::Observation stated = helix::ams::spool_identity_observation(spool);
+    // Spoolman computes the remaining weight from the initial one and serves
+    // both as null when it has none, which the parser reads as zero. Zero here
+    // is therefore no weight at all, and filing it would outrank the meter.
+    if (spool.initial_weight_g > 0) {
+        stated.total_weight_g = static_cast<float>(spool.initial_weight_g);
+        if (!backend_tracks_weight_locally) {
+            stated.remaining_weight_g = static_cast<float>(spool.remaining_weight_g);
+        }
+    }
+    helix::ams::ingest(lane, stated);
 }
 
 // ============================================================================

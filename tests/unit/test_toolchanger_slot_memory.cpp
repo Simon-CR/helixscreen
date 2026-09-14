@@ -140,13 +140,26 @@ helix::SlotInfo blue_petg() {
     return info;
 }
 
+/// What Spoolman says spool 42, the one blue_petg() links, is.
+SpoolInfo blue_petg_spool() {
+    SpoolInfo spool;
+    spool.id = 42;
+    spool.vendor = "Polymaker";
+    spool.filament_name = "Blue PETG 1kg";
+    spool.material = "PETG";
+    spool.color_hex = "1E5AA8";
+    spool.remaining_weight_g = 730;
+    spool.initial_weight_g = 1000;
+    return spool;
+}
+
 } // namespace
 
 TEST_CASE("A tool's spool metadata survives rediscovery", "[ams][toolchanger][slot_memory]") {
     helix::test::RegisteredBackend<SlotMemoryHelper> h_reg(4);
     SlotMemoryHelper& h = *h_reg;
     helix::test::edit_slot_as_user(h, 1, blue_petg());
-    helix::test::spool_states(h, 1, blue_petg());
+    helix::test::spool_states(h, 1, blue_petg_spool());
 
     // The reconnect path: AmsState calls set_discovered_tools() again, which
     // re-runs initialize_tools() and resets every slot to default grey.
@@ -166,7 +179,7 @@ TEST_CASE("Rediscovery does not leak one tool's spool onto another",
     helix::test::RegisteredBackend<SlotMemoryHelper> h_reg(4);
     SlotMemoryHelper& h = *h_reg;
     helix::test::edit_slot_as_user(h, 1, blue_petg());
-    helix::test::spool_states(h, 1, blue_petg());
+    helix::test::spool_states(h, 1, blue_petg_spool());
     h.set_tools(4);
 
     // Slot 0 was never edited: it must still read the untouched default, not
@@ -180,7 +193,7 @@ TEST_CASE("A status frame does not undo the user's edit", "[ams][toolchanger][sl
     helix::test::RegisteredBackend<SlotMemoryHelper> h_reg(4);
     SlotMemoryHelper& h = *h_reg;
     helix::test::edit_slot_as_user(h, 2, blue_petg());
-    helix::test::spool_states(h, 2, blue_petg());
+    helix::test::spool_states(h, 2, blue_petg_spool());
 
     // refresh_slot_statuses_locked() runs inside the parse and rewrites slot
     // status; the override has to be re-layered after it, not before.
@@ -216,7 +229,7 @@ TEST_CASE("An edit that also remaps a tool keeps both", "[ams][toolchanger][slot
     info.mapped_tool = 3; // slot 1 should answer to T3
 
     helix::test::edit_slot_as_user(h, 1, info);
-    helix::test::spool_states(h, 1, info);
+    helix::test::spool_states(h, 1, blue_petg_spool());
 
     REQUIRE(h.sent().size() == 1);
     CHECK(h.sent()[0] == "ASSIGN_TOOL TOOL=T1 N=3");
@@ -288,7 +301,7 @@ TEST_CASE("Tool-changer slot metadata round-trips through Moonraker",
         CHECK(helix::ToolChangerTestAccess::store_namespace(h) == "lane_data");
 
         helix::test::edit_slot_as_user(h, 1, blue_petg());
-        helix::test::spool_states(h, 1, blue_petg());
+        helix::test::spool_states(h, 1, blue_petg_spool());
     }
 
     // --- what actually landed in the DB -------------------------------------

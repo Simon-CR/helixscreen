@@ -11,6 +11,8 @@
 #include "lane_legacy_migration.h"
 #include "lane_source_store.h"
 #include "lane_translation.h"
+#include "spoolman_manager.h"
+#include "spoolman_types.h"
 
 #include "hv/json.hpp"
 
@@ -74,38 +76,18 @@ inline void edit_slot_as_user(AmsBackend& backend, int slot_index, const helix::
                                  helix::ams::user_edit_observation(original, info));
 }
 
-/// The identity a linked spool carries, as Spoolman states it.
+/// File what Spoolman says a linked spool is, the way the application does.
 ///
 /// Linking is a statement about the binding, so user_edit_observation files the
 /// id alone; the brand, colour and material that rode in with it are the
-/// server's word, and in the application SpoolmanManager files them. A fixture
-/// that links a spool without this has a lane naming an id nothing describes.
-inline void spool_states(const AmsBackend& backend, int slot_index, const helix::SlotInfo& info) {
-    helix::ams::Observation server(helix::ams::ObservationSource::Spoolman);
-    if (info.spoolman_id > 0) {
-        server.spoolman_id = info.spoolman_id;
-    }
-    if (!info.brand.empty()) {
-        server.brand = info.brand;
-    }
-    if (!info.spool_name.empty()) {
-        server.spool_name = info.spool_name;
-    }
-    if (!info.material.empty()) {
-        server.material = info.material;
-    }
-    if (helix::ams::is_declarable_color(info.color_rgb)) {
-        server.color_rgb = info.color_rgb;
-    }
-    // Spoolman owns a linked spool's consumption, so the weights are its word
-    // too and Moonraker decrements them there.
-    if (info.remaining_weight_g >= 0.0F) {
-        server.remaining_weight_g = info.remaining_weight_g;
-    }
-    if (info.total_weight_g >= 0.0F) {
-        server.total_weight_g = info.total_weight_g;
-    }
-    helix::ams::ingest(backend.lane_id(slot_index), server);
+/// server's word, and SpoolmanManager files them on every fetch of the spool.
+/// This goes through that same SpoolmanManager::file_spool_on_lane(), for a
+/// backend test with no manager and no server behind it, so a fixture files
+/// exactly the fields production does. A fixture that links a spool without
+/// this has a lane naming an id nothing describes.
+inline void spool_states(const AmsBackend& backend, int slot_index, const SpoolInfo& spool) {
+    SpoolmanManager::file_spool_on_lane(backend.lane_id(slot_index), spool,
+                                        backend.tracks_weight_locally());
 }
 
 } // namespace helix::test

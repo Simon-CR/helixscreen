@@ -1418,7 +1418,13 @@ TEST_CASE_METHOD(SnapmakerFixture,
     // name, material and colour that ride in with a link need the source that
     // actually owns them.
     helix::test::edit_slot_as_user(backend, 0, edit);
-    helix::test::spool_states(backend, 0, edit);
+    SpoolInfo spool;
+    spool.id = 42;
+    spool.vendor = "Polymaker";
+    spool.filament_name = "PolyLite PLA Orange";
+    spool.material = "PLA";
+    spool.color_hex = "FF5500";
+    helix::test::spool_states(backend, 0, spool);
 
     // Override is staged in-memory AND written to the Moonraker DB.
     auto staged = SnapmakerTestAccess::get_override(backend, 0);

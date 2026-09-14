@@ -372,7 +372,8 @@ Spoolman integration is deliberately *not* a backend. `SpoolmanManager` ([`inclu
 - periodic weight polling via `lv_timer`, with refcounted start/stop;
 - a circuit breaker that suppresses error toasts while Spoolman is unreachable;
 - a Spoolman availability observer that auto-stops polling when the service disappears;
-- a transient identity cache (with negative caching for deleted spools) feeding the filament display-name resolver.
+- a transient identity cache (with negative caching for deleted spools) feeding the filament display-name resolver;
+- each fetched spool record, filed as its lane's `Spoolman` record through `ingest()` (`SpoolmanManager::file_spool_on_lane`), so an edit made on the Spoolman server reaches the lane. A "not found" answer drops that record; an unreachable server leaves it standing.
 
 Its weight refresh writes back into the primary backend's slots with `set_slot_info(..., persist=false)` ([`src/printer/spoolman_manager.cpp#refresh_spoolman_weights`](../../../src/printer/spoolman_manager.cpp#L426)-434) — `persist=true` would emit G-code, the firmware would report the new weight, and the poll would loop forever. All Spoolman RPC goes through `server.spoolman.proxy` via the `MoonrakerSpoolmanAPI` sub-API (chapter 04); the spool browser/wizard UI ([`src/ui/ui_panel_spoolman.cpp`](../../../src/ui/ui_panel_spoolman.cpp), [`src/ui/ui_spool_wizard.cpp`](../../../src/ui/ui_spool_wizard.cpp)) talks to that API, not to `AmsState`.
 

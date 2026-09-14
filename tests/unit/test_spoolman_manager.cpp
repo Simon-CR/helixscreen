@@ -13,11 +13,20 @@
 #include "ui_spoolman_overlay.h"
 #include "ui_update_queue.h"
 
+#include "../test_helpers/registered_backend.h"
 #include "../test_helpers/update_queue_test_access.h"
 #include "../ui_test_utils.h"
+#include "ams_backend_mock.h"
+#include "ams_state.h"
 #include "app_globals.h"
+#include "lane_resolver.h"
+#include "lane_source_store.h"
+#include "moonraker_api_mock.h"
+#include "moonraker_client_mock.h"
 #include "printer_state.h"
 #include "spoolman_manager.h"
+
+#include <algorithm>
 
 #include "../catch_amalgamated.hpp"
 
@@ -77,6 +86,22 @@ class SpoolmanManagerTestAccess {
         if (open) {
             m.cb_tripped_at_ms_ = lv_tick_get();
         }
+    }
+
+    /// refresh_spoolman_weights() debounces itself; a case that fetches twice
+    /// has to step past it.
+    static void clear_debounce(SpoolmanManager& m) {
+        std::lock_guard<std::recursive_mutex> lock(m.mutex_);
+        m.last_refresh_ms_ = 0;
+    }
+
+    /// An id another case left unresolvable is never fetched, and a shutdown
+    /// flag another file's teardown latched no-ops every queued answer.
+    static void reset_identity(SpoolmanManager& m) {
+        SpoolmanManager::s_shutdown_flag.store(false, std::memory_order_release);
+        std::lock_guard<std::recursive_mutex> lock(m.mutex_);
+        m.identity_cache_.clear();
+        m.identity_unresolvable_.clear();
     }
 };
 
@@ -434,4 +459,288 @@ TEST_CASE_METHOD(SpoolmanFixture,
     REQUIRE(TA::poll_refcount(mgr) == 1);
     overlay.on_deactivate(DeactivateReason::NavigateAway);
     REQUIRE(TA::poll_refcount(mgr) == 1);
+}
+
+// ============================================================================
+// The lane's Spoolman record follows every fetch (prestonbrown/helixscreen#1653)
+// ============================================================================
+
+using helix::AmsBackend;
+using helix::AmsBackendMock;
+using helix::AmsState;
+using helix::SlotInfo;
+
+namespace {
+
+/// A backend that keeps its own remaining weight, the way AFC reads one off
+/// its status payload.
+class LocalWeightBackend : public AmsBackendMock {
+  public:
+    using AmsBackendMock::AmsBackendMock;
+
+    [[nodiscard]] bool tracks_weight_locally() const override {
+        return true;
+    }
+};
+
+} // namespace
+
+/// A mock Moonraker behind the manager, and an identity cache no earlier case
+/// has touched.
+struct SpoolmanLaneFixture : SpoolmanFixture {
+    MoonrakerClientMock client;
+    MoonrakerAPIMock api;
+
+    SpoolmanLaneFixture() : api(client, get_printer_state()) {
+        // A fetch's answer bumps AmsState's slots_version, which needs the
+        // subject to exist.
+        AmsState::instance().init_subjects(true);
+        TA::reset_identity(SpoolmanManager::instance());
+        set_spoolman_available(true);
+        SpoolmanManager::instance().set_api(&api);
+    }
+
+    ~SpoolmanLaneFixture() {
+        SpoolmanManager::instance().set_api(nullptr);
+        drain();
+        TA::reset_identity(SpoolmanManager::instance());
+    }
+
+    /// What the server holds for spool @p id. A case states every field it
+    /// asserts on here rather than resting on the mock's seed inventory.
+    SpoolInfo& server_spool(int id) {
+        auto& spools = api.spoolman_mock().get_mock_spools();
+        auto it = std::find_if(spools.begin(), spools.end(),
+                               [id](const SpoolInfo& s) { return s.id == id; });
+        REQUIRE(it != spools.end());
+        return *it;
+    }
+
+    void remove_server_spool(int id) {
+        auto& spools = api.spoolman_mock().get_mock_spools();
+        spools.erase(std::remove_if(spools.begin(), spools.end(),
+                                    [id](const SpoolInfo& s) { return s.id == id; }),
+                     spools.end());
+    }
+
+    /// Fetch every linked slot. The mock answers inside the call, and the
+    /// answer reaches a lane only when the update queue drains.
+    static void fetch() {
+        TA::clear_debounce(SpoolmanManager::instance());
+        SpoolmanManager::instance().refresh_spoolman_weights();
+    }
+
+    static void drain() {
+        helix::ui::UpdateQueueTestAccess::drain_all(helix::ui::UpdateQueue::instance());
+    }
+
+    static void poll() {
+        fetch();
+        drain();
+    }
+
+    static void link(AmsBackend& backend, int slot, int spool_id) {
+        SlotInfo info = backend.get_slot_info(slot);
+        info.spoolman_id = spool_id;
+        REQUIRE(backend.set_slot_info(slot, info, /*persist=*/false).success());
+    }
+};
+
+namespace {
+
+void state_polymaker_pla(SpoolInfo& spool) {
+    spool.vendor = "Polymaker";
+    spool.vendor_id = 7;
+    spool.material = "PLA";
+    spool.filament_name = "PolyTerra Charcoal";
+    spool.color_hex = "1A1A2E";
+    spool.initial_weight_g = 1000.0;
+    spool.remaining_weight_g = 850.0;
+}
+
+} // namespace
+
+TEST_CASE_METHOD(SpoolmanLaneFixture,
+                 "SpoolmanManager: a fetch files the spool as the lane's Spoolman record",
+                 "[spoolman][lane][1653]") {
+    helix::test::RegisteredBackend<AmsBackendMock> backend(2);
+    link(*backend, 0, 1);
+    state_polymaker_pla(server_spool(1));
+
+    poll();
+
+    const auto record = helix::ams::lane_sources(backend.lane(0)).spoolman;
+    REQUIRE(record.has_value());
+    CHECK(record->spoolman_id == 1);
+    CHECK(record->spoolman_vendor_id == 7);
+    CHECK(record->brand == "Polymaker");
+    CHECK(record->material == "PLA");
+    CHECK(record->spool_name == "PolyTerra Charcoal");
+    CHECK(record->color_rgb == 0x1A1A2EU);
+    CHECK(record->total_weight_g == 1000.0F);
+    CHECK(record->remaining_weight_g == 850.0F);
+}
+
+TEST_CASE_METHOD(SpoolmanLaneFixture,
+                 "SpoolmanManager: a spool edited on the server reaches its lane on the next fetch",
+                 "[spoolman][lane][1653]") {
+    helix::test::RegisteredBackend<AmsBackendMock> backend(2);
+    link(*backend, 0, 1);
+    state_polymaker_pla(server_spool(1));
+
+    poll();
+    REQUIRE(helix::ams::lane_sources(backend.lane(0)).spoolman.has_value());
+    // The id is already known, so nothing about this spool is new to the
+    // identity cache when the edited record arrives.
+    REQUIRE(SpoolmanManager::find_identity(1).has_value());
+
+    server_spool(1).material = "PETG";
+    server_spool(1).color_hex = "FF5500";
+    poll();
+
+    const auto record = helix::ams::lane_sources(backend.lane(0)).spoolman;
+    REQUIRE(record.has_value());
+    CHECK(record->material == "PETG");
+    CHECK(record->color_rgb == 0xFF5500U);
+}
+
+TEST_CASE_METHOD(
+    SpoolmanLaneFixture,
+    "SpoolmanManager: a slot re-bound while its fetch was in flight takes nothing from it",
+    "[spoolman][lane][1653]") {
+    helix::test::RegisteredBackend<AmsBackendMock> backend(2);
+    link(*backend, 0, 1);
+    link(*backend, 1, 2);
+    state_polymaker_pla(server_spool(1));
+    state_polymaker_pla(server_spool(2));
+
+    // The mock answers inside the fetch and the answer waits in the update
+    // queue, which is the window a real round trip leaves open.
+    fetch();
+    link(*backend, 0, 3);
+    drain();
+
+    // Both answers ran: slot 1's was filed, and slot 0's reached the identity
+    // cache, which it fills ahead of the binding check.
+    REQUIRE(helix::ams::lane_sources(backend.lane(1)).spoolman.has_value());
+    REQUIRE(SpoolmanManager::find_identity(1).has_value());
+    CHECK_FALSE(helix::ams::lane_sources(backend.lane(0)).spoolman.has_value());
+}
+
+TEST_CASE_METHOD(SpoolmanLaneFixture, "SpoolmanManager: the weights a fetch files on a lane",
+                 "[spoolman][lane][1653]") {
+    SECTION("a backend that keeps its own remaining weight gets only Spoolman's total") {
+        helix::test::RegisteredBackend<LocalWeightBackend> backend(2);
+        link(*backend, 0, 1);
+        state_polymaker_pla(server_spool(1));
+
+        poll();
+
+        const auto record = helix::ams::lane_sources(backend.lane(0)).spoolman;
+        REQUIRE(record.has_value());
+        CHECK(record->total_weight_g == 1000.0F);
+        CHECK_FALSE(record->remaining_weight_g.has_value());
+    }
+
+    SECTION("a spool Spoolman holds no weight for states no weight") {
+        // Spoolman serves both weights as null when neither the spool nor its
+        // filament has one, and the parser reads null as zero.
+        helix::test::RegisteredBackend<AmsBackendMock> backend(2);
+        link(*backend, 0, 1);
+        SpoolInfo& spool = server_spool(1);
+        state_polymaker_pla(spool);
+        spool.initial_weight_g = 0.0;
+        spool.remaining_weight_g = 0.0;
+
+        poll();
+
+        const auto record = helix::ams::lane_sources(backend.lane(0)).spoolman;
+        REQUIRE(record.has_value());
+        CHECK(record->brand == "Polymaker");
+        CHECK_FALSE(record->total_weight_g.has_value());
+        CHECK_FALSE(record->remaining_weight_g.has_value());
+    }
+}
+
+TEST_CASE_METHOD(SpoolmanLaneFixture,
+                 "SpoolmanManager: a field the server stops stating stops outranking the lane's "
+                 "other sources",
+                 "[spoolman][lane][1653]") {
+    helix::test::RegisteredBackend<AmsBackendMock> backend(2);
+    link(*backend, 0, 1);
+    SpoolInfo& spool = server_spool(1);
+    state_polymaker_pla(spool);
+
+    helix::ams::Observation firmware(helix::ams::ObservationSource::VendorCache);
+    firmware.brand = "Firmware Brand";
+    firmware.spool_name = "Firmware Name";
+    helix::ams::ingest(backend.lane(0), firmware);
+
+    poll();
+    REQUIRE(helix::ams::resolve(helix::ams::lane_sources(backend.lane(0))).brand == "Polymaker");
+
+    // The vendor is removed on the server and the filament loses its name.
+    // An empty field is Spoolman saying nothing about it, not a blank brand.
+    spool.vendor.clear();
+    spool.vendor_id = 0;
+    spool.filament_name.clear();
+    poll();
+
+    const auto sources = helix::ams::lane_sources(backend.lane(0));
+    REQUIRE(sources.spoolman.has_value());
+    CHECK(sources.spoolman->material == "PLA");
+    CHECK_FALSE(sources.spoolman->brand.has_value());
+    CHECK_FALSE(sources.spoolman->spoolman_vendor_id.has_value());
+    CHECK_FALSE(sources.spoolman->spool_name.has_value());
+
+    const auto shown = helix::ams::resolve(sources);
+    CHECK(shown.brand == "Firmware Brand");
+    CHECK(shown.spool_name == "Firmware Name");
+}
+
+TEST_CASE_METHOD(SpoolmanLaneFixture,
+                 "SpoolmanManager: a spool Spoolman denies loses its cached lane record; an "
+                 "unreachable Spoolman does not",
+                 "[spoolman][lane][1653]") {
+    helix::test::RegisteredBackend<AmsBackendMock> backend(2);
+    link(*backend, 0, 1);
+    link(*backend, 1, 2);
+
+    // The record a backend's start filed from its stored override.
+    helix::ams::Observation cached(helix::ams::ObservationSource::Spoolman);
+    cached.spoolman_id = 1;
+    cached.brand = "Cached Brand";
+    helix::ams::ingest(backend.lane(0), cached);
+    REQUIRE(helix::ams::lane_sources(backend.lane(0)).spoolman.has_value());
+
+    SECTION("not found drops it") {
+        remove_server_spool(1);
+        poll();
+
+        REQUIRE(SpoolmanManager::is_identity_unresolvable(1));
+        CHECK_FALSE(helix::ams::lane_sources(backend.lane(0)).spoolman.has_value());
+    }
+
+    SECTION("not found for a slot re-bound meanwhile leaves it alone") {
+        remove_server_spool(1);
+        fetch();
+        link(*backend, 0, 3);
+        drain();
+
+        REQUIRE(SpoolmanManager::is_identity_unresolvable(1));
+        const auto record = helix::ams::lane_sources(backend.lane(0)).spoolman;
+        REQUIRE(record.has_value());
+        CHECK(record->brand == "Cached Brand");
+    }
+
+    SECTION("an unreachable Spoolman leaves it standing") {
+        api.spoolman_mock().set_mock_spoolman_enabled(false);
+        poll();
+
+        // Both linked slots' fetches failed, and each failure was counted.
+        REQUIRE(TA::consecutive_failures(SpoolmanManager::instance()) == 2);
+        const auto record = helix::ams::lane_sources(backend.lane(0)).spoolman;
+        REQUIRE(record.has_value());
+        CHECK(record->brand == "Cached Brand");
+    }
 }
