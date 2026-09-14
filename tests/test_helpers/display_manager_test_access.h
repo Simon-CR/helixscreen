@@ -60,6 +60,14 @@ class DisplayManagerTestAccess {
         dm.enter_sleep(timeout_sec);
     }
 
+    // Deletes the current m_pointer/m_keyboard and recreates them from the
+    // manager's backend, mirroring init()'s input setup. Production calls this
+    // after a DRM-to-fbdev rotation fallback; a test drives it directly against
+    // an injected backend to prove the indev-delete watch it installs.
+    static void rebuild_input_after_backend_swap(DisplayManager& dm) {
+        dm.rebuild_input_after_backend_swap();
+    }
+
     // Which branch the last enter_sleep() actually took (#1245). Not the same as
     // re-running select_sleep_mechanism(): the power-off branch can degrade to the
     // overlay at runtime, so this is the only way to prove enter_sleep() honored
