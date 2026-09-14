@@ -13,6 +13,8 @@
 # replaced by loggers on PATH: `chown` and `sudo -n chown` both fail (a device
 # with no passwordless sudo), and the assertion is that the recipe still
 # reaches and issues the restart command instead of dying on the chown step.
+# The second test's mock recognizes any sudo+chown combination, not just the
+# post-fix "-n" spelling, so it still catches the pre-fix bare "sudo chown".
 
 WORKTREE_ROOT="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)"
 
@@ -75,7 +77,10 @@ teardown() {
     mock_command_script "ssh" '
         echo "$*" >> "$SSH_LOG"
         case "$*" in
-            *"sudo -n chown"*) echo "UNEXPECTED SUDO CALL" >&2; exit 1 ;;
+            # Any sudo+chown combination, -n or not - pre-fix code always
+            # emits a bare "sudo chown" with no -n, and a mock that only
+            # recognized "sudo -n chown" would never see it fail either way.
+            *sudo*chown*) echo "UNEXPECTED SUDO CALL" >&2; exit 1 ;;
             *) exit 0 ;;
         esac
     '
@@ -84,6 +89,6 @@ teardown() {
 
     [ "$status" -eq 0 ]
     lacks "Could not fix ownership" "$output"
-    ! grep -qF "sudo -n chown" "$SSH_LOG"
+    ! grep -qE "sudo.*chown" "$SSH_LOG"
     grep -qF "sudo -n systemctl start helixscreen" "$SSH_LOG"
 }
