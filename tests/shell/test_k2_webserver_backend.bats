@@ -449,7 +449,7 @@ write_stock_app_service() {
     # The restored stock service spawns its own web-server; one left
     # running by the carve-out would hold port 80 out from under it.
     awk '/Re-enabling Creality stock UI/,/init\.d\/app start/' "$UNINSTALL_MODULE" \
-        | grep -q 'killall web-server'
+        | grep -q 'kill_process_by_name web-server'
 }
 
 @test "k2 uninstall: stock-UI restore verifies the boot symlink before claiming success" {
@@ -465,9 +465,9 @@ write_stock_app_service() {
         -e "s|/etc/rc\.d/|$MOCK_ROOT/etc/rc.d/|g" \
         "$UNINSTALL_BUNDLE" > "$patched"
 
-    # The restore path killalls the carve-out's web-server; mock it so the
-    # sandbox never sees a host-addressing call.
-    mock_command_script "killall" 'exit 0'
+    # The restore path kills the carve-out's web-server by pid; mock pidof
+    # empty so the sandbox never sees a host-addressing call.
+    mock_command_script "pidof" 'exit 1'
 
     write_stock_app_service
     rm -f "$MOCK_ROOT"/etc/rc.d/*app 2>/dev/null || true

@@ -7145,7 +7145,7 @@ restore_previous_ui_platform() {
         log_info "Re-enabling Creality stock UI (/etc/init.d/app)..."
         # Drop any web-server the carve-out left running so the stock
         # instance app start is about to spawn can bind its port.
-        killall web-server 2>/dev/null || true
+        kill_process_by_name web-server || true
         $SUDO /etc/init.d/app enable 2>/dev/null || true
         # rc.common's `enable` exits 0 even when it produced no symlink, so
         # the boot entry is verified by link — the same check
@@ -7164,9 +7164,9 @@ restore_previous_ui_platform() {
         if [ -z "$app_target" ]; then
             log_warn "Stock UI boot symlink missing or wrong (no /etc/rc.d/*app -> ../init.d/app); run: /etc/init.d/app enable"
         else
-            restored_ui="Creality stock UI (/etc/init.d/app, boot via $app_link)"
+            restored_ui="Creality stock UI (/etc/init.d/app, boot via $app_target)"
         fi
-        # Start runs in both branches: the killall above already took the
+        # Start runs in both branches: the kill above already took the
         # carve-out's web-server down, so a missing boot symlink must leave
         # the session's UI restored, not just warned about.
         $SUDO /etc/init.d/app start 2>/dev/null || true
