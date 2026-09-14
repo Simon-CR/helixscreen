@@ -115,6 +115,9 @@ void ui_gcode_viewer_load_file(lv_obj_t* obj, const char* file_path);
  * The callback will be invoked from the main LVGL thread after async
  * geometry building completes. Use this to update UI elements that
  * depend on the loaded file data.
+ *
+ * Only the newest ui_gcode_viewer_load_file() reports: a load superseded by a
+ * later one never invokes the callback, on success or on failure.
  */
 void ui_gcode_viewer_set_load_callback(lv_obj_t* obj, gcode_viewer_load_callback_t callback,
                                        void* user_data);

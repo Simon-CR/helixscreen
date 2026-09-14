@@ -1076,7 +1076,8 @@ lv_obj_t* PrintStatusPanel::create(lv_obj_t* parent) {
             if (helix::is_gcode_2d_streaming_safe(file_size)) {
                 spdlog::info("[{}] Loading G-code file from command line: {}", get_name(),
                              config->gcode_test_file);
-                load_gcode_file(config->gcode_test_file);
+                load_gcode_file(config->gcode_test_file,
+                                printer_state_.get_effective_print_filename());
             } else {
                 spdlog::warn("[{}] G-code file too large for 2D streaming: {} ({} bytes) - using "
                              "thumbnail only",
@@ -1683,7 +1684,7 @@ void PrintStatusPanel::hide_exclude_map_view() {
     lv_subject_set_int(&exclude_map_active_subject_, 0);
 }
 
-void PrintStatusPanel::load_gcode_file(const char* file_path) {
+void PrintStatusPanel::load_gcode_file(const char* file_path, const std::string& print_filename) {
     if (!gcode_viewer_ || !file_path) {
         spdlog::warn("[{}] Cannot load G-code: viewer={}, path={}", get_name(),
                      gcode_viewer_ != nullptr, file_path != nullptr);
@@ -1712,22 +1713,23 @@ void PrintStatusPanel::load_gcode_file(const char* file_path) {
 
             // Mark G-code as successfully loaded (enables viewer mode on state changes)
             self->lifecycle_.set_gcode_loaded(true);
-            // The viewer now holds the current print's geometry. Record the
-            // effective filename as the GCODE marker so ensure_preview_current()
-            // treats the viewer as current on re-entry. (The thumbnail marker is
-            // recorded independently by the thumbnail path.)
-            self->gcode_displayed_file_ = self->printer_state_.get_effective_print_filename();
+            // The viewer now holds the geometry of the print this load was for.
+            // Record that name as the GCODE marker: ensure_preview_current() then
+            // treats the viewer as current only for that print, and a load that
+            // landed for an earlier print reads as stale. (The thumbnail marker
+            // is recorded independently by the thumbnail path.)
+            self->gcode_displayed_file_ = self->gcode_load_filename_;
 
             // Hand the scan's scheduled pauses to print state, where both
-            // progress surfaces read them. Published under the name this load
-            // was FOR: if the print switched while the scan ran, the list will
-            // not match the new print and the markers stay hidden.
+            // progress surfaces read them, under the same name: a load that
+            // lands after the print switched publishes a list that does not
+            // match the new print, and its markers stay hidden.
             {
                 std::vector<helix::gcode::ScheduledPause> pauses;
                 helix::gcode::ProgressAxis axis = helix::gcode::ProgressAxis::BytePosition;
                 if (helix::ui_gcode_viewer_get_scheduled_pauses(viewer, pauses, axis)) {
                     self->printer_state_.set_scheduled_pauses(std::move(pauses), axis,
-                                                              self->gcode_scan_filename_);
+                                                              self->gcode_load_filename_);
                 }
             }
 
@@ -1810,6 +1812,7 @@ void PrintStatusPanel::load_gcode_file(const char* file_path) {
         this);
 
     // Start loading the file
+    gcode_load_filename_ = print_filename;
     ui_gcode_viewer_load_file(gcode_viewer_, file_path);
 }
 
@@ -3578,7 +3581,6 @@ void PrintStatusPanel::apply_esp_psram_thumbnail() {
 
 void PrintStatusPanel::load_gcode_for_viewing(const std::string& filename) {
     spdlog::debug("[{}] Loading G-code for viewing: {}", get_name(), filename);
-    gcode_scan_filename_ = filename;
 
     // Skip if no viewer widget
     if (!gcode_viewer_) {
@@ -3634,7 +3636,7 @@ void PrintStatusPanel::load_gcode_for_viewing(const std::string& filename) {
             spdlog::info("[{}] Using cached G-code file ({} bytes): {}", get_name(), cached_size,
                          temp_path);
             temp_gcode_path_ = temp_path;
-            load_gcode_file(temp_path.c_str());
+            load_gcode_file(temp_path.c_str(), filename);
             return;
         } else {
             spdlog::debug("[{}] Cached file too large for 2D streaming, removing", get_name());
@@ -3658,12 +3660,12 @@ void PrintStatusPanel::load_gcode_for_viewing(const std::string& filename) {
         auto inner_token = lifetime_.token();
         api_->transfers().download_file_to_path(
             root, download_filename, temp_path,
-            [this, inner_token, temp_path](const std::string& path) {
-                inner_token.defer("PrintStatusPanel::gcode_download_ok", [this, path]() {
+            [this, inner_token, temp_path, filename](const std::string& path) {
+                inner_token.defer("PrintStatusPanel::gcode_download_ok", [this, path, filename]() {
                     temp_gcode_path_ = path;
                     spdlog::debug("[{}] Streamed G-code to disk, loading into viewer: {}",
                                   get_name(), path);
-                    load_gcode_file(path.c_str());
+                    load_gcode_file(path.c_str(), filename);
                 });
             },
             [this, inner_token, filename](const MoonrakerError& err) {

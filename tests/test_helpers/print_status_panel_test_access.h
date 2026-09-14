@@ -95,6 +95,17 @@ class PrintStatusPanelTestAccess {
         return panel.get_tools_used();
     }
 
+    /// The deferred gcode load's entry point: fetch @p filename's gcode and
+    /// load it into the viewer.
+    static void load_gcode_for_viewing(PrintStatusPanel& panel, const std::string& filename) {
+        panel.load_gcode_for_viewing(filename);
+    }
+
+    /// The file whose geometry the panel records as loaded in the viewer.
+    static const std::string& gcode_displayed_file(const PrintStatusPanel& panel) {
+        return panel.gcode_displayed_file_;
+    }
+
     /// The image source actually set on the panel's thumbnail widget, or "" when
     /// no widget is attached or nothing has been set on it yet.
     static std::string displayed_src(const PrintStatusPanel& panel) {
