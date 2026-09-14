@@ -1406,16 +1406,19 @@ TEST_CASE_METHOD(SnapmakerFixture,
     FilamentSlotOverrideStoreTestAccess::set_cache_directory(*store, tmp.path);
     SnapmakerTestAccess::inject_override_store(backend, std::move(store));
 
-    SlotInfo edit;
+    SlotInfo edit = backend.get_slot_info(0);
     edit.brand = "Polymaker";
     edit.spool_name = "PolyLite PLA Orange";
     edit.spoolman_id = 42;
     edit.material = "PLA";
     edit.color_rgb = 0xFF5500;
 
-    auto err = backend.set_slot_info(0, edit, /*persist=*/true);
+    // The user links spool 42 and the server says what spool 42 is. A commit
+    // that moves spoolman_id states the binding and nothing else, so the brand,
+    // name, material and colour that ride in with a link need the source that
+    // actually owns them.
     helix::test::edit_slot_as_user(backend, 0, edit);
-    REQUIRE(err.success());
+    helix::test::spool_states(backend, 0, edit);
 
     // Override is staged in-memory AND written to the Moonraker DB.
     auto staged = SnapmakerTestAccess::get_override(backend, 0);

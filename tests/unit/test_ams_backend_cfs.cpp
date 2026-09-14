@@ -2577,12 +2577,18 @@ struct CfsOverrideRig {
     MoonrakerClientMock client{MoonrakerClientMock::PrinterType::VORON_24};
     helix::PrinterState state;
     std::unique_ptr<MoonrakerAPIMock> api;
-    std::unique_ptr<AmsBackendCfs> backend;
+    // Registered, because lane_id() answers INVALID_LANE_ID for a backend
+    // AmsState does not know, and every lane funnel drops a record addressed
+    // to that. Declared after api_ so it is torn down first: clear_backends()
+    // destroys the backend, which still holds the api pointer.
+    std::optional<helix::test::RegisteredBackend<AmsBackendCfs>> registration;
+    AmsBackendCfs* backend = nullptr;
 
     explicit CfsOverrideRig(const std::string& name) : tmp(name) {
         state.init_subjects(false);
         api = std::make_unique<MoonrakerAPIMock>(client, state);
-        backend = std::make_unique<AmsBackendCfs>(api.get(), nullptr);
+        registration.emplace(api.get(), nullptr);
+        backend = &**registration;
         auto store = std::make_unique<helix::ams::FilamentSlotOverrideStore>(api.get(), "cfs");
         FilamentSlotOverrideStoreTestAccess::set_cache_directory(*store, tmp.path);
         CfsTestAccess::inject_override_store(*backend, std::move(store));
@@ -2912,17 +2918,21 @@ json make_runout_removed_box(int useup, const std::string& active) {
     return box;
 }
 
-// Link bay D's lane to Spoolman spool 137 through the real persist path, so
-// both the in-memory override and the lane_data record carry the id.
+// Link bay D's lane to Spoolman spool 137 the way the application does: the
+// user states the binding, and the server states what spool 137 is. Binding
+// and identity are separate statements - a commit that changes spoolman_id
+// declares the binding alone, because the brand, colour and material that ride
+// in with a link are the server's word and not a value anyone chose.
 void link_lane_four_to_spool_137(AmsBackendCfs& backend) {
-    SlotInfo edit;
+    SlotInfo edit = backend.get_slot_info(3);
     edit.material = "ASA-CF";
     edit.brand = "Elegoo";
     edit.spool_name = "Black ASA";
     edit.color_rgb = 0x1A1A1A;
     edit.spoolman_id = 137;
     edit.spoolman_vendor_id = 21;
-    REQUIRE(backend.set_slot_info(3, edit, /*persist=*/true).success());
+    helix::test::edit_slot_as_user(backend, 3, edit);
+    helix::test::spool_states(backend, 3, edit);
 }
 
 } // namespace

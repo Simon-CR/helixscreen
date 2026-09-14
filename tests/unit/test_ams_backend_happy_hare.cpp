@@ -3947,12 +3947,12 @@ TEST_CASE("HappyHare override survives a gate-map update that omits identity",
     AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
 
-    SlotInfo info;
+    SlotInfo info = helper.get_slot_info(0);
     info.brand = "Polymaker";
     info.spool_name = "PolyLite Grey";
     info.spoolman_id = 42;
     info.total_weight_g = 1000.0f;
-    helper.set_slot_info(0, info);
+    helix::test::edit_slot_as_user(helper, 0, info);
 
     // A gate-map refresh that clears the spool id upstream.
     helper.feed_mmu_gate_spool_ids({0, 0, 0, 0});

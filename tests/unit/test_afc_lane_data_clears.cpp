@@ -247,10 +247,12 @@ TEST_CASE("AFC lane_data adopts the filament name, like the status path", "[ams]
     }
 
     SECTION("a user-entered name still wins over firmware's") {
-        // apply_overrides() must run AFTER the parse, same as the status path.
-        helix::ams::FilamentSlotOverride o;
-        o.spool_name = "My Pink Spool";
-        afc.set_override(0, o);
+        // A name the user typed is their declaration, and a declaration
+        // outranks what the lane_data frame states, on this parse and every
+        // later one.
+        SlotInfo edit = afc.get_slot_info(0);
+        edit.spool_name = "My Pink Spool";
+        helix::test::edit_slot_as_user(afc, 0, edit);
 
         afc.feed_lane_data(both_lanes(nlohmann::json{{"filament_name", "Ambrosia Pink"}}));
         CHECK(afc.spool_name(0) == "My Pink Spool");
@@ -302,10 +304,10 @@ TEST_CASE("AFC lane_data reads the shared #833 key spellings", "[ams][afc][833]"
     }
 
     SECTION("a user's override still wins over both") {
-        helix::ams::FilamentSlotOverride o;
-        o.brand = "Elegoo";
-        o.spool_name = "My Pink Spool";
-        afc.set_override(0, o);
+        SlotInfo edit = afc.get_slot_info(0);
+        edit.brand = "Elegoo";
+        edit.spool_name = "My Pink Spool";
+        helix::test::edit_slot_as_user(afc, 0, edit);
 
         afc.feed_lane_data(
             both_lanes(nlohmann::json{{"name", "Ambrosia Pink"}, {"vendor_name", "Polymaker"}}));

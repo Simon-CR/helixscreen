@@ -4861,10 +4861,14 @@ TEST_CASE("AD5X IFS override applies to multiple slots independently",
     })";
     Ad5xIfsTestAccess::parse_adventurer_json(backend, content);
 
+    // A stored record neither locks nor declares carries what the machine last
+    // said, so the current frame outranks it wherever the two speak about the
+    // same field. What survives is the identity firmware cannot carry at all -
+    // the brand - and that is what makes each slot's record its own.
     auto info0 = backend.get_slot_info(0);
     REQUIRE(info0.brand == "Polymaker");
-    REQUIRE(info0.material == "PETG");
-    REQUIRE(info0.color_rgb == 0xFF0000u); // firmware untouched by ovr0
+    REQUIRE(info0.material == "PLA");
+    REQUIRE(info0.color_rgb == 0xFF0000u);
 
     auto info1 = backend.get_slot_info(1);
     REQUIRE(info1.brand.empty());
@@ -4873,7 +4877,7 @@ TEST_CASE("AD5X IFS override applies to multiple slots independently",
 
     auto info2 = backend.get_slot_info(2);
     REQUIRE(info2.brand == "eSUN");
-    REQUIRE(info2.color_rgb == 0x123456u);
+    REQUIRE(info2.color_rgb == 0x0000FFu);
     REQUIRE(info2.material == "PLA");
 
     auto info3 = backend.get_slot_info(3);
@@ -4897,20 +4901,20 @@ TEST_CASE("AD5X IFS override re-applied on every parse",
     })");
     auto first = backend.get_slot_info(0);
     REQUIRE(first.brand == "Polymaker");
-    REQUIRE(first.material == "PETG");
+    REQUIRE(first.material == "PLA");
 
-    // Second parse with the same firmware color but a different material.
-    // The override must still win on re-parse. Note: deliberately keep the
-    // color stable — Task 11's hardware-event detection clears overrides when
-    // firmware color changes (physical spool swap), which is tested in the
-    // hardware-swap test cases below. This case exercises the "override wins
-    // on re-parse" property, which is a separate contract.
+    // Second parse with the same firmware color but a different material. The
+    // brand is what the record supplies on every parse and not just the first:
+    // firmware cannot carry one, so nothing competes with it. The material is
+    // the record remembering what firmware last said, so each frame restates
+    // it. Deliberately keep the color stable - a firmware color change is the
+    // physical-swap signal, covered by the hardware-swap cases below.
     Ad5xIfsTestAccess::parse_adventurer_json(backend, R"({
         "FFMInfo": {"ffmColor1": "#FF5500", "ffmType1": "ABS"}
     })");
     auto second = backend.get_slot_info(0);
     REQUIRE(second.brand == "Polymaker");
-    REQUIRE(second.material == "PETG");
+    REQUIRE(second.material == "ABS");
 }
 
 TEST_CASE("AD5X IFS override zero color_rgb does not replace firmware color",
@@ -5399,14 +5403,18 @@ TEST_CASE("AD5X IFS set_slot_info(persist=true) with pre-existing override repla
     old.spoolman_id = 7;
     Ad5xIfsTestAccess::seed_override(backend, 0, old);
 
-    // User edits with a different brand — the NEW values must win, not
-    // the old override.
-    SlotInfo edit;
+    // The user re-binds the lane to a different spool. The seeded record names
+    // spool 7, so its whole identity is the server's word; re-binding states
+    // the new id alone, and what spool 99 IS comes from the source that owns
+    // it. The server speaks first, the way the spool picker has already
+    // resolved a spool before the edit committing it can be saved.
+    SlotInfo edit = backend.get_slot_info(0);
     edit.brand = "NewBrand";
     edit.spool_name = "NewSpool";
     edit.spoolman_id = 99;
     edit.material = "PLA";
     edit.color_rgb = 0xAABBCC;
+    helix::test::spool_states(backend, 0, edit);
     helix::test::edit_slot_as_user(backend, 0, edit);
 
     auto info = backend.get_slot_info(0);
@@ -8020,7 +8028,8 @@ helix::ams::FilamentSlotOverride make_auto_mirror_override(uint32_t color_rgb,
 
 TEST_CASE("AD5X IFS external CHANGE_ZCOLOR clears a stale locked override so firmware wins (#981)",
           "[ams][ad5x_ifs]") {
-    TestableAd5xIfsBackend backend;
+    helix::test::RegisteredBackend<TestableAd5xIfsBackend> backend_reg;
+    auto& backend = *backend_reg;
     Ad5xIfsTestAccess::set_running(backend, true);
     Ad5xIfsTestAccess::set_zcolor_supported(backend, false);
 
@@ -8482,7 +8491,8 @@ TEST_CASE("AD5X IFS CHANGE_ZCOLOR TYPE= also refreshes a stale locked override's
     // cleared override — otherwise apply_overrides re-paints nothing (good)
     // but the firmware-truth arrays still hold the OLD value and the UI shows
     // stale data until the eventual GET_ZCOLOR.
-    TestableAd5xIfsBackend backend;
+    helix::test::RegisteredBackend<TestableAd5xIfsBackend> backend_reg;
+    auto& backend = *backend_reg;
     Ad5xIfsTestAccess::set_running(backend, true);
     Ad5xIfsTestAccess::set_zcolor_supported(backend, false);
     Ad5xIfsTestAccess::set_port_presence(backend, 0, true);
@@ -8515,7 +8525,8 @@ TEST_CASE("AD5X IFS RUN_ZCOLOR with TYPE=/HEX= does NOT update state (display-on
     // button payloads (carrying TYPE=/HEX=) but does NOT change anything.
     // The display-only contract from #981 must be preserved: no extraction,
     // no override clear, no state mutation.
-    TestableAd5xIfsBackend backend;
+    helix::test::RegisteredBackend<TestableAd5xIfsBackend> backend_reg;
+    auto& backend = *backend_reg;
     Ad5xIfsTestAccess::set_running(backend, true);
     Ad5xIfsTestAccess::set_zcolor_supported(backend, false);
     Ad5xIfsTestAccess::set_port_presence(backend, 0, true);
@@ -8980,7 +8991,8 @@ TEST_CASE("AD5X IFS COLOR-menu slot row does not clear a user-locked override "
     // menu render is not an edit — every COLOR macro invocation emits four of
     // these rows, so honouring them there would drop a user's locked material
     // just for opening the dialog.
-    TestableAd5xIfsBackend backend;
+    helix::test::RegisteredBackend<TestableAd5xIfsBackend> backend_reg;
+    auto& backend = *backend_reg;
     Ad5xIfsTestAccess::set_running(backend, true);
     Ad5xIfsTestAccess::set_zcolor_supported(backend, false);
     Ad5xIfsTestAccess::set_port_presence(backend, 0, true);
@@ -10153,8 +10165,15 @@ TEST_CASE("AD5X IFS: first material observation is a baseline, not an edit",
     // First-ever material reading for slot 1 establishes the baseline.
     Ad5xIfsTestAccess::set_material(backend, 1, "PETG");
 
-    // Override still wins on the baseline pass (no external edit detected yet).
-    CHECK(backend.get_slot_info(1).material == "ABS");
+    // The record is what must be undisturbed: a baseline pass takes no edit, so
+    // nothing syncs the stored material to what firmware just said.
+    auto staged = Ad5xIfsTestAccess::get_override(backend, 1);
+    REQUIRE(staged.has_value());
+    CHECK(staged->material == "ABS");
+    CHECK_FALSE(staged->user_locked_material);
+    // On screen the reading wins anyway: an unlocked record remembers what the
+    // machine last said, and the machine is saying something else now.
+    CHECK(backend.get_slot_info(1).material == "PETG");
 }
 
 // --------------------------------------------------------------------------
