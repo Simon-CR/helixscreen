@@ -5145,6 +5145,18 @@ TEST_CASE("PrinterDetector: get_name_for_preset resolves DB preset field",
     REQUIRE(PrinterDetector::get_name_for_preset("").empty());
 }
 
+TEST_CASE("PrinterDetector: get_name_for_preset floors k1/k1c/anycubic_kobra_3 to their base model",
+          "[printer_detector][preset]") {
+    PrinterDetector::reload();
+
+    // Each family has multiple database entries and no evidence naming a
+    // specific machine at preset-install time. The marked entry is each
+    // family's base (smallest) model, matching the maintainer's K2 ruling.
+    CHECK(PrinterDetector::get_name_for_preset("k1") == "Creality K1");
+    CHECK(PrinterDetector::get_name_for_preset("k1c") == "Creality K1C");
+    CHECK(PrinterDetector::get_name_for_preset("anycubic_kobra_3") == "Anycubic Kobra 3");
+}
+
 TEST_CASE("PrinterDetector: get_preset_for_name resolves DB name field",
           "[printer_detector][preset]") {
     PrinterDetector::reload();
@@ -5450,6 +5462,56 @@ TEST_CASE("PrinterDetector: loads printer_database.json from HELIX_DATA_DIR/asse
     // runs after this one in the same binary.
     PrinterDetector::reload();
 
+    fs::remove_all(temp_root);
+}
+
+TEST_CASE("PrinterDetector: preset_default survives database array order, not just position",
+          "[printer][seed_resolution][preset]") {
+    namespace fs = std::filesystem;
+    auto temp_root =
+        fs::temp_directory_path() / ("test_printer_detector_order_" + std::to_string(getpid()));
+
+    {
+        EnvGuard data_g("HELIX_DATA_DIR");
+        EnvGuard config_g("HELIX_CONFIG_DIR");
+        CwdGuard cwd_g;
+
+        fs::remove_all(temp_root);
+        fs::create_directories(temp_root / "assets" / "config");
+        fs::create_directories(temp_root / "config_dir");
+
+        // Each family's real entries, reversed from printer_database.json's own
+        // order so the base model is last, not first: the shape that used to
+        // decide get_name_for_preset() by database order before the marker
+        // existed. Only "preset" and "preset_default" matter to this lookup.
+        std::ofstream(temp_root / "assets" / "config" / "printer_database.json") << R"JSON({
+                "version": "test-order-1.0",
+                "printers": [
+                    {"id": "creality_k1_max_cfs", "name": "Creality K1 Max CFS", "preset": "k1"},
+                    {"id": "creality_k1_max", "name": "Creality K1 Max", "preset": "k1"},
+                    {"id": "creality_k1_cfs", "name": "Creality K1 CFS", "preset": "k1"},
+                    {"id": "creality_k1", "name": "Creality K1", "preset": "k1", "preset_default": true},
+
+                    {"id": "creality_k1c_cfs", "name": "Creality K1C CFS", "preset": "k1c"},
+                    {"id": "creality_k1c", "name": "Creality K1C", "preset": "k1c", "preset_default": true},
+
+                    {"id": "anycubic_kobra_3_v2", "name": "Anycubic Kobra 3 V2", "preset": "anycubic_kobra_3"},
+                    {"id": "anycubic_kobra_3", "name": "Anycubic Kobra 3", "preset": "anycubic_kobra_3", "preset_default": true}
+                ]
+            })JSON";
+
+        setenv("HELIX_DATA_DIR", temp_root.c_str(), 1);
+        setenv("HELIX_CONFIG_DIR", (temp_root / "config_dir").c_str(), 1);
+        REQUIRE(chdir(temp_root.c_str()) == 0);
+
+        PrinterDetector::reload();
+
+        CHECK(PrinterDetector::get_name_for_preset("k1") == "Creality K1");
+        CHECK(PrinterDetector::get_name_for_preset("k1c") == "Creality K1C");
+        CHECK(PrinterDetector::get_name_for_preset("anycubic_kobra_3") == "Anycubic Kobra 3");
+    }
+
+    PrinterDetector::reload();
     fs::remove_all(temp_root);
 }
 
