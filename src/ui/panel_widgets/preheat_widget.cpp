@@ -362,21 +362,24 @@ void PreheatWidget::handle_cooldown() {
 
     // Use configured cooldown macro (user-overridable in settings.json)
     auto* cfg = Config::get_instance();
-    MacroConfig default_cooldown{"Cool Down", "SET_HEATER_TEMPERATURE HEATER=extruder TARGET=0\n"
-                                              "SET_HEATER_TEMPERATURE HEATER=heater_bed TARGET=0"};
+    MacroConfig default_cooldown{"Cool Down", kDefaultCooldownGcode};
     auto cooldown = cfg ? cfg->get_macro("cooldown", default_cooldown) : default_cooldown;
 
     // A platform preset's macro text is fixed at install time and can name a
     // chamber heater that another machine sharing the same preset file
-    // doesn't have. Append the heater PrinterState actually resolved for THIS
-    // printer instead of trusting the macro to know it: empty when the
-    // printer has none, so no off command is appended.
-    char chamber_gcode[128];
-    if (helix::ui::temperature::build_heater_off_gcode(
-            printer_state_.temperature_state().chamber_heater_name(), chamber_gcode,
-            sizeof(chamber_gcode))) {
-        cooldown.gcode += "\n";
-        cooldown.gcode += chamber_gcode;
+    // doesn't have. When the macro in use is still the shared default, append
+    // the heater PrinterState actually resolved for THIS printer instead of
+    // trusting the macro to know it (empty when the printer has none, so no
+    // off command is appended). A user-customized macro, or a single-model
+    // preset's own hardcoded chamber line, runs exactly as written.
+    if (is_default_cooldown_gcode(cooldown.gcode)) {
+        char chamber_gcode[128];
+        if (helix::ui::temperature::build_heater_off_gcode(
+                printer_state_.temperature_state().chamber_heater_name(), chamber_gcode,
+                sizeof(chamber_gcode))) {
+            cooldown.gcode += "\n";
+            cooldown.gcode += chamber_gcode;
+        }
     }
 
     spdlog::info("[PreheatWidget] Cooldown requested - executing: {}", cooldown.gcode);

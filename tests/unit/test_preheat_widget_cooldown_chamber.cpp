@@ -114,7 +114,8 @@ struct K2PreheatCooldownHarness {
         }
     }
 
-    void discover(std::initializer_list<const char*> objects) {
+    void discover(const char* heater_assignment, std::initializer_list<const char*> objects) {
+        helix::SettingsManager::instance().set_chamber_heater_assignment(heater_assignment);
         helix::PrinterDiscovery hw;
         nlohmann::json list = nlohmann::json::array();
         for (const char* object : objects) {
@@ -146,8 +147,8 @@ TEST_CASE_METHOD(
     K2PreheatCooldownHarness h;
     helix::PreheatWidget widget(get_printer_state());
 
-    h.discover({"temperature_fan chamber_fan", "temperature_sensor chamber_temp", "extruder",
-                "heater_bed"});
+    h.discover("auto", {"temperature_fan chamber_fan", "temperature_sensor chamber_temp",
+                        "extruder", "heater_bed"});
     TA::handle_cooldown(widget);
 
     REQUIRE(h.sent("HEATER=extruder TARGET=0"));
@@ -163,10 +164,29 @@ TEST_CASE_METHOD(
     K2PreheatCooldownHarness h;
     helix::PreheatWidget widget(get_printer_state());
 
-    h.discover({"heater_generic chamber_heater", "extruder", "heater_bed"});
+    h.discover("auto", {"heater_generic chamber_heater", "extruder", "heater_bed"});
     TA::handle_cooldown(widget);
 
     REQUIRE(h.sent("HEATER=extruder TARGET=0"));
     REQUIRE(h.sent("HEATER=heater_bed TARGET=0"));
     CHECK(h.sent("HEATER=chamber_heater TARGET=0"));
+}
+
+TEST_CASE_METHOD(
+    LVGLTestFixture,
+    "PreheatWidget Cool Down runs a user-customized macro verbatim, even with a resolved "
+    "chamber heater",
+    "[preheat][chamber][presets]") {
+    K2PreheatCooldownHarness h;
+    helix::PreheatWidget widget(get_printer_state());
+
+    // A user edited their Cool Down macro after the k2 preset installed it.
+    helix::ConfigTestAccess::data(h.config)["printers"]["default"]["default_macros"]["cooldown"] =
+        "MY_CUSTOM_COOLDOWN_MACRO";
+
+    h.discover("auto", {"heater_generic chamber_heater", "extruder", "heater_bed"});
+    TA::handle_cooldown(widget);
+
+    CHECK(h.sent("MY_CUSTOM_COOLDOWN_MACRO"));
+    CHECK_FALSE(h.sent("HEATER="));
 }
