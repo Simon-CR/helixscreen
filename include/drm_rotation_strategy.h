@@ -120,8 +120,9 @@ bool drm_rotation_needs_full_render(DrmRotationStrategy strategy);
  * Rotating the scanout plane rotates the picture but not the touch frame, since
  * LVGL transforms pointer input solely from its own display rotation and the
  * plane path clears that. `DisplayBackendDRM` closes the gap by chaining
- * rotate_pointer_for_plane() onto the read callback of every pointer device it
- * opens, touch and mouse alike, and reporting the plane's angle from
+ * rotate_pointer_for_plane() onto the read callback of every panel-attached
+ * absolute pointer it opens (helix::PointerFrameHook; a relative pointer's
+ * position is already on the picture the plane turns), and reporting the plane's angle from
  * applied_rotation_degrees(), so the two transforms are mutually exclusive and
  * the touch pipeline still sees the angle the panel is really at
  * (prestonbrown/helixscreen#1275).

@@ -10,7 +10,9 @@
 
 #include <algorithm>
 #include <cctype>
+#include <climits>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <dirent.h>
@@ -179,6 +181,54 @@ std::vector<std::string> read_device_blacklist_from_config() {
     return {};
 }
 
+const char* pointer_kind_name(PointerKind kind) {
+    return kind == PointerKind::Relative ? "relative" : "panel";
+}
+
+PointerKind classify_pointer_capabilities(const std::string& abs_caps, const std::string& rel_caps,
+                                          const std::string& key_caps) {
+    // Touchscreens:
+    //   - Legacy single-touch: ABS_X (bit 0) + ABS_Y (bit 1)
+    //   - MT-only (e.g. Goodix gt9xxnew_ts): ABS_MT_POSITION_X (bit 53) +
+    //     ABS_MT_POSITION_Y (bit 54) without legacy ABS_X/ABS_Y
+    //   - Any device with BTN_TOUCH (bit 330)
+    const bool has_legacy_abs =
+        check_capability_bit(abs_caps, 0) && check_capability_bit(abs_caps, 1);
+    const bool has_mt_abs =
+        check_capability_bit(abs_caps, 53) && check_capability_bit(abs_caps, 54);
+    const bool has_btn_touch = check_capability_bit(key_caps, 330);
+    if (has_legacy_abs || has_mt_abs || has_btn_touch) {
+        return PointerKind::PanelAbsolute;
+    }
+
+    // REL_X (bit 0) + REL_Y (bit 1)
+    if (check_capability_bit(rel_caps, 0) && check_capability_bit(rel_caps, 1)) {
+        return PointerKind::Relative;
+    }
+    return PointerKind::PanelAbsolute;
+}
+
+PointerKind pointer_kind_for_device(const std::string& device_path, const std::string& sysfs_base) {
+    // Resolve links such as /dev/input/by-id/*, whose names say nothing about the node.
+    char resolved[PATH_MAX];
+    const char* node_path =
+        ::realpath(device_path.c_str(), resolved) != nullptr ? resolved : device_path.c_str();
+    const char* slash = std::strrchr(node_path, '/');
+    const char* node = slash != nullptr ? slash + 1 : node_path;
+
+    int event_num = -1;
+    if (sscanf(node, "event%d", &event_num) != 1 || event_num < 0) {
+        return PointerKind::PanelAbsolute;
+    }
+    return classify_pointer_capabilities(read_sysfs_capability(sysfs_base, event_num, "abs"),
+                                         read_sysfs_capability(sysfs_base, event_num, "rel"),
+                                         read_sysfs_capability(sysfs_base, event_num, "key"));
+}
+
+PointerKind pointer_kind_for_device(const std::string& device_path) {
+    return pointer_kind_for_device(device_path, "/sys/class/input");
+}
+
 std::optional<ScannedDevice> find_mouse_device(const std::string& dev_base,
                                                const std::string& sysfs_base) {
     auto dir = std::unique_ptr<DIR, decltype(&closedir)>(opendir(dev_base.c_str()), closedir);
@@ -211,26 +261,10 @@ std::optional<ScannedDevice> find_mouse_device(const std::string& dev_base,
         spdlog::debug("[InputScanner] Scanning {} ({}) abs=[{}] rel=[{}] key=[{}]", device_path,
                       name, abs_caps, rel_caps, key_caps);
 
-        // Skip touchscreens:
-        //   - Legacy single-touch: ABS_X (bit 0) + ABS_Y (bit 1)
-        //   - MT-only (e.g. Goodix gt9xxnew_ts): ABS_MT_POSITION_X (bit 53) +
-        //     ABS_MT_POSITION_Y (bit 54) without legacy ABS_X/ABS_Y
-        //   - Any device with BTN_TOUCH (bit 330) — touchscreens, not mice
-        bool has_legacy_abs =
-            check_capability_bit(abs_caps, 0) && check_capability_bit(abs_caps, 1);
-        bool has_mt_abs = check_capability_bit(abs_caps, 53) && check_capability_bit(abs_caps, 54);
-        bool has_btn_touch = check_capability_bit(key_caps, 330);
-
-        if (has_legacy_abs || has_mt_abs || has_btn_touch) {
-            spdlog::debug("[InputScanner] Skipping {} (touchscreen: legacy_abs={} mt_abs={} "
-                          "btn_touch={})",
-                          device_path, has_legacy_abs, has_mt_abs, has_btn_touch);
-            continue;
-        }
-
-        // Require REL_X (bit 0) + REL_Y (bit 1)
-        if (!check_capability_bit(rel_caps, 0) || !check_capability_bit(rel_caps, 1)) {
-            spdlog::debug("[InputScanner] Skipping {} (no REL_X/REL_Y)", device_path);
+        // Touchscreen capabilities win over relative axes, so a touch panel that
+        // also reports REL_X/REL_Y is never taken for a mouse.
+        if (classify_pointer_capabilities(abs_caps, rel_caps, key_caps) != PointerKind::Relative) {
+            spdlog::debug("[InputScanner] Skipping {} (not a relative pointer)", device_path);
             continue;
         }
 

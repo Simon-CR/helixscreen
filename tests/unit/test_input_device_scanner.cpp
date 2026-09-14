@@ -421,6 +421,76 @@ TEST_CASE("find_mouse_device detects USB HID mice via sysfs", "[input]") {
     }
 }
 
+TEST_CASE("pointer devices are classified by how they position themselves", "[input][rotation]") {
+    using helix::input::classify_pointer_capabilities;
+    using helix::input::PointerKind;
+
+    // The Pi 3B's ft5x06 and Logitech M705, as its InputScanner logs them.
+    const std::string ft5x06_abs = caps_string({0, 1, 47, 53, 54, 57});
+    const std::string btn_touch = caps_string({330});
+
+    SECTION("a USB mouse is relative") {
+        CHECK(classify_pointer_capabilities("0", "1943", mouse_key_caps()) ==
+              PointerKind::Relative);
+    }
+
+    SECTION("a touch panel is panel-absolute") {
+        CHECK(classify_pointer_capabilities(ft5x06_abs, "0", btn_touch) ==
+              PointerKind::PanelAbsolute);
+        CHECK(classify_pointer_capabilities("3", "0", "0") == PointerKind::PanelAbsolute);
+        CHECK(classify_pointer_capabilities(caps_string({53, 54}), "0", "0") ==
+              PointerKind::PanelAbsolute);
+    }
+
+    SECTION("touchscreen capabilities win over relative axes") {
+        CHECK(classify_pointer_capabilities("3", "3", mouse_key_caps()) ==
+              PointerKind::PanelAbsolute);
+        CHECK(classify_pointer_capabilities("0", "3", btn_touch) == PointerKind::PanelAbsolute);
+    }
+
+    SECTION("relative motion needs both REL_X and REL_Y") {
+        CHECK(classify_pointer_capabilities("0", "1", mouse_key_caps()) ==
+              PointerKind::PanelAbsolute);
+        CHECK(classify_pointer_capabilities("", "", "") == PointerKind::PanelAbsolute);
+    }
+}
+
+TEST_CASE("pointer_kind_for_device reads the capabilities of the device it names",
+          "[input][rotation]") {
+    using helix::input::pointer_kind_for_device;
+    using helix::input::PointerKind;
+
+    MockInputTree tree("pointer_kind");
+    tree.add_device(
+        2, "generic ft5x06 (79)",
+        {{"abs", caps_string({0, 1, 47, 53, 54, 57})}, {"rel", "0"}, {"key", caps_string({330})}},
+        "0018");
+    tree.add_device(5, "Logitech M705", {{"abs", "0"}, {"rel", "1943"}, {"key", mouse_key_caps()}});
+
+    SECTION("an event node") {
+        CHECK(pointer_kind_for_device(tree.dev_dir + "/event2", tree.sysfs_dir) ==
+              PointerKind::PanelAbsolute);
+        CHECK(pointer_kind_for_device(tree.dev_dir + "/event5", tree.sysfs_dir) ==
+              PointerKind::Relative);
+    }
+
+    SECTION("a link to an event node classifies as its target") {
+        // Configured devices are often named through /dev/input/by-id, whose names
+        // do not start with "event".
+        const std::string by_id = tree.base + "/dev/input/by-id";
+        fs::create_directories(by_id);
+        fs::create_symlink(tree.dev_dir + "/event5", by_id + "/usb-Logitech_M705-event-mouse");
+        CHECK(pointer_kind_for_device(by_id + "/usb-Logitech_M705-event-mouse", tree.sysfs_dir) ==
+              PointerKind::Relative);
+    }
+
+    SECTION("a path whose capabilities cannot be read is panel-absolute") {
+        CHECK(pointer_kind_for_device("", tree.sysfs_dir) == PointerKind::PanelAbsolute);
+        CHECK(pointer_kind_for_device(tree.dev_dir + "/event9", tree.sysfs_dir) ==
+              PointerKind::PanelAbsolute);
+    }
+}
+
 TEST_CASE("find_keyboard_device detects USB HID keyboards via sysfs", "[input]") {
     using helix::input::find_keyboard_device;
 

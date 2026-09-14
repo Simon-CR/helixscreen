@@ -4,11 +4,10 @@
  * @file test_indev_read_hook.cpp
  * @brief One read hook chained onto several pointer devices
  *
- * DisplayBackendDRM chains the scanout plane's rotation onto the touch pointer
- * and the USB mouse through a single static callback. Each device keeps the read
- * callback the hook replaced, so one device's sample is never produced by the
- * other's driver, and teardown hands each device back its own callback
- * (prestonbrown/helixscreen#1275).
+ * PointerFrameHook fronts the touch pointer and the USB mouse with a single
+ * static callback. Each device keeps the read callback the hook replaced, so one
+ * device's sample is never produced by the other's driver, and teardown hands
+ * each device back its own callback (prestonbrown/helixscreen#1275).
  */
 
 #include "../lvgl_test_fixture.h"
