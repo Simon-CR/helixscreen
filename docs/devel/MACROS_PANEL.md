@@ -290,7 +290,7 @@ Extends `lv_button` with API props:
 Gated behind `Config::is_beta_features_enabled()`.
 
 - `MacroModificationManager` + `MacroEnhanceWizard`
-- Step-by-step wizard to enhance PRINT_START for phase tracking
+- Step-by-step wizard to make PRINT_START operations (bed mesh, QGL, etc.) skippable
 - Future: `create_backup` parameter support, pending Moonraker API support upstream
 
 ---

@@ -2061,7 +2061,7 @@ AmsError AmsBackendCfs::set_slot_info(int slot_index, const SlotInfo& info, bool
         // in-flight frames will keep reporting until that echo lands.
         const int previous_firmware_id = target->spoolman_id;
 
-        // The bay as it stood before this edit. override_from_user_edit needs
+        // The bay as it stood before this edit. user_override_from_slot_info needs
         // it to tell what the user moved from what the editor merely carried
         // back, so it has to be taken before the writes below.
         const SlotInfo prior_slot = *target;
@@ -2104,7 +2104,7 @@ AmsError AmsBackendCfs::set_slot_info(int slot_index, const SlotInfo& info, bool
         // registers the expected post-write fingerprints with rfid_tracker_
         // before dispatching the gcode.
         if (persist) {
-            overrides_[slot_index] = helix::ams::override_from_user_edit(prior_slot, info);
+            overrides_[slot_index] = helix::ams::user_override_from_slot_info(prior_slot, info);
         }
 
         // Record our own SPOOLMAN_ID write for the fork dialect (the only
@@ -2393,7 +2393,7 @@ AmsError AmsBackendCfs::set_tool_mapping_impl(int tool_number, int slot_index) {
         return AmsError(AmsResult::INVALID_TOOL,
                         "Failed to encode TNN for tool=" + std::to_string(tool_number) +
                             " slot=" + std::to_string(slot_index),
-                        "Invalid tool/slot", "");
+                        lv_tr("Invalid tool/slot"), "");
     }
 
     // Optimistic local update so get_tool_mapping() reflects the new mapping
@@ -2501,7 +2501,7 @@ AmsError AmsBackendCfs::enable_bypass() {
     // supports_bypass itself.
     if (!helix::bypass_available_for(system_info_.supports_bypass)) {
         return AmsError(AmsResult::NOT_SUPPORTED, "Bypass not supported",
-                        "No verified bypass command for this CFS firmware", "");
+                        lv_tr("No verified bypass command for this CFS firmware"), "");
     }
 
     // Filament still loaded from a bay is the caller's problem on backends
@@ -2510,7 +2510,7 @@ AmsError AmsBackendCfs::enable_bypass() {
     // strand bay filament behind an external feed.
     if (system_info_.filament_loaded && system_info_.current_slot >= 0) {
         return AmsError(AmsResult::WRONG_STATE, "Filament is loaded",
-                        "Unload the CFS filament before enabling bypass", "");
+                        lv_tr("Unload the CFS filament before enabling bypass"), "");
     }
 
     if (schema_ == CfsSchema::Flat) {
@@ -2521,7 +2521,7 @@ AmsError AmsBackendCfs::enable_bypass() {
         // for the homing/verification plumbing like every other CFS action.
         if (macro_variant_ != CfsMacroVariant::Fork || external_slot_index_ < 0) {
             return AmsError(AmsResult::NOT_SUPPORTED, "Bypass not supported",
-                            "This CFS firmware exposes no external spool slot", "");
+                            lv_tr("This CFS firmware exposes no external spool slot"), "");
         }
         std::string gcode = "T" + std::to_string(external_slot_index_);
         {

@@ -4800,8 +4800,7 @@ AmsError AmsBackendAfc::do_unload_filament(int slot_index) {
         std::lock_guard<std::mutex> lock(mutex_);
 
         if (!system_info_.filament_loaded) {
-            return AmsError(AmsResult::WRONG_STATE, "No filament loaded", "No filament to unload",
-                            "Load filament first");
+            return AmsErrorHelper::not_loaded();
         }
 
         // Resolve the requested lane so AFC unloads THAT lane, picking up its
@@ -4950,9 +4949,9 @@ void AmsBackendAfc::apply_overrides(SlotInfo& slot, int slot_index) {
 void AmsBackendAfc::persist_override(int slot_index, const SlotInfo& original,
                                      const SlotInfo& info) {
     // Callers hold mutex_, and @p original is the lane as it stood before this
-    // edit: override_from_user_edit tells what the user moved from what the
+    // edit: user_override_from_slot_info tells what the user moved from what the
     // editor merely carried back, so it needs both snapshots.
-    helix::ams::FilamentSlotOverride o = helix::ams::override_from_user_edit(original, info);
+    helix::ams::FilamentSlotOverride o = helix::ams::user_override_from_slot_info(original, info);
     overrides_[slot_index] = o;
 
     if (override_store_) {
@@ -5265,8 +5264,7 @@ AmsError AmsBackendAfc::recover_lane_position(int slot_index) {
 
         lane_name = slots_.name_of(slot_index);
         if (lane_name.empty()) {
-            return AmsErrorHelper::invalid_slot(
-                lane_noun(), slot_index, slots_.slot_count() > 0 ? slots_.slot_count() - 1 : 0);
+            return AmsErrorHelper::invalid_slot(lane_noun(), slot_index, slots_.slot_count() - 1);
         }
     }
 
@@ -5589,9 +5587,9 @@ AmsError AmsBackendAfc::set_slot_info(int slot_index, const SlotInfo& info, bool
                         "Material '" + rejected_material +
                             "' contains characters that cannot be "
                             "sent as a G-code parameter",
-                        "Couldn't save the material name",
-                        "Everything else was saved. Rename the material using letters, digits, "
-                        "spaces, and + - _ . ( ) /");
+                        lv_tr("Couldn't save the material name"),
+                        lv_tr("Everything else was saved. Rename the material using letters, "
+                              "digits, spaces, and + - _ . ( ) /"));
     }
 
     return AmsErrorHelper::success();
@@ -5646,7 +5644,7 @@ AmsError AmsBackendAfc::enable_bypass() {
 
         if (!helix::bypass_available_for(system_info_.supports_bypass)) {
             return AmsError(AmsResult::WRONG_STATE, "Bypass not supported",
-                            "This AFC system does not support bypass mode", "");
+                            lv_tr("This AFC system does not support bypass mode"), "");
         }
 
         // Explicit precondition, not a redundant guard. AmsSubscriptionBackend::
@@ -5657,7 +5655,8 @@ AmsError AmsBackendAfc::enable_bypass() {
         // longer unloads on AFC's behalf, so AFC has to give the answer (#1229).
         if (system_info_.filament_loaded) {
             return AmsError(AmsResult::WRONG_STATE, "Unload filament first",
-                            "Filament is loaded at the toolhead. Unload it before enabling bypass.",
+                            lv_tr("Filament is loaded at the toolhead. Unload it before enabling "
+                                  "bypass."),
                             "");
         }
     }
@@ -5682,7 +5681,7 @@ AmsError AmsBackendAfc::disable_bypass() {
 
         if (!bypass_active_) {
             return AmsError(AmsResult::WRONG_STATE, "Bypass not active",
-                            "Bypass mode is not currently active", "");
+                            lv_tr("Bypass mode is not currently active"), "");
         }
 
         sensor = system_info_.has_hardware_bypass_sensor ? "bypass" : "virtual_bypass";
@@ -5751,13 +5750,15 @@ AmsError AmsBackendAfc::apply_endless_spool_backup(int slot_index, int backup_sl
     if (lane_name.empty() || !IMoonrakerAPI::is_safe_gcode_param(lane_name)) {
         spdlog::warn("[AMS AFC] Unsafe lane name characters in endless spool config");
         return AmsError(AmsResult::MAPPING_ERROR, "Invalid lane name",
-                        "Lane name contains invalid characters", "Check AFC configuration");
+                        lv_tr("Lane name contains invalid characters"),
+                        lv_tr("Check AFC configuration"));
     }
     if (backup_slot >= 0 &&
         (backup_lane_name.empty() || !IMoonrakerAPI::is_safe_gcode_param(backup_lane_name))) {
         spdlog::warn("[AMS AFC] Unsafe backup lane name characters");
         return AmsError(AmsResult::MAPPING_ERROR, "Invalid backup lane name",
-                        "Backup lane name contains invalid characters", "Check AFC configuration");
+                        lv_tr("Backup lane name contains invalid characters"),
+                        lv_tr("Check AFC configuration"));
     }
 
     // Build and send G-code command
@@ -6261,18 +6262,19 @@ AmsError AmsBackendAfc::execute_device_action(const std::string& action_id, cons
         return execute_gcode("AFC_CALIBRATION");
     } else if (action_id == "bowden_length") {
         if (!value.has_value()) {
-            return AmsError(AmsResult::WRONG_STATE, "Bowden length value required", "Missing value",
-                            "Provide a bowden length value");
+            return AmsError(AmsResult::WRONG_STATE, "Bowden length value required",
+                            lv_tr("Missing value"), lv_tr("Provide a bowden length value"));
         }
         try {
             float length = std::any_cast<float>(value);
             std::lock_guard<std::mutex> lock(mutex_);
             float max_len = std::max(2000.0f, bowden_length_ * 1.5f);
             if (length < 100.0f || length > max_len) {
-                return AmsError(AmsResult::WRONG_STATE,
-                                fmt::format("Bowden length must be 100-{:.0f}mm", max_len),
-                                "Invalid value",
-                                fmt::format("Enter a length between 100 and {:.0f}mm", max_len));
+                return AmsError(
+                    AmsResult::WRONG_STATE,
+                    fmt::format("Bowden length must be 100-{:.0f}mm", max_len),
+                    lv_tr("Invalid value"),
+                    fmt::format(lv_tr("Enter a length between 100 and {:.0f}mm"), max_len));
             }
             // AFC uses SET_BOWDEN_LENGTH HUB={hub_name} LENGTH={mm}
             if (!hub_names_.empty()) {
@@ -6283,23 +6285,24 @@ AmsError AmsBackendAfc::execute_device_action(const std::string& action_id, cons
             return AmsErrorHelper::not_supported("No AFC hubs configured");
         } catch (const std::bad_any_cast&) {
             return AmsError(AmsResult::WRONG_STATE, "Invalid bowden length type",
-                            "Invalid value type", "Provide a numeric value");
+                            lv_tr("Invalid value type"), lv_tr("Provide a numeric value"));
         }
     } else if (action_id.rfind("bowden_T", 0) == 0) {
         // Per-extruder bowden length (toolchanger): bowden_T0, bowden_T1, etc.
         if (!value.has_value()) {
-            return AmsError(AmsResult::WRONG_STATE, "Bowden length value required", "Missing value",
-                            "Provide a bowden length value");
+            return AmsError(AmsResult::WRONG_STATE, "Bowden length value required",
+                            lv_tr("Missing value"), lv_tr("Provide a bowden length value"));
         }
         try {
             float length = std::any_cast<float>(value);
             std::lock_guard<std::mutex> lock(mutex_);
             float max_len = std::max(2000.0f, bowden_length_ * 1.5f);
             if (length < 100.0f || length > max_len) {
-                return AmsError(AmsResult::WRONG_STATE,
-                                fmt::format("Bowden length must be 100-{:.0f}mm", max_len),
-                                "Invalid value",
-                                fmt::format("Enter a length between 100 and {:.0f}mm", max_len));
+                return AmsError(
+                    AmsResult::WRONG_STATE,
+                    fmt::format("Bowden length must be 100-{:.0f}mm", max_len),
+                    lv_tr("Invalid value"),
+                    fmt::format(lv_tr("Enter a length between 100 and {:.0f}mm"), max_len));
             }
             // Extract tool index from action_id (e.g., "bowden_T0" -> 0)
             int tool_idx = std::stoi(action_id.substr(8));
@@ -6328,18 +6331,19 @@ AmsError AmsBackendAfc::execute_device_action(const std::string& action_id, cons
                                                  std::to_string(tool_idx));
         } catch (const std::bad_any_cast&) {
             return AmsError(AmsResult::WRONG_STATE, "Invalid bowden length type",
-                            "Invalid value type", "Provide a numeric value");
+                            lv_tr("Invalid value type"), lv_tr("Provide a numeric value"));
         }
     } else if (action_id == "speed_fwd" || action_id == "speed_rev") {
         if (!value.has_value()) {
             return AmsError(AmsResult::WRONG_STATE, "Speed multiplier value required",
-                            "Missing value", "Provide a speed multiplier value");
+                            lv_tr("Missing value"), lv_tr("Provide a speed multiplier value"));
         }
         try {
             float multiplier = std::any_cast<float>(value);
             if (multiplier < 0.5f || multiplier > 2.0f) {
                 return AmsError(AmsResult::WRONG_STATE, "Speed multiplier must be 0.5-2.0x",
-                                "Invalid value", "Enter a multiplier between 0.5 and 2.0");
+                                lv_tr("Invalid value"),
+                                lv_tr("Enter a multiplier between 0.5 and 2.0"));
             }
             // AFC SET_LONG_MOVE_SPEED is per-lane; apply to all lanes
             std::string param = (action_id == "speed_fwd") ? "FWD_SPEED" : "RWD_FACTOR";
@@ -6355,7 +6359,7 @@ AmsError AmsBackendAfc::execute_device_action(const std::string& action_id, cons
             return AmsErrorHelper::success();
         } catch (const std::bad_any_cast&) {
             return AmsError(AmsResult::WRONG_STATE, "Invalid speed multiplier type",
-                            "Invalid value type", "Provide a numeric value");
+                            lv_tr("Invalid value type"), lv_tr("Provide a numeric value"));
         }
     } else if (action_id == "test_lanes") {
         return execute_gcode("AFC_TEST_LANES");
@@ -6423,7 +6427,7 @@ AmsError AmsBackendAfc::execute_device_action(const std::string& action_id, cons
     if (action_id.rfind("dist_hub_", 0) == 0) {
         std::string lane_name = action_id.substr(9);
         if (!value.has_value()) {
-            return AmsError(AmsResult::WRONG_STATE, "Value required", "Missing value", "");
+            return AmsError(AmsResult::WRONG_STATE, "Value required", lv_tr("Missing value"), "");
         }
         try {
             float val = std::any_cast<float>(value);
@@ -6437,7 +6441,8 @@ AmsError AmsBackendAfc::execute_device_action(const std::string& action_id, cons
             }
             return AmsErrorHelper::success();
         } catch (const std::bad_any_cast&) {
-            return AmsError(AmsResult::WRONG_STATE, "Invalid value type", "Expected float", "");
+            return AmsError(AmsResult::WRONG_STATE, lv_tr("Invalid value type"),
+                            lv_tr("Expected float"), "");
         }
     }
 
@@ -6464,7 +6469,7 @@ AmsError AmsBackendAfc::execute_device_action(const std::string& action_id, cons
     auto [th_field, th_tool] = parse_toolhead_action(action_id);
     if (!th_field.empty()) {
         if (!value.has_value()) {
-            return AmsError(AmsResult::WRONG_STATE, "Value required", "Missing value", "");
+            return AmsError(AmsResult::WRONG_STATE, "Value required", lv_tr("Missing value"), "");
         }
         try {
             float val = std::any_cast<float>(value);
@@ -6504,7 +6509,8 @@ AmsError AmsBackendAfc::execute_device_action(const std::string& action_id, cons
             }
             return AmsErrorHelper::success();
         } catch (const std::bad_any_cast&) {
-            return AmsError(AmsResult::WRONG_STATE, "Invalid value type", "Expected float", "");
+            return AmsError(AmsResult::WRONG_STATE, lv_tr("Invalid value type"),
+                            lv_tr("Expected float"), "");
         }
     }
 
@@ -6513,13 +6519,13 @@ AmsError AmsBackendAfc::execute_device_action(const std::string& action_id, cons
         action_id == "hub_bowden_length" || action_id == "assisted_retract") {
         if (!afc_config_ || !afc_config_->is_loaded()) {
             return AmsError(AmsResult::WRONG_STATE, "AFC config not loaded",
-                            "Configuration not available", "Wait for config to load");
+                            lv_tr("Configuration not available"), lv_tr("Wait for config to load"));
         }
 
         auto hubs = afc_config_->parser().get_sections_matching("AFC_hub");
         if (hubs.empty()) {
             return AmsError(AmsResult::WRONG_STATE, "No hub section found in AFC config",
-                            "No hub configured", "Check AFC configuration");
+                            lv_tr("No hub configured"), lv_tr("Check AFC configuration"));
         }
         const std::string& hub_section = hubs[0];
 
@@ -6531,7 +6537,7 @@ AmsError AmsBackendAfc::execute_device_action(const std::string& action_id, cons
                 return AmsErrorHelper::success();
             } catch (const std::bad_any_cast&) {
                 return AmsError(AmsResult::WRONG_STATE, "Invalid value type for toggle",
-                                "Expected boolean", "");
+                                lv_tr("Expected boolean"), "");
             }
         } else if (action_id == "hub_cut_dist") {
             try {
@@ -6541,7 +6547,7 @@ AmsError AmsBackendAfc::execute_device_action(const std::string& action_id, cons
                 return AmsErrorHelper::success();
             } catch (const std::bad_any_cast&) {
                 return AmsError(AmsResult::WRONG_STATE, "Invalid value type for slider",
-                                "Expected float", "");
+                                lv_tr("Expected float"), "");
             }
         } else if (action_id == "hub_bowden_length") {
             try {
@@ -6552,7 +6558,7 @@ AmsError AmsBackendAfc::execute_device_action(const std::string& action_id, cons
                 return AmsErrorHelper::success();
             } catch (const std::bad_any_cast&) {
                 return AmsError(AmsResult::WRONG_STATE, "Invalid value type for slider",
-                                "Expected float", "");
+                                lv_tr("Expected float"), "");
             }
         } else if (action_id == "assisted_retract") {
             try {
@@ -6562,7 +6568,7 @@ AmsError AmsBackendAfc::execute_device_action(const std::string& action_id, cons
                 return AmsErrorHelper::success();
             } catch (const std::bad_any_cast&) {
                 return AmsError(AmsResult::WRONG_STATE, "Invalid value type for toggle",
-                                "Expected boolean", "");
+                                lv_tr("Expected boolean"), "");
             }
         }
     }
@@ -6578,7 +6584,7 @@ AmsError AmsBackendAfc::execute_device_action(const std::string& action_id, cons
     if (auto it = macro_var_slider_keys.find(action_id); it != macro_var_slider_keys.end()) {
         if (!macro_vars_config_ || !macro_vars_config_->is_loaded()) {
             return AmsError(AmsResult::WRONG_STATE, "Macro vars config not loaded",
-                            "Configuration not available", "Wait for config to load");
+                            lv_tr("Configuration not available"), lv_tr("Wait for config to load"));
         }
         try {
             float val = std::any_cast<float>(value);
@@ -6588,7 +6594,7 @@ AmsError AmsBackendAfc::execute_device_action(const std::string& action_id, cons
             return AmsErrorHelper::success();
         } catch (const std::bad_any_cast&) {
             return AmsError(AmsResult::WRONG_STATE, "Invalid value type for slider",
-                            "Expected float", "");
+                            lv_tr("Expected float"), "");
         }
     }
 
@@ -6599,7 +6605,8 @@ AmsError AmsBackendAfc::execute_device_action(const std::string& action_id, cons
             execute_gcode(fmt::format("AFC_TOGGLE_MACRO POOP={}", val ? 1 : 0));
             return AmsErrorHelper::success();
         } catch (const std::bad_any_cast&) {
-            return AmsError(AmsResult::WRONG_STATE, "Invalid value type", "Expected boolean", "");
+            return AmsError(AmsResult::WRONG_STATE, lv_tr("Invalid value type"),
+                            lv_tr("Expected boolean"), "");
         }
     }
     if (action_id == "brush_enabled") {
@@ -6608,7 +6615,8 @@ AmsError AmsBackendAfc::execute_device_action(const std::string& action_id, cons
             execute_gcode(fmt::format("AFC_TOGGLE_MACRO WIPE={}", val ? 1 : 0));
             return AmsErrorHelper::success();
         } catch (const std::bad_any_cast&) {
-            return AmsError(AmsResult::WRONG_STATE, "Invalid value type", "Expected boolean", "");
+            return AmsError(AmsResult::WRONG_STATE, lv_tr("Invalid value type"),
+                            lv_tr("Expected boolean"), "");
         }
     }
 
@@ -6616,7 +6624,7 @@ AmsError AmsBackendAfc::execute_device_action(const std::string& action_id, cons
     if (action_id == "purge_length") {
         if (!afc_config_ || !afc_config_->is_loaded()) {
             return AmsError(AmsResult::WRONG_STATE, "AFC config not loaded",
-                            "Configuration not available", "Wait for config to load");
+                            lv_tr("Configuration not available"), lv_tr("Wait for config to load"));
         }
         try {
             float val = std::any_cast<float>(value);
@@ -6628,7 +6636,8 @@ AmsError AmsBackendAfc::execute_device_action(const std::string& action_id, cons
             });
             return AmsErrorHelper::success();
         } catch (const std::bad_any_cast&) {
-            return AmsError(AmsResult::WRONG_STATE, "Invalid value type", "Expected float", "");
+            return AmsError(AmsResult::WRONG_STATE, lv_tr("Invalid value type"),
+                            lv_tr("Expected float"), "");
         }
     }
 

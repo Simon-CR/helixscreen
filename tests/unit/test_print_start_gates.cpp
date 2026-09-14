@@ -676,6 +676,30 @@ TEST_CASE("gate required_filament_present: a single empty lane takes the one-lin
     CHECK(r.body.find("Tool 3") == std::string::npos);
 }
 
+TEST_CASE("gate required_filament_present: multi-unit lane names the unit-local position",
+          "[print-start][gate-pipeline]") {
+    // Same two-BoxTurtle layout as the lane-weight gate: global slot 5 is the
+    // second unit's local lane 1, "Turtle_2 · Lane 2" on every other surface.
+    auto ctx = ctx_with([](PrintStartContext& c) {
+        c.ams_manages_filament = true;
+        c.has_active_backend = true;
+        c.empty_required_lanes = {{0, 5}};
+        helix::AvailableSlot s{};
+        s.slot_index = 5;
+        s.backend_index = 0;
+        s.local_slot_index = 1;
+        s.unit_display_name = "Turtle_2";
+        s.noun = helix::ui::LaneNoun::Lane;
+        s.is_empty = true;
+        c.available_slots = {s};
+    });
+    auto r = gate_named("required_filament_present").evaluate(ctx);
+    REQUIRE(r.verdict == CheckResult::Verdict::Warn);
+    CHECK(r.body.find("Turtle_2") != std::string::npos);
+    CHECK(r.body.find("Lane 2") != std::string::npos);
+    CHECK(r.body.find("Lane 6") == std::string::npos);
+}
+
 TEST_CASE("gate required_filament_present: AMS lanes all fed -> pass",
           "[print-start][gate-pipeline]") {
     auto ctx = ctx_with([](PrintStartContext& c) {
@@ -987,6 +1011,10 @@ helix::AvailableSlot lane(int slot_index, int backend_index, float remaining_g) 
     s.backend_index = backend_index;
     s.is_empty = false;
     s.remaining_weight_g = remaining_g;
+    // Matches AmsState::collect_available_slots() for a single-unit backend:
+    // local_slot_index is the unit's own slot_index, which equals the global
+    // index when there is only one unit.
+    s.local_slot_index = slot_index;
     return s;
 }
 
@@ -1140,6 +1168,31 @@ TEST_CASE("gate_insufficient_lane_weight: names the short slot", "[print-start][
     // The tool spells as "T1" (orca_ctx's tool), not the lowercase word form.
     CHECK(result.body.find("T1") != std::string::npos);
     CHECK(result.body.find("tool 1") == std::string::npos);
+}
+
+TEST_CASE("gate_insufficient_lane_weight: multi-unit lane names the unit-local position",
+          "[print-start][gate-pipeline]") {
+    // Two BoxTurtle units, 4 lanes each: global slot 5 is the second unit's
+    // local lane 1 (0-based), i.e. "Turtle_2 · Lane 2" everywhere else on
+    // screen. The gate must agree, not spell it "Lane 6" from the global index.
+    auto ctx = ctx_with([](PrintStartContext& c) {
+        FileMetadata md;
+        md.filament_weight_total = 863.07;
+        c.metadata = md;
+        c.tool_grams = {0.0, 863.07};
+        c.tools_used = {1};
+        c.mappings = {map_tool(1, /*slot=*/5, /*backend=*/0)};
+        auto short_lane = lane(5, 0, /*remaining=*/65.0f);
+        short_lane.local_slot_index = 1;
+        short_lane.unit_display_name = "Turtle_2";
+        short_lane.noun = helix::ui::LaneNoun::Lane;
+        c.available_slots = {short_lane};
+    });
+    auto result = gate_named("insufficient_lane_weight").evaluate(ctx);
+    REQUIRE(result.verdict == CheckResult::Verdict::Warn);
+    CHECK(result.body.find("Turtle_2") != std::string::npos);
+    CHECK(result.body.find("Lane 2") != std::string::npos);
+    CHECK(result.body.find("Lane 6") == std::string::npos);
 }
 
 // ---------------------------------------------------------------------------

@@ -1996,6 +1996,41 @@ bool GCodeLayerRenderer::has_first_output() const {
     return reveal_ready_2d(has_ghost_output(), needs_more_frames(), is_ghost_build_running());
 }
 
+bool GCodeLayerRenderer::pump_offscreen_build(int width, int height) {
+    if (width <= 0 || height <= 0) {
+        return false;
+    }
+
+    // set_canvas_size() drops bounds_valid_, forcing a re-fit on the next
+    // render. This runs on a repeating tick, so only call it when the size has
+    // actually moved; otherwise every tick would invalidate a fit that is
+    // already correct.
+    if (width != canvas_width_ || height != canvas_height_) {
+        set_canvas_size(width, height);
+    }
+
+    if (!ghost_mode_enabled_.load(std::memory_order_relaxed)) {
+        return has_first_output();
+    }
+
+    ensure_ghost_cache(width, height);
+    if (!ghost_buf_) {
+        return has_first_output();
+    }
+
+    // Same ordering render() uses: take a finished result before considering a
+    // respawn, so a completed build is never thrown away and restarted.
+    if (!ghost_cache_valid_) {
+        if (ghost_thread_ready_.load()) {
+            copy_raw_to_ghost_buf();
+        } else if (!ghost_thread_running_.load()) {
+            start_background_ghost_render();
+        }
+    }
+
+    return has_first_output();
+}
+
 void GCodeLayerRenderer::background_ghost_render_thread(GhostSnapshot snap) {
     // Works with both full-file mode (snap.gcode) and streaming mode (snap.streaming).
     if (!ghost_raw_buffer_ || (!snap.gcode && !snap.streaming)) {

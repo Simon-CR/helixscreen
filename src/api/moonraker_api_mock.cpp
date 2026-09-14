@@ -453,26 +453,6 @@ void MoonrakerAPIMock::database_delete_item(const std::string& namespace_name,
     }
 }
 
-// ============================================================================
-// Helix Plugin Method Overrides (mock)
-// ============================================================================
-
-void MoonrakerAPIMock::get_phase_tracking_status(std::function<void(bool)> on_success,
-                                                 ErrorCallback /*on_error*/) {
-    if (on_success) {
-        on_success(false);
-    }
-}
-
-void MoonrakerAPIMock::set_phase_tracking_enabled(bool enabled,
-                                                  std::function<void(bool)> on_success,
-                                                  ErrorCallback /*on_error*/) {
-    spdlog::debug("[MoonrakerAPIMock] set_phase_tracking_enabled({})", enabled);
-    if (on_success) {
-        on_success(enabled);
-    }
-}
-
 std::string MoonrakerFileTransferAPIMock::find_test_file(const std::string& filename) const {
     namespace fs = std::filesystem;
 
@@ -848,6 +828,14 @@ void MoonrakerFileTransferAPIMock::upload_file_with_name(
         "[MoonrakerAPIMock] Mock upload_file_with_name: root='{}', path='{}', filename='{}', "
         "size={} bytes",
         root, path, filename, content.size());
+
+    // Same recording contract as upload_file(): an injected config root
+    // receives the write, so tests can assert on what a config edit actually
+    // wrote. An empty path is the config root, so the file lands at the bare
+    // filename; a subdirectory prefixes it.
+    if (root == "config" && !config_files_.empty()) {
+        config_files_[path.empty() ? filename : path + "/" + filename] = content;
+    }
 
     // Mock always succeeds
     if (on_success) {

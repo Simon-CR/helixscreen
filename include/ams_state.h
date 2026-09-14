@@ -1019,6 +1019,9 @@ class AmsState {
     lv_subject_t* get_clog_meter_label_right_subject() {
         return &clog_meter_label_right_;
     }
+    lv_subject_t* get_clog_meter_mode_text_subject() {
+        return &clog_meter_mode_text_;
+    }
 
     /**
      * @brief Set source override for clog meter display
@@ -1892,11 +1895,14 @@ class AmsState {
 
     // String subjects (need buffers)
     lv_subject_t ams_action_detail_;
-    // Holds a translated Snapmaker feeder error ("フィーダー 4: フィラメントが
-    // ありません。…"), the longest composition any producer hands this subject.
-    // A translated CJK sentence runs far past ASCII length, and a short buffer
-    // truncates mid-codepoint via lv_strlcpy with no error.
-    char action_detail_buf_[128];
+    // Sized for the longest known translated composition any producer hands
+    // this subject: the CFS load-failure verdict message
+    // (AmsBackendCfs::phase_verdict_message), worst case ru at 364 bytes, with
+    // margin for future translation growth. That is a floor, not a ceiling:
+    // some producers (AFC's message.message) forward a raw firmware string
+    // with no length bound at all, so recompute_action_detail() truncates on
+    // a UTF-8 boundary before the copy rather than relying on this size alone.
+    char action_detail_buf_[512];
     lv_subject_t ams_system_name_;
     char system_name_buf_[32];
     lv_subject_t ams_system_logo_;
@@ -1960,15 +1966,19 @@ class AmsState {
     lv_subject_t clog_meter_warning_; // 0=ok, 1=warning
     lv_subject_t clog_meter_status_;  // ClogMeterStatus: 0=ok, 1=warning, 2=fault
     lv_subject_t clog_meter_mode_text_;
-    char clog_meter_mode_text_buf_[24]{};
+    // Mode names render translated: ru "Засор: вручную" is 24 bytes before the
+    // NUL, es "Obstrucción automática" the same. Undersized buffers truncate
+    // mid-codepoint, silently.
+    char clog_meter_mode_text_buf_[32]{};
     lv_subject_t clog_meter_danger_pct_;  // 0-100, where danger zone starts
     lv_subject_t clog_meter_peak_pct_;    // 0-100, peak-hold marker position
     lv_subject_t clog_meter_center_text_; // Enhanced center display
     char clog_meter_center_text_buf_[16]{};
     lv_subject_t clog_meter_label_left_; // Left endpoint label
-    char clog_meter_label_left_buf_[16]{};
+    // Endpoint labels render translated: ru "СПУТЫВАНИЕ" is 20 bytes.
+    char clog_meter_label_left_buf_[24]{};
     lv_subject_t clog_meter_label_right_; // Right endpoint label
-    char clog_meter_label_right_buf_[16]{};
+    char clog_meter_label_right_buf_[24]{};
 
     // Currently Loaded display subjects (reactive binding for "Currently Loaded" card)
     lv_subject_t current_material_text_;

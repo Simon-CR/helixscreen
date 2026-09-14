@@ -32,6 +32,16 @@ HELIX_INSTALL_DIRS="/root/printer_software/helixscreen /opt/helixscreen /mnt/UDI
 # shellcheck disable=SC2034  # consumed by uninstall.sh
 HELIX_STATE_DIRS="/mnt/UDISK/helixscreen-state /mnt/UDISK/helixscreen /data/helixscreen /usr/data/helixscreen-state /user-resource/helixscreen-state /userdata/helixscreen-state /srv/helixscreen-state"
 
+# Mounts release.sh's detect_rollback_dir() tries, in order, for an
+# off-partition update-backup when the install filesystem is too tight to
+# hold the old and new tree at once (HELIX_ROLLBACK_CANDIDATES overrides this
+# for tests). Shared here, rather than left local to release.sh, so
+# uninstall.sh's disabled-services ledger lookup can also recognise a backup
+# under one of these mounts without depending on release.sh, which the
+# standalone uninstaller does not bundle.
+# shellcheck disable=SC2034  # consumed by release.sh and uninstall.sh
+HELIX_ROLLBACK_CANDIDATES_DEFAULT="/mnt/UDISK /usr/data /mnt/data /data /user-resource /oem /userdata /var/tmp"
+
 # Remove a state root that is now empty.
 #
 # The sweep above takes cache/ and logs/ but leaves the directory that held
@@ -288,6 +298,35 @@ error_handler() {
         fi
     fi
 
+    # A ledger stop_competing_uis already wrote records a disable (chmod -x on
+    # a stock UI's init script, a systemd unit taken down) that is still in
+    # effect on the live system; losing the only copy leaves nothing for a
+    # later uninstall to reverse it with (prestonbrown/helixscreen#1618). A
+    # copy surviving anywhere but here is proof one was written, so carry it
+    # forward the same way settings.json and helixscreen.env are above.
+    local _ledger_restored=true
+    if [ ! -f "${INSTALL_DIR}/config/.disabled_services" ] \
+       && type _disabled_services_ledger_candidates >/dev/null 2>&1; then
+        local _ledger_src=""
+        local _ledger_candidate
+        for _ledger_candidate in $(_disabled_services_ledger_candidates); do
+            [ "$_ledger_candidate" = "${INSTALL_DIR}/config/.disabled_services" ] && continue
+            if [ -f "$_ledger_candidate" ]; then
+                _ledger_src="$_ledger_candidate"
+                break
+            fi
+        done
+        if [ -n "$_ledger_src" ]; then
+            _ledger_restored=false
+            if $(file_sudo "${INSTALL_DIR}/config") cp "$_ledger_src" "${INSTALL_DIR}/config/.disabled_services" 2>/dev/null; then
+                log_success "Disabled-services ledger recovered from $_ledger_src"
+                _ledger_restored=true
+            else
+                log_warn "Could not recover the disabled-services ledger from $_ledger_src"
+            fi
+        fi
+    fi
+
     # Cleanup temporary files after restores are done
     if [ "$CLEANUP_TMP" = true ] && [ -d "$TMP_DIR" ]; then
         _safe_remove_tmp_dir "$TMP_DIR"
@@ -295,7 +334,12 @@ error_handler() {
 
     echo ""
     log_error "Installation was NOT completed."
-    log_error "Your system should be in its original state."
+    if [ "$_ledger_restored" = true ]; then
+        log_error "Your system should be in its original state."
+    else
+        log_error "A previously disabled system service could not be recorded for recovery."
+        log_error "Re-run this script, or run it with --uninstall, to finish reversing it."
+    fi
     echo ""
     log_info "For help, please:"
     log_info "  1. Check the error message above"

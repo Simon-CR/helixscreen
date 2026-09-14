@@ -140,7 +140,7 @@ class MinimalStubBackend : public WifiBackend {
     WiFiError get_scan_results(std::vector<WiFiNetwork>&) override {
         return WiFiErrorHelper::success();
     }
-    WiFiError connect_network(const std::string&, const std::string&) override {
+    WiFiError connect_network(const std::string&, const std::string&, bool) override {
         return WiFiErrorHelper::success();
     }
     WiFiError disconnect_network() override {
@@ -181,7 +181,7 @@ TEST_CASE("forget_network on the mock backend removes a connected SSID", "[wifi]
     WifiBackendMock backend;
     REQUIRE(backend.start().success());
 
-    REQUIRE(backend.connect_network("HomeNetwork-5G", "12345678").success());
+    REQUIRE(backend.connect_network("HomeNetwork-5G", "12345678", /*is_hidden=*/false).success());
 
     WiFiError forgotten = backend.forget_network("HomeNetwork-5G");
     CHECK(forgotten.success());
@@ -204,7 +204,7 @@ TEST_CASE("forget_network on the currently-connected SSID fires DISCONNECTED", "
 
     WifiBackendMock backend;
     REQUIRE(backend.start().success());
-    REQUIRE(backend.connect_network("HomeNetwork-5G", "12345678").success());
+    REQUIRE(backend.connect_network("HomeNetwork-5G", "12345678", /*is_hidden=*/false).success());
     backend.set_connected_state(true, "HomeNetwork-5G", "192.168.1.50", 80);
 
     bool disconnected_fired = false;

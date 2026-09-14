@@ -91,5 +91,8 @@ class CrashReportModal : public Modal {
     //   the share code through to try_auto_send so the issue body links to it.
     void attempt_delivery();
     void send_with_bundle(const std::string& share_code);
+    // The no-network end state: QR code (or plain save) plus an honest status.
+    // Reached when the worker send fails and when this build may not upload.
+    void show_local_fallback(const CrashReporter::CrashReport& report, const char* status);
     void show_qr_code(const std::string& url);
 };

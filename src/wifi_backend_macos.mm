@@ -275,7 +275,8 @@ WiFiError WifiBackendMacOS::get_scan_results(std::vector<WiFiNetwork>& networks)
 // Connection Management
 // ============================================================================
 
-WiFiError WifiBackendMacOS::connect_network(const std::string& ssid, const std::string& password) {
+WiFiError WifiBackendMacOS::connect_network(const std::string& ssid, const std::string& password,
+                                            bool) {
     if (!running_) {
         return WiFiError(WiFiResult::NOT_INITIALIZED, "Backend not started",
                          "WiFi system not initialized", "");

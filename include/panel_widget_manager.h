@@ -96,7 +96,9 @@ class PanelWidgetManager {
     // -- Gate observers --
 
     /// Observe every hardware gate subject so that widgets appear/disappear
-    /// when capabilities change. Calls rebuild_cb on change.
+    /// when capabilities change. Calls rebuild_cb on change. @p panel_id only
+    /// keys the registration: any surface listing gated widgets (the home panel,
+    /// the widget catalog) holds its own under a distinct key.
     void setup_gate_observers(const std::string& panel_id, RebuildCallback rebuild_cb);
 
     /// Release gate observers for a panel (call during deinit/shutdown).

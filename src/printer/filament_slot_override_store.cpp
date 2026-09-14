@@ -650,8 +650,8 @@ void populate_temps_from_slot_info(FilamentSlotOverride& ovr, const SlotInfo& in
     }
 }
 
-FilamentSlotOverride override_from_user_edit(const SlotInfo& original, const SlotInfo& edited,
-                                             const std::string& material) {
+FilamentSlotOverride user_override_from_slot_info(const SlotInfo& original, const SlotInfo& edited,
+                                                  const std::string& material) {
     FilamentSlotOverride ovr;
     ovr.brand = edited.brand;
     ovr.spool_name = edited.spool_name;
@@ -706,8 +706,9 @@ FilamentSlotOverride override_from_user_edit(const SlotInfo& original, const Slo
     return ovr;
 }
 
-FilamentSlotOverride override_from_user_edit(const SlotInfo& original, const SlotInfo& edited) {
-    return override_from_user_edit(original, edited, edited.material);
+FilamentSlotOverride user_override_from_slot_info(const SlotInfo& original,
+                                                  const SlotInfo& edited) {
+    return user_override_from_slot_info(original, edited, edited.material);
 }
 
 // ============================================================================

@@ -102,7 +102,15 @@ UNICODE_RANGES+=",0x2122"        # Trademark
 # gate compares its output against the manifest written below, so the bake and
 # the gate cannot drift apart on what counts as "needed".
 echo "Extracting CJK characters from translations and C++ sources..."
-ALL_CJKCHARS=$(python3 scripts/translations/cjk_charset.py | paste -sd, -)
+# The extractor decides what the bake needs. paste always exits 0, so a piped
+# capture hides a failed scan: the bake below then skips on an empty set
+# while the script still prints Done. Capture the scan alone so its exit
+# status is the assignment's.
+CJK_SCAN="$(python3 scripts/translations/cjk_charset.py)" || {
+    echo "ERROR: cjk_charset.py failed - refusing to bake over stale fonts" >&2
+    exit 1
+}
+ALL_CJKCHARS="$(printf '%s' "$CJK_SCAN" | paste -sd, -)"
 if [ -n "$ALL_CJKCHARS" ]; then
     ALL_CJK_COUNT=$(echo "$ALL_CJKCHARS" | tr ',' '\n' | wc -l | tr -d ' ')
     echo "Found $ALL_CJK_COUNT unique CJK characters total"

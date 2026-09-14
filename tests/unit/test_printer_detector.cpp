@@ -5159,8 +5159,13 @@ TEST_CASE_METHOD(PrinterDetectorFixture,
     auto result = PrinterDetector::detect(hw);
     CAPTURE(result.type_name, result.confidence, result.runner_up_type_name,
             result.runner_up_confidence, result.margin(), result.tied_count);
-    // Should detect some delta printer with high confidence
-    REQUIRE(result.margin() >= PrinterDetector::DETECT_MIN_MARGIN);
+    // A class-only delta fingerprint ties the delta vendors by design (the
+    // known_collisions ratchet in test_printer_database_distinguishability);
+    // the contract is strong detection with the tiebreak picking Venture
+    // Delta, not a detection margin.
+    REQUIRE(result.confidence >= 90);
+    REQUIRE(result.ambiguous());
+    REQUIRE(result.type_name == "Venture Delta");
 }
 
 TEST_CASE("PrinterDetector::screws_tilt_direction_override reads DB field",

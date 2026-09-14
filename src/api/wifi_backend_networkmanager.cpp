@@ -679,7 +679,7 @@ std::string WifiBackendNetworkManager::validate_input(const std::string& input,
 // ============================================================================
 
 WiFiError WifiBackendNetworkManager::connect_network(const std::string& ssid,
-                                                     const std::string& password) {
+                                                     const std::string& password, bool is_hidden) {
     if (!running_) {
         return WiFiError(WiFiResult::NOT_INITIALIZED, "Backend not started",
                          "WiFi system not ready");
@@ -701,7 +701,8 @@ WiFiError WifiBackendNetworkManager::connect_network(const std::string& ssid,
         }
     }
 
-    spdlog::info("[WifiBackend] NM: Connecting to network '{}'", helix::redact::ssid(clean_ssid));
+    spdlog::info("[WifiBackend] NM: Connecting to network '{}'{}", helix::redact::ssid(clean_ssid),
+                 is_hidden ? " (hidden)" : "");
 
     // Clean up existing connect thread
     connect_active_ = false;
@@ -715,7 +716,7 @@ WiFiError WifiBackendNetworkManager::connect_network(const std::string& ssid,
     connect_active_ = true;
     try {
         connect_thread_ = std::thread(&WifiBackendNetworkManager::connect_thread_func, this,
-                                      clean_ssid, password);
+                                      clean_ssid, password, is_hidden);
     } catch (const std::system_error& e) {
         spdlog::error("[WifiBackend] Failed to spawn connect thread: {}", e.what());
         connect_active_ = false;
@@ -725,13 +726,43 @@ WiFiError WifiBackendNetworkManager::connect_network(const std::string& ssid,
     return WiFiErrorHelper::success();
 }
 
+std::vector<std::string> WifiBackendNetworkManager::connect_argv(const std::string& ssid,
+                                                                 const std::string& password,
+                                                                 bool is_hidden,
+                                                                 const std::string& iface) {
+    std::vector<std::string> argv = {"device", "wifi", "connect", ssid};
+    if (!password.empty()) {
+        argv.push_back("password");
+        argv.push_back(password);
+    }
+    if (is_hidden) {
+        argv.push_back("hidden");
+        argv.push_back("yes");
+    }
+    argv.push_back("ifname");
+    argv.push_back(iface);
+    return argv;
+}
+
 WifiBackendNetworkManager::ConnectAttempt
-WifiBackendNetworkManager::try_nmcli_connect(const std::string& ssid, const std::string& password) {
+WifiBackendNetworkManager::try_nmcli_connect(const std::string& ssid, const std::string& password,
+                                             bool is_hidden) {
     ConnectAttempt result;
 
     // SECURITY: fork/exec (no shell) so SSID/password can't be interpreted by sh.
     // Capture child's stderr via pipe so the caller can distinguish failure modes
     // (polkit denial, stale-profile key-mgmt error, etc.).
+
+    // Built before fork(): the child of a multithreaded process must not
+    // allocate between fork and exec, so it inherits ready-to-use pointers.
+    std::vector<std::string> args = connect_argv(ssid, password, is_hidden, wifi_interface_);
+    std::vector<char*> exec_args;
+    exec_args.reserve(args.size() + 2);
+    exec_args.push_back(const_cast<char*>("nmcli"));
+    for (const std::string& arg : args) {
+        exec_args.push_back(const_cast<char*>(arg.c_str()));
+    }
+    exec_args.push_back(nullptr);
 
     int stderr_pipe[2];
     if (pipe(stderr_pipe) < 0) {
@@ -753,13 +784,7 @@ WifiBackendNetworkManager::try_nmcli_connect(const std::string& ssid, const std:
         dup2(stderr_pipe[1], STDERR_FILENO);
         close(stderr_pipe[1]);
 
-        if (password.empty()) {
-            execlp("nmcli", "nmcli", "device", "wifi", "connect", ssid.c_str(), "ifname",
-                   wifi_interface_.c_str(), nullptr);
-        } else {
-            execlp("nmcli", "nmcli", "device", "wifi", "connect", ssid.c_str(), "password",
-                   password.c_str(), "ifname", wifi_interface_.c_str(), nullptr);
-        }
+        execvp("nmcli", exec_args.data());
         _exit(127); // exec failed
     }
 
@@ -845,10 +870,11 @@ bool WifiBackendNetworkManager::delete_connection_profile(const std::string& pro
     return code == 0;
 }
 
-void WifiBackendNetworkManager::connect_thread_func(std::string ssid, std::string password) {
+void WifiBackendNetworkManager::connect_thread_func(std::string ssid, std::string password,
+                                                    bool is_hidden) {
     spdlog::debug("[WifiBackend] NM: Connect thread started for '{}'", helix::redact::ssid(ssid));
 
-    ConnectAttempt attempt = try_nmcli_connect(ssid, password);
+    ConnectAttempt attempt = try_nmcli_connect(ssid, password, is_hidden);
 
     if (!connect_active_) {
         return;
@@ -873,7 +899,7 @@ void WifiBackendNetworkManager::connect_thread_func(std::string ssid, std::strin
         if (delete_connection_profile(ssid)) {
             spdlog::info("[WifiBackend] NM: Deleted stale profile for '{}', retrying connect",
                          helix::redact::ssid(ssid));
-            attempt = try_nmcli_connect(ssid, password);
+            attempt = try_nmcli_connect(ssid, password, is_hidden);
             if (!connect_active_) {
                 return;
             }

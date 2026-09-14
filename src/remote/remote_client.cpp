@@ -187,11 +187,12 @@ static void print_usage() {
     printf("  -h, --help              Show this help\n");
     printf("\nSocket path resolution:\n");
     printf("  1. --socket <path>  (explicit)\n");
-    printf("  2. first live socket among, in order:\n");
+    printf("  2. the one live socket among, in order:\n");
     printf("       $RUNTIME_DIRECTORY/  (systemd units)\n");
     printf("       $XDG_RUNTIME_DIR/\n");
     printf("       /run/helixscreen/\n");
     printf("       /tmp/\n");
+    printf("     more than one live socket refuses to guess; pass -s\n");
 }
 
 // ---------------------------------------------------------------------------
@@ -206,40 +207,22 @@ static std::string resolve_socket_path(const std::string& override_path) {
     // Search every candidate directory rather than resolving one: the server runs
     // under systemd with $RUNTIME_DIRECTORY, this client usually runs from an ssh
     // session with only $XDG_RUNTIME_DIR, and picking a single directory finds
-    // nothing the other context created.
-    const std::vector<std::string> dirs = helix::control_socket_search_dirs();
-    const std::string well_known = helix::well_known_socket_path();
+    // nothing the other context created. resolve_client_socket_path applies one
+    // ambiguity policy to whatever it finds, well-known or pid-suffixed alike.
+    const helix::ClientSocketResolution resolution =
+        helix::resolve_client_socket_path(helix::control_socket_search_dirs());
 
-    // Liveness, not mere existence: a crashed instance leaves the file behind, and
-    // connecting to it fails with a confusing error instead of finding the app that
-    // is actually running on a pid-suffixed path.
-    for (const std::string& candidate : dirs) {
-        const std::string path = candidate + "/helixscreen-control.sock";
-        if (helix::UnixSocketTransport::path_is_live(path)) {
-            return path;
-        }
+    if (resolution.status != helix::ClientSocketResolution::Status::Ambiguous) {
+        return resolution.path;
     }
 
-    std::vector<std::string> instances;
-    for (const std::string& candidate : dirs) {
-        for (std::string& found : helix::UnixSocketTransport::discover_instances(candidate)) {
-            instances.push_back(std::move(found));
-        }
+    // Guessing here would silently drive the wrong app, exactly the failure
+    // this whole search exists to prevent. Make the user choose.
+    fprintf(stderr, "Error: several HelixScreen instances are running. Pick one with -s:\n");
+    for (const std::string& path : resolution.candidates) {
+        fprintf(stderr, "  --socket %s\n", path.c_str());
     }
-    if (instances.size() == 1) {
-        return instances[0];
-    }
-    if (instances.size() > 1) {
-        // Guessing here would silently drive the wrong app — exactly the failure
-        // this whole change exists to prevent. Make the user choose.
-        fprintf(stderr, "Error: several HelixScreen instances are running. Pick one with -s:\n");
-        for (const std::string& path : instances) {
-            fprintf(stderr, "  --socket %s\n", path.c_str());
-        }
-        exit(1);
-    }
-
-    return well_known; // Nothing running; report against the expected path.
+    exit(1);
 }
 
 static int connect_to_server(const std::string& socket_path) {

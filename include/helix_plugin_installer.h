@@ -46,9 +46,11 @@ enum class PluginInstallState {
  * @brief Manages helix_print plugin detection and installation
  *
  * @note Thread Safety:
- *       - install_local() / uninstall_local(): MUST be called from main thread only.
- *         These methods block during script execution. For non-blocking UI,
- *         wrap in std::thread or std::async.
+ *       - uninstall_local(): MUST be called from main thread only. It blocks
+ *         during script execution and invokes its callback inline. For
+ *         non-blocking UI, wrap in std::thread or std::async.
+ *       - install_local_sync(): Blocks during script execution; invokes no
+ *         callback, so it is safe to call from a worker thread.
  *       - get_state() / is_installing(): Thread-safe (atomic read).
  *       - All other methods: Main thread only.
  *
@@ -56,7 +58,7 @@ enum class PluginInstallState {
  *   1. Create installer and set API
  *   2. Check if plugin is missing: !PrinterState::service_has_helix_plugin()
  *   3. Check if should prompt: installer.should_prompt_install()
- *   4. For local: installer.install_local(callback)
+ *   4. For local: installer.install_local_sync()
  *   5. For remote: show dialog with installer.get_remote_install_command()
  */
 class HelixPluginInstaller {
@@ -115,21 +117,9 @@ class HelixPluginInstaller {
      * Returns a result struct instead of using callbacks, which avoids
      * std::function-related crashes on ARM/glibc static builds.
      *
-     * @param enable_phase_tracking If true, also installs phase tracking macros
      * @return Result with success flag and message
      */
-    [[nodiscard]] SyncInstallResult install_local_sync(bool enable_phase_tracking = false);
-
-    /**
-     * @brief Attempt local auto-installation
-     *
-     * Runs the bundled install.sh script with --auto flag.
-     * Only works when connected to local Moonraker.
-     *
-     * @param callback Called when installation completes or fails
-     * @param enable_phase_tracking If true, also installs phase tracking macros
-     */
-    void install_local(InstallCallback callback, bool enable_phase_tracking = false);
+    [[nodiscard]] SyncInstallResult install_local_sync();
 
     /**
      * @brief Attempt local auto-uninstallation

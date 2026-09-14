@@ -24,6 +24,7 @@ struct FontMapping {
 // Taking their address unconditionally would produce undefined references.
 // clang-format off
 static const FontMapping REGULAR_FONTS[] = {
+    {&noto_sans_8, "noto_sans_cjk_8.bin"},
     {&noto_sans_10, "noto_sans_cjk_10.bin"},
     {&noto_sans_11, "noto_sans_cjk_11.bin"},
     {&noto_sans_12, "noto_sans_cjk_12.bin"},
@@ -42,7 +43,12 @@ static const FontMapping REGULAR_FONTS[] = {
     {&noto_sans_32, "noto_sans_cjk_32.bin"},
 #endif
 #if HELIX_MAX_FONT_TIER >= 6
+    // 48/64 are the high-DPI scale rungs (DisplayMetrics::scaled_font_name),
+    // linked only on the XXLarge tier alongside 40 (see mk/fonts.mk
+    // FONTS_XXLARGE), so they share this guard rather than needing a new one.
     {&noto_sans_40, "noto_sans_cjk_40.bin"},
+    {&noto_sans_48, "noto_sans_cjk_48.bin"},
+    {&noto_sans_64, "noto_sans_cjk_64.bin"},
 #endif
 };
 
@@ -57,7 +63,10 @@ static const FontMapping BOLD_FONTS[] = {
     {&noto_sans_bold_32, "noto_sans_cjk_bold_32.bin"},
 #endif
 #if HELIX_MAX_FONT_TIER >= 6
+    // High-DPI scale rungs; see the noto_sans_48/64 note above.
     {&noto_sans_bold_40, "noto_sans_cjk_bold_40.bin"},
+    {&noto_sans_bold_48, "noto_sans_cjk_bold_48.bin"},
+    {&noto_sans_bold_64, "noto_sans_cjk_bold_64.bin"},
 #endif
 };
 
@@ -78,7 +87,10 @@ static const FontMapping LIGHT_FONTS[] = {
     {&noto_sans_light_20, "noto_sans_cjk_light_20.bin"},
 #endif
 #if HELIX_MAX_FONT_TIER >= 6
+    // High-DPI scale rungs; see the noto_sans_48/64 note above.
     {&noto_sans_light_26, "noto_sans_cjk_light_26.bin"},
+    {&noto_sans_light_32, "noto_sans_cjk_light_32.bin"},
+    {&noto_sans_light_40, "noto_sans_cjk_light_40.bin"},
 #endif
 };
 // clang-format on

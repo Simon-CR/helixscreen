@@ -4,6 +4,8 @@
 #include "../lvgl_test_fixture.h"
 #include "cjk_font_manager.h"
 
+#include <filesystem>
+
 #include "../catch_amalgamated.hpp"
 
 using namespace helix::system;
@@ -115,6 +117,30 @@ TEST_CASE_METHOD(CjkFontManagerFixture, "CjkFontManager: unload clears fallback 
 
     CjkFontManager::instance().on_language_changed("en");
     REQUIRE(noto_sans_14.fallback == nullptr);
+}
+
+// The bake (scripts/regen_text_fonts.sh) and the mapping tables
+// (REGULAR_FONTS/BOLD_FONTS/LIGHT_FONTS in cjk_font_manager.cpp) are two
+// hand-maintained lists that must name the same faces. A face compiled with
+// no mapping entry renders CJK text as tofu; a mapping entry naming a bin
+// that was never baked (or has since been removed) silently loads nothing
+// for that face. Both failures leave loaded_font_count() short of the number
+// of .bin files actually on disk, so comparing the two catches either
+// direction without hardcoding either list.
+TEST_CASE_METHOD(CjkFontManagerFixture,
+                 "CjkFontManager: maps every baked CJK bin to a compiled face", "[cjk_font]") {
+    size_t bin_count = 0;
+    for (const auto& entry : std::filesystem::directory_iterator("assets/fonts/cjk")) {
+        if (entry.is_regular_file() && entry.path().extension() == ".bin") {
+            ++bin_count;
+        }
+    }
+    REQUIRE(bin_count > 0);
+
+    CjkFontManager::instance().on_language_changed("zh");
+    REQUIRE(CjkFontManager::instance().is_loaded());
+
+    CHECK(CjkFontManager::instance().loaded_font_count() == bin_count);
 }
 
 TEST_CASE_METHOD(CjkFontManagerFixture,

@@ -1605,7 +1605,7 @@ void WifiBackendWpaSupplicant::reconcile_saved_networks() {
 }
 
 WiFiError WifiBackendWpaSupplicant::connect_network(const std::string& ssid,
-                                                    const std::string& password) {
+                                                    const std::string& password, bool is_hidden) {
     if (!is_running()) {
         return WiFiError(WiFiResult::NOT_INITIALIZED, "Backend not started",
                          "WiFi system not ready");
@@ -1684,6 +1684,23 @@ WiFiError WifiBackendWpaSupplicant::connect_network(const std::string& ssid,
         }
         NOTIFY_ERROR("Failed to save WiFi network");
         return WiFiErrorHelper::connection_failed("Failed to configure network SSID");
+    }
+
+    // A hidden AP broadcasts no SSID, so it never appears in scan results;
+    // scan_ssid=1 makes the supplicant direct-probe for it instead of
+    // matching beacons only. Applied to reused entries too: one saved as
+    // visible still needs the probe when the user re-joins it as hidden.
+    if (is_hidden) {
+        const std::string scan_ssid_cmd = "SET_NETWORK " + network_id + " scan_ssid 1";
+        if (send_command(scan_ssid_cmd) != "OK\n") {
+            LOG_ERROR_INTERNAL("Failed to set scan_ssid: {}", scan_ssid_cmd);
+            // Never remove a reused id — see the Step 1 comment.
+            if (!reused_existing) {
+                send_command("REMOVE_NETWORK " + network_id);
+            }
+            NOTIFY_ERROR("Failed to save WiFi network");
+            return WiFiErrorHelper::connection_failed("Failed to configure hidden network scan");
+        }
     }
 
     // Step 3: Set security (PSK for secured networks, key_mgmt for open)

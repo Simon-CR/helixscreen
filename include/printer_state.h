@@ -1861,23 +1861,28 @@ class PrinterState {
     bool service_has_helix_plugin() const;
 
     /**
-     * @brief Set phase tracking enabled/disabled status
+     * @brief Mark helper-macro files as staged, awaiting a Klipper restart
      *
-     * Called after querying the plugin's phase tracking status.
-     * Updates phase_tracking_enabled_ subject for UI toggle state.
+     * Set by the Advanced panel's macro install flow when the files landed
+     * but a running print made an immediate restart unsafe. Clears when
+     * discovery reports the macros active.
      *
-     * Thread-safe: Can be called from any thread, defers LVGL update to main thread.
+     * Main thread only (fired from deferred install callbacks).
      *
-     * @param enabled True if phase tracking is enabled
+     * @param pending True while the staged files still await a restart
      */
-    void set_phase_tracking_enabled(bool enabled);
+    void set_helix_macros_restart_pending(bool pending);
 
     /**
-     * @brief Check if phase tracking is enabled
+     * @brief Helper-macro install status subject
      *
-     * @return True if phase tracking is enabled, false otherwise
+     * Bound by advanced_panel.xml to switch the macro rows. Values are
+     * HelixMacrosStatus: -1 unknown, 0 not installed, 1 installed,
+     * 2 outdated, 3 staged awaiting restart.
      */
-    bool is_phase_tracking_enabled() const;
+    lv_subject_t* get_helix_macros_status_subject() {
+        return plugin_status_state_.get_helix_macros_status_subject();
+    }
 
     /**
      * @brief Get helix_plugin_installed subject for observers
@@ -1888,17 +1893,6 @@ class PrinterState {
      */
     lv_subject_t* get_helix_plugin_installed_subject() {
         return plugin_status_state_.get_helix_plugin_installed_subject();
-    }
-
-    /**
-     * @brief Get phase_tracking_enabled subject for observers
-     *
-     * Use this when you need to observe phase tracking status changes.
-     *
-     * @return Pointer to the phase_tracking_enabled_ subject
-     */
-    lv_subject_t* get_phase_tracking_enabled_subject() {
-        return plugin_status_state_.get_phase_tracking_enabled_subject();
     }
 
     // === Visibility Subject Getters (pre-print options card aggregate) ===
@@ -2351,7 +2345,7 @@ class PrinterState {
     /// Capabilities state component (hardware capabilities, feature availability)
     helix::PrinterCapabilitiesState capabilities_state_;
 
-    /// Plugin status component (helix_plugin_installed, phase_tracking_enabled)
+    /// Plugin status component (helix_plugin_installed, helix_macros_status)
     helix::PrinterPluginStatusState plugin_status_state_;
 
     /// Calibration state component (firmware retraction, manual probe, motor state)
@@ -2410,7 +2404,7 @@ class PrinterState {
     // printer_has_purge_line_, printer_has_firmware_retraction_, printer_bed_moves_)
     // are now managed by capabilities_state_ component
 
-    // Note: Plugin status subjects (helix_plugin_installed_, phase_tracking_enabled_)
+    // Note: Plugin status subjects (helix_plugin_installed_, helix_macros_status_)
     // are now managed by plugin_status_state_ component
 
     // Note: Aggregate visibility subject (has_any_preprint_options_) is managed

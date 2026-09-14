@@ -560,6 +560,40 @@ TEST_CASE_METHOD(WiFiManagerTestFixture, "WiFi connection management",
 #endif // HELIX_ENABLE_MOCKS
 }
 
+// The hidden-network flag must survive the manager layer: WiFiManager::connect
+// is the only path the UI has to the backend, so dropping is_hidden there
+// would silently turn every hidden join back into a scan-cache match (which a
+// hidden SSID can never satisfy). The mock's NETWORK_NOT_FOUND refusal is the
+// proof the request reached the backend: "NotInScanList" is by construction
+// absent from the seeded scan list.
+TEST_CASE("WiFiManager::connect threads the hidden-network flag to the backend",
+          "[wifi][manager][hidden]") {
+    auto backend = std::make_unique<WifiBackendMock>();
+    WifiBackendMock* raw = backend.get();
+    WiFiManager manager(std::move(backend));
+    helix::ui::UpdateQueue::instance().drain(); // settle the construction reassert
+
+    bool refused = false;
+    bool reported_success = true;
+    manager.connect(
+        "NotInScanList", "pw",
+        [&](bool success, const std::string&, WiFiResult) {
+            refused = true;
+            reported_success = success;
+        },
+        /*is_hidden=*/true);
+    REQUIRE(refused);
+    REQUIRE_FALSE(reported_success);
+    CHECK(raw->last_connect_hidden());
+
+    // The default stays "visible": a scan-list connect must not ask for a
+    // hidden association.
+    manager.connect("NotInScanList", "pw", [](bool, const std::string&, WiFiResult) {});
+    CHECK_FALSE(raw->last_connect_hidden());
+
+    helix::ui::UpdateQueue::instance().drain();
+}
+
 // ============================================================================
 // Status Query Tests
 // ============================================================================

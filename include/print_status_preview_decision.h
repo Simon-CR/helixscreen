@@ -4,6 +4,7 @@
 #pragma once
 
 #include <string>
+#include <utility>
 
 namespace helix::ui {
 
@@ -57,6 +58,48 @@ struct PreviewAction {
  * @return Which resources to (re)load, and whether the viewer must drop
  *         geometry it holds for a different file before that happens.
  */
+/// Render modes as stored in detail_gcode_viewer_mode: thumbnail, 3D, 2D.
+constexpr int PREVIEW_MODE_THUMBNAIL = 0;
+constexpr int PREVIEW_MODE_3D = 1;
+constexpr int PREVIEW_MODE_2D = 2;
+
+/**
+ * @brief Should the preview's viewer widget be hidden right now?
+ *
+ * The 2D viewer is hidden until it has real content and the thumbnail carries
+ * the wait, so the two swap rather than one being drawn underneath the other -
+ * an occluded viewer is still composited every frame, which is the cost that
+ * matters on a slow panel. Its build is driven by a timer while hidden.
+ *
+ * 3D is NOT hidden while it works: it uploads its VBOs during the draw pass, so
+ * a hidden 3D viewer would never upload, never finish, and never reveal. It
+ * stays visible under the thumbnail and reveals on its first complete frame.
+ */
+/// The pixel size a hidden preview should build at.
+///
+/// LV_OBJ_FLAG_HIDDEN takes a widget out of layout, so a hidden viewer measures
+/// zero however its width is declared. It fills its parent, so the parent's
+/// content box is the size it will occupy the instant it is revealed - building
+/// at that avoids a resize-and-rebuild on the first visible frame.
+///
+/// @return {w, h}, or {0, 0} when neither is usable yet.
+constexpr std::pair<int, int> preview_build_size(int own_w, int own_h, int parent_w, int parent_h) {
+    if (own_w > 0 && own_h > 0) {
+        return {own_w, own_h};
+    }
+    if (parent_w > 0 && parent_h > 0) {
+        return {parent_w, parent_h};
+    }
+    return {0, 0};
+}
+
+constexpr bool preview_viewer_hidden(int mode, bool has_first_frame) {
+    if (mode == PREVIEW_MODE_THUMBNAIL) {
+        return true;
+    }
+    return mode == PREVIEW_MODE_2D && !has_first_frame;
+}
+
 inline PreviewAction decide_preview_action(const std::string& thumbnail_displayed_file,
                                            const std::string& gcode_displayed_file,
                                            const std::string& desired_file, bool thumbnail_has_src,

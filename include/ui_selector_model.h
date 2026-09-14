@@ -3,10 +3,28 @@
 
 #pragma once
 
+#include <cctype>
 #include <string>
 #include <vector>
 
 namespace helix::ui {
+
+inline std::string selector_to_lower(const std::string& s) {
+    std::string lower;
+    lower.reserve(s.size());
+    for (unsigned char c : s) {
+        lower.push_back(static_cast<char>(std::tolower(c)));
+    }
+    return lower;
+}
+
+inline std::string selector_trimmed(const std::string& s) {
+    const auto begin = s.find_first_not_of(" \t\n\r\f\v");
+    if (begin == std::string::npos) {
+        return "";
+    }
+    return s.substr(begin, s.find_last_not_of(" \t\n\r\f\v") - begin + 1);
+}
 
 /**
  * @file ui_selector_model.h
@@ -69,7 +87,9 @@ std::string selector_bucket_of(const SelectorEntry& entry);
  * state. Callers use it to decide between the grouped browse view and the
  * filtered list; selector_entry_matches() treats such a query as matching all.
  */
-bool selector_query_is_blank(const std::string& query);
+inline bool selector_query_is_blank(const std::string& query) {
+    return selector_trimmed(query).empty();
+}
 
 /**
  * @brief Case-insensitive substring match of a query against an entry.
@@ -79,7 +99,15 @@ bool selector_query_is_blank(const std::string& query);
  * widget whose description carries it. An empty (or whitespace-only) query
  * matches everything.
  */
-bool selector_entry_matches(const SelectorEntry& entry, const std::string& query);
+inline bool selector_entry_matches(const SelectorEntry& entry, const std::string& query) {
+    const std::string normalized = selector_to_lower(selector_trimmed(query));
+    if (normalized.empty()) {
+        return true;
+    }
+    return selector_to_lower(entry.label).find(normalized) != std::string::npos ||
+           selector_to_lower(entry.group).find(normalized) != std::string::npos ||
+           selector_to_lower(entry.description).find(normalized) != std::string::npos;
+}
 
 /**
  * @brief Entries matching a query, in input order. Empty query = all entries.

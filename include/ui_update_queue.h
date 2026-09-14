@@ -23,7 +23,7 @@
  * // From any thread (WebSocket callback, async operation, etc.):
  * helix::ui::queue_update([](void*) {
  *     lv_subject_set_int(&my_subject, new_value);
- *     lv_label_set_text(label, "Updated!");
+ *     lv_label_set_text(label, new_text);
  * });
  *
  * // With captured data:

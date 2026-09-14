@@ -857,6 +857,21 @@ TEST_CASE("Happy Hare eject_lane validates slot index", "[ams][happy_hare][eject
     REQUIRE(result.result == AmsResult::INVALID_SLOT);
 }
 
+TEST_CASE("Happy Hare eject_lane on a backend with no gates offers no span",
+          "[ams][happy_hare][eject]") {
+    // mmu has reported zero gates (slot_count() == 0). The suggestion must not
+    // claim a gate 1 exists.
+    AmsBackendHappyHareTestHelper helper;
+    helper.initialize_test_gates(0);
+    helper.set_running(true);
+
+    auto result = helper.eject_lane(0);
+
+    REQUIRE_FALSE(result.success());
+    REQUIRE(result.result == AmsResult::INVALID_SLOT);
+    REQUIRE(result.suggestion == "Select a valid number");
+}
+
 TEST_CASE("Happy Hare eject_lane fails when not running", "[ams][happy_hare][eject]") {
     helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
     AmsBackendHappyHareTestHelper& helper = *helper_reg;
@@ -4373,4 +4388,25 @@ TEST_CASE("An update that changes nothing sends nothing", "[ams][happy_hare][dry
 TEST_CASE("Happy Hare names its positions gates", "[ams][happy_hare][numbering]") {
     helix::AmsBackendHappyHare backend(nullptr, nullptr);
     CHECK(backend.lane_noun() == helix::ui::LaneNoun::Gate);
+}
+
+// A persisted override IS a user edit. The lock flags are how any consumer of
+// the record tells one from a firmware reading (#965, #1649).
+TEST_CASE("Happy Hare marks a persisted edit as the user's own",
+          "[ams][happy_hare][filament_slot_override]") {
+    AmsBackendHappyHareTestHelper helper;
+    helper.initialize_test_gates(4);
+
+    SlotInfo info;
+    info.material = "PETG";
+    info.color_rgb = 0x1188FF;
+    info.color_name = "Blue";
+    helper.set_slot_info(0, info, /*persist=*/true);
+
+    auto& overrides = helix::HappyHareTestAccess::overrides(helper);
+    REQUIRE(overrides.count(0) == 1);
+    REQUIRE(overrides.at(0).material == "PETG");
+    REQUIRE(overrides.at(0).color_rgb == 0x1188FFu);
+    CHECK(overrides.at(0).user_locked_color);
+    CHECK(overrides.at(0).user_locked_material);
 }

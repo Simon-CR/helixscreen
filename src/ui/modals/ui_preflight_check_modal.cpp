@@ -109,12 +109,21 @@ void PreflightCheckModal::on_show() {
                              helix::ui::tool_label(check.tool_index).c_str());
                 } else {
                     const auto* seated = find_seated_slot(slots, check);
-                    const auto noun = seated ? seated->noun : helix::ui::LaneNoun::Slot;
+                    // A seated AvailableSlot carries its own unit and
+                    // unit-local number, which agree with the mapping chip
+                    // and remap modal; the global mapped_slot does not on a
+                    // multi-unit backend. No seated slot to name means no
+                    // AvailableSlot at all, so the generic Slot label from
+                    // the global index is the best answer left.
+                    const std::string lane_text =
+                        seated
+                            ? helix::ui::lane_label(seated->noun, seated->unit_display_name,
+                                                    seated->local_slot_index)
+                            : helix::ui::lane_label(helix::ui::LaneNoun::Slot, check.mapped_slot);
                     snprintf(buf, sizeof(buf),
                              lv_tr("%s needs filament in %s, which is empty — "
                                    "this print will run out."),
-                             helix::ui::tool_label(check.tool_index).c_str(),
-                             helix::ui::lane_label(noun, check.mapped_slot).c_str());
+                             helix::ui::tool_label(check.tool_index).c_str(), lane_text.c_str());
                 }
                 text = buf;
                 break;

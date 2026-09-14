@@ -100,7 +100,8 @@ class ClogDetectionConfigModal : public Modal {
     bool subjects_initialized_ = false;
     lv_subject_t mode_subject_;           // int: detection mode (1=manual, 2=auto)
     lv_subject_t threshold_text_subject_; // string: "Default" or "75%"
-    char threshold_text_buf_[16]{};
+    // "Default" renders translated; ru "По умолчанию" is 23 bytes.
+    char threshold_text_buf_[24]{};
     lv_subject_t det_length_text_subject_; // string: "10mm"
     char det_length_text_buf_[16]{};
     lv_subject_t mode_supported_subject_; // int: 1=backend takes detection-mode gcode

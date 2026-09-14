@@ -296,3 +296,52 @@ TEST_CASE("Preview decision: the finished-print freeze is preserved", "[print_st
     PreviewAction a = decide_preview_action("done.gcode", "done.gcode", "", true, true, true, true);
     REQUIRE_FALSE(a.clear_gcode);
 }
+
+// ============================================================================
+// preview_viewer_hidden - which widget the preview shows while it builds
+// ============================================================================
+
+TEST_CASE("preview_viewer_hidden - thumbnail mode hides the viewer", "[print_status][preview]") {
+    CHECK(helix::ui::preview_viewer_hidden(helix::ui::PREVIEW_MODE_THUMBNAIL, false));
+    CHECK(helix::ui::preview_viewer_hidden(helix::ui::PREVIEW_MODE_THUMBNAIL, true));
+}
+
+TEST_CASE("preview_viewer_hidden - 2D stays hidden until it has content",
+          "[print_status][preview]") {
+    CHECK(helix::ui::preview_viewer_hidden(helix::ui::PREVIEW_MODE_2D, false));
+    CHECK_FALSE(helix::ui::preview_viewer_hidden(helix::ui::PREVIEW_MODE_2D, true));
+}
+
+TEST_CASE("preview_viewer_hidden - 3D is never hidden while it works", "[print_status][preview]") {
+    // A hidden 3D viewer would never upload its VBOs (that happens in the draw
+    // pass), so it would never reach the first frame that reveals it. It stays
+    // visible under the thumbnail instead.
+    CHECK_FALSE(helix::ui::preview_viewer_hidden(helix::ui::PREVIEW_MODE_3D, false));
+    CHECK_FALSE(helix::ui::preview_viewer_hidden(helix::ui::PREVIEW_MODE_3D, true));
+}
+
+TEST_CASE("preview_build_size - a hidden viewer builds at its parent's size",
+          "[print_status][preview]") {
+    // LV_OBJ_FLAG_HIDDEN removes the widget from layout, so it measures zero
+    // however its width is declared. Falling through to the parent is what
+    // keeps a hidden preview building instead of stalling on a 0x0 canvas.
+    auto [w, h] = helix::ui::preview_build_size(0, 0, 368, 390);
+    CHECK(w == 368);
+    CHECK(h == 390);
+}
+
+TEST_CASE("preview_build_size - a laid-out viewer uses its own size", "[print_status][preview]") {
+    auto [w, h] = helix::ui::preview_build_size(320, 240, 368, 390);
+    CHECK(w == 320);
+    CHECK(h == 240);
+}
+
+TEST_CASE("preview_build_size - nothing laid out yet reports no size", "[print_status][preview]") {
+    auto [w, h] = helix::ui::preview_build_size(0, 0, 0, 0);
+    CHECK(w == 0);
+    CHECK(h == 0);
+    // A half-measured parent is not a usable canvas either.
+    auto [w2, h2] = helix::ui::preview_build_size(0, 0, 368, 0);
+    CHECK(w2 == 0);
+    CHECK(h2 == 0);
+}

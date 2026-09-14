@@ -2081,7 +2081,7 @@ AmsError AmsBackendAd5xIfs::do_unload_filament(int slot_index) {
                          backend_log_tag());
             return AmsError(AmsResult::WRONG_STATE,
                             "unload_filament: head sensor empty, no seated or active lane",
-                            "Nothing to unload: no filament at the nozzle");
+                            lv_tr("Nothing to unload: no filament at the nozzle"));
         }
         spdlog::info("{} Unload with empty toolhead sensor -> cold lane eject (slot {})",
                      backend_log_tag(), eject_slot);
@@ -2231,7 +2231,7 @@ AmsError AmsBackendAd5xIfs::do_select_slot(int slot_index) {
     if (ifs_module_live_.load()) {
         return AmsError(AmsResult::NOT_SUPPORTED,
                         "select_slot: the standalone IFS module has no load-free selection",
-                        "This firmware can only switch slots by loading them");
+                        lv_tr("This firmware can only switch slots by loading them"));
     }
 
     int port = slot_index + 1; // DISPLAY_NUMBERING_OK: 1-based SET_EXTRUDER_SLOT gcode parameter
@@ -2332,7 +2332,7 @@ AmsError AmsBackendAd5xIfs::eject_lane(int slot_index) {
         // a seated lane and wave the cold retract straight through.
         if (system_info_.current_slot == slot_index && !head_empty_for_unload_routing_locked()) {
             return AmsError(AmsResult::WRONG_STATE, "Lane is loaded in toolhead",
-                            "Unload from toolhead first", "Use Unload before Eject");
+                            lv_tr("Unload from toolhead first"), lv_tr("Use Unload before Eject"));
         }
 
         // Resolve the cold-retract LEN/SPEED from filament.json keyed by the
@@ -2781,7 +2781,7 @@ AmsError AmsBackendAd5xIfs::set_slot_info(int slot_index, const SlotInfo& info, 
             return AmsErrorHelper::invalid_slot(lane_noun(), slot_index, NUM_PORTS - 1);
         }
 
-        // The port as it stood before this edit. override_from_user_edit needs
+        // The port as it stood before this edit. user_override_from_slot_info needs
         // it to tell what the user moved from what the editor merely carried
         // back, so it has to be taken before the writes below.
         const SlotInfo prior_slot = entry->info;
@@ -2854,7 +2854,7 @@ AmsError AmsBackendAd5xIfs::set_slot_info(int slot_index, const SlotInfo& info, 
             // copy; record that instead of the raw user-typed string so the
             // on-disk record carries a firmware-valid value.
             overrides_[slot_index] =
-                helix::ams::override_from_user_edit(prior_slot, info, normalized_material);
+                helix::ams::user_override_from_slot_info(prior_slot, info, normalized_material);
         }
 
         // Treat the user's chosen color as the new "firmware truth" baseline

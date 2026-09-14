@@ -300,6 +300,14 @@ static void register_xml(const char* filename) {
     }
 }
 
+void register_filament_catalog_components() {
+    register_xml("components/filament_catalog_row.xml");
+    register_xml("components/filament_catalog_add_row.xml");
+    register_xml("components/filament_catalog_empty_row.xml");
+    register_xml("components/filament_catalog_selector.xml");
+    register_xml("components/filament_catalog_picker.xml");
+}
+
 void register_xml_components() {
     spdlog::trace("[XML Registration] Registering XML components...");
 
@@ -402,11 +410,7 @@ void register_xml_components() {
     register_xml("spoolman_context_menu.xml");
     register_xml("spoolman_edit_modal.xml");
     register_xml("spoolman_panel.xml");
-    register_xml("components/filament_catalog_row.xml");
-    register_xml("components/filament_catalog_add_row.xml");
-    register_xml("components/filament_catalog_empty_row.xml");
-    register_xml("components/filament_catalog_selector.xml");
-    register_xml("components/filament_catalog_picker.xml");
+    register_filament_catalog_components();
     register_xml("filament_product_edit_modal.xml");
 
     // Spool wizard components

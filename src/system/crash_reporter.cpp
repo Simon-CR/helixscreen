@@ -9,6 +9,7 @@
 #include "platform_capabilities.h"
 #include "system/crash_handler.h"
 #include "system/crash_history.h"
+#include "system/diag_upload_gate.h"
 #include "system/log_collector.h"
 #include "system/update_checker.h"
 
@@ -424,6 +425,11 @@ nlohmann::json CrashReporter::report_to_json(const CrashReport& report) {
     j["display_backend"] = report.display_info;
     j["ram_mb"] = report.ram_total_mb;
     j["cpu_cores"] = report.cpu_cores;
+
+    // Compile-time channel marker, same contract as the debug bundle's: the
+    // endpoint rejects or flags reports from unmarked clients
+    // (prestonbrown/helixscreen#1410).
+    j["diag_upload_marked"] = helix::diag::marked_build();
 
     // Exception message (for EXCEPTION crashes)
     if (!report.exception_what.empty()) {
@@ -996,7 +1002,31 @@ static std::pair<int, std::string> android_https_post(const std::string& url,
 }
 #endif // __ANDROID__
 
+namespace {
+
+/// The crash worker URL, overridable so tests can point the POST at a loopback
+/// listener. libhv honours no proxy environment, so without this a test that
+/// reaches the real send path would file a live GitHub issue.
+const char* crash_worker_url() {
+    if (const char* u = std::getenv("HELIX_CRASH_WORKER_URL")) {
+        return u;
+    }
+    return CrashReporter::CRASH_WORKER_URL;
+}
+
+} // namespace
+
 bool CrashReporter::try_auto_send(const CrashReport& report) {
+    // The upload gate, before any POST: a build that may not ship diagnostics
+    // falls through to the QR/local-file path (prestonbrown/helixscreen#1410).
+    // Refusing here also stops the worker from auto-filing a GitHub issue for
+    // a crash our symbols cannot resolve.
+    if (!helix::diag::uploads_enabled()) {
+        spdlog::info("[CrashReporter] Auto-send refused: diagnostic uploads are "
+                     "disabled in this build");
+        return false;
+    }
+
     // Best-effort POST to crash worker — failure falls through to QR/file
     try {
         json payload = report_to_json(report);
@@ -1008,14 +1038,14 @@ bool CrashReporter::try_auto_send(const CrashReport& report) {
 
 #ifdef __ANDROID__
         // Android: use JNI bridge to Java's HttpURLConnection (libhv has no SSL)
-        auto [s, b] = android_https_post(CRASH_WORKER_URL, body, user_agent, INGEST_API_KEY, 15);
+        auto [s, b] = android_https_post(crash_worker_url(), body, user_agent, INGEST_API_KEY, 15);
         status = s;
         resp_body = std::move(b);
 #else
         // Desktop/embedded: use libhv directly
         auto req = std::make_shared<HttpRequest>();
         req->method = HTTP_POST;
-        req->url = CRASH_WORKER_URL;
+        req->url = crash_worker_url();
         req->timeout = 15;
         req->content_type = APPLICATION_JSON;
         req->headers["User-Agent"] = user_agent;

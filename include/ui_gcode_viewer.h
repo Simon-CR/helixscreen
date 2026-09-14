@@ -115,6 +115,9 @@ void ui_gcode_viewer_load_file(lv_obj_t* obj, const char* file_path);
  * The callback will be invoked from the main LVGL thread after async
  * geometry building completes. Use this to update UI elements that
  * depend on the loaded file data.
+ *
+ * Only the newest ui_gcode_viewer_load_file() reports: a load superseded by a
+ * later one never invokes the callback, on success or on failure.
  */
 void ui_gcode_viewer_set_load_callback(lv_obj_t* obj, gcode_viewer_load_callback_t callback,
                                        void* user_data);
@@ -730,6 +733,23 @@ bool ui_gcode_viewer_adopt_palette_if_empty(lv_obj_t* obj, std::vector<std::stri
  * @return Progress fraction; 1.0 when idle or complete, 0.0 when unknown.
  */
 float ui_gcode_viewer_get_load_progress(lv_obj_t* obj);
+
+/**
+ * @brief Advance a hidden 2D preview's build; true once it can be revealed.
+ *
+ * The viewer normally builds as a side effect of being drawn, so a widget kept
+ * hidden until it has real content would never start. A caller that stacks a
+ * thumbnail over the viewer and swaps on readiness drives this from a timer
+ * instead, then shows the viewer when it returns true.
+ *
+ * 2D only, and it returns false for a 3D viewer rather than claiming
+ * readiness: 3D uploads its VBOs during the draw pass, so it is never hidden
+ * and reveals from its own first-frame callback instead.
+ *
+ * @param obj Viewer widget
+ * @return true when there is content worth swapping in.
+ */
+bool ui_gcode_viewer_pump_offscreen_2d(lv_obj_t* obj);
 
 // ==============================================
 // Test Seam

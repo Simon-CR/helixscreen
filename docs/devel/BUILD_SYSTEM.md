@@ -111,10 +111,13 @@ Docker images are **automatically built** on first use - no manual setup require
 
 4. **Build Features Stamp**: The link rule writes `build/<platform>/bin/.build-features`
    recording which optional subsystems the binary actually contains (currently
-   `remote_control`). `make deploy-*` runs as a separate make invocation with no
-   `PLATFORM_TARGET` and so cannot re-derive what the cross build chose; the stamp carries it
+   `remote_control` and `diag_uploads`). `make deploy-*` runs as a separate make invocation
+   with no `PLATFORM_TARGET` and so cannot re-derive what the cross build chose; the stamp carries it
    across, and the deploy turns on the matching runtime switch on the device. See
-   `docs/devel/HELIXCTL.md`.
+   `docs/devel/HELIXCTL.md` and `docs/devel/ENVIRONMENT_VARIABLES.md` § `HELIX_DIAGNOSTIC_UPLOADS`
+   for the upload gate, which rides the same mechanism: `ENABLE_DIAGNOSTIC_UPLOADS` defaults
+   to `yes` only under `HELIX_PACKAGING=1`, and `sync-device-features` stamps
+   `HELIX_DIAGNOSTIC_UPLOADS=1` on rigs at deploy time so dev devices keep uploading.
 
 5. **Display Backend Selection**: Cross-compilation automatically selects the appropriate display backend:
    - **Pi / Pi32**: DRM (preferred) with fbdev fallback

@@ -8,13 +8,16 @@
  */
 
 #include "../lvgl_test_fixture.h"
+#include "../test_helpers/ams_state_test_access.h"
 #include "ams_state.h"
 #include "app_globals.h"
+#include "data_root_resolver.h"
 #include "display_numbering.h"
 #include "lvgl/src/others/translation/lv_translation.h"
 #include "printer_state.h"
 #include "translation_loader.h"
 
+#include <filesystem>
 #include <lvgl.h>
 
 #include "../catch_amalgamated.hpp"
@@ -68,7 +71,7 @@ TEST_CASE_METHOD(LVGLTestFixture, "ams_current_tool_text survives a long transla
 }
 
 TEST_CASE_METHOD(LVGLTestFixture,
-                 "ams_action_detail holds the longest translated feeder error whole",
+                 "ams_action_detail holds the longest translated composition whole",
                  "[ams][ams_state][i18n]") {
     ScopedLanguage restore_lang;
 
@@ -76,25 +79,115 @@ TEST_CASE_METHOD(LVGLTestFixture,
     auto& ams = AmsState::instance();
     ams.init_subjects(false);
 
-    helix::ui::ensure_translation_loaded("ja");
-    lv_translation_set_language("ja");
+    // Read the actual worst composition off the shipped translation packs
+    // rather than pinning one locale by hand: which pack is longest shifts as
+    // translations are edited, so a hardcoded copy stops proving anything the
+    // moment it drifts from the catalog. CFS's load-failure verdict
+    // (AmsBackendCfs::phase_verdict_message) is the longest known producer.
+    const std::string cfs_verdict_key =
+        "The filament did not reach the nozzle. The CFS reported no error, but "
+        "the toolhead sensor still sees no filament. Check that the spool is "
+        "seated and the path is clear, then try again.";
+    std::string worst_detail;
+    for (const auto& entry :
+         std::filesystem::directory_iterator(helix::asset_path("ui_xml/translations"))) {
+        const std::string stem = entry.path().stem().string();
+        if (entry.path().extension() != ".xml" || stem == "translations") {
+            continue; // translations.xml is the merged catalog, not a per-locale pack
+        }
+        helix::ui::ensure_translation_loaded(stem);
+        lv_translation_set_language(stem.c_str());
+        const std::string detail(lv_tr(cfs_verdict_key.c_str()));
+        if (detail.size() > worst_detail.size()) {
+            worst_detail = detail;
+        }
+    }
 
-    // The longest composition any producer hands this subject: Snapmaker's
-    // no_filament frame after a lane prefix, in the worst locale by encoded
-    // size. A 64-byte buffer truncates this mid-codepoint.
-    const std::string detail = helix::ui::lane_label(helix::ui::LaneNoun::Feeder, 3) + ": " +
-                               lv_tr("No filament. Load filament and retry.");
-    REQUIRE(detail.size() > 64); // otherwise this test cannot distinguish old from new
+    REQUIRE(worst_detail.size() > 128); // otherwise this test cannot distinguish old from new
+
     // A toolchange narration an earlier test left latched outranks the
     // operation detail in recompute_action_detail(), so clear it first
     // (the same reset idiom test_afc_console_corpus.cpp uses).
     ams.set_narration_phase(-1, "");
-    ams.set_action_detail(detail);
+    ams.set_action_detail(worst_detail);
 
     const std::string round_tripped(lv_subject_get_string(ams.get_ams_action_detail_subject()));
-    CHECK(round_tripped == detail);
+    CHECK(round_tripped == worst_detail);
 
     // last_operation_detail_ persists in the singleton; clear it so later
     // tests derive the detail from their own state.
     ams.set_action_detail("");
+}
+
+TEST_CASE_METHOD(LVGLTestFixture,
+                 "ams_action_detail truncates an overrunning composition on a codepoint boundary",
+                 "[ams][ams_state][i18n]") {
+    get_printer_state().init_subjects(false);
+    auto& ams = AmsState::instance();
+    ams.init_subjects(false);
+    ams.set_narration_phase(-1, "");
+
+    // A raw firmware message (AFC's message.message) is passed through with no
+    // length bound at all, so a composition can still overrun the buffer no
+    // matter how generously it is sized for the translated producers. Build
+    // one out of a repeated 3-byte CJK codepoint so a byte-oriented cut always
+    // has a chance to land mid-character.
+    const std::string glyph = "\xE6\xB1\x9A"; // U+6C61, 3 bytes
+    std::string oversized;
+    for (int i = 0; i < 300; ++i) {
+        oversized += glyph;
+    }
+    ams.set_action_detail(oversized);
+
+    const std::string stored(lv_subject_get_string(ams.get_ams_action_detail_subject()));
+    REQUIRE(stored.size() < oversized.size()); // otherwise this input doesn't overrun the buffer
+    // Every glyph is 3 identical bytes, so a byte count that isn't a multiple
+    // of 3 is the signature of a cut landing inside one of them.
+    CHECK(stored.size() % glyph.size() == 0);
+
+    ams.set_action_detail("");
+}
+
+TEST_CASE_METHOD(LVGLTestFixture, "clog_meter_mode_text holds the longest translated mode whole",
+                 "[ams][ams_state][i18n]") {
+    ScopedLanguage restore_lang;
+
+    get_printer_state().init_subjects(false);
+    auto& ams = AmsState::instance();
+    ams.init_subjects(false);
+
+    helix::ui::ensure_translation_loaded("ru");
+    lv_translation_set_language("ru");
+
+    AmsSystemInfo info{};
+    info.encoder_info.enabled = true;
+    info.encoder_info.detection_mode = 1; // manual: "Clog Manual" -> ru below
+    AmsStateTestAccess::sync_clog_meter(ams, info);
+
+    const std::string mode(lv_subject_get_string(ams.get_clog_meter_mode_text_subject()));
+    // ru "Засор: вручную" is 24 UTF-8 bytes; a 24-byte buffer truncates it
+    // mid-codepoint, so the guard below is what lets this distinguish the
+    // resized buffer from the original.
+    REQUIRE(mode.size() >= 24);
+    CHECK(mode == "Засор: вручную");
+}
+
+TEST_CASE_METHOD(LVGLTestFixture, "clog_meter endpoint labels hold СПУТЫВАНИЕ whole",
+                 "[ams][ams_state][i18n]") {
+    ScopedLanguage restore_lang;
+
+    get_printer_state().init_subjects(false);
+    auto& ams = AmsState::instance();
+    ams.init_subjects(false);
+
+    helix::ui::ensure_translation_loaded("ru");
+    lv_translation_set_language("ru");
+
+    AmsSystemInfo info{};
+    info.flowguard_info.enabled = true; // flowguard fills both endpoint labels
+    AmsStateTestAccess::sync_clog_meter(ams, info);
+
+    const std::string left(lv_subject_get_string(ams.get_clog_meter_label_left_subject()));
+    REQUIRE(left.size() > 16); // otherwise this test cannot distinguish old from new
+    CHECK(left == "СПУТЫВАНИЕ");
 }

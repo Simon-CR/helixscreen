@@ -61,6 +61,57 @@ std::vector<std::string> control_socket_search_dirs() {
 
 namespace {
 
+/// Found sockets from one search pass become a ClientSocketResolution, or
+/// nullopt when the pass found nothing and the caller should try the next
+/// one. Shared by both passes in resolve_client_socket_path so they can never
+/// apply different policies to the same kind of ambiguity.
+std::optional<ClientSocketResolution> decide_client_socket(std::vector<std::string> live) {
+    if (live.empty()) {
+        return std::nullopt;
+    }
+    ClientSocketResolution result;
+    if (live.size() == 1) {
+        result.status = ClientSocketResolution::Status::Found;
+        result.path = std::move(live.front());
+    } else {
+        result.status = ClientSocketResolution::Status::Ambiguous;
+        result.candidates = std::move(live);
+    }
+    return result;
+}
+
+} // namespace
+
+ClientSocketResolution resolve_client_socket_path(const std::vector<std::string>& dirs) {
+    std::vector<std::string> well_known_live;
+    for (const std::string& dir : dirs) {
+        const std::string candidate = dir + "/helixscreen-control.sock";
+        if (UnixSocketTransport::path_is_live(candidate)) {
+            well_known_live.push_back(candidate);
+        }
+    }
+    if (auto result = decide_client_socket(std::move(well_known_live))) {
+        return *result;
+    }
+
+    std::vector<std::string> instances;
+    for (const std::string& dir : dirs) {
+        for (std::string& found : UnixSocketTransport::discover_instances(dir)) {
+            instances.push_back(std::move(found));
+        }
+    }
+    if (auto result = decide_client_socket(std::move(instances))) {
+        return *result;
+    }
+
+    ClientSocketResolution result;
+    result.status = ClientSocketResolution::Status::NotRunning;
+    result.path = well_known_socket_path(); // Nothing running; report against the expected path.
+    return result;
+}
+
+namespace {
+
 constexpr const char* INSTANCE_PREFIX = "helixscreen-control-";
 constexpr const char* INSTANCE_SUFFIX = ".sock";
 

@@ -193,68 +193,6 @@ void MoonrakerAPI::get_gcode_store(
 }
 
 // ============================================================================
-// Helix Plugin Operations
-// ============================================================================
-
-void MoonrakerAPI::get_phase_tracking_status(std::function<void(bool enabled)> on_success,
-                                             ErrorCallback on_error) {
-    client_.send_jsonrpc(
-        "server.helix.phase_tracking.status", json::object(),
-        [on_success](const json& response) {
-            // send_jsonrpc passes the full JSON-RPC message; unwrap
-            // response["result"] before reading the "enabled" field.
-            const json& result =
-                response.contains("result") ? response.at("result") : json::object();
-            bool enabled = result.value("enabled", false);
-            if (on_success)
-                on_success(enabled);
-        },
-        [on_error](const MoonrakerError& err) {
-            if (on_error)
-                on_error(err);
-        },
-        0,     // timeout_ms: use default
-        true); // silent: suppress RPC_ERROR events/toasts
-}
-
-void MoonrakerAPI::set_phase_tracking_enabled(bool enabled,
-                                              std::function<void(bool success)> on_success,
-                                              ErrorCallback on_error) {
-    std::string method =
-        enabled ? "server.helix.phase_tracking.enable" : "server.helix.phase_tracking.disable";
-    client_.send_jsonrpc(
-        method, json::object(),
-        [on_success, on_error, method](const json& response) {
-            // send_jsonrpc passes the full JSON-RPC message; unwrap
-            // response["result"] before reading "success"/"message".
-            const json& result =
-                response.contains("result") ? response.at("result") : json::object();
-            bool ok = result.value("success", false);
-            if (ok) {
-                if (on_success)
-                    on_success(true);
-            } else {
-                // Server returned a response but success=false - extract error detail
-                std::string msg = result.value("message", std::string{});
-                if (msg.empty()) {
-                    msg = "Server returned success=false for " + method;
-                }
-                spdlog::warn("[MoonrakerAPI] {} failed: {}", method, msg);
-                if (on_error) {
-                    MoonrakerError err = MoonrakerError::json_rpc_error(method, msg, result);
-                    on_error(err);
-                } else if (on_success) {
-                    on_success(false);
-                }
-            }
-        },
-        [on_error](const MoonrakerError& err) {
-            if (on_error)
-                on_error(err);
-        });
-}
-
-// ============================================================================
 // Database Operations
 // ============================================================================
 

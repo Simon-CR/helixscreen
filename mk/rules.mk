@@ -189,7 +189,7 @@ $(TARGET): $(SDL2_LIB) $(LIBHV_LIB) $(LIBHV_JSON_HEADER) $(CONTRIBUTORS_H) $(APP
 	@# so it re-derives ENABLE_REMOTE_CONTROL as the native default (yes) and
 	@# cannot see what the cross build chose. The stamp carries that across, and
 	@# the deploy targets use it to turn the matching runtime switch on.
-	$(Q)printf 'remote_control=%s\n' "$(ENABLE_REMOTE_CONTROL)" > $(BIN_DIR)/.build-features
+	$(Q)printf 'remote_control=%s\ndiag_uploads=%s\n' "$(ENABLE_REMOTE_CONTROL)" "$(ENABLE_DIAGNOSTIC_UPLOADS)" > $(BIN_DIR)/.build-features
 
 # Collect all .d dependency files for proper header tracking
 # These are generated during compilation with -MMD -MP flags

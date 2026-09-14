@@ -384,10 +384,11 @@ Two shapes, and they are not the same thing:
 | desktop UI → real Moonraker | your local build, real printer data, no device walk | `--moonraker ws://HOST:7125`. Enough for most hardware questions: a local `SDL_VIDEODRIVER=dummy` build pointed at a printer discovers its real hardware (AFC lanes, QGL, …) and `ctl` drives the result |
 | `ctl` → app on the device | the app actually running on the printer | ssh, then `<install>/bin/helix-screen ctl <cmd>` |
 
-**The device build gate — check the binary, never the help text.** `ENABLE_REMOTE_CONTROL`
+**The device build gate - check the binary, not just the help text.** `ENABLE_REMOTE_CONTROL`
 defaults to `yes`, but `HELIX_PACKAGING=1` forces it to `no`, so **an installed release has no
-ctl server**. The `--remote*` flags still appear in `--help` on those builds, so they look
-supported and buy nothing:
+ctl server**; `--help` on those builds omits `--remote*` and passing one anyway warns
+("ignoring unknown argument") instead of being silently accepted. Confirm what actually
+shipped rather than trusting either:
 
 ```bash
 strings -a <install>/bin/helix-screen | grep -c list_callbacks   # 0 = no server compiled in

@@ -254,7 +254,8 @@ class WifiBackendWpaSupplicant : public WifiBackend, private hv::EventLoopThread
 
     WiFiError trigger_scan() override;
     WiFiError get_scan_results(std::vector<WiFiNetwork>& networks) override;
-    WiFiError connect_network(const std::string& ssid, const std::string& password) override;
+    WiFiError connect_network(const std::string& ssid, const std::string& password,
+                              bool is_hidden) override;
     WiFiError disconnect_network() override;
     ConnectionStatus get_status() override;
     bool supports_5ghz() const override;

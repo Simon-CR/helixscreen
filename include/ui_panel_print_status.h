@@ -463,11 +463,12 @@ class PrintStatusPanel : public OverlayBase {
     // widget.
     std::string displayed_file_;       // file whose image is in the thumbnail
     std::string gcode_displayed_file_; // file whose geometry is in the viewer
-    // Print whose gcode the current fetch/scan is for. The load callback
-    // publishes the scan's pauses under THIS name, not the effective name at
-    // completion time, so a scan finishing after a print switch publishes a
-    // list that will not match the new print and stays hidden.
-    std::string gcode_scan_filename_;
+    // Print whose gcode the viewer's current load is for. load_gcode_file()
+    // writes it in the same call that starts the viewer load, and the viewer
+    // reports only its newest load, so the load callback always reads the name
+    // of the load it is reporting. The callback records gcode_displayed_file_
+    // and publishes the scan's pauses under this name.
+    std::string gcode_load_filename_;
 
     // Deferred G-code loading: filename to load when panel becomes visible
     // Set in set_filename(), consumed in on_activate() - avoids downloading
@@ -594,7 +595,8 @@ class PrintStatusPanel : public OverlayBase {
 
     void update_all_displays();
     void show_gcode_viewer(bool show);
-    void load_gcode_file(const char* file_path);
+    /// Load @p file_path into the viewer as the gcode of print @p print_filename.
+    void load_gcode_file(const char* file_path, const std::string& print_filename);
 #if defined(HELIX_PLATFORM_ESP32)
     /// Pull the current PSRAM thumbnail from PrinterState, hold a reference,
     /// and point print_thumbnail_ at its descriptor. Main thread only; no-op

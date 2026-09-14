@@ -26,6 +26,31 @@ struct AdvancedPanelTestAccess {
     static void set_uninstall_runner(AdvancedPanel& panel, UninstallRunner runner) {
         panel.uninstall_runner_ = std::move(runner);
     }
+
+    /// What taps on the helper-macro rows dispatch to.
+    static void tap_macros_install_row(AdvancedPanel& panel) {
+        panel.handle_helix_macros_install_clicked();
+    }
+
+    static void tap_macros_update_row(AdvancedPanel& panel) {
+        panel.handle_helix_macros_update_clicked();
+    }
+
+    /// The panel wires this itself at init_subjects(); tests driving handlers
+    /// without that path attach it explicitly.
+    static void wire_macro_observer(AdvancedPanel& panel) {
+        panel.wire_macro_restart_observer();
+    }
+
+    /// Whether the one-shot restart offer has already popped for this staging.
+    static bool macro_restart_offer_made(const AdvancedPanel& panel) {
+        return panel.macro_restart_offer_made_;
+    }
+
+    /// Whether setup() attached the print-active observer.
+    static bool macro_observer_wired(const AdvancedPanel& panel) {
+        return panel.macro_observer_wired_;
+    }
 };
 
 } // namespace helix::ui

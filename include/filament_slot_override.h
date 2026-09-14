@@ -211,7 +211,10 @@ void populate_temps_from_slot_info(FilamentSlotOverride& ovr, const SlotInfo& in
 //
 // Authorship therefore lands in two homes, both from that one answer: the two
 // lock flags for colour and material, and the declared set for the roster rows
-// that have no flag of their own.
+// that have no flag of their own. A lock needs a value to stand over, so an
+// empty material never locks however the edit moved it: every mirror policy
+// assumes a lock and its value are set together, and a lock over nothing would
+// stop firmware from ever filling that lane.
 //
 // The colour records only when it is a reading rather than the SlotInfo "no
 // colour" sentinel, the question is_declarable_color() answers; a deliberate
@@ -220,14 +223,16 @@ void populate_temps_from_slot_info(FilamentSlotOverride& ovr, const SlotInfo& in
 //
 // Temps come from populate_temps_from_slot_info(). updated_at is left default
 // so save_async stamps a fresh value.
-FilamentSlotOverride override_from_user_edit(const SlotInfo& original, const SlotInfo& edited);
+FilamentSlotOverride user_override_from_slot_info(const SlotInfo& original, const SlotInfo& edited);
 
 // As above, recording `material` in place of edited.material, for a backend
-// that stores firmware's normalized spelling of what the user typed. Whether
-// the material was declared still follows the edit, since the normalized
-// spelling has no before-value to be compared against.
-FilamentSlotOverride override_from_user_edit(const SlotInfo& original, const SlotInfo& edited,
-                                             const std::string& material);
+// that persists firmware's normalized spelling rather than the string the user
+// typed: AD5X stores the firmware-valid value its own normalize_material()
+// produced, so the raw SlotInfo string is the wrong thing to record and the
+// wrong thing to lock on. Whether the material was declared still follows the
+// edit, since the normalized spelling has no before-value to compare against.
+FilamentSlotOverride user_override_from_slot_info(const SlotInfo& original, const SlotInfo& edited,
+                                                  const std::string& material);
 
 nlohmann::json to_json(const FilamentSlotOverride& o);
 FilamentSlotOverride from_json(const nlohmann::json& j);

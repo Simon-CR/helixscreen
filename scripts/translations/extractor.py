@@ -190,7 +190,10 @@ CPP_TRANSLATABLE_PATTERNS = [
     r"TR_NOOP\s*\(\s*" + ADJACENT_LITERALS_GROUP,
     # lv_label_set_text(label, "text")
     r"lv_label_set_text\s*\([^,]+,\s*" + ADJACENT_LITERALS_GROUP,
-    # return "Status Text"  (for status strings) — single literal only
+    # return "Status Text"  (for status strings) — single literal only.
+    # Applied to .cpp files only: a bare Title-Case return in a header is as
+    # likely an identifier (log_name, *_to_string) as a label, so headers must
+    # mark their strings explicitly.
     r'return\s+"([A-Z][a-z][^"]{2,30})"',
 ]
 
@@ -365,12 +368,23 @@ def _marker_applies(content: str, literal_pos: int, marker_re) -> bool:
 
     return False
 
-# C++ patterns to skip (not user-facing)
-CPP_SKIP_PATTERNS = [
+# C++ patterns to skip (not user-facing). Two kinds, because they match
+# different things: context patterns are searched against the SOURCE around a
+# literal, text patterns against the extracted string itself.
+CPP_CONTEXT_SKIP_PATTERNS = [
     r"spdlog::",  # Logging
     r"LOG_",  # Logging macros
     r"fmt::",  # Format strings
     r"\.c_str\(\)",  # Variable strings
+    # Registry and log identifiers: component_name() names the XML component a
+    # class implements, get_name() and log_name() name the instance for logs.
+    # None is ever rendered, and translating one would desync the lookup.
+    r"component_name\s*\(\s*\)",
+    r"get_name\s*\(\s*\)",
+    r"log_name\s*\(\s*\)",
+]
+
+CPP_TEXT_SKIP_PATTERNS = [
     r"\{\}",  # Format placeholders
     r"\\x[0-9a-fA-F]",  # Hex escapes (icons)
     r"^[a-z_]+$",  # snake_case identifiers
@@ -536,7 +550,7 @@ def should_skip_cpp_text(text: str) -> bool:
         return True
 
     # Check against skip patterns
-    for pattern in CPP_SKIP_PATTERNS:
+    for pattern in CPP_TEXT_SKIP_PATTERNS:
         if re.search(pattern, text):
             return True
 
@@ -573,6 +587,8 @@ def extract_strings_from_cpp(cpp_path: Path) -> Set[str]:
         return result
 
     for pattern in CPP_TRANSLATABLE_PATTERNS:
+        if pattern.startswith("return") and cpp_path.suffix == ".h":
+            continue
         is_lv_tr = "lv_tr" in pattern
         is_adjacent = ADJACENT_LITERALS_GROUP in pattern
         for match in re.finditer(pattern, content):
@@ -610,7 +626,7 @@ def extract_strings_from_cpp(cpp_path: Path) -> Set[str]:
 
             # Skip if context indicates non-translatable
             skip = False
-            for skip_pattern in CPP_SKIP_PATTERNS[:4]:  # Check first few patterns on context
+            for skip_pattern in CPP_CONTEXT_SKIP_PATTERNS:
                 if re.search(skip_pattern, context):
                     skip = True
                     break

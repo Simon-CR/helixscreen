@@ -528,6 +528,25 @@ else
     APP_SRCS := $(filter-out $(wildcard $(SRC_DIR)/remote/*.cpp),$(APP_SRCS))
 endif
 
+# Diagnostic-upload gate (prestonbrown/helixscreen#1410): whether this build may
+# ship debug bundles / crash reports to crash.helixscreen.org, or serve the log
+# ring over the `ctl log` RPC. Official packaging builds (HELIX_PACKAGING=1)
+# upload — the installed fleet is the telemetry. Every other build — plain
+# local make, fork cross-builds — defaults OFF; our own dev rigs are turned on
+# at deploy time instead (sync-device-features stamps
+# HELIX_DIAGNOSTIC_UPLOADS=1 in the device env), because nothing build-side can
+# tell our rig build from a source-modified fork build. A dev build can also be
+# opted in for a run with HELIX_DIAGNOSTIC_UPLOADS=1 in the environment.
+#
+# The define only flips the runtime DEFAULT of helix::diag::uploads_enabled()
+# and the payload marker; it never compiles the pipes out, so the opt-in needs
+# no rebuild.
+ifeq ($(HELIX_PACKAGING),1)
+    ENABLE_DIAGNOSTIC_UPLOADS ?= yes
+else
+    ENABLE_DIAGNOSTIC_UPLOADS ?= no
+endif
+
 # Developer-only showcase panels. Not reachable from the shipped navigation
 # (no PanelId, no PanelFactory wiring) — they exist as live testbeds: XML
 # binding/repeat demos (test_panel), wizard step-progress (step_test_panel),
@@ -748,6 +767,14 @@ else
     REMOTE_CONTROL_DEFINES :=
 endif
 
+# Diagnostic-upload define (see ENABLE_DIAGNOSTIC_UPLOADS above): runtime
+# default of helix::diag::uploads_enabled() plus the payload channel marker.
+ifeq ($(ENABLE_DIAGNOSTIC_UPLOADS),yes)
+    DIAG_UPLOAD_DEFINES := -DHELIX_ENABLE_DIAGNOSTIC_UPLOADS
+else
+    DIAG_UPLOAD_DEFINES :=
+endif
+
 # Developer-only showcase panels define (see ENABLE_DEV_PANELS above)
 ifeq ($(ENABLE_DEV_PANELS),yes)
     DEV_PANELS_DEFINES := -DHELIX_ENABLE_DEV_PANELS
@@ -941,6 +968,10 @@ CXXFLAGS += $(MOCK_DEFINES)
 # Add remote-control defines to compiler flags
 CFLAGS += $(REMOTE_CONTROL_DEFINES)
 CXXFLAGS += $(REMOTE_CONTROL_DEFINES)
+
+# Add diagnostic-upload defines to compiler flags
+CFLAGS += $(DIAG_UPLOAD_DEFINES)
+CXXFLAGS += $(DIAG_UPLOAD_DEFINES)
 
 # Add developer-panel defines to compiler flags
 CFLAGS += $(DEV_PANELS_DEFINES)

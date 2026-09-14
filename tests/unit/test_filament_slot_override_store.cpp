@@ -178,41 +178,46 @@ TEST_CASE("populate_temps_from_slot_info wires SlotInfo temps onto the override"
     }
 }
 
-TEST_CASE("override_from_user_edit records a colour the user chose and refuses the sentinel",
-          "[filament_slot_override]") {
-    using helix::ams::override_from_user_edit;
+TEST_CASE("user_override_from_slot_info records a colour the user chose and refuses the sentinel",
+          "[filament_slot_override][ams]") {
+    using helix::ams::user_override_from_slot_info;
 
     // The lane held nothing before these edits, so every value below is one the
     // user supplied.
     const helix::SlotInfo empty_lane;
 
+    // The sentinel is spelled as a literal rather than through
+    // is_declarable_color: a test that asked the production gate its own
+    // question would pass whichever way that gate answered.
     SECTION("pure black is a colour a user can choose") {
         helix::SlotInfo info;
         info.color_rgb = 0x000000;
-        const auto ovr = override_from_user_edit(empty_lane, info);
+        const auto ovr = user_override_from_slot_info(empty_lane, info);
         CHECK(ovr.color_set);
         CHECK(ovr.color_rgb == 0x000000u);
+        CHECK(ovr.user_locked_color);
     }
 
     SECTION("the no-colour sentinel is not a choice") {
         helix::SlotInfo info;
-        info.color_rgb = helix::AMS_DEFAULT_SLOT_COLOR;
-        const auto ovr = override_from_user_edit(empty_lane, info);
+        info.color_rgb = 0x808080;
+        const auto ovr = user_override_from_slot_info(empty_lane, info);
         CHECK_FALSE(ovr.color_set);
+        CHECK_FALSE(ovr.user_locked_color);
     }
 
     SECTION("the colour name is the user's own text either way") {
         helix::SlotInfo info;
-        info.color_rgb = helix::AMS_DEFAULT_SLOT_COLOR;
+        info.color_rgb = 0x808080;
         info.color_name = "Warm Grey";
-        const auto ovr = override_from_user_edit(empty_lane, info);
+        const auto ovr = user_override_from_slot_info(empty_lane, info);
         CHECK(ovr.color_name == "Warm Grey");
     }
 }
 
-TEST_CASE("override_from_user_edit signs the fields the user supplied",
-          "[filament_slot_override]") {
-    using helix::ams::override_from_user_edit;
+TEST_CASE("user_override_from_slot_info signs the fields the user supplied",
+          "[filament_slot_override][ams]") {
+    using helix::ams::user_override_from_slot_info;
 
     // The lane held nothing before these edits, so every value below is one the
     // user supplied.
@@ -222,16 +227,25 @@ TEST_CASE("override_from_user_edit signs the fields the user supplied",
         helix::SlotInfo info;
         info.color_rgb = 0x1E5AA8;
         info.material = "PETG";
-        const auto ovr = override_from_user_edit(empty_lane, info);
+        const auto ovr = user_override_from_slot_info(empty_lane, info);
         CHECK(ovr.user_locked_color);
         CHECK(ovr.user_locked_material);
     }
 
+    SECTION("a colour the user gave locks while a material they left empty does not") {
+        helix::SlotInfo info;
+        info.color_rgb = 0x112233;
+        const auto ovr = user_override_from_slot_info(empty_lane, info, "");
+        CHECK(ovr.material.empty());
+        CHECK_FALSE(ovr.user_locked_material);
+        CHECK(ovr.user_locked_color);
+    }
+
     SECTION("a field the user left empty stays open to a firmware report") {
         helix::SlotInfo info;
-        info.color_rgb = helix::AMS_DEFAULT_SLOT_COLOR;
+        info.color_rgb = 0x808080;
         info.brand = "Polymaker";
-        const auto ovr = override_from_user_edit(empty_lane, info);
+        const auto ovr = user_override_from_slot_info(empty_lane, info);
         CHECK_FALSE(ovr.user_locked_color);
         CHECK_FALSE(ovr.user_locked_material);
     }
@@ -249,7 +263,7 @@ TEST_CASE("override_from_user_edit signs the fields the user supplied",
         info.bed_temp = 80;
         info.nozzle_temp_min = 230;
         info.nozzle_temp_max = 250;
-        const auto ovr = override_from_user_edit(empty_lane, info);
+        const auto ovr = user_override_from_slot_info(empty_lane, info);
         CHECK(ovr.brand == "Polymaker");
         CHECK(ovr.spool_name == "Blue PETG 1kg");
         CHECK(ovr.spoolman_id == 42);
@@ -267,7 +281,7 @@ TEST_CASE("override_from_user_edit signs the fields the user supplied",
     SECTION("a backend that normalizes the material records and signs that spelling") {
         helix::SlotInfo info;
         info.material = "Silk PLA";
-        const auto ovr = override_from_user_edit(empty_lane, info, "SILK");
+        const auto ovr = user_override_from_slot_info(empty_lane, info, "SILK");
         CHECK(ovr.material == "SILK");
         CHECK(ovr.user_locked_material);
     }
@@ -275,10 +289,30 @@ TEST_CASE("override_from_user_edit signs the fields the user supplied",
     SECTION("a normalized material that comes back empty locks nothing") {
         helix::SlotInfo info;
         info.material = "Silk PLA";
-        const auto ovr = override_from_user_edit(empty_lane, info, "");
+        const auto ovr = user_override_from_slot_info(empty_lane, info, "");
         CHECK(ovr.material.empty());
         CHECK_FALSE(ovr.user_locked_material);
     }
+}
+
+TEST_CASE("a field the user never supplied stays fillable by the auto-mirror",
+          "[filament_slot_override][ams]") {
+    // The lock is what stops the mirror, so locking a field the user left
+    // alone would strand that lane with no value and no way to ever get one.
+    const helix::SlotInfo empty_lane;
+    std::unordered_map<int, FilamentSlotOverride> overrides;
+    helix::SlotInfo info;
+    info.color_rgb = 0x808080; // no colour reading
+    overrides[0] = helix::ams::user_override_from_slot_info(empty_lane, info, "");
+
+    const bool changed = helix::ams::mirror_firmware_to_lane_data(
+        nullptr, overrides, 0, 0x1188FF, "PETG", /*slot_has_filament=*/true,
+        helix::ams::MirrorPolicy::OverwriteAlways, "test");
+
+    CHECK(changed);
+    CHECK(overrides.at(0).color_rgb == 0x1188FFu);
+    CHECK(overrides.at(0).color_set);
+    CHECK(overrides.at(0).material == "PETG");
 }
 
 TEST_CASE("FilamentSlotOverride roundtrips through JSON", "[filament_slot_override]") {

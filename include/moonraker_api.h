@@ -579,18 +579,6 @@ class MoonrakerAPI : public IMoonrakerAPI {
                          std::function<void(const MoonrakerError&)> on_error) override;
 
     // ========================================================================
-    // Helix Plugin Operations
-    // ========================================================================
-
-    /// Get phase tracking plugin status
-    void get_phase_tracking_status(std::function<void(bool enabled)> on_success,
-                                   ErrorCallback on_error = nullptr) override;
-
-    /// Enable or disable phase tracking plugin
-    void set_phase_tracking_enabled(bool enabled, std::function<void(bool success)> on_success,
-                                    ErrorCallback on_error = nullptr) override;
-
-    // ========================================================================
     // Database Operations
     // ========================================================================
 

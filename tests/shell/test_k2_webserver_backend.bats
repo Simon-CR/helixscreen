@@ -436,6 +436,49 @@ write_stock_app_service() {
         | grep -q 'killall web-server'
 }
 
+@test "k2 uninstall: stock-UI restore verifies the boot symlink before claiming success" {
+    # rc.common's `enable` can exit 0 without creating any boot symlink -
+    # the trap this repo documents for this exact rc.common in
+    # install_procd_shim_k2 and install_k2_webserver_backend. A restore
+    # that reports success on a missing link leaves the K2 booting to the
+    # logo with no UI at all, so the restored claim must be gated on a
+    # /etc/rc.d link actually pointing at ../init.d/app.
+    local patched="$BATS_TEST_TMPDIR/uninstall.sh"
+    sed -e "s|/etc/init.d/|$MOCK_ROOT/etc/init.d/|g" \
+        -e "s|/etc/rc\.common|$MOCK_ROOT/etc/rc.common|g" \
+        -e "s|/etc/rc\.d/|$MOCK_ROOT/etc/rc.d/|g" \
+        "$UNINSTALL_BUNDLE" > "$patched"
+
+    # The restore path killalls the carve-out's web-server; mock it so the
+    # sandbox never sees a host-addressing call.
+    mock_command_script "killall" 'exit 0'
+
+    write_stock_app_service
+    rm -f "$MOCK_ROOT"/etc/rc.d/*app 2>/dev/null || true
+
+    # Broken shape: enable exits 0 and creates nothing.
+    printf '#!/bin/sh\ncase "$1" in enable) exit 0;; esac\nexit 0\n' \
+        > "$MOCK_ROOT/etc/rc.common"
+    chmod +x "$MOCK_ROOT/etc/rc.common"
+    local broken_out
+    broken_out="$( INSTALL_DIR="$INSTALL_DIR" SUDO="" _UNINSTALL_BUNDLE_TEST=1 \
+        sh -c ". '$patched'; restore_previous_ui_platform k2" 2>&1 || true )"
+    echo "$broken_out" | grep -q "boot symlink missing or wrong"
+
+    # Working shape: enable creates the link (setup's fake rc.common), so
+    # the restore proceeds without the warning.
+    write_fake_rc_common
+    rm -f "$MOCK_ROOT"/etc/rc.d/*app 2>/dev/null || true
+    local good_out
+    good_out="$( INSTALL_DIR="$INSTALL_DIR" SUDO="" _UNINSTALL_BUNDLE_TEST=1 \
+        sh -c ". '$patched'; restore_previous_ui_platform k2" 2>&1 || true )"
+    if echo "$good_out" | grep -q "boot symlink missing or wrong"; then
+        echo "restore warned despite a correct boot symlink:" >&2
+        echo "$good_out" >&2
+        return 1
+    fi
+}
+
 # --- liveness is the hook's job: the K2 Plus hardware failure in miniature ---
 #
 # On real Tina/procd, /etc/init.d/app stop+disable inside

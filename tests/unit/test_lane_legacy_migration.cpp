@@ -199,7 +199,7 @@ TEST_CASE_METHOD(HelixTestFixture,
     helix::SlotInfo edited;
     edited.brand = "Hatchbox";
     bool saved = false;
-    store.save_async(0, helix::ams::override_from_user_edit(empty_lane, edited),
+    store.save_async(0, helix::ams::user_override_from_slot_info(empty_lane, edited),
                      [&](bool, std::string) { saved = true; });
     REQUIRE(saved);
 
@@ -410,7 +410,7 @@ TEST_CASE("A declared brand survives the private cache round-trip", "[lane][migr
     helix::SlotInfo edited;
     edited.brand = "Hatchbox";
     const helix::ams::FilamentSlotOverride ovr =
-        helix::ams::override_from_user_edit(empty_lane, edited);
+        helix::ams::user_override_from_slot_info(empty_lane, edited);
 
     const nlohmann::json wire = helix::ams::to_json(ovr);
     REQUIRE(wire.contains("declared"));
@@ -476,7 +476,7 @@ TEST_CASE("The declared set cannot carry colour or material", "[lane][migration]
         edited.brand = "Hatchbox";
         edited.material = "PETG";
         edited.color_rgb = 0x3355FF;
-        const auto ovr = helix::ams::override_from_user_edit(empty_lane, edited);
+        const auto ovr = helix::ams::user_override_from_slot_info(empty_lane, edited);
 
         // The two locks carry colour and material.
         CHECK(ovr.user_locked_color);
@@ -491,7 +491,7 @@ TEST_CASE("The declared set cannot carry colour or material", "[lane][migration]
 }
 
 // ============================================================================
-// What a user's edit claims, end to end: override_from_user_edit builds the
+// What a user's edit claims, end to end: user_override_from_slot_info builds the
 // record, the store emits it, and sources_from_record routes it back.
 // ============================================================================
 
@@ -552,7 +552,7 @@ TEST_CASE_METHOD(HelixTestFixture,
     helix::SlotInfo edited = before;
     edited.remaining_weight_g = 730.0F;
 
-    const auto ovr = helix::ams::override_from_user_edit(before, edited);
+    const auto ovr = helix::ams::user_override_from_slot_info(before, edited);
     CHECK_FALSE(ovr.user_locked_color);
     CHECK_FALSE(ovr.user_locked_material);
     CHECK_FALSE(ovr.declared.any());
@@ -595,7 +595,7 @@ TEST_CASE_METHOD(HelixTestFixture, "An edit that moves the brand claims the bran
     helix::SlotInfo edited = before;
     edited.brand = "Hatchbox";
 
-    const auto ovr = helix::ams::override_from_user_edit(before, edited);
+    const auto ovr = helix::ams::user_override_from_slot_info(before, edited);
     CHECK_FALSE(ovr.user_locked_color);
     CHECK_FALSE(ovr.user_locked_material);
     const nlohmann::json declared = helix::ams::declared_field_names(ovr.declared);
@@ -638,7 +638,7 @@ TEST_CASE_METHOD(HelixTestFixture, "An edit that clears the brand keeps it clear
     helix::SlotInfo edited = before;
     edited.brand = "";
 
-    const auto ovr = helix::ams::override_from_user_edit(before, edited);
+    const auto ovr = helix::ams::user_override_from_slot_info(before, edited);
     const nlohmann::json declared = helix::ams::declared_field_names(ovr.declared);
     REQUIRE(declared.is_array());
     CHECK(declared.size() == 1);
@@ -672,7 +672,7 @@ TEST_CASE_METHOD(HelixTestFixture, "An edit that moves the material locks it aga
     helix::SlotInfo edited = before;
     edited.material = "ASA";
 
-    const auto ovr = helix::ams::override_from_user_edit(before, edited);
+    const auto ovr = helix::ams::user_override_from_slot_info(before, edited);
     CHECK(ovr.user_locked_material);
     CHECK_FALSE(ovr.user_locked_color);
     CHECK_FALSE(ovr.declared.any());
@@ -708,7 +708,7 @@ TEST_CASE_METHOD(HelixTestFixture, "Linking a spool declares the binding, not wh
     edited.material = "PETG";
     edited.color_rgb = 0x3355FF;
 
-    const auto ovr = helix::ams::override_from_user_edit(before, edited);
+    const auto ovr = helix::ams::user_override_from_slot_info(before, edited);
     CHECK(ovr.spoolman_id == 42);
     CHECK_FALSE(ovr.user_locked_color);
     CHECK_FALSE(ovr.user_locked_material);
