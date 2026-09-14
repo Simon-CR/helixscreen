@@ -1,6 +1,6 @@
 # Filament Slot Metadata — `lane_data` Convention
 
-**Status**: Informational, v1.7 (2026-08). See [Changelog](#changelog).
+**Status**: Informational, v1.8 (2026-09). See [Changelog](#changelog).
 
 This document describes HelixScreen's use of the `lane_data` Moonraker database
 namespace to share per-slot filament metadata with OrcaSlicer and other tools.
@@ -152,7 +152,10 @@ A full HelixScreen-emitted record looks like this:
   "spoolman_vendor_id": 7,
   "remaining_weight_g": 850.0,
   "total_weight_g": 1000.0,
-  "color_name": "Black"
+  "color_name": "Black",
+  "helix_locked_color": true,
+  "helix_locked_material": false,
+  "helix_declared": ["brand", "spool_name"]
 }
 ```
 
@@ -169,7 +172,7 @@ reference below.
 | Field | Type | Required | Format / units | Semantics | Source |
 |-------|------|----------|----------------|-----------|--------|
 | `lane` | string | yes | stringified integer, 0-based | Tool / slot index as interpreted by the slicer. Matches OrcaSlicer's tool-index convention. See §4 for the intentional off-by-one versus the outer DB key. | HelixScreen writes slot index as string. |
-| `color` | string | optional | `#RRGGBB` hex | Slot color. Leading `#` is conventional; HelixScreen's parser also accepts `0x`-prefixed forms on read. Emitted only when the override carries a non-zero RGB. | User-edited, or firmware-reported on backends where the user has no override. |
+| `color` | string | optional | `#RRGGBB` hex | Slot color. Leading `#` is conventional; HelixScreen's parser also accepts `0x`-prefixed forms on read. Emitted whenever the record carries a colour at all, pure black `#000000` included: black is a real filament colour, not an unset one. | User-edited, or firmware-reported on backends where the user has no override. |
 | `material` | string | optional | short code (`PLA`, `PETG`, `ABS`, `TPU`, …) | The **slicer-matchable** material string. OrcaSlicer matches a lane to a preset by this value alone, so a writer should emit a string the slicer's library actually carries. HelixScreen derives it from the user's precise type (see `helix_material`): explicit override → exact library type → base polymer, and **omits the field entirely** when nothing safely matches, rather than emit a string the slicer would resolve to a wrong (Generic PLA) preset. Readers should still treat unknown values as opaque strings — do NOT silently map them. | Derived by HelixScreen (`orca_match_type()`), or user-edited on writers without a match table. |
 | `vendor` | string | optional | free-form | Brand / manufacturer. Readers match case-insensitively when pairing with their own filament databases. | User-edited. |
 | `vendor_name` | string | optional | free-form | Alias of `vendor`, mirroring Happy Hare's key convention (`push_lane_data` in components/mmu_server.py). Emitted with the same value as `vendor` for forward-compat: as OrcaSlicer moves toward vendor-aware preset matching, `vendor_name` is the key it is most likely to consume. Zero-cost today — Orca ignores unknown keys. HelixScreen's reader accepts either key. | Same as `vendor`. |
@@ -198,10 +201,22 @@ throw on unknown keys).
 | `remaining_weight_g` | float | optional | grams | Remaining filament weight. Negative = unset / unknown. | Spoolman, or user-entered. |
 | `total_weight_g` | float | optional | grams | Full-spool nominal weight. Negative = unset / unknown. | Spoolman, or user-entered. |
 | `color_name` | string | optional | free-form | Human-readable color label (e.g. `"Orange"`), distinct from the `color` hex value. Some user workflows care about the marketing name as well as the RGB. | User-edited, or auto-filled from Spoolman. |
+| `helix_locked_color` | boolean | optional | `true` / `false` | Marks this record's `color` as the user's own choice rather than a value HelixScreen mirrored from the printer or carried over from an earlier session. HelixScreen does not refresh a marked field from firmware. **Always emitted when HelixScreen authors the record, `false` included**, because an explicit `false` is what tells a mirrored colour apart from one nobody has claimed. **Absent is not `false`**: it means the record predates the key or another tool wrote it, and HelixScreen then leaves a colour the record already carries alone rather than refreshing it from firmware. | HelixScreen (`to_lane_data_record()`). |
+| `helix_locked_material` | boolean | optional | `true` / `false` | The same statement about `material` / `helix_material`. Always emitted, `false` included, on the same terms as `helix_locked_color`; absent carries the same meaning. | HelixScreen (`to_lane_data_record()`). |
+| `helix_declared` | array of strings | optional | JSON array of field names | The same authorship statement for the identity fields that carry no lock key of their own. A name in the array says the user entered or cleared that field themselves. The names are HelixScreen's own field names, not this record's key names: `brand` names the field written as `vendor` / `vendor_name`, `spool_name` the field written as `spool_name` / `name`, and `spoolman_vendor_id` is spelled the same either way. **Always emitted when HelixScreen authors the record, the empty array included**: an empty array says the record claims none of them, which an implementer has to be able to tell from a record written before the key existed. **Absent** means the latter. | HelixScreen (`to_lane_data_record()`). |
 
 Fields are emitted only when present. Empty strings, zero, and negative floats
 are treated as "not set" and omitted from the written record — reducing noise
-and making future schema evolution easier.
+and making future schema evolution easier. The three `helix_` authorship keys
+are the deliberate exception: they are always emitted, because an explicit
+`false` or empty array says something an absent key does not.
+
+**Preserve the authorship keys when you rewrite a record you did not author.**
+They are opaque to everyone but HelixScreen: no other reader needs to act on
+them, and none should try to interpret them. But dropping them on a rewrite
+silently reassigns authorship: a colour the user chose comes back as a value
+nobody claimed, and the next firmware report overwrites it. Carry the three
+keys through unchanged, or leave the record alone.
 
 ---
 
@@ -277,12 +292,22 @@ HelixScreen combines three sources of slot metadata:
    any other well-behaved writer.
 3. **User edits in progress** — in-memory, not yet persisted.
 
-The merge rule is **override-wins, field-by-field**:
+The merge rule is **authorship-ranked, field-by-field**. What settles a field
+is not that the record carries a value for it but what the record says about
+who put it there:
 
-- If an override record contains a non-empty / non-zero / non-negative field,
-  it replaces the firmware-reported value for that field in the UI.
-- If a field is missing, empty, zero, or negative in the override, the
-  firmware value falls through.
+- A field the record claims as the user's own, via `helix_locked_color`,
+  `helix_locked_material` or a name in `helix_declared`, outranks whatever
+  the printer reports for that lane. This is what keeps a deliberate choice
+  from being erased by the next status poll.
+- A record naming a `spool_id` is read as the spool server's statement about
+  that lane's identity, and ranks above a firmware report.
+- A field the record merely carries, claiming no authorship for it, stands
+  only where firmware says nothing about that field. A firmware report of the
+  same field on the current frame wins.
+- A field the record does not carry never displaces firmware.
+- `remaining_weight_g` and `total_weight_g` are read as measurements whatever
+  else the record claims. A weight is not a statement about identity.
 - User edits are committed to the override record atomically on save; there is
   no partial-edit state on disk.
 
@@ -402,6 +427,11 @@ Guidelines:
 - **Add extension fields freely.** Other tools will ignore them. If your
   extension becomes broadly useful, open a documentation PR here or in the
   AFC docs so the convention grows deliberately.
+- **Carry a record's `helix_`-prefixed keys through when you rewrite it.**
+  You do not have to understand them, and nothing asks you to act on them.
+  Dropping them changes what the record says about who chose its values (§3),
+  which is not something a rewrite of the material or the weight meant to
+  say.
 - **Best-effort only.** No transactions, no locking. If two writers race,
   last write wins. Use `scan_time` to avoid clobbering fresher data when
   you can.
@@ -525,6 +555,16 @@ reader can resolve.
 
 ## Changelog
 
+- **v1.8 (2026-09-14)**: Documented the three authorship keys HelixScreen
+  writes into every record it authors and which this document had never
+  described: `helix_locked_color`, `helix_locked_material` and `helix_declared`
+  (§3), each always emitted so that `false` and the empty array stay
+  distinguishable from an absent key, with a note asking other writers to
+  preserve them across a rewrite (§3, §7). §5 restated accordingly: the merge
+  is ranked by what a record claims about authorship, not by whether a field
+  holds a value. Also corrected the `color` row, which said the field was
+  emitted only for a non-zero RGB. `#000000` is a real filament colour and is
+  emitted like any other.
 - **v1.7 (2026-08-17)**: §5 amendment — firmware-authoritative re-bind: when
   firmware reports a per-lane `spool_id` that differs from a stored override,
   HelixScreen drops its whole override record for that lane instead of
