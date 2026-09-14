@@ -246,6 +246,21 @@ class TestMarkerMatching:
         result = read(cfg)
         assert result == "[gcode_macro PRINT_START]\ngcode:\n    G28"
 
+    def test_removing_the_files_final_crlf_line_trims_the_whole_crlf_pair(self, tmp_path):
+        # Same shape as the LF case above, but every line ends \r\n and the
+        # removed block's own END line carries none (absolute EOF) - the
+        # trim must drop both bytes of the dangling \r\n, not just the \n.
+        cfg = tmp_path / "printer.cfg"
+        original = (
+            "[gcode_macro PRINT_START]\r\ngcode:\r\n    G28\r\n"
+            f"    {BEGIN}\r\n    HELIX_PHASE_HOMING\r\n    {END}"
+        )
+        write(cfg, original)
+
+        assert strip.main([str(tmp_path)]) == 0
+        result = read(cfg)
+        assert result == "[gcode_macro PRINT_START]\r\ngcode:\r\n    G28"
+
     def test_a_middle_of_file_no_trailing_newline_file_is_unaffected(self, tmp_path):
         # The removed block is NOT at the file's end, so the true final line
         # (already carrying no trailing newline) must stay exactly as it was.
@@ -333,10 +348,11 @@ class TestFileDiscovery:
         assert len(list(real_dir.glob("*.bak.*"))) == 1
 
     def test_find_cfg_files_dedupes_by_realpath(self, tmp_path):
-        # Direct proof of the dedupe, immune to the two-symlinks test above
-        # also passing for the wrong reason: once the first link's target is
-        # stripped, the second link would find no markers left and be
-        # silently skipped regardless of whether dedupe ran at all.
+        # Asserts the discovery step itself, not the end state of a strip
+        # run: once one alias's target is stripped, a second alias finds no
+        # markers left and is silently skipped either way, so a test that
+        # only checks the end state cannot distinguish real dedupe from
+        # that coincidence.
         real_dir = tmp_path / "elsewhere"
         real_dir.mkdir()
         real_file = real_dir / "printer.cfg"
@@ -349,6 +365,24 @@ class TestFileDiscovery:
 
         found = strip.find_cfg_files(str(config_dir))
         assert found == [str(real_file.resolve())]
+
+    def test_discover_cfg_files_keeps_the_symlinks_own_path(self, tmp_path):
+        # The pre-1.1 writer's own backup for a symlinked cfg lands beside
+        # the symlink, not beside its real target - Path.glob() yields the
+        # path as listed in its parent directory, and with_suffix() builds
+        # the backup name from that same path.
+        real_dir = tmp_path / "elsewhere"
+        real_dir.mkdir()
+        real_file = real_dir / "printer.cfg"
+        write(real_file, "content")
+
+        config_dir = tmp_path / "config"
+        config_dir.mkdir()
+        link = config_dir / "printer.cfg"
+        link.symlink_to(real_file)
+
+        discovered = strip._discover_cfg_files(str(config_dir))
+        assert discovered == {str(real_file.resolve()): str(link)}
 
     def test_a_symlinked_directory_is_not_descended(self, tmp_path):
         real_dir = tmp_path / "elsewhere"
@@ -500,10 +534,33 @@ class TestSafeWrites:
         assert read(cfg) == original  # the edit never happened
         assert not list(tmp_path.glob("*.bak.*"))  # the bad backup was removed
 
+    def test_a_backup_raising_partway_leaves_no_partial_file(self, tmp_path, monkeypatch):
+        # Distinct from the truncated-but-successful copy above: copy2 here
+        # writes part of the file and then raises (an EFBIG-shaped failure),
+        # instead of returning normally with short content.
+        cfg = tmp_path / "printer.cfg"
+        original = "[gcode_macro PRINT_START]\ngcode:\n    G28\n" + VALID_BLOCK
+        write(cfg, original)
+
+        def raising_copy2(src, dst):
+            with open(src, "rb") as f:
+                partial = f.read()[:5]
+            with open(dst, "wb") as f:
+                f.write(partial)
+            raise OSError("simulated EFBIG partway through the backup")
+
+        monkeypatch.setattr(shutil, "copy2", raising_copy2)
+        result = strip.main([str(tmp_path)])
+
+        assert result == 1
+        assert read(cfg) == original
+        assert not list(tmp_path.glob("*.bak.*"))
+
     def test_a_corrupted_temp_write_is_caught_before_touching_the_real_file(self, tmp_path, monkeypatch):
         cfg = tmp_path / "printer.cfg"
         original = "[gcode_macro PRINT_START]\ngcode:\n    G28\n" + VALID_BLOCK
         write(cfg, original)
+        inode_before = cfg.stat().st_ino
 
         real_fdopen = os.fdopen
 
@@ -531,10 +588,24 @@ class TestSafeWrites:
                 return CorruptingFile(fd)
             return real_fdopen(fd, mode, *args, **kwargs)
 
+        real_replace = os.replace
+        replace_calls = []
+
+        def spying_replace(src, dst):
+            replace_calls.append((src, dst))
+            return real_replace(src, dst)
+
         monkeypatch.setattr(os, "fdopen", fake_fdopen)
+        monkeypatch.setattr(os, "replace", spying_replace)
         result = strip.main([str(tmp_path)])
 
         assert result == 1
+        # The corrupted temp file must never reach printer.cfg at all - not
+        # get replaced in and then restored, which would also leave the
+        # bytes matching but would have replaced a live config file with
+        # unverified content, if only for an instant.
+        assert replace_calls == []
+        assert cfg.stat().st_ino == inode_before
         assert read(cfg) == original
         assert not list(tmp_path.glob(".helix-tracking-strip-*"))
 
@@ -571,6 +642,35 @@ class TestSafeWrites:
 
         assert cfg.read_bytes() == edited_bytes  # the concurrent edit survives
         assert not list(tmp_path.glob("*.bak.*"))
+
+    def test_a_concurrent_edit_landing_just_before_the_replace_is_caught(self, tmp_path, monkeypatch):
+        # Distinct from the test above: that one lands the race before the
+        # backup is even made. This one lets the backup and the verified
+        # temp write both complete normally, then lands the edit in the
+        # narrow window safe_replace_file's own pre-replace re-check exists
+        # for - os.chmod runs right before that re-check, so injecting the
+        # write there lands it as late as a monkeypatch can.
+        cfg = tmp_path / "printer.cfg"
+        original_text = "[gcode_macro PRINT_START]\ngcode:\n    G28\n" + VALID_BLOCK
+        write(cfg, original_text)
+        original_bytes = cfg.read_bytes()
+
+        real_chmod = os.chmod
+        concurrent_edit = original_bytes + b"\n; a concurrent edit landing late\n"
+
+        def chmod_then_race(path, mode, *args, **kwargs):
+            if ".helix-tracking-strip-" in str(path):
+                cfg.write_bytes(concurrent_edit)
+            return real_chmod(path, mode, *args, **kwargs)
+
+        monkeypatch.setattr(os, "chmod", chmod_then_race)
+
+        result = strip.process_file(str(cfg))
+
+        assert result["status"] == "skipped"
+        assert "changed" in result["reason"]
+        assert cfg.read_bytes() == concurrent_edit  # the concurrent edit survives
+        assert len(list(tmp_path.glob("*.bak.*"))) == 1  # made before the race, kept intact
 
     def test_process_file_reports_a_concurrent_change_as_skipped_not_failed(
         self, tmp_path, monkeypatch
@@ -632,6 +732,63 @@ class TestOutputContract:
 
     def test_missing_config_dir_is_not_a_failure(self, tmp_path):
         assert strip.main([str(tmp_path / "does-not-exist")]) == 0
+
+    def test_skip_output_includes_a_next_step_line(self, tmp_path, capsys):
+        anomaly = tmp_path / "anomaly.cfg"
+        write(
+            anomaly,
+            f"[gcode_macro PRINT_START]\ngcode:\n    G28\n    {BEGIN}\n    HELIX_PHASE_HOMING\n",
+        )
+
+        strip.main([str(tmp_path)])
+        out = capsys.readouterr().out
+
+        assert "WARN: next step:" in out
+        assert "restart Klipper" in out
+
+    def test_a_symlinked_anomalys_hint_names_the_symlinks_own_directory(self, tmp_path, capsys):
+        # End-to-end proof that main() wires the discovered path, not the
+        # realpath, into the hint - a unit test of _next_step_hint alone
+        # cannot see which one main() actually passes it.
+        real_dir = tmp_path / "elsewhere"
+        real_dir.mkdir()
+        real_file = real_dir / "printer.cfg"
+        write(
+            real_file,
+            f"[gcode_macro PRINT_START]\ngcode:\n    G28\n    {BEGIN}\n    HELIX_PHASE_HOMING\n",
+        )
+        config_dir = tmp_path / "config"
+        config_dir.mkdir()
+        (config_dir / "printer.cfg").symlink_to(real_file)
+
+        strip.main([str(config_dir)])
+        out = capsys.readouterr().out
+
+        assert str(config_dir / "printer.bak.") in out
+        assert str(real_dir / "printer.bak.") not in out
+
+
+class TestNextStepHint:
+    def test_anomaly_hint_names_the_marker_text_and_a_backup_pattern(self):
+        hint = strip._next_step_hint("/cfg/printer.cfg", "anomaly")
+        assert "printer.bak.<a number>" in hint
+        assert "restart Klipper" in hint
+        assert "discards every config change" in hint
+
+    def test_anomaly_hint_uses_the_path_it_was_given_not_a_realpath(self):
+        # A symlinked cfg's pre-1.1 backup would sit beside the symlink
+        # itself, not beside whatever it resolves to - main() passes the
+        # discovered path in for exactly this reason, and the hint must
+        # build the backup name from it rather than re-deriving one.
+        hint = strip._next_step_hint("/config/printer.cfg", "anomaly")
+        assert "/config/printer.bak.<a number>" in hint
+        assert "/repo/" not in hint
+
+    def test_concurrent_hint_says_to_rerun_not_to_edit_or_restore(self):
+        hint = strip._next_step_hint("/cfg/printer.cfg", "concurrent")
+        assert "re-run" in hint
+        assert "by hand" not in hint
+        assert "restore" not in hint
 
 
 # ============================================================================

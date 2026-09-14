@@ -272,7 +272,8 @@ def safe_replace_file(path, new_bytes, original):
                     f"restore it from {backup_path} by hand"
                 ) from exc
             raise StripWriteError(
-                f"{path} did not verify after writing - restored from {backup_path}"
+                f"{path} did not verify after writing - restored by moving the backup "
+                f"{backup_path} back into place"
             )
     finally:
         if tmp_path is not None:
@@ -292,30 +293,50 @@ def _is_snapshot_name(name):
     return bool(_SNAPSHOT_NAME_RE.match(name))
 
 
-def find_cfg_files(scan_dir):
-    """Every .cfg file under scan_dir, recursively, deduplicated by realpath
-    and sorted for a deterministic processing order.
+def _discover_cfg_files(scan_dir):
+    """Walk scan_dir for every .cfg file, recursively. Returns
+    {real_path: discovered_path} - discovered_path is the path the walk
+    actually found (a symlink's own path, when one was involved), kept
+    because that is where the pre-1.1 writer's own backup for that file
+    would sit: `Path.glob()` yields the path as listed in its parent
+    directory, and `cfg_file.with_suffix(...)` builds the backup name from
+    that same listed path, not from whatever it resolves to.
 
     Never descends a directory symlink: the writer that ever instrumented a
     macro located it with pathlib's `**` glob, which does not either, so a
     symlinked directory holds nothing this strip needs to undo - and without
     the guard, one pointing at a large or self-referential tree turns a
     config scan into a walk of that tree. A `.cfg` that is itself a symlink
-    is still resolved to its real target, same as any other file. Skips
-    SAVE_CONFIG snapshot files and anything under a config_backups
-    directory.
+    is still resolved to its real target, same as any other file, for both
+    reading and editing. Skips SAVE_CONFIG snapshot files and anything under
+    a config_backups directory. Traversal is sorted at each level, so which
+    of several aliases for the same real file is kept as "discovered" is
+    deterministic rather than filesystem-order-dependent.
     """
-    real_paths = set()
+    discovered = {}
     for root, dirs, files in os.walk(scan_dir, followlinks=False):
-        dirs[:] = [d for d in dirs if d != "config_backups"]
-        for name in files:
+        dirs[:] = sorted(d for d in dirs if d != "config_backups")
+        for name in sorted(files):
             if not name.endswith(".cfg") or _is_snapshot_name(name):
                 continue
-            real_paths.add(os.path.realpath(os.path.join(root, name)))
-    return sorted(real_paths)
+            found_path = os.path.join(root, name)
+            real_path = os.path.realpath(found_path)
+            if real_path not in discovered:
+                discovered[real_path] = found_path
+    return discovered
 
 
-def process_file(path):
+def find_cfg_files(scan_dir):
+    """Every .cfg file under scan_dir, deduplicated by realpath and sorted
+    for a deterministic processing order. See _discover_cfg_files for the
+    discovery rules."""
+    return sorted(_discover_cfg_files(scan_dir))
+
+
+def process_file(path, discovered_path=None):
+    if discovered_path is None:
+        discovered_path = path
+
     try:
         with open(path, "rb") as f:
             original = f.read()
@@ -326,7 +347,13 @@ def process_file(path):
     if result.status == "clean":
         return {"path": path, "status": "clean"}
     if result.status == "anomaly":
-        return {"path": path, "status": "skipped", "reason": result.reason}
+        return {
+            "path": path,
+            "status": "skipped",
+            "reason": result.reason,
+            "discovered_path": discovered_path,
+            "skip_kind": "anomaly",
+        }
 
     try:
         backup_path = safe_replace_file(path, result.new_bytes, original)
@@ -334,7 +361,13 @@ def process_file(path):
         # Something else wrote to the file after this decision was made; the
         # safe response is to leave it for the next run, not to overwrite
         # whatever that write was.
-        return {"path": path, "status": "skipped", "reason": str(exc)}
+        return {
+            "path": path,
+            "status": "skipped",
+            "reason": str(exc),
+            "discovered_path": discovered_path,
+            "skip_kind": "concurrent",
+        }
     except (StripWriteError, OSError) as exc:
         # Any unhandled OS-level failure (a disk-full mid rename, for
         # example) is one file's failure, never a reason to stop processing
@@ -349,17 +382,32 @@ def process_file(path):
     }
 
 
-def _next_step_hint(path):
-    """What to tell a user about a file this script would not touch: the
-    marker block(s) can be removed by hand, or restored from a backup a
-    pre-1.1 HelixScreen's own instrumentation left beside the file the
-    first time it wrote to it - `<name>.bak.<epoch-seconds>` (the file
-    extension is dropped, not kept, e.g. printer.cfg -> printer.bak.<n>)."""
-    stem = os.path.splitext(path)[0]
+def _next_step_hint(discovered_path, skip_kind):
+    """What to tell a user about a file this script would not touch.
+
+    A concurrent-change skip is not about the file's content at all - the
+    right step is to re-run the strip, not to edit or restore anything.
+    Every other skip names the marker text to remove by hand, and the
+    backup a pre-1.1 HelixScreen's own instrumentation would have left
+    beside the file it edited (from the same discovered path Path.glob()
+    would have yielded, not the file's real target) - `<name>.bak.<epoch-
+    seconds>` (with_suffix drops the extension rather than keeping it, so
+    printer.cfg becomes printer.bak.<n>). Restoring that backup discards
+    every config change made after it was written, which removing the
+    marked lines by hand does not.
+    """
+    if skip_kind == "concurrent":
+        return (
+            f"re-run the uninstall (or strip_phase_tracking.py directly) - "
+            f"something else changed {discovered_path} while this run was deciding what to strip"
+        )
+    stem = os.path.splitext(discovered_path)[0]
     return (
         f"remove the '{TRACKING_MARKER_BEGIN.decode()}' ... "
-        f"'{TRACKING_MARKER_END.decode()}' block(s) in {path} by hand and restart "
-        f"Klipper, or restore it from a backup named {stem}.bak.<a number>, if one exists"
+        f"'{TRACKING_MARKER_END.decode()}' block(s) in {discovered_path} by hand and "
+        f"restart Klipper, which keeps every later config change; or restore it from a "
+        f"backup named {stem}.bak.<a number>, if one exists, which discards every config "
+        "change made after that backup was written"
     )
 
 
@@ -373,8 +421,8 @@ def main(argv):
         return 0
 
     edited, skipped, failed = [], [], []
-    for path in find_cfg_files(args.config_dir):
-        r = process_file(path)
+    for real_path, discovered_path in sorted(_discover_cfg_files(args.config_dir).items()):
+        r = process_file(real_path, discovered_path)
         if r["status"] == "edited":
             edited.append(r)
         elif r["status"] == "skipped":
@@ -387,7 +435,7 @@ def main(argv):
               f"(backup: {r['backup']})")
     for r in skipped:
         print(f"WARN: left {r['path']} untouched: {r['reason']}")
-        print(f"WARN: next step: {_next_step_hint(r['path'])}")
+        print(f"WARN: next step: {_next_step_hint(r['discovered_path'], r['skip_kind'])}")
     for r in failed:
         print(f"ERROR: failed to strip {r['path']}: {r['reason']}", file=sys.stderr)
 
