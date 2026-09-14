@@ -172,11 +172,16 @@ itself or supports no software rotation at all:
 | SDL | yes | yes | driver calls `lv_draw_sw_rotate()` |
 | DRM dumb buffer | yes | **no** | hardware plane rotation, or the CPU reversal in `patches/lvgl-drm-flush-rotation.patch`, which covers 180 only |
 
-Hardware plane rotation is refused outright, even where the dumb-buffer driver's plane
-supports it: the plane rotates the picture but not the touch frame, since LVGL transforms
-pointer input solely from its own display rotation, which the plane path clears
+The scanout plane carries 180 when its rotation mask advertises it (the Pi 3B's vc4 plane,
+mask `0x35`). The plane rotates the picture but not the touch frame, since LVGL transforms
+pointer input solely from its own display rotation and the plane path clears that, so
+`DisplayBackendDRM` chains the transform onto the read callback of every pointer device it
+opens, touch and mouse alike
 ([`include/drm_rotation_strategy.h#plane_may_own_rotation`](../../../include/drm_rotation_strategy.h)).
-That covers every Pi and x86 DRM build, so those fall to the fbdev backend and get 180 only.
+90 and 270 never go to the plane, whatever its mask advertises: the plane is programmed at
+the panel's own width and height and LVGL keeps laying out unrotated
+([`include/drm_rotation_strategy.h#choose_drm_rotation_strategy`](../../../include/drm_rotation_strategy.h)).
+A board whose plane cannot carry the angle falls to the fbdev backend.
 
 **A panel needing 90 or 270 belongs on the fbdev binary.** Pi targets ship two
 ([`mk/pi-dual-link.mk`](../../../mk/pi-dual-link.mk)): `helix-screen` for DRM and
