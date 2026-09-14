@@ -1234,10 +1234,13 @@ void AmsBackendAd5xIfs::update_slot_from_state(int slot_index) {
         helix::ams::ingest(lane_id(slot_index), cache);
     }
 
-    // Layer user-configured overrides on top of firmware-reported data. Called
-    // last so overrides win for any non-default field. Callers hold mutex_,
-    // which also covers overrides_ writes from on_started() and set_slot_info()
-    // — see apply_overrides() below for the invariant.
+    // Lay the lane's resolved values over the struct built above. Only a field
+    // some source observed is written; one nobody observed keeps the firmware
+    // value read here. Of the sources, a DECLARED field outranks the vendor
+    // cache this frame just filed, and a merely remembered one does not.
+    // Callers hold mutex_, which also covers overrides_ writes from
+    // on_started() and set_slot_info(); see apply_overrides() below for the
+    // invariant.
     apply_resolved_lane(entry->info, slot_index);
 }
 
