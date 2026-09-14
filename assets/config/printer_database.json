@@ -2004,7 +2004,7 @@
             "order": 10,
             "default_enabled": false,
             "label_key": "AI detection",
-            "description_key": "Monitor for print abnormalities (K2 Plus camera-based)",
+            "description_key": "Monitor for print abnormalities (camera-based)",
             "strategy": "pre_start_gcode",
             "gcode_template": "LOAD_AI_RUN SWITCH={value}",
             "requires_macro": "LOAD_AI_RUN"

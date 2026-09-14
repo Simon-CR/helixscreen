@@ -2186,13 +2186,15 @@ bool PrinterDetector::auto_detect_and_save(const helix::PrinterDiscovery& discov
         //
         // The package named the machine family at install time, so a weak win
         // inside that family is still an answer: the winner is the variant
-        // carrying the most corroboration, and the family's own name is the
-        // floor under it. A tie between entries picturing the same machine (a
-        // mod variant) is that case too, and so is a tie against a machine from
-        // outside the family, which the package itself breaks. A tie between
-        // two of the family's own machines is not: the family's name is itself
-        // one of them, picked by database order, so nothing is saved and the
-        // Printer Manager's model row is where the choice is made
+        // carrying the most corroboration. A result whose winner is outside the
+        // family, or that names no machine at all, gets the family's default
+        // name. A tie with at most one of the family's machines in it resolves
+        // the same way, entries picturing the same machine counting as one: to
+        // the winner when the winner is in the family, otherwise to the
+        // family's default name, even when the family machine in the tie is a
+        // different one. A tie between two of the family's own machines saves
+        // nothing: any name would be a guess between them, so the Printer
+        // Manager's model row is where the choice is made
         // (prestonbrown/helixscreen#1606).
         const std::string installed_preset = config->get_preset();
         const auto family_machines = std::count_if(
