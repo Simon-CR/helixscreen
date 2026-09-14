@@ -1,6 +1,8 @@
 // Copyright (C) 2025-2026 356C LLC
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "../../include/moonraker_client_mock.h"
+#include "../helix_test_fixture.h"
+#include "../test_helpers/scoped_shared_resource.h"
 #include "../test_helpers/temperature_controller_test_access.h"
 #include "app_globals.h"
 #include "macro_param_cache.h"
@@ -11,13 +13,23 @@
 #include "settings_manager.h"
 #include "temperature_controller.h"
 
+#include <memory>
+
 #include "../catch_amalgamated.hpp"
 
 using helix::HeaterType;
 using helix::TemperatureController;
 
 namespace {
-struct ControllerFixture {
+// HelixTestFixture base drains UpdateQueue on both construction and
+// destruction. PrinterState::update_from_status() unconditionally forwards
+// every status update to the FilamentSensorManager singleton, which queues an
+// async subject-refresh callback whenever it has not yet processed a status
+// (or a sensor changed) and is not in sync mode - true even for an
+// otherwise-private, per-fixture PrinterState like `state` below.
+// feed_nozzle()'s calls into that path left one such callback stranded
+// between test cases before this fixture drained it at teardown.
+struct ControllerFixture : public HelixTestFixture {
     MoonrakerClientMock client;
     helix::PrinterState state;
     MoonrakerAPI api;
@@ -344,29 +356,9 @@ TEST_CASE("TemperatureController swap-preheat guard holds the previous filament 
     }
 }
 
-namespace {
-// PanelWidgetManager is a process-wide singleton, so registering a raw
-// pointer into it (the same non-owning wiring SubjectInitializer uses at app
-// boot) reaches past this test case's own scope. In production the pointee
-// lives for the app's lifetime; here it is a stack-local TemperatureController,
-// so the registration must be cleared before that object is destroyed or the
-// slot dangles for every test that runs afterward in this binary.
-struct ScopedGlobalController {
-    helix::TemperatureController ctrl{get_printer_state(), nullptr};
-
-    ScopedGlobalController() {
-        helix::PanelWidgetManager::instance()
-            .register_shared_resource<helix::TemperatureController>(&ctrl);
-    }
-
-    ~ScopedGlobalController() {
-        helix::PanelWidgetManager::instance().clear_shared_resources();
-    }
-};
-} // namespace
-
-TEST_CASE_METHOD(ScopedGlobalController,
-                 "get_temperature_controller returns the registered shared resource",
-                 "[temp_controller][globals]") {
-    REQUIRE(get_temperature_controller() == &ctrl);
+TEST_CASE("get_temperature_controller returns the registered shared resource",
+          "[temp_controller][globals]") {
+    helix_test::ScopedSharedResource<helix::TemperatureController> scope(
+        std::make_shared<helix::TemperatureController>(get_printer_state(), nullptr));
+    REQUIRE(get_temperature_controller() == scope.ptr());
 }

@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "../lvgl_test_fixture.h"
+#include "../test_helpers/scoped_shared_resource.h"
 #include "lvgl/lvgl.h"
-#include "panel_widget_manager.h"
 #include "printer_state.h"
 #include "src/ui/panel_widgets/heater_temp_widget.h"
 #include "temperature_service.h"
@@ -49,8 +49,7 @@ TEST_CASE_METHOD(TempWidgetFixture,
                  "[temperature_widget][regression]") {
     // Simulate TemperatureService shared resource
     auto tcp = std::make_shared<TemperatureService>(state(), nullptr);
-    auto& mgr = PanelWidgetManager::instance();
-    mgr.register_shared_resource<TemperatureService>(tcp.get());
+    helix_test::ScopedSharedResource<TemperatureService> scope(tcp);
 
     // Build mock widget tree
     lv_obj_t* container = create_mock_temperature_widget(test_screen());
@@ -80,15 +79,13 @@ TEST_CASE_METHOD(TempWidgetFixture,
 
     // Clean up (detach is idempotent)
     widget.detach();
-    mgr.clear_shared_resources();
 }
 
 TEST_CASE_METHOD(TempWidgetFixture,
                  "TemperatureWidget: click callback recovers widget via per-callback user_data",
                  "[temperature_widget][regression]") {
     auto tcp = std::make_shared<TemperatureService>(state(), nullptr);
-    auto& mgr = PanelWidgetManager::instance();
-    mgr.register_shared_resource<TemperatureService>(tcp.get());
+    helix_test::ScopedSharedResource<TemperatureService> scope(tcp);
 
     lv_obj_t* container = create_mock_temperature_widget(test_screen());
     lv_obj_t* btn = lv_obj_find_by_name(container, "temp_btn");
@@ -105,7 +102,6 @@ TEST_CASE_METHOD(TempWidgetFixture,
     REQUIRE(recovered == &widget);
 
     widget.detach();
-    mgr.clear_shared_resources();
 }
 
 TEST_CASE_METHOD(TempWidgetFixture,
