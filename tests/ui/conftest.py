@@ -53,12 +53,14 @@ _TEST_GCODE_MTIME_ORDER = [
     "Night Spirit_v1_2_og.gcode",
     "Low poly vase v1.1 flat top.gcode",
     "ECC_0.4_stand_PLA0.2_2h42m.gcode",
-    # Extra mock gcode; nothing references them by name.
+    # Extra mock gcode; no UI test opens any of these three by name (two unit
+    # tests open pause_markers_demo.gcode directly, unaffected by mtime order).
     # Pinned oldest so they sort onto the last row rather than displacing the
-    # cards the golden was captured under. Moving either up is a deliberate
+    # cards the golden was captured under. Moving any up is a deliberate
     # golden update.
     "eiffel_final_PLA_2h42m.gcode",
     "2022-big-ben-by-miniworld3d_ABS_36m21s.gcode",
+    "pause_markers_demo.gcode",
 ]
 
 
