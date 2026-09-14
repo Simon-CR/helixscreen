@@ -108,6 +108,23 @@ TEST_CASE("PauseScan - M73 progress extraction", "[gcode][pause_scan]") {
         REQUIRE_FALSE(m73_progress_percent("M73 P-").has_value());
         REQUIRE_FALSE(m73_progress_percent("M73 P+").has_value());
     }
+    SECTION("a leading + is rejected, matching std::from_chars<float>") {
+        // std::from_chars recognizes only a leading '-'; unlike strtof/atof, a
+        // '+' is not part of the number grammar at all.
+        REQUIRE_FALSE(m73_progress_percent("M73 P+42").has_value());
+    }
+    SECTION("a value too large for float is rejected, matching std::from_chars<float>'s "
+            "result_out_of_range") {
+        std::string huge_line = "M73 P" + std::string(400, '9');
+        REQUIRE_FALSE(m73_progress_percent(huge_line).has_value());
+    }
+    SECTION("exponent notation is not parsed") {
+        // Controller ruling: no slicer emits M73 P in scientific notation, so
+        // this reads only the leading digits and treats 'e2' as trailing junk,
+        // the same as any other non-digit suffix -- std::from_chars would read
+        // the whole "1e2" as 100.
+        REQUIRE(m73_progress_percent("M73 P1e2") == Approx(1.0f));
+    }
     SECTION("trailing junk after digits still parses the leading number") {
         REQUIRE(m73_progress_percent("M73 P45xyz") == Approx(45.0f));
     }
