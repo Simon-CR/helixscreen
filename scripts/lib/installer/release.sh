@@ -1341,7 +1341,7 @@ detect_rollback_dir() {
     local _candidates _cand _dev _free _install_dev
 
     # Candidate mounts, overridable for testability.
-    _candidates="${HELIX_ROLLBACK_CANDIDATES:-/mnt/UDISK /usr/data /mnt/data /data /user-resource /oem /userdata /var/tmp}"
+    _candidates="${HELIX_ROLLBACK_CANDIDATES:-$HELIX_ROLLBACK_CANDIDATES_DEFAULT}"
 
     # Filesystem device backing the install partition — candidates on the same
     # device free no space when we relocate there.

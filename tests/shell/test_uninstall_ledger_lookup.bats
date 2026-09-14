@@ -93,6 +93,57 @@ _trigger_error_handler() {
     [ -x "$ui_script" ]
 }
 
+# --- Other backup forms release.sh's extract_release can leave INSTALL_BACKUP
+# --- pointing at, which this module derives independently of that variable
+# --- (see _disabled_services_ledger_candidates) ---
+
+@test "reenable_disabled_services: finds the ledger in a timestamped install backup (NoNewPrivileges fallback)" {
+    local ui_script="$BATS_TEST_TMPDIR/S99start_app"
+    touch "$ui_script"
+    chmod -x "$ui_script"
+    mkdir -p "${INSTALL_DIR}.old.1700000000/config"
+    echo "sysv-chmod:$ui_script" > "${INSTALL_DIR}.old.1700000000/config/.disabled_services"
+
+    # backup_install_dir_for_update() falls back to this name when a stale
+    # .old is root-owned and cannot be removed.
+    reenable_disabled_services
+
+    [ "$HELIX_DISABLED_RECORD_FOUND" = "1" ]
+    [ -x "$ui_script" ]
+}
+
+@test "reenable_disabled_services: the newest timestamped install backup wins over an older one" {
+    local old_script="$BATS_TEST_TMPDIR/S_old"
+    local new_script="$BATS_TEST_TMPDIR/S_new"
+    touch "$old_script" "$new_script"
+    chmod -x "$old_script" "$new_script"
+    mkdir -p "${INSTALL_DIR}.old.1700000000/config" "${INSTALL_DIR}.old.1800000000/config"
+    echo "sysv-chmod:$old_script" > "${INSTALL_DIR}.old.1700000000/config/.disabled_services"
+    echo "sysv-chmod:$new_script" > "${INSTALL_DIR}.old.1800000000/config/.disabled_services"
+
+    reenable_disabled_services
+
+    [ -x "$new_script" ]
+    [ ! -x "$old_script" ]
+}
+
+@test "reenable_disabled_services: finds the ledger under an offsite rollback mount" {
+    local ui_script="$BATS_TEST_TMPDIR/S99start_app"
+    touch "$ui_script"
+    chmod -x "$ui_script"
+    local roomy="$BATS_TEST_TMPDIR/mnt/UDISK"
+    mkdir -p "$roomy/helixscreen-rollback/helixscreen/config"
+    echo "sysv-chmod:$ui_script" > "$roomy/helixscreen-rollback/helixscreen/config/.disabled_services"
+    HELIX_ROLLBACK_CANDIDATES="$roomy"
+
+    # extract_release relocates the old install here when the install
+    # filesystem is too tight to hold the old and new tree at once.
+    reenable_disabled_services
+
+    [ "$HELIX_DISABLED_RECORD_FOUND" = "1" ]
+    [ -x "$ui_script" ]
+}
+
 # --- Precedence: a live ledger must win over a stranded one ---
 
 @test "reenable_disabled_services: the live per-install ledger wins over a stranded clean-keep carry" {
@@ -144,6 +195,36 @@ _trigger_error_handler() {
     grep -q "S99start_app" "${INSTALL_DIR}/config/.disabled_services" || fail "copied ledger missing its entry"
     contains "Your system should be in its original state." "$output"
     lacks "could not be recorded for recovery" "$output"
+}
+
+@test "error_handler: recovers a ledger from a timestamped install backup, independent of INSTALL_BACKUP" {
+    local backup_dir="${INSTALL_DIR}.old.1700000000"
+    mkdir -p "$backup_dir/config"
+    echo "sysv-chmod:/etc/init.d/S99start_app" > "$backup_dir/config/.disabled_services"
+    # The ledger recovery derives this location on its own (see
+    # _disabled_services_ledger_candidates); INSTALL_BACKUP set to match is
+    # only for realism against a real interrupted-update failure.
+    INSTALL_BACKUP="$backup_dir"
+
+    run _trigger_error_handler
+
+    [ -f "${INSTALL_DIR}/config/.disabled_services" ] || fail "ledger not copied forward"
+    grep -q "S99start_app" "${INSTALL_DIR}/config/.disabled_services" || fail "copied ledger missing its entry"
+    contains "Your system should be in its original state." "$output"
+}
+
+@test "error_handler: recovers a ledger from an offsite rollback backup, independent of INSTALL_BACKUP" {
+    local roomy="$BATS_TEST_TMPDIR/mnt/UDISK"
+    mkdir -p "$roomy/helixscreen-rollback/helixscreen/config"
+    echo "sysv-chmod:/etc/init.d/S99start_app" > "$roomy/helixscreen-rollback/helixscreen/config/.disabled_services"
+    HELIX_ROLLBACK_CANDIDATES="$roomy"
+    INSTALL_BACKUP="$roomy/helixscreen-rollback/helixscreen"
+
+    run _trigger_error_handler
+
+    [ -f "${INSTALL_DIR}/config/.disabled_services" ] || fail "ledger not copied forward"
+    grep -q "S99start_app" "${INSTALL_DIR}/config/.disabled_services" || fail "copied ledger missing its entry"
+    contains "Your system should be in its original state." "$output"
 }
 
 @test "error_handler: a ledger it cannot copy forward drops the original-state claim" {

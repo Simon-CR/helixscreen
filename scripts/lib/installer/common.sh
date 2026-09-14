@@ -32,6 +32,16 @@ HELIX_INSTALL_DIRS="/root/printer_software/helixscreen /opt/helixscreen /mnt/UDI
 # shellcheck disable=SC2034  # consumed by uninstall.sh
 HELIX_STATE_DIRS="/mnt/UDISK/helixscreen-state /mnt/UDISK/helixscreen /data/helixscreen /usr/data/helixscreen-state /user-resource/helixscreen-state /userdata/helixscreen-state /srv/helixscreen-state"
 
+# Mounts release.sh's detect_rollback_dir() tries, in order, for an
+# off-partition update-backup when the install filesystem is too tight to
+# hold the old and new tree at once (HELIX_ROLLBACK_CANDIDATES overrides this
+# for tests). Shared here, rather than left local to release.sh, so
+# uninstall.sh's disabled-services ledger lookup can also recognise a backup
+# under one of these mounts without depending on release.sh, which the
+# standalone uninstaller does not bundle.
+# shellcheck disable=SC2034  # consumed by release.sh and uninstall.sh
+HELIX_ROLLBACK_CANDIDATES_DEFAULT="/mnt/UDISK /usr/data /mnt/data /data /user-resource /oem /userdata /var/tmp"
+
 # Remove a state root that is now empty.
 #
 # The sweep above takes cache/ and logs/ but leaves the directory that held
