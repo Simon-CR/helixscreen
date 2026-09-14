@@ -13,6 +13,10 @@
  * name, A's ticks draw on B's progress bar, and ensure_preview_current()
  * believes B's geometry is on screen.
  *
+ * A load that lands for a print that is no longer running also leaves the
+ * running print's own state alone: the runout badge is not scoped to the stale
+ * file's tools, and the stale file's layer count does not become the print's.
+ *
  * Every download is held by the transfer mock until the test releases it by
  * name, so the overlap is ordered by the test instead of by timing.
  */
@@ -22,9 +26,13 @@
 #include "ui_update_queue.h"
 
 #include "../lvgl_test_fixture.h"
+#include "../test_helpers/post_unload_grace_test_access.h"
 #include "../test_helpers/print_status_panel_test_access.h"
 #include "../test_helpers/scoped_env.h"
 #include "../test_helpers/update_queue_test_access.h"
+#include "ams_state.h"
+#include "filament_sensor_manager.h"
+#include "filament_sensor_types.h"
 #include "moonraker_api_mock.h"
 #include "moonraker_client_mock.h"
 #include "printer_state.h"
@@ -172,11 +180,14 @@ class PauseMarkerIdentityFixture : public LVGLTestFixture {
     }
 
     /// Complete @p filename's download and wait for the viewer load it starts
-    /// to reach the panel's load callback, which publishes the scan.
+    /// to reach the panel's load callback, which publishes the scan. The
+    /// callback also defers state writes through the UpdateQueue, so the queue
+    /// is drained before anything is read back.
     void land(const std::string& filename) {
         const int version = pause_markers_version();
         REQUIRE(transfers_.release(filename));
         REQUIRE(wait_until([&] { return pause_markers_version() > version; }, 30000));
+        drain();
     }
 
     int pause_markers_version() {
@@ -249,4 +260,85 @@ TEST_CASE_METHOD(PauseMarkerIdentityFixture,
         CHECK_FALSE(state_.pause_markers_match_current_file());
         CHECK(gcode_displayed_file() == PRINT_A);
     }
+}
+
+namespace {
+
+constexpr const char* RUNOUT_SENSOR = "filament_switch_sensor runout";
+/// Uses tools 0-3 across nine layers, so a load of it has a tool scope and a
+/// layer count to impose.
+constexpr const char* STALE_PRINT = "u1_4color_ring.gcode";
+
+/// The panel as a running print sees it: subjects up, the print reported as
+/// printing, and one runout sensor with no filament system, so the print-scoped
+/// runout badge takes its value from the tools of the file in the viewer.
+class StaleLoadFixture : public PauseMarkerIdentityFixture {
+  public:
+    StaleLoadFixture() {
+        AmsState::instance().init_subjects(true);
+        AmsState::instance().clear_backends();
+
+        auto& fsm = FilamentSensorManager::instance();
+        fsm.init_subjects();
+        PostUnloadGraceTestAccess::reset(fsm);
+        fsm.set_master_enabled(true);
+        fsm.discover_sensors({RUNOUT_SENSOR});
+        fsm.set_sensor_role(RUNOUT_SENSOR, FilamentSensorRole::RUNOUT);
+        PostUnloadGraceTestAccess::clear_startup_grace(fsm);
+        fsm.update_from_status(
+            nlohmann::json{{RUNOUT_SENSOR, {{"filament_detected", true}, {"enabled", true}}}});
+
+        panel_->init_subjects();
+        drain();
+    }
+
+    ~StaleLoadFixture() override {
+        PostUnloadGraceTestAccess::reset(FilamentSensorManager::instance());
+    }
+
+    void report_printing(const std::string& filename) {
+        nlohmann::json status = {{"print_stats", {{"filename", filename}, {"state", "printing"}}}};
+        state_.update_from_status(status);
+        drain();
+    }
+
+    int scoped_runout() {
+        return lv_subject_get_int(FilamentSensorManager::instance().get_scoped_runout_subject());
+    }
+
+    int layer_total() {
+        return lv_subject_get_int(state_.get_print_layer_total_subject());
+    }
+};
+
+} // namespace
+
+TEST_CASE_METHOD(StaleLoadFixture,
+                 "Print status: a superseded print's gcode load leaves the new print's state alone",
+                 "[print_status][pause_markers][1509][slow]") {
+    report_printing(STALE_PRINT);
+    start_fetch(STALE_PRINT);
+
+    // The stale print is cancelled and B started while its download is running.
+    report_printing(PRINT_B);
+    start_fetch(PRINT_B);
+
+    // B has no file in the viewer yet: no tools to scope the badge to, and no
+    // layer count from metadata.
+    REQUIRE(scoped_runout() == -1);
+    REQUIRE(layer_total() == 0);
+
+    land(STALE_PRINT);
+
+    // The stale load reached the panel's load callback: land() waited for its
+    // publish, and its geometry is what the viewer now records.
+    REQUIRE(gcode_displayed_file() == STALE_PRINT);
+    CHECK(scoped_runout() == -1);
+    CHECK(layer_total() == 0);
+
+    // B's own load does apply both, so the two checks above are the stale load
+    // being held back rather than effects that never run.
+    land(PRINT_B);
+    CHECK(scoped_runout() == 1);
+    CHECK(layer_total() > 0);
 }

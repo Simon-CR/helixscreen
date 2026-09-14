@@ -1738,9 +1738,17 @@ void PrintStatusPanel::load_gcode_file(const char* file_path, const std::string&
             // For single-tool, falls back to current AMS color subject.
             self->build_and_apply_tool_colors();
 
+            // A load for a print that is no longer running keeps its geometry in
+            // the viewer until the preview is next refreshed, but it must not
+            // scope the running print's runout badge or supply its layer count.
+            const bool for_current_print =
+                self->gcode_load_filename_ == self->printer_state_.get_effective_print_filename();
+
             // The parsed file now carries the tools this print uses — refresh the
             // print-scoped runout badge (FIX B) so it reflects only those tools.
-            self->recompute_scoped_runout();
+            if (for_current_print) {
+                self->recompute_scoped_runout();
+            }
 
             // Show viewer if print is active or in terminal state (user can see
             // where print stopped). Only skip in Idle.
@@ -1763,7 +1771,7 @@ void PrintStatusPanel::load_gcode_file(const char* file_path, const std::string&
 
             // Fallback: if Moonraker metadata didn't provide layer count,
             // use the count from the parsed/indexed gcode file
-            if (total_layers == 0 && viewer_max_layer > 0) {
+            if (for_current_print && total_layers == 0 && viewer_max_layer > 0) {
                 int layer_count = viewer_max_layer + 1; // max_layer is 0-based
                 self->printer_state_.set_print_layer_total(layer_count);
                 spdlog::info("[{}] Set total layers from gcode viewer: {}", self->get_name(),
