@@ -4,51 +4,18 @@
 #include "gcode_parser.h"
 
 #include "gcode_color_metadata.h"
+#include "utils/decimal_parse.h"
 
 #include <spdlog/spdlog.h>
 
 #include <algorithm>
 #include <cctype>
 #include <cmath>
-#include <cstdlib>
 #include <fstream>
 #include <sstream>
 #include <string_view>
 #include <sys/stat.h>
 #include <system_error>
-
-namespace {
-
-// GCC 10 (AD5M toolchain) lacks std::from_chars for floats.
-// This wrapper uses strtof with a temporary null-terminated copy.
-struct FloatParseResult {
-    const char* ptr;
-    std::errc ec;
-};
-
-inline FloatParseResult parse_float_range(const char* first, const char* last, float& value) {
-    // Fast path: if already null-terminated at `last`
-    char buf[64];
-    size_t len = static_cast<size_t>(last - first);
-    if (len == 0) {
-        return {first, std::errc::invalid_argument};
-    }
-    if (len >= sizeof(buf)) {
-        len = sizeof(buf) - 1;
-    }
-    std::memcpy(buf, first, len);
-    buf[len] = '\0';
-
-    char* end = nullptr;
-    float result = std::strtof(buf, &end);
-    if (end == buf) {
-        return {first, std::errc::invalid_argument};
-    }
-    value = result;
-    return {first + (end - buf), std::errc{}};
-}
-
-} // namespace
 
 namespace helix {
 namespace gcode {
@@ -391,10 +358,9 @@ bool GCodeParser::parse_exclude_object_command(const std::string& line) {
             size_t comma = center_str.find(',');
             if (comma != std::string::npos) {
                 auto [px, ecx] =
-                    parse_float_range(center_str.data(), center_str.data() + comma, obj.center.x);
-                auto [py, ecy] =
-                    parse_float_range(center_str.data() + comma + 1,
-                                      center_str.data() + center_str.size(), obj.center.y);
+                    parse_decimal(center_str.data(), center_str.data() + comma, obj.center.x);
+                auto [py, ecy] = parse_decimal(center_str.data() + comma + 1,
+                                               center_str.data() + center_str.size(), obj.center.y);
                 if (ecx != std::errc{} || ecy != std::errc{}) {
                     spdlog::debug("[GCode Parser] Failed to parse CENTER for object: {}", name);
                 }
@@ -424,16 +390,16 @@ bool GCodeParser::parse_exclude_object_command(const std::string& line) {
                     size_t comma = polygon_str.find(',', pos);
                     if (comma != std::string::npos) {
                         float x = 0, y = 0;
-                        auto [px, ecx] = parse_float_range(polygon_str.data() + pos,
-                                                           polygon_str.data() + comma, x);
+                        auto [px, ecx] =
+                            parse_decimal(polygon_str.data() + pos, polygon_str.data() + comma, x);
                         if (ecx != std::errc{})
                             break;
                         pos = comma + 1;
 
                         size_t close = polygon_str.find(']', pos);
                         if (close != std::string::npos) {
-                            auto [py, ecy] = parse_float_range(polygon_str.data() + pos,
-                                                               polygon_str.data() + close, y);
+                            auto [py, ecy] = parse_decimal(polygon_str.data() + pos,
+                                                           polygon_str.data() + close, y);
                             if (ecy != std::errc{})
                                 break;
                             obj.polygon.push_back(glm::vec2(x, y));
@@ -672,7 +638,7 @@ void GCodeParser::parse_metadata_comment(const std::string& line) {
             if (s >= sv.size())
                 return 0.0f;
             float v = 0.0f;
-            parse_float_range(sv.data() + s, sv.data() + sv.size(), v);
+            parse_decimal(sv.data() + s, sv.data() + sv.size(), v);
             return v;
         };
 
@@ -1014,7 +980,7 @@ bool GCodeParser::extract_param(const std::string& line, char param, float& out_
         return false;
     }
 
-    auto [ptr, ec] = parse_float_range(line.data() + start, line.data() + end, out_value);
+    auto [ptr, ec] = parse_decimal(line.data() + start, line.data() + end, out_value);
     return ec == std::errc{};
 }
 

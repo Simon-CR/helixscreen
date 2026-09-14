@@ -103,6 +103,20 @@ TEST_CASE("GCodeParser - Coordinate extraction", "[gcode][parser]") {
         REQUIRE(seg2.end.x == Approx(15.5f));
         REQUIRE(seg2.end.y == Approx(-15.3f));
     }
+
+    SECTION("A leading '+' on a coordinate is not extracted, matching std::from_chars<float>") {
+        // extract_param()'s digit scan still includes '+' in the candidate range, but
+        // parse_decimal rejects it, so the whole X parameter is treated as absent
+        // rather than as +10.5 the way the strtof-based parser this replaced read it.
+        parser.parse_line("G1 X+10.5 Y20");
+        auto file = parser.finalize();
+
+        REQUIRE(file.total_segments == 1);
+        auto& seg = file.layers[0].segments[0];
+        CHECK(seg.start.x == Approx(0.0f));
+        CHECK(seg.end.x == Approx(0.0f)); // X was never extracted, so it holds at the origin
+        CHECK(seg.end.y == Approx(20.0f));
+    }
 }
 
 TEST_CASE("GCodeParser - Comments and whitespace", "[gcode][parser]") {
@@ -164,6 +178,35 @@ TEST_CASE("GCodeParser - EXCLUDE_OBJECT commands", "[gcode][parser]") {
         REQUIRE(file.get_object_name(file.layers[0].segments[0].object_name_index) == "part1");
         REQUIRE(file.get_object_name(file.layers[0].segments[1].object_name_index) == "part1");
         REQUIRE(file.layers[0].segments[2].object_name_index < 0);
+    }
+
+    SECTION("CENTER with a leading '+' does not parse, matching std::from_chars<float>") {
+        // parse_decimal rejects a leading '+' the way std::from_chars does, unlike the
+        // strtof-based parser this replaced. The coordinate is left at its default.
+        parser.parse_line("EXCLUDE_OBJECT_DEFINE NAME=cube_1 CENTER=+50,75");
+        auto file = parser.finalize();
+
+        REQUIRE(file.objects.count("cube_1") == 1);
+        auto& obj = file.objects["cube_1"];
+        CHECK(obj.center.x == Approx(0.0f));  // '+50' failed to parse; x stays default
+        CHECK(obj.center.y == Approx(75.0f)); // '75' has no sign and still parses
+    }
+
+    SECTION("POLYGON point too large for float truncates the polygon instead of writing inf") {
+        // The strtof-based parser this replaced turned an overflowing token into
+        // HUGE_VALF and kept going; parse_decimal reports result_out_of_range, so
+        // parse_exclude_object_command stops at the first bad point.
+        std::string huge_x(80, '9');
+        parser.parse_line("EXCLUDE_OBJECT_DEFINE NAME=cube_2 CENTER=50,75 "
+                          "POLYGON=[[45,70],[" +
+                          huge_x + ",70],[55,80],[45,80]]");
+        auto file = parser.finalize();
+
+        REQUIRE(file.objects.count("cube_2") == 1);
+        auto& obj = file.objects["cube_2"];
+        REQUIRE(obj.polygon.size() == 1); // only the point before the overflow survives
+        CHECK(obj.polygon[0].x == Approx(45.0f));
+        CHECK(obj.polygon[0].y == Approx(70.0f));
     }
 }
 
