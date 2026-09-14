@@ -80,20 +80,36 @@ helix::ui::queue_update(std::move(data), [](MyData* d) {
 });
 ```
 
-`UpdateQueue` is a mutex-protected `std::queue<std::function>`. Lambdas are enqueued from any
-thread and drained on the main thread at the **start** of each `lv_timer_handler()` cycle,
-before rendering:
+`UpdateQueue` is a mutex-protected queue of tagged callbacks (`std::queue<TaggedCallback>`). Lambdas are enqueued from any
+thread and drained on the main thread by an LVGL timer that `UpdateQueue::init()` creates with
+LVGL's default refresh period, `LV_DEF_REFR_PERIOD` (33 ms)
+(`include/ui_update_queue.h#UpdateQueue/init/"LV_DEF_REFR_PERIOD"`), the period LVGL gives the
+display refresh timer (`lib/lvgl/src/display/lv_display.c#lv_display_create/"LV_DEF_REFR_PERIOD"`).
+One pass of `src/application/application.cpp#main_loop`:
 
 ```
-1. UpdateQueue::process_pending()  ← drains all queued lambdas (1 ms LVGL timer)
-2. LVGL timers (input polling, animations)
-3. process_notifications()         ← dequeue Moonraker JSON
-4. lv_refr_now()                   ← render to framebuffer
+1. process_notifications()   ← dequeue Moonraker JSON
+2. lv_timer_handler()        ← runs every LVGL timer whose period has elapsed:
+     UpdateQueue::process_pending()   drains all queued lambdas, once per period
+     display refresh timer            renders invalidated widgets
+     input reads, animations, the rest
+3. sleep until the next timer is due (5 ms floor, 33 ms cap while the display is awake)
 ```
 
-**Why not LVGL's native `lv_async_call()`?** It can fire *during* the render phase, causing
-the same assertion failure. `queue_update()` runs before rendering, so every subject value is
-current when widgets draw.
+The period is not shorter because the drain timer sets how often an idle loop wakes:
+`lv_timer_handler()` returns the time until the soonest timer and the loop sleeps that long, so
+a sub-frame drain period holds an idle loop at its 5 ms floor
+(`tests/unit/test_update_queue.cpp#"drain timer does not wake the main loop faster than a frame"`).
+A lambda waits up to one period for its drain, and a render can land in between. What the
+queue guarantees is serialization: the drain runs inside the same timer walk as rendering, so a
+queued `lv_subject_set_*()` never interleaves with a render in progress. Do not write code that
+depends on which of the two runs first in a given pass.
+
+**Why not LVGL's native `lv_async_call()`?** It does not cross threads. It creates a one-shot
+LVGL timer (`lib/lvgl/src/misc/lv_async.c#lv_async_call`), and `lv_timer_create()` links it
+into LVGL's timer list without taking the LVGL lock
+(`lib/lvgl/src/misc/lv_timer.c#lv_timer_create`), so a background thread calling it races the
+main thread's timer walk.
 
 ### When you need it
 
@@ -117,11 +133,11 @@ library, assume you are on a background thread.
 ```
 MAIN THREAD              LIBHV THREAD           UTILITY THREADS
 ─────────────            ─────────────          ───────────────
-lv_timer_handler()       libhv Event Loop       UpdateChecker
-  ├ process_pending()      ├ WebSocket conn     TelemetryManager
-  ├ LVGL timers            ├ JSON-RPC parse     CrashReporter
-  ├ process_notifs()       ├ Auto-reconnect     ───────────────
-  └ lv_refr_now()          └ HTTP transfers            │
+main_loop()              libhv Event Loop       UpdateChecker
+  ├ process_notifs()       ├ WebSocket conn     TelemetryManager
+  └ lv_timer_handler()     ├ JSON-RPC parse     CrashReporter
+     ├ process_pending()   ├ Auto-reconnect     ───────────────
+     └ display refresh     └ HTTP transfers            │
          ▲                        │                     │
          │                        │ queue_update(λ)     │ queue_update(λ)
          │                        ▼                     ▼
