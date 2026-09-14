@@ -73,10 +73,16 @@ TEST_CASE("a named heater Klipper reports is the chamber heater", "[chamber][ass
 
 TEST_CASE("a named heater Klipper does not report is not the chamber heater",
           "[chamber][assignment]") {
-    SECTION("a printer with no chamber heater has none") {
+    SECTION("a printer with neither a chamber heater nor a chamber fan has none") {
         const auto hw = discovered({"temperature_sensor chamber_temp", "extruder", "heater_bed"});
         REQUIRE_FALSE(hw.has_chamber_heater());
         CHECK(resolve_heater(PRESET_CHAMBER_HEATER, hw).empty());
+    }
+    SECTION("a printer whose chamber is driven by a chamber-named temperature_fan gets the fan") {
+        const auto hw = discovered({"temperature_fan chamber_fan",
+                                    "temperature_sensor chamber_temp", "extruder", "heater_bed"});
+        REQUIRE(hw.chamber_heater_name() == "temperature_fan chamber_fan");
+        CHECK(resolve_heater(PRESET_CHAMBER_HEATER, hw) == "temperature_fan chamber_fan");
     }
     SECTION("a printer whose chamber heater has another name keeps discovery's pick") {
         const auto hw = discovered({"heater_generic chamber", "extruder", "heater_bed"});

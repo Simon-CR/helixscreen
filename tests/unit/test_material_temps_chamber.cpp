@@ -420,9 +420,6 @@ TEST_CASE_METHOD(XMLTestFixture, "Saving a chamber value above the printer's cap
     reset_material_temps_singleton();
 }
 
-// A chamber override stored while the printer HAD a heater must not hold the
-// edit view hostage on a printer whose heater is gone: the column is hidden,
-// so a cap-driven refusal would name a control the user cannot see or fix.
 TEST_CASE_METHOD(XMLTestFixture,
                  "The defaults hint mentions the chamber exactly when its column is shown",
                  "[material_temps][chamber]") {
@@ -454,6 +451,9 @@ TEST_CASE_METHOD(XMLTestFixture,
     reset_material_temps_singleton();
 }
 
+// A chamber override stored while the printer HAD a heater must not hold the
+// edit view hostage on a printer whose heater is gone: the column is hidden,
+// so a cap-driven refusal would name a control the user cannot see or fix.
 TEST_CASE_METHOD(XMLTestFixture, "A hidden chamber override cannot block the edit view's save",
                  "[material_temps][chamber][1615]") {
     ControllerScope scope(*this);

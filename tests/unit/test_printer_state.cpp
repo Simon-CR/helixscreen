@@ -1615,18 +1615,32 @@ int has_chamber_heater(PrinterState& state) {
 
 } // namespace
 
-TEST_CASE("PrinterState::set_hardware: a preset chamber heater the printer lacks is none",
-          "[state][hardware][chamber]") {
+TEST_CASE(
+    "PrinterState::set_hardware: a preset chamber heater the printer lacks yields discovery's",
+    "[state][hardware][chamber]") {
     ChamberAssignmentsRestore restore;
     PrinterState& state = state_before_discovery(PRESET_CHAMBER_HEATER);
 
-    state.set_hardware(
-        discovered_objects({"temperature_sensor chamber_temp", "extruder", "heater_bed"}));
+    SECTION("a chamber-named temperature_fan drives the chamber") {
+        state.set_hardware(
+            discovered_objects({"temperature_fan chamber_fan", "temperature_sensor chamber_temp",
+                                "extruder", "heater_bed"}));
 
-    // The chamber did resolve: the sensor this printer does have is live.
-    REQUIRE(state.temperature_state().chamber_sensor_name() == "temperature_sensor chamber_temp");
-    CHECK(state.temperature_state().chamber_heater_name().empty());
-    CHECK(has_chamber_heater(state) == 0);
+        // The chamber did resolve: the sensor this printer does have is live.
+        REQUIRE(state.temperature_state().chamber_sensor_name() ==
+                "temperature_sensor chamber_temp");
+        CHECK(state.temperature_state().chamber_heater_name() == "temperature_fan chamber_fan");
+        CHECK(has_chamber_heater(state) == 1);
+    }
+    SECTION("neither a heater nor a chamber fan leaves no chamber heater") {
+        state.set_hardware(
+            discovered_objects({"temperature_sensor chamber_temp", "extruder", "heater_bed"}));
+
+        REQUIRE(state.temperature_state().chamber_sensor_name() ==
+                "temperature_sensor chamber_temp");
+        CHECK(state.temperature_state().chamber_heater_name().empty());
+        CHECK(has_chamber_heater(state) == 0);
+    }
 }
 
 TEST_CASE("PrinterState::set_hardware: a named chamber heater the printer reports is its heater",
@@ -1679,16 +1693,32 @@ TEST_CASE("PrinterState: chamber heater presence follows each discovery, never t
                 ->push_back(lv_subject_get_int(subject));
         },
         &seen);
+    struct ObserverRemove {
+        lv_observer_t* observer;
+        ~ObserverRemove() {
+            lv_observer_remove(observer);
+        }
+    } remove_observer{observer};
 
     // The assignment is loaded and discovery has not landed: no chamber heater.
     CHECK(state.temperature_state().chamber_heater_name().empty());
     CHECK(lv_subject_get_int(presence) == 0);
 
-    // Discovery lands on a printer without the heater, and it never shows.
+    // Discovery lands on a printer with neither the heater nor a chamber fan, and
+    // the capability never shows.
     state.set_hardware(
         discovered_objects({"temperature_sensor chamber_temp", "extruder", "heater_bed"}));
     CHECK(lv_subject_get_int(presence) == 0);
+    // The observer fired, so an absent 1 means one was never set.
+    REQUIRE_FALSE(seen.empty());
     CHECK(std::find(seen.begin(), seen.end(), 1) == seen.end());
+
+    // A later discovery reporting only a chamber-named temperature_fan: the fan
+    // drives the chamber.
+    state.set_hardware(
+        discovered_objects({"temperature_fan chamber_fan", "extruder", "heater_bed"}));
+    CHECK(state.temperature_state().chamber_heater_name() == "temperature_fan chamber_fan");
+    CHECK(lv_subject_get_int(presence) == 1);
 
     // A later discovery that reports the heater makes it the chamber heater.
     state.set_hardware(discovered_objects({PRESET_CHAMBER_HEATER, "extruder", "heater_bed"}));
@@ -1700,8 +1730,6 @@ TEST_CASE("PrinterState: chamber heater presence follows each discovery, never t
         discovered_objects({"temperature_sensor chamber_temp", "extruder", "heater_bed"}));
     CHECK(state.temperature_state().chamber_heater_name().empty());
     CHECK(lv_subject_get_int(presence) == 0);
-
-    lv_observer_remove(observer);
 }
 
 // ============================================================================

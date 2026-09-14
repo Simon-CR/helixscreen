@@ -3,6 +3,7 @@
 #include "../../include/moonraker_client_mock.h"
 #include "../test_helpers/temperature_controller_test_access.h"
 #include "app_globals.h"
+#include "macro_param_cache.h"
 #include "moonraker_api.h"
 #include "panel_widget_manager.h"
 #include "printer_discovery.h"
@@ -173,54 +174,80 @@ TEST_CASE("TemperatureController reports an error when the chamber heater is not
     }
 }
 
-TEST_CASE("TemperatureController refuses a chamber target for a heater Klipper does not report",
-          "[temp_controller][chamber]") {
+TEST_CASE(
+    "TemperatureController sends a preset's missing chamber heater target only to discovery's",
+    "[temp_controller][chamber]") {
     // A model preset names its family's chamber heater before the wizard runs; this
-    // member of the family has only a chamber thermistor.
+    // member of the family does not have it.
     struct AssignmentRestore {
         ~AssignmentRestore() {
             helix::SettingsManager::instance().set_chamber_heater_assignment("auto");
         }
     } restore;
     ControllerFixture f;
+    // No M141 macro, so the raw heater or fan command is what reaches Klipper.
+    helix::MacroParamCache::instance().clear();
     helix::SettingsManager::instance().set_chamber_heater_assignment(
         "heater_generic chamber_heater");
-    helix::PrinterDiscovery hardware;
-    nlohmann::json objects = {"temperature_sensor chamber_temp", "extruder", "heater_bed"};
-    hardware.parse_objects(objects);
-    f.state.set_hardware(hardware);
-    f.state.set_klippy_state_sync(helix::KlippyState::READY);
 
-    CHECK(f.controller.resolved_name(HeaterType::Chamber).empty());
-
-    const auto sent_chamber_gcode = [&f] {
+    const auto discover = [&f](std::initializer_list<const char*> names) {
+        helix::PrinterDiscovery hardware;
+        nlohmann::json objects = nlohmann::json::array();
+        for (const char* name : names) {
+            objects.push_back(name);
+        }
+        hardware.parse_objects(objects);
+        f.state.set_hardware(hardware);
+        f.state.set_klippy_state_sync(helix::KlippyState::READY);
+        f.client.clear_gcode_script_history();
+    };
+    const auto sent = [&f](const std::string& fragment) {
         for (const auto& gcode : f.client.gcode_script_history()) {
-            if (gcode.find("chamber_heater") != std::string::npos) {
+            if (gcode.find(fragment) != std::string::npos) {
                 return true;
             }
         }
         return false;
     };
 
-    SECTION("a chamber target is refused and nothing reaches Klipper") {
-        f.client.clear_gcode_script_history();
+    SECTION("a chamber-named temperature_fan takes the chamber target") {
+        discover({"temperature_fan chamber_fan", "temperature_sensor chamber_temp", "extruder",
+                  "heater_bed"});
+        CHECK(f.controller.resolved_name(HeaterType::Chamber) == "temperature_fan chamber_fan");
+
         bool error_fired = false;
         f.controller.set_target(
-            HeaterType::Chamber, 50.0,
+            HeaterType::Chamber, 35.0,
             helix::SendOptions{.toast = true,
                                .on_error = [&](const MoonrakerError&) { error_fired = true; }});
 
-        CHECK(error_fired);
-        CHECK(f.client.gcode_script_history().empty());
+        CHECK_FALSE(error_fired);
+        CHECK(sent("SET_TEMPERATURE_FAN_TARGET TEMPERATURE_FAN=chamber_fan TARGET=35"));
+        CHECK_FALSE(sent("chamber_heater"));
     }
 
-    SECTION("a material's chamber temperature is left out of apply_material") {
-        f.client.clear_gcode_script_history();
-        f.controller.apply_material(210.0, 60.0, 50.0, helix::SendOptions{.toast = false});
+    SECTION("with neither a heater nor a chamber fan") {
+        discover({"temperature_sensor chamber_temp", "extruder", "heater_bed"});
+        CHECK(f.controller.resolved_name(HeaterType::Chamber).empty());
 
-        // The nozzle send proves apply_material ran.
-        REQUIRE_FALSE(f.client.gcode_script_history().empty());
-        CHECK_FALSE(sent_chamber_gcode());
+        SECTION("a chamber target is refused and nothing reaches Klipper") {
+            bool error_fired = false;
+            f.controller.set_target(
+                HeaterType::Chamber, 50.0,
+                helix::SendOptions{.toast = true,
+                                   .on_error = [&](const MoonrakerError&) { error_fired = true; }});
+
+            CHECK(error_fired);
+            CHECK(f.client.gcode_script_history().empty());
+        }
+
+        SECTION("a material's chamber temperature is left out of apply_material") {
+            f.controller.apply_material(210.0, 60.0, 50.0, helix::SendOptions{.toast = false});
+
+            // The nozzle send proves apply_material ran.
+            REQUIRE_FALSE(f.client.gcode_script_history().empty());
+            CHECK_FALSE(sent("chamber_heater"));
+        }
     }
 }
 

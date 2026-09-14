@@ -110,8 +110,10 @@ that turns it into a heater:
 - `"auto"` takes the discovery pick; `"none"` means no chamber heater.
 - A named object counts only while Klipper reports it in its object list. A preset seeds its model
   family's heater name, so a family member without that heater carries a name for hardware it
-  lacks; that name falls back to the discovery pick, which is empty on a printer with no chamber
-  heater.
+  lacks; that name falls back to the discovery pick, whatever type it is, including a
+  chamber-named `temperature_fan`. A base K2 that reports `temperature_fan chamber_fan` and no
+  heater therefore gets a fan-driven chamber control, exactly as a K1C does; a printer with
+  neither a chamber heater nor a chamber fan resolves to no chamber heater.
 
 `PrinterState::set_hardware` publishes the result once per discovery as
 `temperature_state().chamber_heater_name()` and the `printer_has_chamber_heater` capability.
