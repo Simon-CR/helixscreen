@@ -223,6 +223,25 @@ TEST_CASE("MacroManager - get_macro_names returns expected macros", "[config][co
     REQUIRE(std::find(names.begin(), names.end(), "HELIX_PHASE_BED_MESH") != names.end());
 }
 
+TEST_CASE("MacroManager - every macro name legacy PRINT_START instrumentation calls stays defined",
+          "[config][content]") {
+    // A PRINT_START macro instrumented by pre-1.1 HelixScreen calls these
+    // names directly, by name, from lines it wrote into the macro itself.
+    // Nothing in the current codebase still generates that call list, so this
+    // enumerates it directly rather than deriving it from a live producer.
+    static const std::vector<std::string> instrumentation_macro_names = {
+        "HELIX_PHASE_HOMING",         "HELIX_PHASE_QGL",         "HELIX_PHASE_Z_TILT",
+        "HELIX_PHASE_BED_MESH",       "HELIX_PHASE_CLEANING",    "HELIX_PHASE_PURGING",
+        "HELIX_PHASE_HEATING_NOZZLE", "HELIX_PHASE_HEATING_BED", "HELIX_READY"};
+
+    auto names = MacroManager::get_macro_names();
+
+    for (const auto& macro_name : instrumentation_macro_names) {
+        INFO("instrumentation calls " << macro_name);
+        REQUIRE(std::find(names.begin(), names.end(), macro_name) != names.end());
+    }
+}
+
 // ============================================================================
 // HELIX_CLEAN_NOZZLE Macro Tests
 // ============================================================================
