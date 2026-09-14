@@ -5,19 +5,19 @@ Unit tests for strip_phase_tracking.py.
 Run with: pytest tests/test_strip_phase_tracking.py -v
 """
 
-import importlib.util
 import os
+import shutil
 import stat
-import subprocess
 import sys
-import tempfile
 from pathlib import Path
 
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
+sys.path.insert(0, str(Path(__file__).parent))
 
 import strip_phase_tracking as strip  # noqa: E402
+from fixtures import pre_1_1_instrumentation as old_writer  # noqa: E402
 
 
 BEGIN = "# <<< HELIX_TRACKING v2 >>>"
@@ -451,49 +451,25 @@ class TestOutputContract:
 
 
 # ============================================================================
-# Cross-check against the real, formerly-shipped plugin's own disable logic
+# Cross-check against the vendored pre-1.1 writer's own disable logic
 # ============================================================================
+#
+# fixtures/pre_1_1_instrumentation.py is that writer's marker format and
+# body-splicing logic, taken as-is with the Moonraker component plumbing
+# trimmed away - not a git lookup, so this runs the same way everywhere,
+# including with no git history at all.
 
 
-def _load_old_plugin():
-    """Import b35b637b7^'s helix_print.py by content, from the repo's own
-    history - the last version of the module that carried the disable
-    handler this script's marker format and matched-block behaviour both
-    derive from."""
-    repo_root = Path(__file__).resolve().parents[2]
-    try:
-        source = subprocess.run(
-            ["git", "show", "b35b637b7^:moonraker-plugin/helix_print.py"],
-            cwd=repo_root,
-            capture_output=True,
-            text=True,
-            check=True,
-            timeout=10,
-        ).stdout
-    except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
-        return None
-
-    scratch_dir = Path(tempfile.mkdtemp(prefix="helix-hp-oracle-"))
-    module_path = scratch_dir / "hp_b35p_oracle.py"
-    module_path.write_text(source)
-    spec = importlib.util.spec_from_file_location("hp_b35p_oracle", module_path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-@pytest.mark.asyncio
-async def test_matches_the_real_old_plugins_own_disable_output(tmp_path):
-    old = _load_old_plugin()
-    if old is None:
-        pytest.skip("b35b637b7^ not available in this checkout's history")
-
-    # The old enable handler refuses to instrument PRINT_START unless it can
-    # already see the HELIX_PHASE_* macros defined somewhere in config_dir.
+def _write_helix_macros_cfg(config_dir):
+    # The old enable refuses to instrument PRINT_START unless it can already
+    # see the HELIX_PHASE_* macros defined somewhere in config_dir.
     repo_root = Path(__file__).resolve().parents[2]
     macros_cfg = repo_root / "assets" / "config" / "helix_macros.cfg"
-    (tmp_path / "helix_macros.cfg").write_bytes(macros_cfg.read_bytes())
+    (config_dir / "helix_macros.cfg").write_bytes(macros_cfg.read_bytes())
 
+
+def test_matches_the_old_writers_own_disable_output(tmp_path):
+    _write_helix_macros_cfg(tmp_path)
     cfg = tmp_path / "printer.cfg"
     write(
         cfg,
@@ -506,24 +482,12 @@ async def test_matches_the_real_old_plugins_own_disable_output(tmp_path):
         "    CLEAN_NOZZLE\n",
     )
 
-    class KlippyApis:
-        async def do_restart(self, cmd):
-            return None
-
-    hp = object.__new__(old.HelixPrint)
-    hp.klippy_apis = KlippyApis()
-
-    async def get_config_dir():
-        return tmp_path
-
-    hp._get_config_dir = get_config_dir
-
-    enable_result = await hp._handle_phase_tracking_enable(None)
+    enable_result = old_writer.enable(tmp_path)
     assert enable_result["success"] is True
 
     old_disable_input = cfg.read_bytes()
-    old_disable_result = await hp._handle_phase_tracking_disable(None)
-    assert old_disable_result["success"] is True
+    disable_result = old_writer.disable(tmp_path)
+    assert disable_result["success"] is True
     old_disable_output = cfg.read_bytes()
 
     # Reset to the instrumented state and run OUR strip over it instead.
@@ -531,3 +495,104 @@ async def test_matches_the_real_old_plugins_own_disable_output(tmp_path):
     assert strip.main([str(tmp_path)]) == 0
 
     assert cfg.read_bytes() == old_disable_output
+
+
+def test_matches_the_old_writer_with_no_git_available(tmp_path, monkeypatch):
+    # The oracle above must not depend on git being reachable at all - there
+    # is no subprocess/git call left in this file to disable, so this proves
+    # it by removing every git from PATH and repeating the same check.
+    monkeypatch.setenv("PATH", str(tmp_path / "empty-path-for-this-test"))
+    (tmp_path / "empty-path-for-this-test").mkdir()
+    assert shutil.which("git") is None
+
+    config_dir = tmp_path / "config"
+    config_dir.mkdir()
+    _write_helix_macros_cfg(config_dir)
+    cfg = config_dir / "printer.cfg"
+    write(cfg, "[gcode_macro PRINT_START]\ngcode:\n    G28\n    M109 S{EXTRUDER_TEMP}\n")
+
+    assert old_writer.enable(config_dir)["success"] is True
+    old_disable_input = cfg.read_bytes()
+    assert old_writer.disable(config_dir)["success"] is True
+    old_disable_output = cfg.read_bytes()
+
+    cfg.write_bytes(old_disable_input)
+    assert strip.main([str(config_dir)]) == 0
+    assert cfg.read_bytes() == old_disable_output
+
+
+def test_correctly_strips_a_pre_1268_legacy_instrumented_body(tmp_path):
+    # The legacy writer deepens the WHOLE body by four spaces on every
+    # write, enable or disable, independently of what strip_phase_tracking.py
+    # does - so byte-equivalence to that writer's own disable is not the
+    # right check here (its disable would re-deepen the body again, which
+    # this script correctly never does). What must hold is that every valid
+    # marker block a real pre-#1268 install wrote is still recognized and
+    # removed, and every substantive line survives.
+    _write_helix_macros_cfg(tmp_path)
+    cfg = tmp_path / "printer.cfg"
+    write(
+        cfg,
+        "[gcode_macro PRINT_START]\n"
+        "gcode:\n"
+        "    G28\n"
+        "    QUAD_GANTRY_LEVEL\n"
+        "    BED_MESH_CALIBRATE\n"
+        "    M109 S{EXTRUDER_TEMP}\n"
+        "    CLEAN_NOZZLE\n",
+    )
+
+    assert old_writer.enable_legacy(tmp_path)["success"] is True
+    instrumented = cfg.read_text()
+    assert old_writer.TRACKING_MARKER_BEGIN in instrumented
+
+    assert strip.main([str(tmp_path)]) == 0
+    stripped = cfg.read_text()
+
+    assert old_writer.TRACKING_MARKER_BEGIN not in stripped
+    assert old_writer.TRACKING_MARKER_END not in stripped
+    assert "HELIX_PHASE_" not in stripped
+    assert "HELIX_READY" not in stripped
+    for original_line in (
+        "G28",
+        "QUAD_GANTRY_LEVEL",
+        "BED_MESH_CALIBRATE",
+        "M109 S{EXTRUDER_TEMP}",
+        "CLEAN_NOZZLE",
+    ):
+        assert original_line in stripped
+
+
+def test_a_legacy_body_with_a_blank_line_still_strips_leaving_its_duplicated_tail(tmp_path):
+    # The legacy writer's write side only replaces the body up to its first
+    # blank line, so a blank-line body gets a duplicated, un-instrumented
+    # tail after that line - a pre-existing writer bug, unrelated to this
+    # strip. Every block the writer did inject sits inside the same
+    # [gcode_macro ...] body span as the duplicated tail (nothing else
+    # follows in this file), so they are still well-formed and get removed;
+    # the duplicate itself was never marker-delimited, so it survives too.
+    _write_helix_macros_cfg(tmp_path)
+    cfg = tmp_path / "printer.cfg"
+    write(
+        cfg,
+        "[gcode_macro PRINT_START]\n"
+        "gcode:\n"
+        "    G28\n"
+        "\n"
+        "    QUAD_GANTRY_LEVEL\n"
+        "    M109 S{EXTRUDER_TEMP}\n",
+    )
+
+    assert old_writer.enable_legacy(tmp_path)["success"] is True
+    assert old_writer.TRACKING_MARKER_BEGIN in cfg.read_text()
+
+    assert strip.main([str(tmp_path)]) == 0
+    stripped = cfg.read_text()
+
+    assert old_writer.TRACKING_MARKER_BEGIN not in stripped
+    assert "HELIX_PHASE_" not in stripped
+    assert "HELIX_READY" not in stripped
+    # The duplicated, un-instrumented tail the legacy writer left behind
+    # is untouched: QUAD_GANTRY_LEVEL and M109 each still appear twice.
+    assert stripped.count("QUAD_GANTRY_LEVEL") == 2
+    assert stripped.count("M109 S{EXTRUDER_TEMP}") == 2
