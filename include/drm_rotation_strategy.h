@@ -82,6 +82,23 @@ struct PointerXY { // NAMESPACE_OK: matches DrmRotationStrategy, this file's glo
 PointerXY rotate_pointer_for_plane(PointerXY p, int degrees, int32_t panel_w, int32_t panel_h);
 
 /**
+ * @brief Map a point on a picture LVGL rotated back onto the unrotated display
+ *
+ * The inverse of `lv_display_rotate_point()`. LVGL turns every pointer sample it
+ * reads by its display rotation, so a sample handed over as this result lands
+ * back on @p p. `tests/unit/test_display_rotation_source.cpp` asserts the round
+ * trip at every angle.
+ *
+ * @param p        point in the rotated picture's frame
+ * @param degrees  angle LVGL rotates the display by: 0, 90, 180 or 270
+ * @param panel_w  display width before rotation (LVGL's raw hor_res)
+ * @param panel_h  display height before rotation (LVGL's raw ver_res)
+ * @return the point LVGL's rotation carries onto @p p; unchanged for any other angle
+ */
+// NAMESPACE_OK: matches rotate_pointer_for_plane, this file's existing global-scope API
+PointerXY unrotate_pointer_for_display(PointerXY p, int degrees, int32_t panel_w, int32_t panel_h);
+
+/**
  * @brief What LVGL should be told about rotation for a given strategy
  */
 enum class LvglRotationAction { // NAMESPACE_OK: matches DrmRotationStrategy, this file's existing

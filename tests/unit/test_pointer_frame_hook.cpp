@@ -5,9 +5,9 @@
  * @brief Every pointer sample reaches LVGL in the frame its rotation step expects
  *
  * A touch panel reports where on the panel it was touched. A relative pointer's
- * driver accumulates motion into a position on the display LVGL lays out on.
- * These read each kind through lv_indev_read(), so LVGL's own rotation step
- * runs on the sample and the point asserted is the one widgets receive.
+ * driver accumulates motion into a position on the picture the user moves it
+ * across. These read each kind through lv_indev_read(), so LVGL's own rotation
+ * step runs on the sample and the point asserted is the one widgets receive.
  */
 
 #include "../lvgl_test_fixture.h"
@@ -36,6 +36,16 @@ void touch_driver_read(lv_indev_t* /*indev*/, lv_indev_data_t* data) {
 
 void mouse_driver_read(lv_indev_t* /*indev*/, lv_indev_data_t* data) {
     data->point = MOUSE_POSITION;
+    data->state = LV_INDEV_STATE_RELEASED;
+}
+
+/// A mouse far down a portrait picture, past the unrotated display's height.
+constexpr lv_point_t MOUSE_DOWN_PORTRAIT{400, 700};
+
+/// The point an evdev mouse's driver reports for MOUSE_DOWN_PORTRAIT: bounded by
+/// the unrotated display.
+void portrait_mouse_driver_read(lv_indev_t* /*indev*/, lv_indev_data_t* data) {
+    data->point = {MOUSE_DOWN_PORTRAIT.x, TEST_DISPLAY_HEIGHT - 1};
     data->state = LV_INDEV_STATE_RELEASED;
 }
 
@@ -81,13 +91,23 @@ class PointerFrameHookFixture : public LVGLTestFixture {
 TEST_CASE("A sample's transform follows the kind of device it came from",
           "[display][indev][rotation]") {
     SECTION("under a scanout plane only a touch panel turns") {
-        CHECK(pointer_transform_for(PointerKind::PanelAbsolute, 180) == PointerTransform::Plane);
-        CHECK(pointer_transform_for(PointerKind::Relative, 180) == PointerTransform::None);
+        CHECK(pointer_transform_for(PointerKind::PanelAbsolute, 180, 0) == PointerTransform::Plane);
+        CHECK(pointer_transform_for(PointerKind::Relative, 180, 0) == PointerTransform::None);
     }
 
-    SECTION("with no plane angle nothing turns here") {
-        CHECK(pointer_transform_for(PointerKind::PanelAbsolute, 0) == PointerTransform::None);
-        CHECK(pointer_transform_for(PointerKind::Relative, 0) == PointerTransform::None);
+    SECTION("under LVGL's rotation only a relative pointer is handed back") {
+        for (int degrees : {90, 180, 270}) {
+            INFO("LVGL at " << degrees);
+            CHECK(pointer_transform_for(PointerKind::PanelAbsolute, 0, degrees) ==
+                  PointerTransform::None);
+            CHECK(pointer_transform_for(PointerKind::Relative, 0, degrees) ==
+                  PointerTransform::UndoLvglRotation);
+        }
+    }
+
+    SECTION("with nothing rotated nothing turns here") {
+        CHECK(pointer_transform_for(PointerKind::PanelAbsolute, 0, 0) == PointerTransform::None);
+        CHECK(pointer_transform_for(PointerKind::Relative, 0, 0) == PointerTransform::None);
     }
 }
 
@@ -113,6 +133,75 @@ TEST_CASE_METHOD(PointerFrameHookFixture,
     const lv_point_t pointed = read(mouse);
     CHECK(pointed.x == MOUSE_POSITION.x);
     CHECK(pointed.y == MOUSE_POSITION.y);
+}
+
+TEST_CASE_METHOD(PointerFrameHookFixture,
+                 "Under LVGL rotation a mouse keeps its position and touch turns with the picture",
+                 "[display][indev][rotation]") {
+    REQUIRE(disp != nullptr);
+    hook.set_plane_rotation(0, PANEL_W, PANEL_H);
+    lv_display_set_rotation(disp, LV_DISPLAY_ROTATION_180);
+
+    lv_indev_t* touch = make_pointer(touch_driver_read);
+    lv_indev_t* mouse = make_pointer(mouse_driver_read);
+    REQUIRE(hook.install(touch, PointerKind::PanelAbsolute));
+    REQUIRE(hook.install(mouse, PointerKind::Relative));
+
+    // LVGL's own rotation step turns the touch sample.
+    const lv_point_t touched = read(touch);
+    CHECK(touched.x == PANEL_W - 1 - TOUCH_ON_PANEL.x);
+    CHECK(touched.y == PANEL_H - 1 - TOUCH_ON_PANEL.y);
+
+    const lv_point_t pointed = read(mouse);
+    CHECK(pointed.x == MOUSE_POSITION.x);
+    CHECK(pointed.y == MOUSE_POSITION.y);
+}
+
+TEST_CASE_METHOD(PointerFrameHookFixture,
+                 "Under an LVGL quarter turn a mouse reaches the whole picture",
+                 "[display][indev][rotation]") {
+    REQUIRE(disp != nullptr);
+    lv_display_set_rotation(disp, LV_DISPLAY_ROTATION_90);
+    // The position is on the picture but past the unrotated display's height,
+    // where the driver's own point stops.
+    REQUIRE(MOUSE_DOWN_PORTRAIT.x < lv_display_get_horizontal_resolution(disp));
+    REQUIRE(MOUSE_DOWN_PORTRAIT.y < lv_display_get_vertical_resolution(disp));
+    REQUIRE(MOUSE_DOWN_PORTRAIT.y >= PANEL_H);
+
+    lv_indev_t* touch = make_pointer(touch_driver_read);
+    lv_indev_t* mouse = make_pointer(portrait_mouse_driver_read);
+    REQUIRE(hook.install(touch, PointerKind::PanelAbsolute));
+    REQUIRE(hook.install(mouse, PointerKind::Relative, [](int& x, int& y) {
+        x = MOUSE_DOWN_PORTRAIT.x;
+        y = MOUSE_DOWN_PORTRAIT.y;
+        return true;
+    }));
+
+    const lv_point_t touched = read(touch);
+    CHECK(touched.x == PANEL_H - 1 - TOUCH_ON_PANEL.y);
+    CHECK(touched.y == TOUCH_ON_PANEL.x);
+
+    const lv_point_t pointed = read(mouse);
+    CHECK(pointed.x == MOUSE_DOWN_PORTRAIT.x);
+    CHECK(pointed.y == MOUSE_DOWN_PORTRAIT.y);
+}
+
+TEST_CASE_METHOD(PointerFrameHookFixture, "A mouse pushed past the picture's edge stops at it",
+                 "[display][indev][rotation]") {
+    REQUIRE(disp != nullptr);
+    lv_display_set_rotation(disp, LV_DISPLAY_ROTATION_270);
+    const int32_t picture_h = lv_display_get_vertical_resolution(disp);
+
+    lv_indev_t* mouse = make_pointer(mouse_driver_read);
+    REQUIRE(hook.install(mouse, PointerKind::Relative, [](int& x, int& y) {
+        x = -20;
+        y = 5000;
+        return true;
+    }));
+
+    const lv_point_t pointed = read(mouse);
+    CHECK(pointed.x == 0);
+    CHECK(pointed.y == picture_h - 1);
 }
 
 TEST_CASE_METHOD(PointerFrameHookFixture, "An unrotated display passes every sample through",

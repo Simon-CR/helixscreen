@@ -510,18 +510,18 @@ lv_indev_t* DisplayBackendDRM::create_input_pointer() {
     // LVGL rotates pointer input from the display's rotation, which the plane
     // path clears, so a touch panel's samples turn with the plane on the
     // device's own read instead. A relative pointer's position is already on
-    // the picture the plane turns, and keeps it. Every device
+    // the picture, so it is never turned by either. Every device
     // open_pointer_devices() opens passes through here, whichever path found
     // it, and its kind comes from the device itself.
     if (pointer_ != nullptr) {
-        if (const auto kind = pointer_frames_.install(pointer_, pointer_path_)) {
+        if (const auto kind = pointer_frames_.install(pointer_, pointer_path_, pointer_is_evdev_)) {
             spdlog::info(
                 "[DRM Backend] Pointer frame hook installed on {} ({} device, plane at {}°)",
                 pointer_path_, helix::input::pointer_kind_name(*kind), plane_rotation_degrees_);
         }
     }
     if (mouse_ != nullptr) {
-        if (const auto kind = pointer_frames_.install(mouse_, mouse_path_)) {
+        if (const auto kind = pointer_frames_.install(mouse_, mouse_path_, true)) {
             spdlog::info("[DRM Backend] Mouse frame hook installed on {} ({} device, plane at {}°)",
                          mouse_path_, helix::input::pointer_kind_name(*kind),
                          plane_rotation_degrees_);

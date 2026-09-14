@@ -10,9 +10,12 @@
 
 #include <spdlog/spdlog.h>
 
+#include <algorithm>
+#include <functional>
 #include <lvgl.h>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace helix {
@@ -21,25 +24,36 @@ namespace helix {
 enum class PointerTransform {
     None,  ///< The sample is already in the frame LVGL rotates from
     Plane, ///< Turn it with the scanout plane, which LVGL's own rotation knows nothing about
+    UndoLvglRotation, ///< Hand LVGL the point its own rotation carries back onto the sample
 };
 
 /**
  * @brief Decide what a sample from a @p kind device needs
  *
- * A scanout plane that owns the rotation leaves LVGL's at zero and turns
- * everything LVGL draws. A touch panel reports where on the panel it was
- * touched, so its samples have to turn with the plane. A relative pointer's
- * driver accumulates motion into a position on the display LVGL lays out on,
- * and the plane turns that position along with the cursor drawn at it.
+ * LVGL turns every pointer sample it reads by its own display rotation, so it
+ * expects samples on the unrotated display. A scanout plane that owns the
+ * rotation leaves LVGL's at zero and turns everything LVGL draws, so at most
+ * one of the two angles is non-zero.
+ *
+ * A touch panel reports where on the panel it was touched. Under LVGL's
+ * rotation that is what LVGL expects; under a plane its samples have to turn
+ * with the plane.
+ *
+ * A relative pointer's driver accumulates motion into the position the user
+ * is moving it across on the picture. Under a plane that position turns along
+ * with the cursor drawn at it; under LVGL's rotation, LVGL would turn it a
+ * second time.
  *
  * @param kind           what the device is, from its own capabilities
  * @param plane_degrees  angle a scanout plane presents the picture at; 0 when none does
+ * @param lvgl_degrees   angle LVGL rotates the display by; 0 when it does not
  */
-inline PointerTransform pointer_transform_for(input::PointerKind kind, int plane_degrees) {
-    if (kind == input::PointerKind::PanelAbsolute && plane_degrees != 0) {
-        return PointerTransform::Plane;
+inline PointerTransform pointer_transform_for(input::PointerKind kind, int plane_degrees,
+                                              int lvgl_degrees) {
+    if (kind == input::PointerKind::PanelAbsolute) {
+        return plane_degrees != 0 ? PointerTransform::Plane : PointerTransform::None;
     }
-    return PointerTransform::None;
+    return lvgl_degrees != 0 ? PointerTransform::UndoLvglRotation : PointerTransform::None;
 }
 
 /**
@@ -55,6 +69,10 @@ inline PointerTransform pointer_transform_for(input::PointerKind kind, int plane
  */
 class PointerFrameHook {
   public:
+    /// A relative device's accumulated position before its driver bounds it by
+    /// the unrotated display; false when there is no reading yet
+    using RawPosition = std::function<bool(int& x, int& y)>;
+
     PointerFrameHook() = default;
     PointerFrameHook(const PointerFrameHook&) = delete;
     PointerFrameHook& operator=(const PointerFrameHook&) = delete;
@@ -69,13 +87,15 @@ class PointerFrameHook {
     /**
      * @brief Put the hook in front of @p indev, a @p kind device
      *
+     * @param raw_position  for a relative device, its position before the driver's
+     *                      bound; without one the driver's own point is used
      * @return true when this call put the hook in front of @p indev
      */
-    bool install(lv_indev_t* indev, input::PointerKind kind) {
+    bool install(lv_indev_t* indev, input::PointerKind kind, RawPosition raw_position = {}) {
         if (!hook_.install(indev)) {
             return false;
         }
-        devices_.push_back({indev, kind});
+        devices_.push_back({indev, kind, std::move(raw_position)});
         s_active = this;
         return true;
     }
@@ -83,12 +103,23 @@ class PointerFrameHook {
     /**
      * @brief Put the hook in front of @p indev, classified from the device it was opened on
      *
-     * @param device_path the path the driver opened; see input::pointer_kind_for_device()
+     * @param device_path      the path the driver opened; see input::pointer_kind_for_device()
+     * @param opened_by_evdev  @p indev is an lv_evdev device, whose position before the
+     *                         driver's bound can be read back
      * @return the kind @p indev was hooked as, or nullopt when this call did not hook it
      */
-    std::optional<input::PointerKind> install(lv_indev_t* indev, const std::string& device_path) {
+    std::optional<input::PointerKind> install(lv_indev_t* indev, const std::string& device_path,
+                                              bool opened_by_evdev) {
         const input::PointerKind kind = input::pointer_kind_for_device(device_path);
-        if (!install(indev, kind)) {
+        RawPosition raw_position;
+#if LV_USE_EVDEV
+        if (opened_by_evdev) {
+            raw_position = [indev](int& x, int& y) { return lv_evdev_get_last_raw(indev, &x, &y); };
+        }
+#else
+        (void)opened_by_evdev;
+#endif
+        if (!install(indev, kind, std::move(raw_position))) {
             return std::nullopt;
         }
         return kind;
@@ -120,6 +151,7 @@ class PointerFrameHook {
     struct Device {
         lv_indev_t* indev;
         input::PointerKind kind;
+        RawPosition raw_position;
     };
 
     static void read_cb(lv_indev_t* indev, lv_indev_data_t* data) {
@@ -134,7 +166,11 @@ class PointerFrameHook {
             return;
         }
 
-        switch (pointer_transform_for(device->kind, plane_degrees_)) {
+        lv_display_t* disp = lv_indev_get_display(indev);
+        const int lvgl_degrees =
+            disp != nullptr ? static_cast<int>(lv_display_get_rotation(disp)) * 90 : 0;
+
+        switch (pointer_transform_for(device->kind, plane_degrees_, lvgl_degrees)) {
         case PointerTransform::None:
             return;
         case PointerTransform::Plane: {
@@ -151,6 +187,26 @@ class PointerFrameHook {
                              "panel={}x{}",
                              plane_degrees_, raw.x, raw.y, turned.x, turned.y, panel_w_, panel_h_);
             }
+            return;
+        }
+        case PointerTransform::UndoLvglRotation: {
+            PointerXY position{data->point.x, data->point.y};
+            int raw_x = 0;
+            int raw_y = 0;
+            if (device->raw_position && device->raw_position(raw_x, raw_y)) {
+                position = {raw_x, raw_y};
+            }
+            // The driver bounds the position by the unrotated display, which at
+            // 90 and 270 degrees is not the picture the pointer moves across.
+            position.x =
+                std::clamp<int32_t>(position.x, 0, lv_display_get_horizontal_resolution(disp) - 1);
+            position.y =
+                std::clamp<int32_t>(position.y, 0, lv_display_get_vertical_resolution(disp) - 1);
+            const PointerXY handed = unrotate_pointer_for_display(
+                position, lvgl_degrees, lv_display_get_original_horizontal_resolution(disp),
+                lv_display_get_original_vertical_resolution(disp));
+            data->point.x = handed.x;
+            data->point.y = handed.y;
             return;
         }
         }
