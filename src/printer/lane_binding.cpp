@@ -56,14 +56,16 @@ BindingVerdict classify_binding(const LaneSources& sources, const BindingReading
     return BindingVerdict::Holds;
 }
 
+void drop_previous_spool_declarations(LaneId lane) {
+    drop_lane_source(lane, ObservationSource::Spoolman);
+    drop_lane_source(lane, ObservationSource::LocalUser);
+    drop_lane_source(lane, ObservationSource::Remembered);
+}
+
 BindingVerdict reconcile_binding(LaneId lane, const BindingReading& reading) {
     const BindingVerdict verdict = classify_binding(lane_sources(lane), reading);
     if (verdict != BindingVerdict::Holds) {
-        drop_lane_source(lane, ObservationSource::Spoolman);
-        drop_lane_source(lane, ObservationSource::LocalUser);
-        // What we remembered describes the spool that was here before, so a
-        // lane firmware says now holds a different one must not keep it.
-        drop_lane_source(lane, ObservationSource::Remembered);
+        drop_previous_spool_declarations(lane);
     }
     return verdict;
 }

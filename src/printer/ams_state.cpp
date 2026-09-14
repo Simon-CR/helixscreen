@@ -30,6 +30,7 @@
 #include "filament_sensor_manager.h"
 #include "helix_psram_attr.h"
 #include "i_moonraker_api.h"
+#include "lane_binding.h"
 #include "lane_source_store.h"
 #include "lane_translation.h"
 #include "lvgl/src/others/translation/lv_translation.h"
@@ -3597,15 +3598,22 @@ AmsError AmsState::commit_slot_edit(int slot_index, const SlotInfo& original,
         return err;
     }
 
-    // A changed binding leaves the lane's Spoolman record describing a spool
-    // that is no longer on it. That record outranks the user's, so standing it
-    // would keep naming the old spool over an unlink, and would make a relink's
-    // own echo read as someone else's rebind, which erases the stored record the
-    // user just saved. Only once the backend applied it: a refused edit leaves
-    // the old binding in place, which the record still describes truly.
+    // A changed binding leaves every record that described the old spool
+    // describing one that is no longer on the lane, the user's own included.
+    // The Spoolman record outranks the user's, so standing it would keep naming
+    // the old spool over an unlink and make a relink's own echo read as someone
+    // else's rebind, which erases the stored record the user just saved; a
+    // colour the user picked for the old spool would paint over the new one.
+    // The id alone decides, so a return to an id the lane held before drops
+    // too: telling the same spool back from another carrying that id would take
+    // asking Spoolman.
+    //
+    // Only once the backend applied it: a refused edit leaves the old binding
+    // in place, which the records still describe truly. And before the filing
+    // below, which amends: dropping first files the new binding on a fresh
+    // record, where dropping after would erase it.
     if (original.spoolman_id != info.spoolman_id) {
-        helix::ams::drop_lane_source(backend->lane_id(slot_index),
-                                     helix::ams::ObservationSource::Spoolman);
+        helix::ams::drop_previous_spool_declarations(backend->lane_id(slot_index));
     }
 
     // Record the user's statement in the lane model, once the backend has
@@ -3617,7 +3625,7 @@ AmsError AmsState::commit_slot_edit(int slot_index, const SlotInfo& original,
     helix::ams::commit_slot_edit(backend->lane_id(slot_index), declaration);
 
     // A backend that paints from the lane while it applies an edit painted the
-    // lane before this filing and the Spoolman drop above.
+    // lane before the drop above and this filing.
     backend->repaint_slot_from_lane(slot_index);
 
     // S4 + S7

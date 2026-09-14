@@ -62,16 +62,29 @@ enum class BindingVerdict {
 [[nodiscard]] BindingVerdict classify_binding(const LaneSources& sources,
                                               const BindingReading& reading);
 
-/// Apply classify_binding() to a lane, and on a verdict other than Holds drop
-/// the records that declared the binding it just broke.
+/// Drop every record that describes the spool a lane was bound to before its
+/// binding changed: Spoolman, LocalUser and Remembered, whole and together.
 ///
-/// Spoolman and LocalUser are dropped, whole and together. A lane's declared
-/// identity is one statement about one spool however many sources carry it, so
-/// a colour a person typed onto the lane goes with the id: it said what was
-/// loaded right now, and firmware has just said that is something else.
-/// VendorCache, Sensed and Metered are left alone - the first is the reading
-/// that should paint once the stale ones are gone, and the other two are
-/// presence and consumption, which are not identity.
+/// A lane's declared identity is one statement about one spool however many
+/// sources carry it, so a colour a person typed onto the lane goes with the id:
+/// it said what was loaded then, and a changed binding says that is no longer
+/// the spool on the lane. Remembered goes for the same reason, being our own
+/// copy of what described the spool that was here before. VendorCache, Sensed
+/// and Metered are left alone - the first is the reading that should paint once
+/// the stale ones are gone, and the other two are presence and consumption,
+/// which are not identity.
+///
+/// Firmware breaking a binding and a person changing one are one event with two
+/// triggers, so this is the one definition of the drop: reconcile_binding()
+/// calls it for the first and AmsState::commit_slot_edit() (ams_state.h) for
+/// the second.
+///
+/// A lane that is not a lane is dropped, silently, like drop_lane_source().
+void drop_previous_spool_declarations(LaneId lane);
+
+/// Apply classify_binding() to a lane, and on a verdict other than Holds drop
+/// the records that declared the binding it just broke, through
+/// drop_previous_spool_declarations().
 ///
 /// Returns the verdict so the caller can clear its persisted copy of the same
 /// record. Dropping the in-memory sources alone does not outlive a reboot:

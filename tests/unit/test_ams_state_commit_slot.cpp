@@ -156,33 +156,91 @@ struct CommitFixture : LVGLTestFixture {
     }
 };
 
-/// An AFC lane linked to spool 42 the way a restart leaves it: the stored
-/// record in both stores, and firmware naming the same spool.
-struct RestartedAfcLinkFixture : CommitFixture {
+/// An AFC backend behind CommitFixture's wiring, restarted from @p stored: lane
+/// 0's record in both stores, the way every backend's start leaves it.
+struct AfcCommitFixture : CommitFixture {
     // Emplaced once SettingsManager's subjects exist, and torn down before
     // CommitFixture's destructor clears AmsState.
     std::optional<helix::test::RegisteredBackend<AmsBackendAfc>> registration;
     AmsBackendAfc* afc = nullptr;
 
-    RestartedAfcLinkFixture() {
+    explicit AfcCommitFixture(const helix::ams::FilamentSlotOverride& stored) {
         SettingsManager::instance().init_subjects();
         registration.emplace(nullptr, nullptr);
         afc = &**registration;
         AfcTestAccess::initialize_slots(*afc, std::vector<std::string>{"lane1", "lane2"});
         AmsState::instance().set_moonraker_api(&api);
 
-        const helix::ams::FilamentSlotOverride stored = linked_record(42);
         {
             std::lock_guard<std::mutex> lock(AfcTestAccess::mutex(*afc));
             AfcTestAccess::overrides(*afc)[0] = stored;
         }
         helix::test::file_override_as_lane_records(*afc, 0, stored);
-        feed_afc_lane(*afc, "lane1", {{"prep", true}, {"status", "Loaded"}, {"spool_id", 42}});
-        REQUIRE(helix::ams::resolve(helix::ams::lane_sources(lane())).spoolman_id == 42);
     }
 
     [[nodiscard]] helix::ams::LaneId lane() const {
         return registration->lane(0);
+    }
+
+    /// Save an edit to lane 0 through the editor's commit: @p change applied to
+    /// the slot as it stands when the editor opens.
+    template <typename Change> void edit(Change change) {
+        const SlotInfo original = afc->get_slot_info(0);
+        SlotInfo edited = original;
+        change(edited);
+        REQUIRE(AmsState::instance().commit_slot_edit(0, original, edited).success());
+    }
+
+    /// What lane 0's stored record resolves to when the next start files it.
+    [[nodiscard]] helix::ams::ResolvedLane reloaded() const {
+        helix::ams::FilamentSlotOverride stored;
+        {
+            std::lock_guard<std::mutex> lock(AfcTestAccess::mutex(*afc));
+            const auto& overrides = AfcTestAccess::overrides(*afc);
+            const auto kept = overrides.find(0);
+            REQUIRE(kept != overrides.end());
+            stored = kept->second;
+        }
+        return helix::ams::resolve(
+            helix::ams::sources_from_record(stored, helix::ams::to_lane_data_record(0, stored),
+                                            helix::ams::LegacyLockKeys::LaneData));
+    }
+};
+
+/// A stored record for an unlinked lane that locks nothing, so the identity it
+/// carries loads as Remembered rather than as anyone's declaration.
+helix::ams::FilamentSlotOverride remembered_record() {
+    helix::ams::FilamentSlotOverride record;
+    record.brand = "Polymaker";
+    record.material = "PLA";
+    return record;
+}
+
+/// An AFC lane restarted from a record that names no spool, so the brand and
+/// material it carries stand on the lane as Remembered.
+struct RememberedAfcLaneFixture : AfcCommitFixture {
+    RememberedAfcLaneFixture() : AfcCommitFixture(remembered_record()) {
+        feed_afc_lane(*afc, "lane1", {{"prep", true}, {"status", "Loaded"}});
+        REQUIRE(helix::ams::lane_sources(lane()).remembered.has_value());
+    }
+
+    /// The AFC plugin binds @p spool to the lane and Spoolman answers the fetch
+    /// that follows: a link made outside the editor, which declares nothing of
+    /// the user's and leaves what the lane remembered standing.
+    void firmware_links(const SpoolInfo& spool) {
+        feed_afc_lane(*afc, "lane1", {{"spool_id", spool.id}});
+        helix::test::spool_states(*afc, 0, spool);
+        REQUIRE(afc->get_slot_info(0).spoolman_id == spool.id);
+        REQUIRE(helix::ams::lane_sources(lane()).remembered.has_value());
+    }
+};
+
+/// An AFC lane linked to spool 42 the way a restart leaves it: the stored
+/// record in both stores, and firmware naming the same spool.
+struct RestartedAfcLinkFixture : AfcCommitFixture {
+    RestartedAfcLinkFixture() : AfcCommitFixture(linked_record(42)) {
+        feed_afc_lane(*afc, "lane1", {{"prep", true}, {"status", "Loaded"}, {"spool_id", 42}});
+        REQUIRE(helix::ams::resolve(helix::ams::lane_sources(lane())).spoolman_id == 42);
     }
 
     /// Relink the lane from spool 42 to @p spool_id through the editor.
@@ -653,6 +711,117 @@ TEST_CASE("an AFC relink after a restart survives a stale frame naming the old s
 
     feed_afc_lane(*f.afc, "lane1", {{"spool_id", 99}});
     f.check_link_stands(99, "the new spool");
+}
+
+TEST_CASE("a link drops the colour the user picked before it",
+          "[ams][commit][lane][spoolman][afc][1653]") {
+    RememberedAfcLaneFixture f;
+    f.edit([](SlotInfo& slot) { slot.color_rgb = 0xBCBCBC; });
+    {
+        const auto picked = helix::ams::lane_sources(f.lane());
+        REQUIRE(picked.local_user.has_value());
+        REQUIRE(picked.local_user->color_rgb == 0xBCBCBCu);
+    }
+
+    // Linking carries the spool's own identity into the slot, and Spoolman
+    // answers the fetch the link starts. make_spool's colour is FFB6C1.
+    const SpoolInfo spool = make_spool(42, "eSUN", "Silk Blue", "PETG");
+    f.edit([&spool](SlotInfo& slot) {
+        slot.spoolman_id = spool.id;
+        slot.brand = spool.vendor;
+        slot.material = spool.material;
+        slot.color_rgb = 0xFFB6C1;
+    });
+    helix::test::spool_states(*f.afc, 0, spool);
+
+    const auto sources = helix::ams::lane_sources(f.lane());
+    REQUIRE(sources.local_user.has_value());
+    CHECK(sources.local_user->spoolman_id == 42);
+    // The colour described the filament on the lane before the link, and the
+    // link says a different spool is there now. What we remembered about that
+    // filament goes with it.
+    CHECK_FALSE(sources.local_user->color_rgb.has_value());
+    CHECK_FALSE(sources.remembered.has_value());
+
+    // The stored record takes the linked spool's colour, so a lane showing any
+    // other would change colour at the next start with nobody touching it.
+    const auto reloaded_colour = f.reloaded().color_rgb;
+    REQUIRE(reloaded_colour == 0xFFB6C1u);
+    CHECK(helix::ams::resolve(sources).color_rgb == reloaded_colour);
+}
+
+TEST_CASE("an unlink drops the colour the user picked for the unlinked spool",
+          "[ams][commit][lane][spoolman][afc][1653]") {
+    RememberedAfcLaneFixture f;
+    f.firmware_links(make_spool(42, "eSUN", "Silk Blue", "PETG"));
+    f.edit([](SlotInfo& slot) { slot.color_rgb = 0xBCBCBC; });
+    {
+        const auto picked = helix::ams::lane_sources(f.lane());
+        REQUIRE(picked.local_user.has_value());
+        REQUIRE(picked.local_user->color_rgb == 0xBCBCBCu);
+        REQUIRE(picked.remembered.has_value());
+    }
+
+    f.edit([](SlotInfo& slot) { slot.spoolman_id = 0; });
+
+    const auto sources = helix::ams::lane_sources(f.lane());
+    REQUIRE(sources.local_user.has_value());
+    CHECK(sources.local_user->spoolman_id == 0);
+    // The colour and what we remembered described the spool that was bound,
+    // and an unlink stops saying which spool is loaded.
+    CHECK_FALSE(sources.local_user->color_rgb.has_value());
+    CHECK_FALSE(sources.remembered.has_value());
+}
+
+TEST_CASE("an unlink and a relink to the same spool each drop the colour",
+          "[ams][commit][lane][spoolman][afc][1653]") {
+    RestartedAfcLinkFixture f;
+    f.edit([](SlotInfo& slot) { slot.color_rgb = 0xBCBCBC; });
+
+    f.edit([](SlotInfo& slot) { slot.spoolman_id = 0; });
+    {
+        const auto unlinked = helix::ams::lane_sources(f.lane());
+        REQUIRE(unlinked.local_user.has_value());
+        CHECK_FALSE(unlinked.local_user->color_rgb.has_value());
+    }
+
+    f.edit([](SlotInfo& slot) { slot.color_rgb = 0x1E5AA8; });
+    {
+        const auto picked = helix::ams::lane_sources(f.lane());
+        REQUIRE(picked.local_user.has_value());
+        REQUIRE(picked.local_user->color_rgb == 0x1E5AA8u);
+    }
+
+    // Relinking the spool the lane held before is a binding change like any
+    // other: the colour picked while unlinked goes, and the one typed for
+    // spool 42 does not come back. The id returning is not evidence the spool
+    // did. Telling spool 42 back from a different spool carrying id 42 would
+    // take asking Spoolman, and a colour kept on the wrong spool is the worse
+    // mistake, so the lane stops claiming one.
+    f.edit([](SlotInfo& slot) { slot.spoolman_id = 42; });
+
+    const auto sources = helix::ams::lane_sources(f.lane());
+    REQUIRE(sources.local_user.has_value());
+    CHECK(sources.local_user->spoolman_id == 42);
+    CHECK_FALSE(sources.local_user->color_rgb.has_value());
+}
+
+TEST_CASE("an edit that keeps the same spool leaves the user's earlier declaration standing",
+          "[ams][commit][lane][spoolman][afc][1653]") {
+    RememberedAfcLaneFixture f;
+    f.firmware_links(make_spool(42, "eSUN", "Silk Blue", "PETG"));
+    f.edit([](SlotInfo& slot) { slot.color_rgb = 0xBCBCBC; });
+    f.edit([](SlotInfo& slot) { slot.material = "ASA"; });
+
+    const auto sources = helix::ams::lane_sources(f.lane());
+    REQUIRE(sources.local_user.has_value());
+    CHECK(sources.local_user->material == "ASA");
+    // The binding did not move, so everything the lane held about the spool
+    // still describes the one loaded.
+    CHECK(sources.local_user->color_rgb == 0xBCBCBCu);
+    CHECK(sources.remembered.has_value());
+    REQUIRE(sources.spoolman.has_value());
+    CHECK(sources.spoolman->spoolman_id == 42);
 }
 
 TEST_CASE("a later edit amends the user's record instead of replacing it", "[ams][commit][lane]") {
