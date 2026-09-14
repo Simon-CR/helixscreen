@@ -539,7 +539,9 @@ TEST_CASE_METHOD(WizardPrinterIdentifyTiedFixture,
         for (lv_obj_t* row : visible_rows()) {
             shown.push_back(row_name(row));
         }
-        CHECK(shown == std::vector<std::string>{"Creality K2 Plus", "Creality K2 Pro"});
+        // Rows keep the printer list's own order.
+        CHECK(shown ==
+              std::vector<std::string>{"Creality K2", "Creality K2 Plus", "Creality K2 Pro"});
         CHECK(selected_index() < 0);
         CHECK_FALSE(next_enabled());
 

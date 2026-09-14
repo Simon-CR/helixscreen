@@ -1263,6 +1263,10 @@ std::string PrinterDetector::get_name_for_preset(const std::string& preset_name)
     std::transform(preset_lower.begin(), preset_lower.end(), preset_lower.begin(),
                    [](unsigned char c) { return std::tolower(c); });
 
+    // Entries sharing a preset are one family. The entry marked
+    // "preset_default" names the family when nothing narrower is known; a
+    // family without one answers with its first entry.
+    std::string first_match;
     for (const auto& printer : g_database.data["printers"]) {
         std::string db_preset = printer.value("preset", "");
         std::string db_preset_lower = db_preset;
@@ -1270,11 +1274,16 @@ std::string PrinterDetector::get_name_for_preset(const std::string& preset_name)
                        [](unsigned char c) { return std::tolower(c); });
 
         if (db_preset_lower == preset_lower) {
-            return printer.value("name", "");
+            if (printer.value("preset_default", false)) {
+                return printer.value("name", "");
+            }
+            if (first_match.empty()) {
+                first_match = printer.value("name", "");
+            }
         }
     }
 
-    return "";
+    return first_match;
 }
 
 std::string PrinterDetector::get_preset_for_name(const std::string& printer_name) {

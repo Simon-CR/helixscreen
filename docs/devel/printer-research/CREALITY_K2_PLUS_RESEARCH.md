@@ -447,6 +447,13 @@ report does not record the Pro's, and 300 is Creality's spec), not the stepper l
 misses the window: the Y stepper travels well past the bed to reach the nozzle-clean position,
 and the Plus's X travel runs from -10 to 352.5.
 
+The base K2 (`creality_k2`, 260 cubed, no chamber heater) has its own entry with a 250-270
+declared-bed window. Its 260 is Creality's spec, since no base K2 has been captured, and it carries
+no chamber-heater heuristic. It is the `k2` preset's `preset_default`, so a K2 preset install
+whose detection names no K2 machine persists "Creality K2". Its image, `creality-k2.png`, is a
+byte copy of the K2 Plus photo until a photo of the base model exists. The copy keeps its own
+filename because detection tells machines apart by image.
+
 `START_PRINT`, `PRINT_PREPARED` and `PRINT_PREPARE_CLEAR` are all present on the Pro, which is
 what the entry's `pre_print_options` drive.
 

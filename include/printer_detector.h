@@ -224,6 +224,9 @@ class PrinterDetector {
      * `name` (e.g. preset "ad5x" → "FlashForge Adventurer 5X"). Used to populate
      * the per-printer `type` field when a platform preset is applied from the
      * installer, so the home panel can resolve the correct printer image.
+     * Several entries can share one preset; the one marked
+     * `"preset_default": true` answers for the family, and a family without a
+     * marked entry answers with its first entry in database order.
      *
      * @param preset_name Platform preset name (e.g., "ad5x", "k1", "cc1")
      * @return Matching printer name, empty string if no entry matches

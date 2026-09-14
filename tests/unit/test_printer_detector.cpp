@@ -5137,6 +5137,10 @@ TEST_CASE("PrinterDetector: get_name_for_preset resolves DB preset field",
     // Unknown preset returns empty
     REQUIRE(PrinterDetector::get_name_for_preset("not_a_real_preset_xyz").empty());
 
+    // Four entries share "k2"; the one marked preset_default answers, whatever
+    // the database order.
+    REQUIRE(PrinterDetector::get_name_for_preset("k2") == "Creality K2");
+
     // Empty input returns empty without touching the DB
     REQUIRE(PrinterDetector::get_name_for_preset("").empty());
 }
@@ -6094,8 +6098,9 @@ TEST_CASE_METHOD(PrinterDetectorFixture,
     auto settings_of = [](const std::string& slug) -> nlohmann::json {
         return load_printer_capture(slug).at("configfile_settings");
     };
-    // The K2 Pro report records no product_param. The 300mm bed given to it
-    // here is Creality's spec for the model, not a captured value.
+    // The K2 Pro report records no product_param, and no base K2 has been
+    // captured. The 300mm and 260mm beds given here are Creality's specs for
+    // those models, not captured values.
     auto with_declared_bed = [](nlohmann::json settings, const char* size) {
         settings["gcode_macro product_param"] = {{"variable_bed_size_x", size},
                                                  {"variable_bed_size_y", size}};
@@ -6121,7 +6126,8 @@ TEST_CASE_METHOD(PrinterDetectorFixture,
         REQUIRE(result.margin() == 0);
         REQUIRE_FALSE(PrinterDetector::meets_autosave_threshold(result));
         // The choice left to the user: one name per machine, winner first.
-        CHECK(result.contenders == std::vector<std::string>{"Creality K2 Plus", "Creality K2 Pro"});
+        CHECK(result.contenders ==
+              std::vector<std::string>{"Creality K2 Plus", "Creality K2 Pro", "Creality K2"});
     }
 
     SECTION("A declared 300mm bed separates the K2 Pro") {
@@ -6138,6 +6144,26 @@ TEST_CASE_METHOD(PrinterDetectorFixture,
         // The bed is evidence, not a tiebreak: the entry whose window contains it
         // leads its sibling by a margin, and the detection may persist.
         REQUIRE(result.type_name == "Creality K2 Pro");
+        REQUIRE(result.runner_up_type_name == "Creality K2 Plus");
+        REQUIRE(result.margin() >= PrinterDetector::DETECT_MIN_MARGIN);
+        REQUIRE(PrinterDetector::meets_autosave_threshold(result));
+    }
+
+    SECTION("A declared 260mm bed on a K2 with no chamber heater separates the base K2") {
+        // The base K2 has no chamber heater, so its discovery reports none.
+        helix::PrinterDiscovery disc = make_discovery();
+        std::vector<std::string> objects = disc.printer_objects();
+        objects.erase(std::remove(objects.begin(), objects.end(), "heater_generic chamber_heater"),
+                      objects.end());
+        disc.set_printer_objects(objects);
+        parse_settings(disc, with_declared_bed(settings_of("creality_k2_pro"), "260"));
+        CHECK(disc.build_volume().declared_bed_x == 260.0f);
+
+        auto result = PrinterDetector::auto_detect(disc);
+        CAPTURE(result.type_name, result.confidence, result.runner_up_type_name,
+                result.runner_up_confidence, result.margin(), result.tied_count);
+        REQUIRE(result.detected());
+        REQUIRE(result.type_name == "Creality K2");
         REQUIRE(result.runner_up_type_name == "Creality K2 Plus");
         REQUIRE(result.margin() >= PrinterDetector::DETECT_MIN_MARGIN);
         REQUIRE(PrinterDetector::meets_autosave_threshold(result));
@@ -6730,12 +6756,38 @@ TEST_CASE_METHOD(helix::VariantPresetFixture,
     CAPTURE(probe.type_name, probe.runner_up_type_name, probe.margin(), probe.preset);
     REQUIRE(probe.ambiguous());
     REQUIRE(probe.preset == "k2");
-    REQUIRE(probe.contenders == std::vector<std::string>{"Creality K2 Plus", "Creality K2 Pro"});
+    // Every tied machine is a K2, one per image: the family's own tie.
+    REQUIRE(probe.contenders ==
+            std::vector<std::string>{"Creality K2 Plus", "Creality K2 Pro", "Creality K2"});
 
     config.set_preset("k2");
     CHECK_FALSE(PrinterDetector::auto_detect_and_save(discovery, &config));
     CHECK(config.get<std::string>(config.df() + helix::wizard::PRINTER_TYPE, "").empty());
     CHECK(get_printer_state().get_printer_type().empty());
+
+    get_printer_state().set_printer_type_sync("");
+    TearDown();
+}
+
+// With no evidence at all, a K2 preset install names the family's declared
+// default, the base K2, not whichever K2 entry the database lists first
+// (prestonbrown/helixscreen#1606).
+TEST_CASE_METHOD(
+    helix::VariantPresetFixture,
+    "auto_detect_and_save names the base K2 when a K2 preset install shows no evidence",
+    "[printer_detector][preset][1606]") {
+    SetUp();
+    get_printer_state().set_printer_type_sync("");
+
+    helix::PrinterDiscovery discovery; // nothing reported
+    auto probe = PrinterDetector::auto_detect(discovery);
+    CAPTURE(probe.type_name, probe.confidence);
+    REQUIRE_FALSE(probe.detected());
+
+    config.set_preset("k2");
+    REQUIRE(PrinterDetector::auto_detect_and_save(discovery, &config));
+    CHECK(config.get<std::string>(config.df() + helix::wizard::PRINTER_TYPE, "") == "Creality K2");
+    CHECK(get_printer_state().get_printer_type() == "Creality K2");
 
     get_printer_state().set_printer_type_sync("");
     TearDown();
