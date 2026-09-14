@@ -4,6 +4,7 @@
 #include "gcode_layer_index.h"
 #include "gcode_pause_scan.h"
 
+#include <clocale>
 #include <fstream>
 #include <sstream>
 #include <unistd.h>
@@ -97,6 +98,45 @@ TEST_CASE("PauseScan - M73 progress extraction", "[gcode][pause_scan]") {
     }
     SECTION("commented M73 is not live progress") {
         REQUIRE_FALSE(m73_progress_percent("; M73 P50").has_value());
+    }
+    SECTION("bare P with no digits is not a parameter") {
+        REQUIRE_FALSE(m73_progress_percent("M73 P").has_value());
+        REQUIRE_FALSE(m73_progress_percent("M73 P R10").has_value());
+        REQUIRE_FALSE(m73_progress_percent("M73 Pxyz").has_value());
+    }
+    SECTION("a lone sign with no digits after it is not a parameter") {
+        REQUIRE_FALSE(m73_progress_percent("M73 P-").has_value());
+        REQUIRE_FALSE(m73_progress_percent("M73 P+").has_value());
+    }
+    SECTION("trailing junk after digits still parses the leading number") {
+        REQUIRE(m73_progress_percent("M73 P45xyz") == Approx(45.0f));
+    }
+    SECTION("comma is not a decimal separator") {
+        // Only '.' introduces a fraction; a comma stops the digit run the same
+        // way any other non-digit trailing character does.
+        REQUIRE(m73_progress_percent("M73 P42,5") == Approx(42.0f));
+    }
+    SECTION("negative P clamps to 0") {
+        REQUIRE(m73_progress_percent("M73 P-10") == Approx(0.0f));
+    }
+    SECTION("P above 100 clamps to 100") {
+        REQUIRE(m73_progress_percent("M73 P150") == Approx(100.0f));
+    }
+    SECTION("a trailing decimal point with no fraction digits still parses") {
+        REQUIRE(m73_progress_percent("M73 P45.") == Approx(45.0f));
+    }
+    SECTION("decimal point is always '.' regardless of the process locale") {
+        // std::from_chars is locale-independent by standard; the portable
+        // replacement must keep that property rather than falling back to a
+        // locale-sensitive C parse (strtof/atof honor LC_NUMERIC's comma).
+        std::string saved = std::setlocale(LC_NUMERIC, nullptr);
+        const char* applied = std::setlocale(LC_NUMERIC, "de_DE.UTF-8");
+        if (applied == nullptr) {
+            WARN("de_DE.UTF-8 locale not installed; skipping locale-independence check");
+        } else {
+            REQUIRE(m73_progress_percent("M73 P42.5") == Approx(42.5f));
+        }
+        std::setlocale(LC_NUMERIC, saved.c_str());
     }
 }
 
