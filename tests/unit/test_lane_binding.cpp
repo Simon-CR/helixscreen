@@ -10,6 +10,7 @@
 #include "ams_backend_afc.h"
 #include "ams_backend_cfs.h"
 #include "ams_backend_happy_hare.h"
+#include "ams_error.h"
 #include "ams_state.h"
 #include "helix_test_fixture.h"
 #include "lane_binding.h"
@@ -21,6 +22,7 @@
 #include "test_helpers/happy_hare_test_access.h"
 #include "test_helpers/registered_backend.h"
 
+#include <algorithm>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -31,9 +33,12 @@
 using helix::AfcTestAccess;
 using helix::AmsBackendAfc;
 using helix::AmsBackendHappyHare;
+using helix::AmsError;
+using helix::AmsErrorHelper;
 using helix::CfsTestAccess;
 using helix::HappyHareTestAccess;
 using helix::SettingsManager;
+using helix::SlotInfo;
 using helix::ams::BindingReading;
 using helix::ams::BindingVerdict;
 using helix::ams::classify_binding;
@@ -126,6 +131,26 @@ void user_links(helix::ams::LaneId lane, int spool_id) {
     user.spoolman_id = spool_id;
     commit_slot_edit(lane, user);
 }
+
+/// An AFC backend whose gcode is captured rather than sent. api_ is null in
+/// these cases, so the virtual dispatch point is where a save's writes can be
+/// observed at all.
+class GcodeCapturingAfc : public AmsBackendAfc {
+  public:
+    GcodeCapturingAfc() : AmsBackendAfc(nullptr, nullptr) {}
+
+    AmsError execute_gcode(const std::string& gcode) override {
+        sent_.push_back(gcode);
+        return AmsErrorHelper::success();
+    }
+
+    [[nodiscard]] bool sent_gcode(const std::string& expected) const {
+        return std::find(sent_.begin(), sent_.end(), expected) != sent_.end();
+    }
+
+  private:
+    std::vector<std::string> sent_;
+};
 
 } // namespace
 
@@ -479,6 +504,69 @@ TEST_CASE_METHOD(LVGLTestFixture, "AFC's own re-link is not read back as someone
     feed_afc_lane(*harness, "lane1", {{"spool_id", 200}});
     CHECK_FALSE(lane_sources(harness.lane(0)).local_user.has_value());
     CHECK(resolve(lane_sources(harness.lane(0))).spoolman_id == 200);
+}
+
+TEST_CASE_METHOD(LVGLTestFixture, "a relink made through the edit path survives the stale frame",
+                 "[lane][binding][afc]") {
+    // The same race the case above covers, driven the way the UI drives it.
+    // Nothing here stages an expectation by hand: recording one is the edit
+    // path's own job, so a save that stopped recording is what this case
+    // exists to catch. Without it the stale frame reads as an external
+    // re-bind, and reconcile_binding drops the declaration the save just
+    // filed along with the stored record behind it.
+    SettingsManager::instance().init_subjects();
+
+    helix::test::RegisteredBackend<GcodeCapturingAfc> harness;
+    init_afc_lanes(*harness);
+    feed_afc_lane(*harness, "lane1", {{"prep", true}, {"status", "Loaded"}});
+
+    auto& ams = helix::AmsState::instance();
+
+    // The user links spool 42. LocalUser is the only source naming an id:
+    // there is no Spoolman record on this lane.
+    const SlotInfo before_link = harness->get_slot_info(0);
+    SlotInfo linked = before_link;
+    linked.spoolman_id = 42;
+    REQUIRE(ams.commit_slot_edit(0, before_link, linked).success());
+    REQUIRE(harness->sent_gcode("SET_SPOOL_ID LANE=lane1 SPOOL_ID=42"));
+    REQUIRE(lane_sources(harness.lane(0)).local_user.has_value());
+    REQUIRE(lane_sources(harness.lane(0)).local_user->spoolman_id == 42);
+    REQUIRE_FALSE(lane_sources(harness.lane(0)).spoolman.has_value());
+
+    // Firmware echoes the write, so the two agree before the re-link.
+    feed_afc_lane(*harness, "lane1", {{"spool_id", 42}});
+    REQUIRE(resolve(lane_sources(harness.lane(0))).spoolman_id == 42);
+
+    // The user re-links to 99 through the same path. The save amends
+    // LocalUser, records that 42 is about to become 99, and dispatches.
+    const SlotInfo before_relink = harness->get_slot_info(0);
+    REQUIRE(before_relink.spoolman_id == 42);
+    SlotInfo relinked = before_relink;
+    relinked.spoolman_id = 99;
+    REQUIRE(ams.commit_slot_edit(0, before_relink, relinked).success());
+
+    // The dispatch is the proof the save ran its write path. Every assertion
+    // below is that something SURVIVES, which an edit that returned early
+    // would satisfy just as well.
+    REQUIRE(harness->sent_gcode("SET_SPOOL_ID LANE=lane1 SPOOL_ID=99"));
+    REQUIRE(lane_sources(harness.lane(0)).local_user->spoolman_id == 99);
+
+    // AFC keeps reporting the superseded id for a poll or two. The verdict has
+    // to be Holds, and these are what a Holds leaves standing: a Rebound drops
+    // the declaring records and clears the stored one behind them.
+    feed_afc_lane(*harness, "lane1", {{"spool_id", 42}});
+
+    const auto after = lane_sources(harness.lane(0));
+    CHECK(after.local_user.has_value());
+    CHECK(after.local_user->spoolman_id == 99);
+    CHECK(resolve(after).spoolman_id == 99);
+    CHECK(harness->get_slot_info(0).spoolman_id == 99);
+    {
+        std::lock_guard<std::mutex> lock(AfcTestAccess::mutex(*harness));
+        const auto& stored = AfcTestAccess::overrides(*harness);
+        REQUIRE(stored.count(0) == 1);
+        CHECK(stored.at(0).spoolman_id == 99);
+    }
 }
 
 TEST_CASE_METHOD(LVGLTestFixture, "a frame silent about the spool id cannot end an own write",
