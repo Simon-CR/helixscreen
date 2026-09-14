@@ -6,6 +6,7 @@
 #include "panel_widget_registry.h"
 
 #include <functional>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -27,7 +28,8 @@ using CatalogClosedCallback = std::function<void()>;
 /// A search box filters the whole registry (name, description, or category) into
 /// a flat results list; clearing it returns to the category list. Widgets whose
 /// hardware is missing on this printer are grouped under an "Unavailable on this
-/// printer" row instead of cluttering their categories.
+/// printer" row instead of cluttering their categories, and every row follows a
+/// hardware gate that changes while the catalog is open.
 /// Widgets already placed are shown dimmed with a "Placed" badge.
 /// On selection, the callback fires and both levels close.
 class WidgetCatalogOverlay {
@@ -59,10 +61,17 @@ class WidgetCatalogOverlay {
     /// Push the sub-page listing the widgets unavailable on this printer.
     static void show_unavailable();
 
-    /// Shared dive machinery: create the sub-page XML, populate it with @p defs,
-    /// and push it on top of the catalog.
+    /// Shared dive machinery: create the sub-page XML, populate it, and push it on
+    /// top of the catalog. The page lists @p category's available widgets, or the
+    /// unavailable ones when @p category is empty.
     static void show_widget_page(const char* title, const char* title_tag,
-                                 const std::vector<const PanelWidgetDef*>& defs);
+                                 std::optional<WidgetCategory> category);
+
+    /// Rebuild every row that reads a hardware gate (the category list, the
+    /// search results, an open sub-page) once the gated set differs from the one
+    /// those rows were built with. PanelWidgetManager's gate observers drive it
+    /// while the catalog is open.
+    static void refresh_gated_rows();
 
     /// Click dispatch for the top-level category rows.
     static void on_category_row_clicked(lv_event_t* e);
