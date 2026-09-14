@@ -809,14 +809,6 @@ void AmsEditOverlay::enter_spool_edit() {
     // overwrite detail_original_/detail_working_ wholesale from the Spoolman
     // record below, so this seed is untracked-only.)
     detail_original_.spool_weight_g = working_info_.total_weight_g;
-    // Only the grey "no colour reading" sentinel withholds a seed; black is a
-    // real, dispatchable colour and must reach the Spoolman patch baseline
-    // (prestonbrown/helixscreen#1608).
-    if (working_info_.color_rgb != AMS_DEFAULT_SLOT_COLOR) {
-        char hex_buf[8];
-        snprintf(hex_buf, sizeof(hex_buf), "#%06X", working_info_.color_rgb);
-        detail_original_.color_hex = hex_buf;
-    }
     detail_working_ = detail_original_;
     // A missing catalog fragment means the view cannot be filled in, so stay
     // where we are rather than switching to a half-built editor.
