@@ -18,7 +18,7 @@ Execute the approved plan using **MAJOR Work Protocol** from CLAUDE.md.
 5. **Commit**: `[phase-N] description`
 
 ## Completion Requirements
-- [ ] Full test suite passes: `make test-run`
+- [ ] Full test suite passes: `make full-test-run`
 - [ ] Final comprehensive code review completed
 - [ ] All phases marked complete in IMPLEMENTATION_PLAN.md
 - [ ] Worktree cleanly mergeable to main

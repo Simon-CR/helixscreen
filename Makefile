@@ -1233,7 +1233,8 @@ help:
 	echo "  $${G}make -j$${X}           - Build (parallel, auto-detects cores)"; \
 	echo "  $${G}make dev$${X}          - Fast build (-O0, ~2x faster compilation)"; \
 	echo "  $${G}make run$${X}          - Build and run the UI"; \
-	echo "  $${G}make test$${X}         - Run unit tests"; \
+	echo "  $${G}make t F=[tag]$${X}    - Build, then run ONE tag or case (the inner loop)"; \
+	echo "  $${G}make test$${X}         - Build unit tests (does not run them)"; \
 	echo "  $${G}make clean$${X}        - Remove build artifacts"; \
 	echo "  $${G}make strict$${X}       - Build with -Werror (warnings = errors)"; \
 	echo ""; \

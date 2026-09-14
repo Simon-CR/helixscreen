@@ -39,7 +39,10 @@ HELIX_MOCK_AUTO_PRINT=1 ./build/bin/helix-screen --test --sim-speed 6 -vv
 #   Confirm via log: "[MoonrakerManager] Creating MOCK client (<printer>, <n>x speed)"
 
 make test                            # Build tests only (does NOT run them)
-make test-run                        # Build AND run tests in parallel
+make t F='[tag]'                     # Build, then run ONE tag or case (the inner loop, ~4s)
+make full-test-run                   # Build AND run the WHOLE suite in parallel (~25s)
+#   `make test-run` no longer runs anything: it prints which of those two fits
+#   the question you have and exits non-zero. Cadence table: tests/CLAUDE.md.
 
 scripts/syntax_check.py <file>...    # "does this compile?" in seconds
 #   Takes the file's own flags from compile_commands.json and runs -fsyntax-only,

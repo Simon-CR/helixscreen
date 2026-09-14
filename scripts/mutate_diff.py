@@ -167,7 +167,7 @@ UNTESTABLE_LIST = 'scripts/untestable_paths.txt'
 # `build` is whether the mutant needs `make test-build` before a suite can see
 # it. Only code compiled into a binary does. ui_xml/ and assets/config/ are read
 # off the source tree at run time on a path relative to the process working
-# directory, which is the repo root for both `make test-run` and this script, so
+# directory, which is the repo root for both `make full-test-run` and this script, so
 # a reverted XML attribute or JSON value is live on the next suite run with no
 # build at all. That is what makes widening the scope affordable.
 #
@@ -1155,7 +1155,7 @@ def main():
         results.append((label, verdict, note))
 
     # Leave the tree as found, with a rebuilt baseline binary so the next
-    # `make test-run` is not testing the last mutant.
+    # `make full-test-run` is not testing the last mutant.
     if needs_build:
         print('\n=== restoring baseline binary ===')
         build(root, args.jobs, log)
