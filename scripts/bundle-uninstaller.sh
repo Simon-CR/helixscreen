@@ -285,7 +285,11 @@ reenable_previous_ui() {
         $SUDO chmod +x "/opt/config/mod/.root/S35tslib" 2>/dev/null || true
     fi
 
-    if [ "$found_ui" = false ]; then
+    # A platform restore that warned did find the stock UI, so "no UI found"
+    # would contradict the warning it just printed.
+    if [ -n "${HELIX_RESTORE_WARNED:-}" ]; then
+        log_warn "Previous UI restore incomplete: $HELIX_RESTORE_WARNED"
+    elif [ "$found_ui" = false ]; then
         log_info "No previous screen UI found to re-enable"
         log_info "If you had a stock UI, a reboot may restore it"
     fi
