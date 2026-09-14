@@ -63,6 +63,18 @@ nlohmann::json load_printer_capture(const std::string& slug) {
 /// a discovery that never fetched them would leave them.
 PrinterHardwareData printer_capture(const std::string& slug) {
     const nlohmann::json j = load_printer_capture(slug);
+
+    // Every key must be one this loader reads, so a misspelled or unread key
+    // fails here instead of leaving the capture silently weaker.
+    static const std::set<std::string> kKnownKeys = {
+        "provenance", "notes",    "heaters",         "sensors",      "fans",
+        "leds",       "hostname", "printer_objects", "steppers",     "kinematics",
+        "mcu",        "mcu_list", "cpu_arch",        "build_volume", "configfile_settings"};
+    for (const auto& item : j.items()) {
+        INFO("capture '" << slug << "' has a key the loader does not read: " << item.key());
+        CHECK(kKnownKeys.count(item.key()) == 1);
+    }
+
     auto strings = [&j](const char* key) {
         std::vector<std::string> out;
         if (j.contains(key)) {
@@ -90,6 +102,14 @@ PrinterHardwareData printer_capture(const std::string& slug) {
         hardware.build_volume =
             BuildVolume{v.value("x_min", 0.0f), v.value("x_max", 0.0f), v.value("y_min", 0.0f),
                         v.value("y_max", 0.0f), v.value("z_max", 0.0f)};
+    }
+    // A configfile.settings subset goes through discovery's own parse, so the
+    // capture takes the same reading a live connection does.
+    if (j.contains("configfile_settings")) {
+        helix::PrinterDiscovery discovery;
+        INFO("capture '" << slug << "' configfile_settings carries no stepper extent");
+        REQUIRE(discovery.parse_build_volume(j.at("configfile_settings")));
+        hardware.build_volume = discovery.build_volume();
     }
     return hardware;
 }
@@ -1166,7 +1186,7 @@ TEST_CASE_METHOD(PrinterDetectorFixture,
     SECTION("K2 Plus (~350mm, k2plus hostname)") {
         PrinterHardwareData hardware = k2_common;
         hardware.hostname = "creality-k2plus";
-        hardware.build_volume = {.x_min = 0, .x_max = 350, .y_min = 0, .y_max = 350, .z_max = 350};
+        hardware.build_volume = {.declared_bed_x = 350, .declared_bed_y = 350};
 
         auto result = PrinterDetector::detect(hardware);
         CAPTURE(result.type_name, result.confidence, result.runner_up_type_name,
@@ -1180,7 +1200,7 @@ TEST_CASE_METHOD(PrinterDetectorFixture,
     SECTION("K2 Pro (~300mm, k2pro hostname)") {
         PrinterHardwareData hardware = k2_common;
         hardware.hostname = "creality-k2pro";
-        hardware.build_volume = {.x_min = 0, .x_max = 300, .y_min = 0, .y_max = 300, .z_max = 300};
+        hardware.build_volume = {.declared_bed_x = 300, .declared_bed_y = 300};
 
         auto result = PrinterDetector::detect(hardware);
 
@@ -6045,16 +6065,18 @@ TEST_CASE_METHOD(PrinterDetectorFixture,
 // The creality_k2_plus and creality_k2_pro database entries are identical apart
 // from their k2plus/k2pro hostname heuristic and their build_volume_range
 // window. A host named plainly "creality-k2" matches neither hostname pattern,
-// so the build volume is the ONLY thing that can tell the two apart. Both
-// windows opt in as separators: a bed inside one entry's window gives that
-// entry a real margin over the sibling, enough to auto-save; a bed in neither
-// window leaves the family tie, which stays a guess nothing may persist.
-// Before the discovery-side parse the field was empty on every in-app run,
-// because its one writer (the safety-limits fetch) is kicked off after
-// detection has finished.
+// so the bed is the ONLY thing that can tell the two apart. Both windows opt
+// in as separators: a bed inside one entry's window gives that entry a real
+// margin over the sibling, enough to auto-save; a bed in neither window leaves
+// the family tie, which stays a guess nothing may persist. The windows read
+// the bed size the firmware config declares (Creality's gcode_macro
+// product_param): on both real machines stepper travel overshoots the bed to
+// reach the nozzle-clean position. A config that declares no bed leaves the
+// tie. The discovery-side parse fills the reading before detection runs; the
+// safety-limits fetch, the other writer of the volume, runs after it.
 TEST_CASE_METHOD(PrinterDetectorFixture,
                  "PrinterDetector: build volume from configfile.settings decides K2 Pro vs K2 Plus",
-                 "[printer][build_volume][detector]") {
+                 "[printer][build_volume][detector][1606]") {
     auto make_discovery = []() {
         helix::PrinterDiscovery disc;
         disc.parse_objects(nlohmann::json::array(
@@ -6068,10 +6090,19 @@ TEST_CASE_METHOD(PrinterDetectorFixture,
         return disc;
     };
 
-    auto parse_bed = [](helix::PrinterDiscovery& disc, double bed) {
-        nlohmann::json settings = {{"stepper_x", {{"position_min", 0.0}, {"position_max", bed}}},
-                                   {"stepper_y", {{"position_min", 0.0}, {"position_max", bed}}},
-                                   {"stepper_z", {{"position_min", 0.0}, {"position_max", bed}}}};
+    // A capture fixture's configfile.settings subset, in Klipper's shape.
+    auto settings_of = [](const std::string& slug) -> nlohmann::json {
+        return load_printer_capture(slug).at("configfile_settings");
+    };
+    // The K2 Pro report records no product_param. The 300mm bed given to it
+    // here is Creality's spec for the model, not a captured value.
+    auto with_declared_bed = [](nlohmann::json settings, const char* size) {
+        settings["gcode_macro product_param"] = {{"variable_bed_size_x", size},
+                                                 {"variable_bed_size_y", size}};
+        return settings;
+    };
+
+    auto parse_settings = [](helix::PrinterDiscovery& disc, const nlohmann::json& settings) {
         REQUIRE(disc.parse_build_volume(settings));
     };
 
@@ -6091,12 +6122,12 @@ TEST_CASE_METHOD(PrinterDetectorFixture,
         REQUIRE_FALSE(PrinterDetector::meets_autosave_threshold(result));
     }
 
-    SECTION("A 300mm bed in configfile.settings separates the K2 Pro") {
+    SECTION("A declared 300mm bed separates the K2 Pro") {
         helix::PrinterDiscovery disc = make_discovery();
-        parse_bed(disc, 300.0);
+        parse_settings(disc, with_declared_bed(settings_of("creality_k2_pro"), "300"));
         // CHECK, not REQUIRE: the point of the section is the verdict below, and
         // a REQUIRE here would abort before the verdict could be observed.
-        CHECK(disc.build_volume().x_max == 300.0f);
+        CHECK(disc.build_volume().declared_bed_x == 300.0f);
 
         auto result = PrinterDetector::auto_detect(disc);
         CAPTURE(result.type_name, result.confidence, result.runner_up_type_name,
@@ -6110,9 +6141,14 @@ TEST_CASE_METHOD(PrinterDetectorFixture,
         REQUIRE(PrinterDetector::meets_autosave_threshold(result));
     }
 
-    SECTION("A 350mm bed in configfile.settings separates the K2 Plus") {
+    SECTION("The real K2 Plus configfile separates the K2 Plus") {
         helix::PrinterDiscovery disc = make_discovery();
-        parse_bed(disc, 350.0);
+        parse_settings(disc, settings_of("creality_k2_plus"));
+        // Its X travel (362.5mm on a 350mm bed) is outside the 340-360mm
+        // window, so only the declared bed can land the machine inside it.
+        const BuildVolume& volume = disc.build_volume();
+        CHECK(volume.x_max - volume.x_min > 360.0f);
+        CHECK(volume.declared_bed_x == 350.0f);
 
         auto result = PrinterDetector::auto_detect(disc);
         CAPTURE(result.type_name, result.confidence, result.runner_up_type_name,
@@ -6124,12 +6160,14 @@ TEST_CASE_METHOD(PrinterDetectorFixture,
         REQUIRE(PrinterDetector::meets_autosave_threshold(result));
     }
 
-    SECTION("A 320mm bed is in neither window and the family tie stands") {
-        // Between the Pro window (290-310mm) and the Plus window (340-360mm) a
-        // reported volume names neither sibling: the family is pinned, the
-        // model is not, and the tie must stay unpersisted.
+    SECTION("A config that declares no bed leaves the family tie") {
+        // The K2 Pro report as recorded, with no product_param. Its stepper
+        // travel is present but never stands in for the bed: the family is
+        // pinned, the model is not, and the tie must stay unpersisted.
         helix::PrinterDiscovery disc = make_discovery();
-        parse_bed(disc, 320.0);
+        parse_settings(disc, settings_of("creality_k2_pro"));
+        CHECK(disc.build_volume().x_max == 302.0f);
+        CHECK(disc.build_volume().declared_bed_x == 0.0f);
 
         auto result = PrinterDetector::auto_detect(disc);
         CAPTURE(result.type_name, result.confidence, result.runner_up_type_name,
@@ -6152,7 +6190,7 @@ TEST_CASE_METHOD(PrinterDetectorFixture,
         // persisting a guess over either reading.
         helix::PrinterDiscovery disc = make_discovery();
         disc.set_hostname("creality-k2plus");
-        parse_bed(disc, 300.0);
+        parse_settings(disc, with_declared_bed(settings_of("creality_k2_pro"), "300"));
 
         auto result = PrinterDetector::auto_detect(disc);
         CAPTURE(result.type_name, result.confidence, result.runner_up_type_name,
@@ -6163,7 +6201,7 @@ TEST_CASE_METHOD(PrinterDetectorFixture,
         REQUIRE(result.runner_up_type_name == "Creality K2 Pro");
         // Winner uncapped: 90 (k2plus) + 12 bonus, no separator of its own.
         // Runner-up: 85 (plain k2) + 12 + the 55-point separator the 300mm
-        // bed matched = 152.
+        // declared bed matched = 152.
         REQUIRE(result.uncapped_confidence == 102);
         REQUIRE(result.runner_up_uncapped_confidence == 152);
         REQUIRE(result.margin() == -50);
@@ -6183,7 +6221,7 @@ TEST_CASE_METHOD(PrinterDetectorFixture,
         disc.set_printer_objects({"extruder", "heater_bed", "bed_mesh", "motor_control"});
         disc.set_hostname("mainsailos");
         disc.parse_config_keys(nlohmann::json{{"printer", {{"kinematics", "corexy"}}}});
-        parse_bed(disc, 300.0);
+        parse_settings(disc, with_declared_bed(settings_of("creality_k2_pro"), "300"));
 
         auto result = PrinterDetector::auto_detect(disc);
         CAPTURE(result.type_name, result.confidence, result.runner_up_type_name,
@@ -6197,6 +6235,86 @@ TEST_CASE_METHOD(PrinterDetectorFixture,
         // autosave bar a real match would clear.
         REQUIRE(result.margin() == 0);
         REQUIRE(result.confidence < PrinterDetector::AUTOSAVE_MIN_CONFIDENCE);
+        REQUIRE_FALSE(PrinterDetector::meets_autosave_threshold(result));
+    }
+}
+
+// The two real K2s on record: the K2 Plus capture and the community K2 Pro
+// report. A hostname carrying the model ("K2Plus-50C1", "K2Pro") names the
+// machine on its own. Under a plain "k2" hostname the declared bed is the only
+// fact separating the siblings. The Plus capture declares its own; the Pro
+// report records none, so one section supplies Creality's 300mm spec.
+TEST_CASE_METHOD(PrinterDetectorFixture,
+                 "PrinterDetector: real K2 captures resolve to their own variant",
+                 "[printer][build_volume][detector][1606]") {
+    SECTION("The K2 Plus capture as reported") {
+        PrinterHardwareData hardware = printer_capture("creality_k2_plus");
+
+        auto result = PrinterDetector::detect(hardware);
+        CAPTURE(result.type_name, result.confidence, result.runner_up_type_name,
+                result.runner_up_confidence, result.margin(), result.tied_count);
+        REQUIRE(result.type_name == "Creality K2 Plus");
+        REQUIRE(result.margin() >= PrinterDetector::DETECT_MIN_MARGIN);
+        REQUIRE(PrinterDetector::meets_autosave_threshold(result));
+    }
+
+    SECTION("The K2 Plus capture under a plain k2 hostname") {
+        PrinterHardwareData hardware = printer_capture("creality_k2_plus");
+        hardware.hostname = "k2";
+        // Its X travel (362.5mm on a 350mm bed) is outside the 340-360mm
+        // window: the declared bed is the reading that has to decide.
+        CHECK(hardware.build_volume.x_max - hardware.build_volume.x_min > 360.0f);
+        CHECK(hardware.build_volume.declared_bed_x == 350.0f);
+
+        auto result = PrinterDetector::detect(hardware);
+        CAPTURE(result.type_name, result.confidence, result.runner_up_type_name,
+                result.runner_up_confidence, result.margin(), result.tied_count);
+        REQUIRE(result.type_name == "Creality K2 Plus");
+        REQUIRE(result.runner_up_type_name == "Creality K2 Pro");
+        REQUIRE(result.margin() >= PrinterDetector::DETECT_MIN_MARGIN);
+        REQUIRE(PrinterDetector::meets_autosave_threshold(result));
+    }
+
+    SECTION("The K2 Pro report as reported") {
+        PrinterHardwareData hardware = printer_capture("creality_k2_pro");
+
+        auto result = PrinterDetector::detect(hardware);
+        CAPTURE(result.type_name, result.confidence, result.runner_up_type_name,
+                result.runner_up_confidence, result.margin(), result.tied_count);
+        REQUIRE(result.type_name == "Creality K2 Pro");
+        REQUIRE(result.margin() >= PrinterDetector::DETECT_MIN_MARGIN);
+        REQUIRE(PrinterDetector::meets_autosave_threshold(result));
+    }
+
+    SECTION("The K2 Pro report under a plain k2 hostname, with Creality's spec bed") {
+        PrinterHardwareData hardware = printer_capture("creality_k2_pro");
+        hardware.hostname = "k2";
+        REQUIRE(hardware.build_volume.declared_bed_x == 0.0f);
+        hardware.build_volume.declared_bed_x = 300.0f;
+        hardware.build_volume.declared_bed_y = 300.0f;
+
+        auto result = PrinterDetector::detect(hardware);
+        CAPTURE(result.type_name, result.confidence, result.runner_up_type_name,
+                result.runner_up_confidence, result.margin(), result.tied_count);
+        REQUIRE(result.type_name == "Creality K2 Pro");
+        REQUIRE(result.runner_up_type_name == "Creality K2 Plus");
+        REQUIRE(result.margin() >= PrinterDetector::DETECT_MIN_MARGIN);
+        REQUIRE(PrinterDetector::meets_autosave_threshold(result));
+    }
+
+    SECTION("The K2 Pro report under a plain k2 hostname, as recorded, stays a tie") {
+        // No declared bed, and nothing falls back to travel: the siblings tie
+        // and nothing may persist.
+        PrinterHardwareData hardware = printer_capture("creality_k2_pro");
+        hardware.hostname = "k2";
+
+        auto result = PrinterDetector::detect(hardware);
+        CAPTURE(result.type_name, result.confidence, result.runner_up_type_name,
+                result.runner_up_confidence, result.margin(), result.tied_count);
+        REQUIRE(result.type_name.rfind("Creality K2", 0) == 0);
+        REQUIRE(result.runner_up_type_name.rfind("Creality K2", 0) == 0);
+        REQUIRE(result.margin() == 0);
+        REQUIRE(result.ambiguous());
         REQUIRE_FALSE(PrinterDetector::meets_autosave_threshold(result));
     }
 }

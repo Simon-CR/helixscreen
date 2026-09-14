@@ -442,11 +442,27 @@ bool is_corroborating_only(const json& heuristic) {
     return false;
 }
 
-// Check if build volume is within specified range
+// Check if build volume is within specified range. A window measures stepper
+// travel unless the heuristic sets "measure": "declared_bed", which reads the
+// bed size the firmware's config declares instead: travel also covers
+// overtravel to a purge or nozzle-clean position, which is not the bed. A
+// firmware that declares no bed matches no declared-bed window; nothing falls
+// back to travel.
 bool check_build_volume_range(const BuildVolume& volume, const json& heuristic) {
-    // Get the dimensions we need to check
-    float x_size = volume.x_max - volume.x_min;
-    float y_size = volume.y_max - volume.y_min;
+    const std::string measure = heuristic.value("measure", "");
+    float x_size = 0.0f;
+    float y_size = 0.0f;
+    if (measure.empty()) {
+        x_size = volume.x_max - volume.x_min;
+        y_size = volume.y_max - volume.y_min;
+    } else if (measure == "declared_bed") {
+        x_size = volume.declared_bed_x;
+        y_size = volume.declared_bed_y;
+    } else {
+        spdlog::warn("[PrinterDetector] build_volume_range measure '{}' is unknown, not matching",
+                     measure);
+        return false;
+    }
 
     // If no volume data, can't match
     if (x_size <= 0 || y_size <= 0) {

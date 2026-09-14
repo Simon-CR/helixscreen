@@ -24,6 +24,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdlib>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -790,6 +791,49 @@ class PrinterDiscovery {
         read("stepper_y", "position_max", volume.y_max);
         read("stepper_z", "position_max", volume.z_max);
 
+        // The bed size a firmware's own config declares, where it declares one.
+        // Travel above also covers overtravel to a purge or nozzle-clean
+        // position, so it cannot stand for the bed. One row per firmware; a
+        // bed is declared only when both axes read as positive numbers. Macro
+        // variables reach configfile.settings as strings ("350").
+        struct DeclaredBedSource {
+            const char* section;
+            const char* x_key;
+            const char* y_key;
+        };
+        static constexpr DeclaredBedSource kDeclaredBedSources[] = {
+            // Creality K2 series
+            {"gcode_macro product_param", "variable_bed_size_x", "variable_bed_size_y"},
+        };
+        auto read_size = [](const nlohmann::json& section, const char* key, float& out) {
+            const auto v = section.find(key);
+            if (v == section.end()) {
+                return false;
+            }
+            if (v->is_number()) {
+                out = v->get<float>();
+                return out > 0.0f;
+            }
+            if (!v->is_string()) {
+                return false;
+            }
+            const std::string& text = v->get_ref<const std::string&>();
+            char* end = nullptr;
+            out = std::strtof(text.c_str(), &end);
+            return !text.empty() && end == text.c_str() + text.size() && out > 0.0f;
+        };
+        for (const auto& source : kDeclaredBedSources) {
+            const auto s = settings.find(source.section);
+            float x = 0.0f;
+            float y = 0.0f;
+            if (s != settings.end() && s->is_object() && read_size(*s, source.x_key, x) &&
+                read_size(*s, source.y_key, y)) {
+                volume.declared_bed_x = x;
+                volume.declared_bed_y = y;
+                break;
+            }
+        }
+
         // An all-zero volume is worse than none: build_volume_range heuristics
         // would score it against every printer's window. Only a real extent is
         // worth storing.
@@ -799,8 +843,9 @@ class PrinterDiscovery {
 
         build_volume_ = volume;
         spdlog::debug("[PrinterDiscovery] Build volume from config: X[{:.0f},{:.0f}] "
-                      "Y[{:.0f},{:.0f}] Z[0,{:.0f}]",
-                      volume.x_min, volume.x_max, volume.y_min, volume.y_max, volume.z_max);
+                      "Y[{:.0f},{:.0f}] Z[0,{:.0f}] declared bed [{:.0f},{:.0f}]",
+                      volume.x_min, volume.x_max, volume.y_min, volume.y_max, volume.z_max,
+                      volume.declared_bed_x, volume.declared_bed_y);
         return true;
     }
 

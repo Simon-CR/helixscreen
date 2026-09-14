@@ -75,14 +75,20 @@ struct PrinterDetectionResult {
 };
 
 /**
- * @brief Build volume dimensions from bed_mesh configuration
+ * @brief Build volume dimensions from the configfile
+ *
+ * The extents are [stepper_*] travel, which covers the bed plus any overtravel
+ * to a purge or nozzle-clean position. The declared bed is the size a
+ * firmware's own config states for its bed, where it states one.
  */
 struct BuildVolume {
     float x_min = 0.0f;
     float x_max = 0.0f;
     float y_min = 0.0f;
     float y_max = 0.0f;
-    float z_max = 0.0f; ///< Maximum Z height (if available)
+    float z_max = 0.0f;          ///< Maximum Z height (if available)
+    float declared_bed_x = 0.0f; ///< Bed X the firmware config declares (0 if none)
+    float declared_bed_y = 0.0f; ///< Bed Y the firmware config declares (0 if none)
 };
 
 /**

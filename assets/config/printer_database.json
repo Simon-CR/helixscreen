@@ -21,13 +21,14 @@
     "fan_exclude": "As led_exclude, over fan object names",
     "object_exclude": "As led_exclude, over the full Klipper object list",
     "mcu_match": "Match against MCU chip type or serial pattern",
-    "build_volume_range": "Match against the X/Y stepper travel Klipper resolves from the configfile (position_max minus position_min per axis), not the bed mesh or the advertised print area. Travel is the print area plus whatever overtravel the config allows (the four entries authored from a real config show +10 to +58 mm), so a window drawn tightly around the marketing size misses the machine it describes; author min/max from a real configfile",
+    "build_volume_range": "Match against the X/Y stepper travel Klipper resolves from the configfile (position_max minus position_min per axis), not the bed mesh or the advertised print area. Travel is the print area plus whatever overtravel the config allows (the four entries authored from a real config show +10 to +58 mm), so a window drawn tightly around the marketing size misses the machine it describes; author min/max from a real configfile. A heuristic setting \"measure\": \"declared_bed\" matches the bed size the firmware config declares instead of travel",
     "macro_match": "Match against G-code macro names (gcode_macro objects)",
     "macro_exclude": "Exclude this printer if a G-code macro is present",
     "tool_count": "Count of extruder tools (tool_count_1, tool_count_2, tool_count_4)",
     "cpu_arch_match": "Match against host CPU architecture string",
     "_modifier_corroborating": "Set true on a heuristic whose evidence names a CLASS of printer rather than a model: a chamber thermistor (every enclosed machine has one) or an MCU claimed by more than one model. The flag is per-entry authoring - vendor hostnames stay identifying where an entry authors them as model signals and corroborate where it does not. It can never be the base score and adds nothing to the match bonus, so it cannot identify a printer or separate look-alikes on its own; it supports through match_count and the separator opt-in.",
     "_modifier_identifying": "Set true on a build_volume_range whose window is distinctive enough to lead. Volumes are corroborating by default because models overlap in the common bands; this opts an unusual size back in. It still needs the entry's kinematics to match, so a size alone never names a printer.",
+    "_modifier_measure": "Set to \"declared_bed\" on a build_volume_range to match its window against the bed size the firmware's own config declares (Creality: gcode_macro product_param variable_bed_size_x and variable_bed_size_y) instead of stepper travel. Travel also covers overtravel to a purge or nozzle-clean position, so a declared bed suits a window that has to tell apart models whose travel overshoots their beds (K2 Plus against K2 Pro). A firmware that declares no bed size never matches such a window; nothing falls back to travel. Any other value matches nothing.",
     "_modifier_separator": "Set true on a corroborating heuristic whose evidence names the model within a family the entry's other heuristics identify: a bed size (K2 Plus against K2 Pro) or an MCU part number separating vendors whose class evidence ties. A match adds its weight to the uncapped score - the margin between look-alikes - once the entry's non-separator base clears the autosave bar; it never raises the published confidence and never becomes the base, so a rig reporting only that one fact still earns nothing."
   },
   "console_filter_sets": {
@@ -1666,12 +1667,13 @@
         {
           "type": "build_volume_range",
           "field": "bed_mesh",
+          "measure": "declared_bed",
           "min_x": 340,
           "max_x": 360,
           "min_y": 340,
           "max_y": 360,
           "confidence": 55,
-          "reason": "Build volume ~350mm (K2 Plus size); separates Plus from Pro once the K2 platform is identified",
+          "reason": "Declared bed ~350mm (K2 Plus); separates Plus from Pro once the K2 platform is identified. Measures the bed size Creality's product_param macro declares (350x350 on a real K2 Plus) because stepper travel overshoots the bed: that K2 Plus travels -10 to 352.5 in X and -6.2 to 400 in Y",
           "separator": true
         }
       ],
@@ -1810,12 +1812,13 @@
         {
           "type": "build_volume_range",
           "field": "bed_mesh",
+          "measure": "declared_bed",
           "min_x": 340,
           "max_x": 360,
           "min_y": 340,
           "max_y": 360,
           "confidence": 55,
-          "reason": "Build volume ~350mm (K2 Plus size); separates Plus from Pro once the K2 platform is identified",
+          "reason": "Declared bed ~350mm (K2 Plus); separates Plus from Pro once the K2 platform is identified. Measures the bed size Creality's product_param macro declares (350x350 on a real K2 Plus) because stepper travel overshoots the bed: that K2 Plus travels -10 to 352.5 in X and -6.2 to 400 in Y",
           "separator": true
         }
       ]
@@ -1949,12 +1952,13 @@
         {
           "type": "build_volume_range",
           "field": "bed_mesh",
+          "measure": "declared_bed",
           "min_x": 290,
           "max_x": 310,
           "min_y": 290,
           "max_y": 310,
           "confidence": 55,
-          "reason": "Build volume ~300mm (K2 Pro size); separates Pro from Plus once the K2 platform is identified",
+          "reason": "Declared bed ~300mm (K2 Pro); separates Pro from Plus once the K2 platform is identified. Measures the bed size Creality's product_param macro declares; 300 is Creality's spec for the Pro, not a captured value. Stepper travel overshoots the bed: a reported K2 Pro has position_max 302 in X and 332 in Y",
           "separator": true
         }
       ],
