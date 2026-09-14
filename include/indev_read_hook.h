@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <algorithm>
 #include <lvgl.h>
 #include <vector>
 
@@ -58,6 +59,24 @@ class IndevReadHook {
         }
         link->original(indev, data);
         return true;
+    }
+
+    /// Whether the hook fronts @p indev. Compares the pointer only, so a deleted
+    /// device can be asked about.
+    bool fronts(const lv_indev_t* indev) const {
+        return find(indev) != nullptr;
+    }
+
+    /**
+     * @brief Drop @p indev without reading or writing it
+     *
+     * For a device being deleted, whose read callback is irrelevant and which
+     * cannot be read once freed.
+     */
+    void forget(const lv_indev_t* indev) {
+        links_.erase(std::remove_if(links_.begin(), links_.end(),
+                                    [indev](const Link& link) { return link.indev == indev; }),
+                     links_.end());
     }
 
     /**

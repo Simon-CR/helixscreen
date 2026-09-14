@@ -64,8 +64,11 @@ inline PointerTransform pointer_transform_for(input::PointerKind kind, int plane
  * device's own driver has produced it. The kind comes from the device, never
  * from which backend member holds it.
  *
- * The devices must outlive the hook's use of them, as for IndevReadHook: call
- * restore_all() before they are deleted. Main thread only, like every indev.
+ * A device can be deleted while the hook fronts it: lv_evdev deletes its own
+ * device when a read fails, as it does when the device is unplugged. The hook
+ * listens for each device's LV_EVENT_DELETE and forgets it then, so
+ * restore_all() and the destructor only ever touch devices that are alive.
+ * Main thread only, like every indev.
  */
 class PointerFrameHook {
   public:
@@ -73,15 +76,23 @@ class PointerFrameHook {
     /// the unrotated display; false when there is no reading yet
     using RawPosition = std::function<bool(int& x, int& y)>;
 
+    /// Reads an lv_evdev device's last position before its driver's bound
+    using LastRawReader = bool (*)(lv_indev_t* indev, int* x, int* y);
+
+#if LV_USE_EVDEV
+    static constexpr LastRawReader EVDEV_LAST_RAW = lv_evdev_get_last_raw;
+#else
+    static constexpr LastRawReader EVDEV_LAST_RAW = nullptr;
+#endif
+
     PointerFrameHook() = default;
     PointerFrameHook(const PointerFrameHook&) = delete;
     PointerFrameHook& operator=(const PointerFrameHook&) = delete;
 
-    /// A device still wrapped by the callback after this reads nothing.
+    /// Hands back every device still alive and stops listening to it. A device
+    /// still wrapped by the callback after this reads nothing.
     ~PointerFrameHook() {
-        if (s_active == this) {
-            s_active = nullptr;
-        }
+        restore_all();
     }
 
     /**
@@ -95,6 +106,7 @@ class PointerFrameHook {
         if (!hook_.install(indev)) {
             return false;
         }
+        lv_indev_add_event_cb(indev, on_indev_deleted, LV_EVENT_DELETE, this);
         devices_.push_back({indev, kind, std::move(raw_position)});
         s_active = this;
         return true;
@@ -105,20 +117,23 @@ class PointerFrameHook {
      *
      * @param device_path      the path the driver opened; see input::pointer_kind_for_device()
      * @param opened_by_evdev  @p indev is an lv_evdev device, whose position before the
-     *                         driver's bound can be read back
+     *                         driver's bound can be read back. Any other driver's data is
+     *                         never read as lv_evdev's.
+     * @param sysfs_base       where the device's capabilities are read from
+     * @param evdev_last_raw   how an lv_evdev device's position is read back
      * @return the kind @p indev was hooked as, or nullopt when this call did not hook it
      */
     std::optional<input::PointerKind> install(lv_indev_t* indev, const std::string& device_path,
-                                              bool opened_by_evdev) {
-        const input::PointerKind kind = input::pointer_kind_for_device(device_path);
+                                              bool opened_by_evdev,
+                                              const std::string& sysfs_base = "/sys/class/input",
+                                              LastRawReader evdev_last_raw = EVDEV_LAST_RAW) {
+        const input::PointerKind kind = input::pointer_kind_for_device(device_path, sysfs_base);
         RawPosition raw_position;
-#if LV_USE_EVDEV
-        if (opened_by_evdev) {
-            raw_position = [indev](int& x, int& y) { return lv_evdev_get_last_raw(indev, &x, &y); };
+        if (opened_by_evdev && evdev_last_raw != nullptr) {
+            raw_position = [indev, evdev_last_raw](int& x, int& y) {
+                return evdev_last_raw(indev, &x, &y);
+            };
         }
-#else
-        (void)opened_by_evdev;
-#endif
         if (!install(indev, kind, std::move(raw_position))) {
             return std::nullopt;
         }
@@ -138,8 +153,17 @@ class PointerFrameHook {
         panel_h_ = panel_h;
     }
 
+    /// Whether the hook fronts @p indev. Compares the pointer only, so a deleted
+    /// device can be asked about.
+    bool fronts(const lv_indev_t* indev) const {
+        return hook_.fronts(indev);
+    }
+
     /// Hand every device back the callback the hook replaced, then forget them.
     void restore_all() {
+        for (const Device& device : devices_) {
+            lv_indev_remove_event_cb_with_user_data(device.indev, on_indev_deleted, this);
+        }
         hook_.restore_all();
         devices_.clear();
         if (s_active == this) {
@@ -153,6 +177,21 @@ class PointerFrameHook {
         input::PointerKind kind;
         RawPosition raw_position;
     };
+
+    /// lv_indev_delete() sends this before it frees the device.
+    static void on_indev_deleted(lv_event_t* e) {
+        auto* self = static_cast<PointerFrameHook*>(lv_event_get_user_data(e));
+        self->forget(static_cast<const lv_indev_t*>(lv_event_get_target(e)));
+    }
+
+    /// Drop @p indev from the hook without reading or writing it.
+    void forget(const lv_indev_t* indev) {
+        hook_.forget(indev);
+        devices_.erase(
+            std::remove_if(devices_.begin(), devices_.end(),
+                           [indev](const Device& device) { return device.indev == indev; }),
+            devices_.end());
+    }
 
     static void read_cb(lv_indev_t* indev, lv_indev_data_t* data) {
         if (s_active != nullptr) {

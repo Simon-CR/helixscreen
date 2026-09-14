@@ -11,8 +11,11 @@
  */
 
 #include "../lvgl_test_fixture.h"
+#include "../mock_input_tree.h"
 #include "pointer_frame_hook.h"
 
+#include <algorithm>
+#include <string>
 #include <vector>
 
 #include "../catch_amalgamated.hpp"
@@ -21,6 +24,9 @@ using helix::pointer_transform_for;
 using helix::PointerFrameHook;
 using helix::PointerTransform;
 using helix::input::PointerKind;
+using helix::test::caps_string;
+using helix::test::MockInputTree;
+using helix::test::mouse_key_caps;
 
 namespace {
 
@@ -49,6 +55,26 @@ void portrait_mouse_driver_read(lv_indev_t* /*indev*/, lv_indev_data_t* data) {
     data->state = LV_INDEV_STATE_RELEASED;
 }
 
+int g_evdev_raw_reads = 0;
+
+/// Stands in for lv_evdev_get_last_raw(): an evdev mouse's position before its
+/// driver's bound.
+bool fake_evdev_last_raw(lv_indev_t* /*indev*/, int* x, int* y) {
+    ++g_evdev_raw_reads;
+    *x = MOUSE_DOWN_PORTRAIT.x;
+    *y = MOUSE_DOWN_PORTRAIT.y;
+    return true;
+}
+
+/// The Pi 3B's ft5x06 on event2 and Logitech M705 on event5, as sysfs describes them.
+void add_pi3b_pointers(MockInputTree& tree) {
+    tree.add_device(
+        2, "generic ft5x06 (79)",
+        {{"abs", caps_string({0, 1, 47, 53, 54, 57})}, {"rel", "0"}, {"key", caps_string({330})}},
+        "0018");
+    tree.add_device(5, "Logitech M705", {{"abs", "0"}, {"rel", "1943"}, {"key", mouse_key_caps()}});
+}
+
 class PointerFrameHookFixture : public LVGLTestFixture {
   public:
     PointerFrameHookFixture() {
@@ -69,6 +95,13 @@ class PointerFrameHookFixture : public LVGLTestFixture {
         lv_indev_set_read_cb(indev, driver_read);
         created.push_back(indev);
         return indev;
+    }
+
+    /// Deletes @p indev the way a driver deletes its own device, leaving the hook
+    /// installed on it.
+    void delete_pointer(lv_indev_t* indev) {
+        created.erase(std::remove(created.begin(), created.end(), indev), created.end());
+        lv_indev_delete(indev);
     }
 
     /// One read through LVGL's own pipeline, returning the point widgets see.
@@ -221,4 +254,100 @@ TEST_CASE_METHOD(PointerFrameHookFixture, "An unrotated display passes every sam
     const lv_point_t pointed = read(mouse);
     CHECK(pointed.x == MOUSE_POSITION.x);
     CHECK(pointed.y == MOUSE_POSITION.y);
+}
+
+TEST_CASE_METHOD(PointerFrameHookFixture,
+                 "A device LVGL deletes is forgotten before the hook restores",
+                 "[display][indev][rotation]") {
+    lv_indev_t* touch = make_pointer(touch_driver_read);
+    lv_indev_t* mouse = make_pointer(mouse_driver_read);
+    const uint32_t touch_events = lv_indev_get_event_count(touch);
+    const uint32_t mouse_events = lv_indev_get_event_count(mouse);
+    REQUIRE(hook.install(touch, PointerKind::PanelAbsolute));
+    REQUIRE(hook.install(mouse, PointerKind::Relative));
+    REQUIRE(hook.fronts(touch));
+    REQUIRE(hook.fronts(mouse));
+    // The hook listens for each device's deletion.
+    CHECK(lv_indev_get_event_count(touch) == touch_events + 1);
+    CHECK(lv_indev_get_event_count(mouse) == mouse_events + 1);
+
+    // lv_evdev deletes its own device when a read fails, as it does on unplug.
+    delete_pointer(mouse);
+    CHECK_FALSE(hook.fronts(mouse));
+    CHECK(hook.fronts(touch));
+
+    // Only the device still alive is read and handed back, and it keeps no
+    // listener behind.
+    hook.restore_all();
+    CHECK(lv_indev_get_read_cb(touch) == touch_driver_read);
+    CHECK(lv_indev_get_event_count(touch) == touch_events);
+}
+
+TEST_CASE_METHOD(PointerFrameHookFixture, "A hook that goes away stops listening to its devices",
+                 "[display][indev][rotation]") {
+    lv_indev_t* mouse = make_pointer(mouse_driver_read);
+    const uint32_t events = lv_indev_get_event_count(mouse);
+    {
+        PointerFrameHook scoped;
+        REQUIRE(scoped.install(mouse, PointerKind::Relative));
+        REQUIRE(lv_indev_get_event_count(mouse) == events + 1);
+    }
+    CHECK(lv_indev_get_event_count(mouse) == events);
+    CHECK(lv_indev_get_read_cb(mouse) == mouse_driver_read);
+}
+
+TEST_CASE_METHOD(PointerFrameHookFixture,
+                 "A device hooked by its path takes its kind from its capabilities",
+                 "[display][indev][rotation]") {
+    MockInputTree tree("pointer_frame_hook_kind");
+    add_pi3b_pointers(tree);
+    hook.set_plane_rotation(180, PANEL_W, PANEL_H);
+
+    lv_indev_t* touch = make_pointer(touch_driver_read);
+    lv_indev_t* mouse = make_pointer(mouse_driver_read);
+    CHECK(hook.install(touch, tree.dev_dir + "/event2", true, tree.sysfs_dir,
+                       fake_evdev_last_raw) == PointerKind::PanelAbsolute);
+    CHECK(hook.install(mouse, tree.dev_dir + "/event5", true, tree.sysfs_dir,
+                       fake_evdev_last_raw) == PointerKind::Relative);
+    REQUIRE(hook.fronts(touch));
+    REQUIRE(hook.fronts(mouse));
+
+    const lv_point_t touched = read(touch);
+    CHECK(touched.x == PANEL_W - 1 - TOUCH_ON_PANEL.x);
+    CHECK(touched.y == PANEL_H - 1 - TOUCH_ON_PANEL.y);
+
+    const lv_point_t pointed = read(mouse);
+    CHECK(pointed.x == MOUSE_POSITION.x);
+    CHECK(pointed.y == MOUSE_POSITION.y);
+}
+
+TEST_CASE_METHOD(PointerFrameHookFixture,
+                 "Only a device evdev opened has its position read before the driver's bound",
+                 "[display][indev][rotation]") {
+    MockInputTree tree("pointer_frame_hook_evdev");
+    add_pi3b_pointers(tree);
+    REQUIRE(disp != nullptr);
+    lv_display_set_rotation(disp, LV_DISPLAY_ROTATION_90);
+    const std::string mouse_path = tree.dev_dir + "/event5";
+
+    lv_indev_t* evdev_mouse = make_pointer(portrait_mouse_driver_read);
+    lv_indev_t* other_mouse = make_pointer(portrait_mouse_driver_read);
+    REQUIRE(hook.install(evdev_mouse, mouse_path, true, tree.sysfs_dir, fake_evdev_last_raw) ==
+            PointerKind::Relative);
+    REQUIRE(hook.install(other_mouse, mouse_path, false, tree.sysfs_dir, fake_evdev_last_raw) ==
+            PointerKind::Relative);
+
+    g_evdev_raw_reads = 0;
+    const lv_point_t pointed = read(evdev_mouse);
+    CHECK(g_evdev_raw_reads > 0);
+    CHECK(pointed.x == MOUSE_DOWN_PORTRAIT.x);
+    CHECK(pointed.y == MOUSE_DOWN_PORTRAIT.y);
+
+    // Another driver's data is never read as lv_evdev's, so its own bounded
+    // point is what LVGL gets.
+    g_evdev_raw_reads = 0;
+    const lv_point_t bounded = read(other_mouse);
+    CHECK(g_evdev_raw_reads == 0);
+    CHECK(bounded.x == MOUSE_DOWN_PORTRAIT.x);
+    CHECK(bounded.y == PANEL_H - 1);
 }
