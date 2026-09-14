@@ -22,6 +22,7 @@
 #include "hv/json.hpp"
 
 using helix::ams::FilamentSlotOverrideStore;
+using helix::ams::file_lane_sources;
 using helix::ams::ingest;
 using helix::ams::ingest_legacy_records;
 using helix::ams::lane_id_for;
@@ -296,6 +297,63 @@ TEST_CASE_METHOD(HelixTestFixture,
     CHECK(resolved_lane(lane).brand == (locked ? "Hatchbox" : "Firmware Brand"));
 }
 
+TEST_CASE_METHOD(HelixTestFixture,
+                 "A legacy record's true lock does not license an empty brand it never carried",
+                 "[lane][migration]") {
+    // The trap: "some identity field was ever locked" is not evidence THIS
+    // field was ever declared. A legacy record with a locked material and no
+    // brand at all must not have that lock stand in for a user's clear, or no
+    // later firmware brand could ever land.
+    using helix::ams::from_lane_data_record;
+    using helix::ams::sources_from_record;
+
+    const nlohmann::json wire{{"lane", 0}, {"helix_locked_material", true}};
+    const auto parsed = from_lane_data_record(wire);
+    REQUIRE(parsed.has_value());
+
+    const auto sources = sources_from_record(parsed->second, wire, LegacyLockKeys::LaneData);
+    CHECK_FALSE(sources.local_user.has_value());
+    CHECK_FALSE(sources.remembered.has_value());
+
+    const helix::ams::LaneId lane = lane_id_for(0, 0);
+    CHECK_FALSE(file_lane_sources(lane, sources));
+
+    Observation frame(ObservationSource::VendorCache);
+    frame.brand = "Firmware Brand";
+    ingest(lane, frame);
+    CHECK(resolved_lane(lane).brand == "Firmware Brand");
+}
+
+TEST_CASE_METHOD(HelixTestFixture,
+                 "A field the declared set never named stays skipped when it is empty",
+                 "[lane][migration]") {
+    // The key being present at all must not turn every empty field into a
+    // declaration - only the field the set actually names may be filed that
+    // way. An empty declared set on a modern record means the same thing a
+    // keyless legacy record with no lock means: the user never touched it.
+    using helix::ams::from_lane_data_record;
+    using helix::ams::sources_from_record;
+
+    const nlohmann::json wire{{"lane", 0},
+                              {"helix_locked_color", false},
+                              {"helix_locked_material", false},
+                              {"helix_declared", nlohmann::json::array()}};
+    const auto parsed = from_lane_data_record(wire);
+    REQUIRE(parsed.has_value());
+
+    const auto sources = sources_from_record(parsed->second, wire, LegacyLockKeys::LaneData);
+    CHECK_FALSE(sources.local_user.has_value());
+    CHECK_FALSE(sources.remembered.has_value());
+
+    const helix::ams::LaneId lane = lane_id_for(0, 0);
+    CHECK_FALSE(file_lane_sources(lane, sources));
+
+    Observation frame(ObservationSource::VendorCache);
+    frame.brand = "Firmware Brand";
+    ingest(lane, frame);
+    CHECK(resolved_lane(lane).brand == "Firmware Brand");
+}
+
 TEST_CASE("Colour and material answer from their lock flags in both wire formats",
           "[lane][migration]") {
     // The two fields that own a lock flag keep answering from it. lane_data is
@@ -562,6 +620,42 @@ TEST_CASE_METHOD(HelixTestFixture, "An edit that moves the brand claims the bran
     CHECK(resolved.spoolman_vendor_id == 9);
     CHECK(resolved.material == "PETG");
     CHECK(resolved.color_rgb == 0xFF0000u);
+}
+
+TEST_CASE_METHOD(HelixTestFixture, "An edit that clears the brand keeps it cleared past a restart",
+                 "[lane][migration]") {
+    // A cleared brand is still the user's declaration, and the record's
+    // declared set is the only place that survives a restart. Filing it as
+    // absent would let the very next firmware frame's brand come back,
+    // undoing the clear on every reload.
+    MoonrakerClientMock client(MoonrakerClientMock::PrinterType::VORON_24);
+    helix::PrinterState state;
+    state.init_subjects(false);
+    MoonrakerAPIMock api(client, state);
+    FilamentSlotOverrideStore store(&api, "ad5x_ifs");
+
+    const helix::SlotInfo before = firmware_lane();
+    helix::SlotInfo edited = before;
+    edited.brand = "";
+
+    const auto ovr = helix::ams::override_from_user_edit(before, edited);
+    const nlohmann::json declared = helix::ams::declared_field_names(ovr.declared);
+    REQUIRE(declared.is_array());
+    CHECK(declared.size() == 1);
+    CHECK(declared.at(0) == "brand");
+    CHECK(ovr.brand.empty());
+
+    const helix::ams::LaneId lane = reload_into_lane(store, ovr);
+    const auto sources = lane_sources(lane);
+    REQUIRE(sources.local_user.has_value());
+    REQUIRE(sources.local_user->brand.has_value());
+    CHECK(sources.local_user->brand->empty());
+
+    Observation frame(ObservationSource::VendorCache);
+    frame.brand = "Firmware Brand";
+    ingest(lane, frame);
+    REQUIRE(resolved_lane(lane).brand.has_value());
+    CHECK(resolved_lane(lane).brand->empty());
 }
 
 TEST_CASE_METHOD(HelixTestFixture, "An edit that moves the material locks it against the machine",

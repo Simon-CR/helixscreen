@@ -415,6 +415,17 @@ LaneSources sources_from_record(const FilamentSlotOverride& record, const nlohma
                 carried = value > 0;
             }
             if (!carried) {
+                // An empty value is still a declaration when the record's own
+                // declared set names this field: that is the one place a
+                // stored record can tell a field the user cleared apart from
+                // a field that was simply never set. legacy_declared answers
+                // a different question - was ANY identity field ever locked -
+                // and cannot make that distinction, so only the set itself,
+                // never its legacy stand-in, may file an empty value here.
+                if (has_declared && record.declared.test(index)) {
+                    user.*(f.obs) = value;
+                    have_user = true;
+                }
                 return;
             }
             const bool is_declared = declared_field(index);
