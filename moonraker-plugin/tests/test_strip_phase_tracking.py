@@ -708,6 +708,30 @@ class TestSafeWrites:
 
         assert result["status"] == "skipped"
         assert "changed" in result["reason"]
+        assert result["skip_kind"] == "concurrent"
+
+    def test_main_prints_the_concurrent_hint_not_the_anomaly_hint_for_a_race(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        # The test above pins process_file's own skip_kind; this pins that
+        # main() actually prints the hint that kind maps to, rather than the
+        # anomaly wording - a mislabel between process_file and main() would
+        # pass a unit test of either one alone.
+        cfg = tmp_path / "printer.cfg"
+        write(cfg, "[gcode_macro PRINT_START]\ngcode:\n    G28\n" + VALID_BLOCK)
+
+        def always_raises(path, new_bytes, original):
+            raise strip.StripConcurrentChangeError(f"{path} changed on disk since it was read")
+
+        monkeypatch.setattr(strip, "safe_replace_file", always_raises)
+
+        result = strip.main([str(tmp_path)])
+        out = capsys.readouterr().out
+
+        assert result == strip.EXIT_NEEDS_ATTENTION
+        assert "re-run the uninstall" in out
+        assert "restart Klipper" not in out
+        assert "by hand" not in out
 
 
 # ============================================================================
