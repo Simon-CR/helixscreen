@@ -239,7 +239,11 @@ fbdev in-process, input devices included. So a board configured to rotate select
 `helix-screen-egl` at boot, brings EGL up, then presents through `/dev/fb0` anyway.
 
 Verified on the Pi 3B at 180 degrees: the picture does invert, touch is rebuilt on
-the fbdev backend, and the log records the whole handover. Rotation and GPU
+the fbdev backend, and the log records the whole handover. A USB mouse is rebuilt
+there as well. LVGL rotates every pointer sample on this path, so fbdev fronts the
+mouse with the same hook the DRM backend uses, and the cursor moves with the upright
+picture rather than the panel (`include/pointer_frame_hook.h#pointer_transform_for`).
+Rotation and GPU
 presentation are mutually exclusive today, so a board that needs rotation gains
 nothing from this rung.
 
