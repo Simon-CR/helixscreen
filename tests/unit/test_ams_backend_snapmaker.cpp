@@ -20,6 +20,8 @@
 #include "printer_discovery.h"
 #include "printer_state.h"
 #include "spoolman_types.h" // SpoolInfo + apply_spool_to_slot (the picker-side writer)
+#include "test_helpers/registered_backend.h"
+#include "test_helpers/seeded_override.h"
 #include "tool_state.h"
 #include "translation_loader.h"
 
@@ -253,7 +255,8 @@ TEST_CASE_METHOD(SnapmakerFixture, "AmsBackendSnapmaker construction", "[ams][sn
 
 TEST_CASE_METHOD(SnapmakerFixture, "Snapmaker lane_noun and tool_noun name two different things",
                  "[ams][snapmaker][numbering]") {
-    AmsBackendSnapmaker backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendSnapmaker> backend_reg(nullptr, nullptr);
+    AmsBackendSnapmaker& backend = *backend_reg;
     CHECK(backend.lane_noun() == helix::ui::LaneNoun::Feeder);
     CHECK(backend.tool_noun() == helix::ui::LaneNoun::Toolhead);
     CHECK(backend.lane_noun() != backend.tool_noun());
@@ -295,7 +298,8 @@ TEST_CASE_METHOD(SnapmakerFixture,
 TEST_CASE_METHOD(SnapmakerFixture,
                  "Snapmaker get_operation_step_model is the per-direction firmware sequence",
                  "[ams][snapmaker][stepmodel]") {
-    AmsBackendSnapmaker backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendSnapmaker> backend_reg(nullptr, nullptr);
+    AmsBackendSnapmaker& backend = *backend_reg;
 
     SECTION("LOAD is a 5-step model ending in Purge with a live-temp Heat step") {
         auto model = backend.get_operation_step_model(StepOperationType::LOAD_FRESH);
@@ -341,7 +345,8 @@ TEST_CASE_METHOD(SnapmakerFixture,
 TEST_CASE_METHOD(SnapmakerFixture,
                  "Snapmaker get_operation_step_index_subject is the firmware phase subject",
                  "[ams][snapmaker][stepmodel]") {
-    AmsBackendSnapmaker backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendSnapmaker> backend_reg(nullptr, nullptr);
+    AmsBackendSnapmaker& backend = *backend_reg;
     // The U1 drives the current step from the firmware Home/Select/Heat/Move
     // phase, surfaced via AmsState's operation_phase subject (static singleton).
     for (auto op :
@@ -466,7 +471,8 @@ TEST_CASE_METHOD(SnapmakerFixture, "Snapmaker unload routes through AUTO_FEEDING
 TEST_CASE_METHOD(SnapmakerFixture,
                  "Snapmaker can_unload_from_toolhead offers unload for every loaded toolhead",
                  "[ams][snapmaker][unload]") {
-    AmsBackendSnapmaker backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendSnapmaker> backend_reg(nullptr, nullptr);
+    AmsBackendSnapmaker& backend = *backend_reg;
 
     // Slot 0 active (LOADED), slots 1 & 3 hold filament (AVAILABLE), slot 2 empty.
     json status = json{
@@ -513,7 +519,8 @@ TEST_CASE_METHOD(
     SnapmakerFixture,
     "Snapmaker can_unload_from_toolhead requires filament at the toolhead, not just buffer",
     "[ams][snapmaker][unload]") {
-    AmsBackendSnapmaker backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendSnapmaker> backend_reg(nullptr, nullptr);
+    AmsBackendSnapmaker& backend = *backend_reg;
 
     // All four tools loaded to their toolhead (channel_state load_finish).
     json status = json{
@@ -547,7 +554,8 @@ TEST_CASE_METHOD(
 TEST_CASE_METHOD(SnapmakerFixture,
                  "Snapmaker channel_error on idle empty lane does NOT raise Error",
                  "[ams][snapmaker]") {
-    AmsBackendSnapmaker backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendSnapmaker> backend_reg(nullptr, nullptr);
+    AmsBackendSnapmaker& backend = *backend_reg;
 
     // Heads 0 and 2 present, head 1 left empty. Head 1 reports the firmware's
     // idle-empty token while sitting idle (channel_state "wait_insert" = no
@@ -572,7 +580,8 @@ TEST_CASE_METHOD(SnapmakerFixture,
 
 TEST_CASE_METHOD(SnapmakerFixture, "Snapmaker channel_error during an active load DOES raise Error",
                  "[ams][snapmaker]") {
-    AmsBackendSnapmaker backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendSnapmaker> backend_reg(nullptr, nullptr);
+    AmsBackendSnapmaker& backend = *backend_reg;
 
     // A real load FAILURE: lane 1 is mid-load (channel_state "load_heating") when
     // the firmware reports an error. This must surface as Error so the user is told.
@@ -593,7 +602,8 @@ TEST_CASE_METHOD(SnapmakerFixture, "Snapmaker channel_error during an active loa
 
 TEST_CASE_METHOD(SnapmakerFixture, "Snapmaker channel_error on the ACTIVE lane DOES raise Error",
                  "[ams][snapmaker]") {
-    AmsBackendSnapmaker backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendSnapmaker> backend_reg(nullptr, nullptr);
+    AmsBackendSnapmaker& backend = *backend_reg;
 
     // Make lane 0 the active/current lane, then have it report an error while
     // idle. An error on the in-use lane is a genuine fault, not a quiet empty
@@ -617,7 +627,8 @@ TEST_CASE_METHOD(SnapmakerFixture, "Snapmaker granular unload sub-states drive U
     // UNLOADING so the on-screen step bar stays visible during the unload.
     for (const char* state :
          {"unload_homing", "unload_picking", "unload_heating", "unload_doing"}) {
-        AmsBackendSnapmaker backend(nullptr, nullptr);
+        helix::test::RegisteredBackend<AmsBackendSnapmaker> backend_reg(nullptr, nullptr);
+        AmsBackendSnapmaker& backend = *backend_reg;
         json status =
             json{{"filament_feed left", json{{"extruder2", json{{"filament_detected", true},
                                                                 {"channel_state", state},
@@ -633,7 +644,8 @@ TEST_CASE_METHOD(SnapmakerFixture, "Snapmaker granular load sub-states drive LOA
     // Symmetric to the unload case: every granular load sub-state → LOADING.
     for (const char* state : {"load_prepare", "load_homing", "load_picking", "load_heating",
                               "load_feeding", "load_extruding", "load_flushing"}) {
-        AmsBackendSnapmaker backend(nullptr, nullptr);
+        helix::test::RegisteredBackend<AmsBackendSnapmaker> backend_reg(nullptr, nullptr);
+        AmsBackendSnapmaker& backend = *backend_reg;
         json status =
             json{{"filament_feed left", json{{"extruder2", json{{"filament_detected", true},
                                                                 {"channel_state", state},
@@ -662,7 +674,8 @@ TEST_CASE_METHOD(SnapmakerFixture, "Snapmaker channel_state maps to granular ope
     };
 
     for (const auto& c : cases) {
-        AmsBackendSnapmaker backend(nullptr, nullptr);
+        helix::test::RegisteredBackend<AmsBackendSnapmaker> backend_reg(nullptr, nullptr);
+        AmsBackendSnapmaker& backend = *backend_reg;
         // A loaded lane so unload_finish doesn't early-return before the phase
         // is parsed; filament_detected=true keeps the lane present.
         json status =
@@ -677,7 +690,8 @@ TEST_CASE_METHOD(SnapmakerFixture, "Snapmaker channel_state maps to granular ope
 
 TEST_CASE_METHOD(SnapmakerFixture, "Snapmaker unload_finish resolves UNLOADING to IDLE",
                  "[ams][snapmaker][unload]") {
-    AmsBackendSnapmaker backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendSnapmaker> backend_reg(nullptr, nullptr);
+    AmsBackendSnapmaker& backend = *backend_reg;
 
     // Mid-unload: action becomes UNLOADING.
     json doing =
@@ -702,7 +716,8 @@ TEST_CASE_METHOD(SnapmakerFixture,
     // preload_finish starts with "preload_", NOT "load_" — it must reach the
     // existing preload_finish handler (which leaves the action alone) rather than
     // being misread as a granular load sub-state.
-    AmsBackendSnapmaker backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendSnapmaker> backend_reg(nullptr, nullptr);
+    AmsBackendSnapmaker& backend = *backend_reg;
 
     // Start mid-unload so there is an action to (incorrectly) clobber.
     json doing =
@@ -733,7 +748,8 @@ TEST_CASE_METHOD(SnapmakerFixture,
 TEST_CASE_METHOD(SnapmakerFixture,
                  "Snapmaker get_slot_filament_segment renders NOZZLE for every loaded tool",
                  "[ams][snapmaker][path]") {
-    AmsBackendSnapmaker backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendSnapmaker> backend_reg(nullptr, nullptr);
+    AmsBackendSnapmaker& backend = *backend_reg;
 
     SECTION("active loaded tool renders into the toolhead") {
         SnapmakerTestAccess::handle_status(backend, make_feed_status(0, "load_finish"));
@@ -782,7 +798,8 @@ TEST_CASE_METHOD(SnapmakerFixture,
 
 TEST_CASE_METHOD(SnapmakerFixture, "Snapmaker load_finish latches loaded + offers unload",
                  "[ams][snapmaker][channel_state]") {
-    AmsBackendSnapmaker backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendSnapmaker> backend_reg(nullptr, nullptr);
+    AmsBackendSnapmaker& backend = *backend_reg;
     SnapmakerTestAccess::handle_status(backend, make_feed_status(2, "load_finish"));
 
     CHECK(SnapmakerTestAccess::loaded_at_toolhead(backend, 2));
@@ -799,7 +816,8 @@ TEST_CASE_METHOD(
     // filament_detected=true. Before the fix the toolhead-load queries keyed off
     // the motion sensor, so an unloaded lane kept rendering filament at the
     // toolhead and kept offering Unload. Now the channel_state latch governs.
-    AmsBackendSnapmaker backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendSnapmaker> backend_reg(nullptr, nullptr);
+    AmsBackendSnapmaker& backend = *backend_reg;
 
     // Start loaded.
     SnapmakerTestAccess::handle_status(backend, make_feed_status(2, "load_finish"));
@@ -832,7 +850,8 @@ TEST_CASE_METHOD(SnapmakerFixture,
     // toolhead.extruder, parsed at the top of handle_status_update). They are
     // independent of whether feeder filament is at the nozzle. Only
     // filament_loaded should flip on unload_finish.
-    AmsBackendSnapmaker backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendSnapmaker> backend_reg(nullptr, nullptr);
+    AmsBackendSnapmaker& backend = *backend_reg;
 
     // Simulate T2 picked up (toolhead.extruder = "extruder2").
     json picked_up = json{{"toolhead", json{{"extruder", "extruder2"}}}};
@@ -852,7 +871,8 @@ TEST_CASE_METHOD(SnapmakerFixture,
 
 TEST_CASE_METHOD(SnapmakerFixture, "Snapmaker wait_insert means not loaded",
                  "[ams][snapmaker][channel_state]") {
-    AmsBackendSnapmaker backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendSnapmaker> backend_reg(nullptr, nullptr);
+    AmsBackendSnapmaker& backend = *backend_reg;
     // Seed a loaded latch, then a wait_insert (channel empty) must clear it.
     SnapmakerTestAccess::set_loaded_at_toolhead(backend, 1, true);
     SnapmakerTestAccess::handle_status(backend, make_feed_status(1, "wait_insert",
@@ -865,7 +885,8 @@ TEST_CASE_METHOD(SnapmakerFixture, "Snapmaker preload_finish is present-but-not-
                  "[ams][snapmaker][channel_state]") {
     // preload stages filament into the buffer, NOT to the nozzle. Present
     // (detected=true → slot AVAILABLE) but the loaded latch must be clear.
-    AmsBackendSnapmaker backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendSnapmaker> backend_reg(nullptr, nullptr);
+    AmsBackendSnapmaker& backend = *backend_reg;
     SnapmakerTestAccess::set_loaded_at_toolhead(backend, 0, true);
     SnapmakerTestAccess::handle_status(backend, make_feed_status(0, "preload_finish",
                                                                  /*filament_detected=*/true));
@@ -879,7 +900,8 @@ TEST_CASE_METHOD(SnapmakerFixture, "Snapmaker loaded latch is KEPT across transi
     // Only terminal transitions move the latch. Every in-progress state leaves
     // it untouched, so a mid-unload sequence keeps "loaded" true until the
     // actual unload_finish lands.
-    AmsBackendSnapmaker backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendSnapmaker> backend_reg(nullptr, nullptr);
+    AmsBackendSnapmaker& backend = *backend_reg;
     SnapmakerTestAccess::handle_status(backend, make_feed_status(3, "load_finish"));
     REQUIRE(SnapmakerTestAccess::loaded_at_toolhead(backend, 3));
 
@@ -896,7 +918,8 @@ TEST_CASE_METHOD(SnapmakerFixture, "Snapmaker loaded latch is KEPT across transi
 
 TEST_CASE_METHOD(SnapmakerFixture, "Snapmaker fail channel_state does NOT flip the loaded latch",
                  "[ams][snapmaker][channel_state]") {
-    AmsBackendSnapmaker backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendSnapmaker> backend_reg(nullptr, nullptr);
+    AmsBackendSnapmaker& backend = *backend_reg;
     SnapmakerTestAccess::handle_status(backend, make_feed_status(2, "load_finish"));
     REQUIRE(SnapmakerTestAccess::loaded_at_toolhead(backend, 2));
     // A subsequent unload_fail must not clear the latch (filament is still at
@@ -968,7 +991,8 @@ TEST_CASE_METHOD(SnapmakerFixture,
     };
 
     for (const auto& c : cases) {
-        AmsBackendSnapmaker backend(nullptr, nullptr);
+        helix::test::RegisteredBackend<AmsBackendSnapmaker> backend_reg(nullptr, nullptr);
+        AmsBackendSnapmaker& backend = *backend_reg;
         // Make extruder 0 the active lane so *_fail states surface as ERROR
         // (the false-alarm guard only suppresses errors on idle empty NON-active
         // lanes) and feed present filament.
@@ -986,7 +1010,8 @@ TEST_CASE_METHOD(SnapmakerFixture, "Snapmaker fail channel_state raises ERROR wi
     // A *_fail channel_state alone (channel_error still "ok") must surface an
     // error — Change 2 adds this on top of the existing channel_error handling.
     for (const char* fail : {"load_fail", "unload_fail", "preload_fail", "manual_sta_fail"}) {
-        AmsBackendSnapmaker backend(nullptr, nullptr);
+        helix::test::RegisteredBackend<AmsBackendSnapmaker> backend_reg(nullptr, nullptr);
+        AmsBackendSnapmaker& backend = *backend_reg;
         SnapmakerTestAccess::set_current_slot(backend, 1);
         SnapmakerTestAccess::handle_status(backend, make_feed_status(1, fail));
         INFO("fail state=" << fail);
@@ -999,7 +1024,8 @@ TEST_CASE_METHOD(SnapmakerFixture, "Snapmaker fail on an idle empty non-active l
                  "[ams][snapmaker][channel_state]") {
     // The multi-color false-alarm guard must still hold: a fail on a lane that
     // is empty, idle, and not active should not pop a spurious error modal.
-    AmsBackendSnapmaker backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendSnapmaker> backend_reg(nullptr, nullptr);
+    AmsBackendSnapmaker& backend = *backend_reg;
     SnapmakerTestAccess::set_current_slot(backend, 0); // active lane is 0, not 2
     SnapmakerTestAccess::handle_status(backend, make_feed_status(2, "preload_fail",
                                                                  /*filament_detected=*/false));
@@ -1019,7 +1045,8 @@ TEST_CASE_METHOD(SnapmakerFixture, "Snapmaker full load progression walks the ph
         {"load_feeding", AmsAction::LOADING, 3},  {"load_extruding", AmsAction::LOADING, 3},
         {"load_flushing", AmsAction::LOADING, 4}, {"load_finish", AmsAction::IDLE, -1},
     };
-    AmsBackendSnapmaker backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendSnapmaker> backend_reg(nullptr, nullptr);
+    AmsBackendSnapmaker& backend = *backend_reg;
     for (const auto& s : seq) {
         SnapmakerTestAccess::handle_status(backend, make_feed_status(2, s.state));
         INFO("state=" << s.state);
@@ -1035,7 +1062,8 @@ TEST_CASE_METHOD(SnapmakerFixture, "Snapmaker full manual-feed progression is vi
     // feed left the action at IDLE and the step bar dead. Now each phase shows.
     const char* seq[] = {"manual_sta_prepare", "manual_sta_homing", "manual_sta_picking",
                          "manual_sta_heating", "manual_sta_extruding"};
-    AmsBackendSnapmaker backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendSnapmaker> backend_reg(nullptr, nullptr);
+    AmsBackendSnapmaker& backend = *backend_reg;
     for (const char* state : seq) {
         SnapmakerTestAccess::handle_status(backend, make_feed_status(2, state));
         INFO("state=" << state);
@@ -1052,7 +1080,8 @@ TEST_CASE_METHOD(SnapmakerFixture,
     // sensor (e{N}_filament), a different question from "is the lane loaded".
     // The loaded latch must NOT be touched by a motion-sensor runout — filament
     // that stops moving is still loaded at the toolhead, it just ran out upstream.
-    AmsBackendSnapmaker backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendSnapmaker> backend_reg(nullptr, nullptr);
+    AmsBackendSnapmaker& backend = *backend_reg;
 
     // Active tool 0 loaded (pin state) with filament present everywhere.
     json loaded = json{
@@ -1080,7 +1109,8 @@ TEST_CASE_METHOD(SnapmakerFixture,
     // lane is actually loaded. The live bug: an unloaded lane kept its motion
     // sensor present, so the segment rendered NOZZLE and the lane looked fully
     // loaded on screen even though its Unload button was correctly disabled.
-    AmsBackendSnapmaker backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendSnapmaker> backend_reg(nullptr, nullptr);
+    AmsBackendSnapmaker& backend = *backend_reg;
 
     SECTION("loaded lane draws to the nozzle") {
         SnapmakerTestAccess::handle_status(backend, make_feed_status(2, "load_finish"));
@@ -1326,7 +1356,8 @@ TEST_CASE_METHOD(SnapmakerFixture,
     state.init_subjects(false);
     MoonrakerAPIMock api(client, state);
 
-    AmsBackendSnapmaker backend(&api, nullptr);
+    helix::test::RegisteredBackend<AmsBackendSnapmaker> backend_reg(&api, nullptr);
+    AmsBackendSnapmaker& backend = *backend_reg;
     auto store = std::make_unique<helix::ams::FilamentSlotOverrideStore>(
         &api, "snapmaker", helix::ams::LaneKeyStyle::Tool);
     FilamentSlotOverrideStoreTestAccess::set_cache_directory(*store, tmp.path);
@@ -1368,21 +1399,26 @@ TEST_CASE_METHOD(SnapmakerFixture,
     state.init_subjects(false);
     MoonrakerAPIMock api(client, state);
 
-    AmsBackendSnapmaker backend(&api, nullptr);
+    helix::test::RegisteredBackend<AmsBackendSnapmaker> backend_reg(&api, nullptr);
+    AmsBackendSnapmaker& backend = *backend_reg;
     auto store = std::make_unique<helix::ams::FilamentSlotOverrideStore>(
         &api, "snapmaker", helix::ams::LaneKeyStyle::Tool);
     FilamentSlotOverrideStoreTestAccess::set_cache_directory(*store, tmp.path);
     SnapmakerTestAccess::inject_override_store(backend, std::move(store));
 
-    SlotInfo edit;
+    SlotInfo edit = backend.get_slot_info(0);
     edit.brand = "Polymaker";
     edit.spool_name = "PolyLite PLA Orange";
     edit.spoolman_id = 42;
     edit.material = "PLA";
     edit.color_rgb = 0xFF5500;
 
-    auto err = backend.set_slot_info(0, edit, /*persist=*/true);
-    REQUIRE(err.success());
+    // The user links spool 42 and the server says what spool 42 is. A commit
+    // that moves spoolman_id states the binding and nothing else, so the brand,
+    // name, material and colour that ride in with a link need the source that
+    // actually owns them.
+    helix::test::edit_slot_as_user(backend, 0, edit);
+    helix::test::spool_states(backend, 0, edit);
 
     // Override is staged in-memory AND written to the Moonraker DB.
     auto staged = SnapmakerTestAccess::get_override(backend, 0);
@@ -1415,7 +1451,8 @@ TEST_CASE_METHOD(SnapmakerFixture,
     state.init_subjects(false);
     MoonrakerAPIMock api(client, state);
 
-    AmsBackendSnapmaker backend(&api, nullptr);
+    helix::test::RegisteredBackend<AmsBackendSnapmaker> backend_reg(&api, nullptr);
+    AmsBackendSnapmaker& backend = *backend_reg;
     auto store = std::make_unique<helix::ams::FilamentSlotOverrideStore>(
         &api, "snapmaker", helix::ams::LaneKeyStyle::Tool);
     FilamentSlotOverrideStoreTestAccess::set_cache_directory(*store, tmp.path);
@@ -1449,7 +1486,8 @@ TEST_CASE_METHOD(SnapmakerFixture,
     state.init_subjects(false);
     MoonrakerAPIMock api(client, state);
 
-    AmsBackendSnapmaker backend(&api, nullptr);
+    helix::test::RegisteredBackend<AmsBackendSnapmaker> backend_reg(&api, nullptr);
+    AmsBackendSnapmaker& backend = *backend_reg;
     auto store = std::make_unique<helix::ams::FilamentSlotOverrideStore>(
         &api, "snapmaker", helix::ams::LaneKeyStyle::Tool);
     FilamentSlotOverrideStoreTestAccess::set_cache_directory(*store, tmp.path);
@@ -1510,7 +1548,8 @@ TEST_CASE_METHOD(SnapmakerFixture, "Snapmaker first RFID UID observation does NO
     state.init_subjects(false);
     MoonrakerAPIMock api(client, state);
 
-    AmsBackendSnapmaker backend(&api, nullptr);
+    helix::test::RegisteredBackend<AmsBackendSnapmaker> backend_reg(&api, nullptr);
+    AmsBackendSnapmaker& backend = *backend_reg;
     auto store = std::make_unique<helix::ams::FilamentSlotOverrideStore>(
         &api, "snapmaker", helix::ams::LaneKeyStyle::Tool);
     FilamentSlotOverrideStoreTestAccess::set_cache_directory(*store, tmp.path);
@@ -1558,7 +1597,8 @@ TEST_CASE_METHOD(SnapmakerFixture, "Snapmaker empty RFID UID does not update bas
     state.init_subjects(false);
     MoonrakerAPIMock api(client, state);
 
-    AmsBackendSnapmaker backend(&api, nullptr);
+    helix::test::RegisteredBackend<AmsBackendSnapmaker> backend_reg(&api, nullptr);
+    AmsBackendSnapmaker& backend = *backend_reg;
     auto store = std::make_unique<helix::ams::FilamentSlotOverrideStore>(
         &api, "snapmaker", helix::ams::LaneKeyStyle::Tool);
     FilamentSlotOverrideStoreTestAccess::set_cache_directory(*store, tmp.path);
@@ -1607,7 +1647,8 @@ TEST_CASE_METHOD(SnapmakerFixture,
     state.init_subjects(false);
     MoonrakerAPIMock api(client, state);
 
-    AmsBackendSnapmaker backend(&api, nullptr);
+    helix::test::RegisteredBackend<AmsBackendSnapmaker> backend_reg(&api, nullptr);
+    AmsBackendSnapmaker& backend = *backend_reg;
     auto store = std::make_unique<helix::ams::FilamentSlotOverrideStore>(
         &api, "snapmaker", helix::ams::LaneKeyStyle::Tool);
     FilamentSlotOverrideStoreTestAccess::set_cache_directory(*store, tmp.path);
@@ -1661,7 +1702,8 @@ TEST_CASE_METHOD(SnapmakerFixture, "Snapmaker firmware POST omits unknown SUB_TY
     state.init_subjects(false);
     MoonrakerAPIMock api(client, state);
 
-    AmsBackendSnapmaker backend(&api, nullptr);
+    helix::test::RegisteredBackend<AmsBackendSnapmaker> backend_reg(&api, nullptr);
+    AmsBackendSnapmaker& backend = *backend_reg;
     auto store = std::make_unique<helix::ams::FilamentSlotOverrideStore>(
         &api, "snapmaker", helix::ams::LaneKeyStyle::Tool);
     FilamentSlotOverrideStoreTestAccess::set_cache_directory(*store, tmp.path);
@@ -1700,7 +1742,8 @@ TEST_CASE_METHOD(SnapmakerFixture,
     state.init_subjects(false);
     MoonrakerAPIMock api(client, state);
 
-    AmsBackendSnapmaker backend(&api, nullptr);
+    helix::test::RegisteredBackend<AmsBackendSnapmaker> backend_reg(&api, nullptr);
+    AmsBackendSnapmaker& backend = *backend_reg;
     auto store = std::make_unique<helix::ams::FilamentSlotOverrideStore>(
         &api, "snapmaker", helix::ams::LaneKeyStyle::Tool);
     FilamentSlotOverrideStoreTestAccess::set_cache_directory(*store, tmp.path);
@@ -1738,7 +1781,8 @@ TEST_CASE_METHOD(SnapmakerFixture, "Snapmaker firmware POST omits zero temperatu
     state.init_subjects(false);
     MoonrakerAPIMock api(client, state);
 
-    AmsBackendSnapmaker backend(&api, nullptr);
+    helix::test::RegisteredBackend<AmsBackendSnapmaker> backend_reg(&api, nullptr);
+    AmsBackendSnapmaker& backend = *backend_reg;
     auto store = std::make_unique<helix::ams::FilamentSlotOverrideStore>(
         &api, "snapmaker", helix::ams::LaneKeyStyle::Tool);
     FilamentSlotOverrideStoreTestAccess::set_cache_directory(*store, tmp.path);
@@ -1775,7 +1819,8 @@ TEST_CASE_METHOD(SnapmakerFixture,
     state.init_subjects(false);
     MoonrakerAPIMock api(client, state);
 
-    AmsBackendSnapmaker backend(&api, nullptr);
+    helix::test::RegisteredBackend<AmsBackendSnapmaker> backend_reg(&api, nullptr);
+    AmsBackendSnapmaker& backend = *backend_reg;
     auto store = std::make_unique<helix::ams::FilamentSlotOverrideStore>(
         &api, "snapmaker", helix::ams::LaneKeyStyle::Tool);
     FilamentSlotOverrideStoreTestAccess::set_cache_directory(*store, tmp.path);
@@ -1806,7 +1851,8 @@ TEST_CASE_METHOD(SnapmakerFixture,
     state.init_subjects(false);
     MoonrakerAPIMock api(client, state);
 
-    AmsBackendSnapmaker backend(&api, nullptr);
+    helix::test::RegisteredBackend<AmsBackendSnapmaker> backend_reg(&api, nullptr);
+    AmsBackendSnapmaker& backend = *backend_reg;
     auto store = std::make_unique<helix::ams::FilamentSlotOverrideStore>(
         &api, "snapmaker", helix::ams::LaneKeyStyle::Tool);
     FilamentSlotOverrideStoreTestAccess::set_cache_directory(*store, tmp.path);
@@ -1853,7 +1899,8 @@ TEST_CASE_METHOD(SnapmakerFixture,
     state.init_subjects(false);
     MoonrakerAPIMock api(client, state);
 
-    AmsBackendSnapmaker backend(&api, nullptr);
+    helix::test::RegisteredBackend<AmsBackendSnapmaker> backend_reg(&api, nullptr);
+    AmsBackendSnapmaker& backend = *backend_reg;
     auto store = std::make_unique<helix::ams::FilamentSlotOverrideStore>(
         &api, "snapmaker", helix::ams::LaneKeyStyle::Tool);
     FilamentSlotOverrideStoreTestAccess::set_cache_directory(*store, tmp.path);
@@ -1922,7 +1969,8 @@ TEST_CASE_METHOD(
     ps.update_from_status(deactivated);
     REQUIRE(ps.is_sdcard_active() == false);
 
-    AmsBackendSnapmaker backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendSnapmaker> backend_reg(nullptr, nullptr);
+    AmsBackendSnapmaker& backend = *backend_reg;
 
     AmsError captured{AmsResult::RESUME_REQUIRES_RESTART}; // poison value
     bool callback_fired = false;
@@ -1969,7 +2017,8 @@ TEST_CASE_METHOD(SnapmakerFixture, "Snapmaker prepare_for_resume authors a trans
     helix::ui::ensure_translation_loaded("ru");
     lv_translation_set_language("ru");
 
-    AmsBackendSnapmaker backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendSnapmaker> backend_reg(nullptr, nullptr);
+    AmsBackendSnapmaker& backend = *backend_reg;
 
     AmsError captured{AmsResult::SUCCESS};
     bool callback_fired = false;
@@ -2000,7 +2049,8 @@ TEST_CASE_METHOD(SnapmakerFixture, "Snapmaker prepare_for_resume proceeds normal
     ps.update_from_status(active);
     REQUIRE(ps.is_sdcard_active() == true);
 
-    AmsBackendSnapmaker backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendSnapmaker> backend_reg(nullptr, nullptr);
+    AmsBackendSnapmaker& backend = *backend_reg;
 
     AmsError captured{AmsResult::RESUME_REQUIRES_RESTART}; // start with a poison value
     bool callback_fired = false;
@@ -2030,7 +2080,8 @@ TEST_CASE_METHOD(SnapmakerFixture,
     // Backend constructed with nullptr api_ — proves we never reach the gcode
     // chain. Default sensor_filament_present_ is true for all slots, so passing
     // a valid slot_index hits the "skip recovery" branch.
-    AmsBackendSnapmaker backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendSnapmaker> backend_reg(nullptr, nullptr);
+    AmsBackendSnapmaker& backend = *backend_reg;
 
     AmsError captured{AmsResult::NOT_CONNECTED}; // poison
     bool callback_fired = false;
@@ -2057,7 +2108,8 @@ TEST_CASE_METHOD(
                    {"virtual_sdcard", {{"is_active", true}}}};
     ps.update_from_status(active);
 
-    AmsBackendSnapmaker backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendSnapmaker> backend_reg(nullptr, nullptr);
+    AmsBackendSnapmaker& backend = *backend_reg;
 
     // Force the sensor-runout-latched branch: filament reads as absent on
     // slot 0. With api_=nullptr the backend should return NOT_CONNECTED
@@ -2265,7 +2317,8 @@ std::vector<int> identity_map() {
 
 TEST_CASE_METHOD(SnapmakerFixture, "Snapmaker records the routing a configured task ran with",
                  "[ams][snapmaker][reprint]") {
-    AmsBackendSnapmaker backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendSnapmaker> backend_reg(nullptr, nullptr);
+    AmsBackendSnapmaker& backend = *backend_reg;
 
     // T0 crosses over to head 2, T2 to head 0 — the file that cannot be
     // reprinted correctly today.

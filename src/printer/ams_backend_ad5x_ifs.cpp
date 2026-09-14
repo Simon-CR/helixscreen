@@ -16,6 +16,7 @@
 #include "i_moonraker_api.h"
 #include "i_moonraker_client.h"
 #include "json_utils.h"
+#include "lane_legacy_migration.h"
 #include "lane_source_store.h"
 #include "lane_translation.h"
 #include "lvgl/src/others/translation/lv_translation.h"
@@ -231,6 +232,8 @@ void AmsBackendAd5xIfs::on_started() {
         // the parse path (which reads overrides_ under mutex_) sees a coherent
         // map rather than a torn write.
         auto loaded = override_store_->load_blocking();
+        helix::ams::ingest_legacy_records(*override_store_, helix::ams::LegacyLockKeys::LaneData,
+                                          backend_index());
         const auto loaded_count = loaded.size();
         {
             std::lock_guard<std::mutex> lock(mutex_);
@@ -1231,56 +1234,14 @@ void AmsBackendAd5xIfs::update_slot_from_state(int slot_index) {
         helix::ams::ingest(lane_id(slot_index), cache);
     }
 
-    // Layer user-configured overrides on top of firmware-reported data. Called
-    // last so overrides win for any non-default field. Callers hold mutex_,
-    // which also covers overrides_ writes from on_started() and set_slot_info()
-    // — see apply_overrides() below for the invariant.
-    apply_overrides(entry->info, slot_index);
-}
-
-void AmsBackendAd5xIfs::apply_overrides(SlotInfo& slot, int slot_index) {
-    // overrides_ is mutated in on_started() (initial load) and set_slot_info()
-    // (persisted user edit). Both writers hold mutex_, and every caller of
-    // apply_overrides runs inside update_slot_from_state() under mutex_ — so
-    // the map is implicitly lock-protected here. If a slot has no override
-    // entry, this is a zero-cost hash lookup followed by early return — safe
-    // to call inside the hot parse path. The whole spec §5 policy + the
-    // re-bind/eject rules live in helix::ams::merge_override — the single
-    // implementation every backend shares. Rule 1 (re-bind) is NOT gated by
-    // the capability: it can fire on any backend whose firmware reports a
-    // positive spool id disagreeing with the override (AFC, Happy Hare,
-    // flat-schema CFS). IFS firmware never reports one, so Rule 1 cannot
-    // fire here today — but that is a fact about this firmware, not what
-    // the capability gates. Rule 2 (eject) IS what
-    // printer_reports_spool_ids() gates (base false here: 0 is IFS's
-    // everyday reading, never an eject), and the erase branch is correct
-    // tomorrow if a firmware ever starts reporting ids.
-    auto it = overrides_.find(slot_index);
-    if (it == overrides_.end())
-        return;
-    helix::ams::MergeOptions opts;
-    opts.printer_reports_spool_ids = printer_reports_spool_ids();
-    opts.keep_spool_info_on_eject =
-        helix::SettingsManager::instance().get_ams_keep_spool_info_on_eject();
-    // Own-write echo suppression (SlotFingerprintTracker::expect()
-    // semantics): Rule 1 must not read an in-flight stale firmware id as an
-    // external re-bind. IFS never writes firmware ids, so this is always
-    // {0, 0} today — the call keeps one shape across backends.
-    const auto [own_old_id, own_new_id] = own_write_expectation(slot_index, slot.spoolman_id);
-    opts.suppress_rebind_firmware_old_id = own_old_id;
-    opts.suppress_rebind_firmware_new_id = own_new_id;
-    const auto result = helix::ams::merge_override(slot, it->second, opts);
-    if (result.cleared_rebind || result.cleared_eject) {
-        overrides_.erase(it);
-        if (override_store_) {
-            const std::string tag = backend_log_tag();
-            override_store_->clear_async(slot_index, [tag, slot_index](bool ok, std::string err) {
-                if (!ok) {
-                    spdlog::warn("{} clear_async failed for slot {}: {}", tag, slot_index, err);
-                }
-            });
-        }
-    }
+    // Lay the lane's resolved values over the struct built above. Only a field
+    // some source observed is written; one nobody observed keeps the firmware
+    // value read here. Of the sources, a DECLARED field outranks the vendor
+    // cache this frame just filed, and a merely remembered one does not.
+    // Callers hold mutex_, which also covers overrides_ writes from
+    // on_started() and set_slot_info(); see apply_overrides() below for the
+    // invariant.
+    apply_resolved_lane(entry->info, slot_index);
 }
 
 bool AmsBackendAd5xIfs::check_external_color_change(int slot_index,
@@ -1476,6 +1437,22 @@ bool AmsBackendAd5xIfs::sync_override_to_firmware_locked(int slot_index, uint32_
     bool changed = helix::ams::mirror_firmware_to_lane_data(
         override_store_.get(), overrides_, slot_index, firmware_color, firmware_material,
         /*slot_has_filament=*/true, helix::ams::MirrorPolicy::OverwriteAlways, backend_log_tag());
+
+    // The lane's stored declaration of what the mirror just rewrote goes with
+    // it, or the two stores disagree and the stronger record paints a value the
+    // override has stopped holding. Exactly the fields the OverwriteAlways
+    // mirror rewrites: a locked field is the user still standing behind their
+    // choice, the mirror skips it, and firmware does not get to retract it.
+    //
+    // Not gated on `changed`, which says the override needed moving. The lane
+    // is a separate store and can be stale on its own, and this path runs only
+    // where firmware has deliberately restated the field.
+    auto it = overrides_.find(slot_index);
+    RetractedFields restated;
+    restated.color = it == overrides_.end() || !it->second.user_locked_color;
+    restated.material = it == overrides_.end() || !it->second.user_locked_material;
+    retract_lane_declaration_locked(slot_index, restated);
+
     if (!changed)
         return false;
 
@@ -1490,11 +1467,15 @@ bool AmsBackendAd5xIfs::sync_override_to_firmware_locked(int slot_index, uint32_
 void AmsBackendAd5xIfs::clear_override_locked(int slot_index, SlotInfo& slot) {
     // Caller must hold mutex_. Erases the in-memory override, resets
     // override-exclusive fields on the live SlotInfo (so the next
-    // get_slot_info sees cleared state — apply_overrides is a no-op for this
-    // slot after erase), and fires the async store delete. Firmware-sourced
+    // get_slot_info sees cleared state), and fires the async store delete.
+    // Firmware-sourced
     // fields (color_rgb, material, mapped_tool, status) are left alone —
     // update_slot_from_state has already refreshed them.
     overrides_.erase(slot_index);
+    // The lane's own records go with it: the erase above and this are one
+    // clear in two stores, and a clear that reached only one would leave
+    // resolve() still reporting the identity just removed.
+    helix::ams::reset_lane_to_machine_readings(lane_id(slot_index));
 
     slot.brand.clear();
     slot.spool_name.clear();
@@ -1521,6 +1502,82 @@ void AmsBackendAd5xIfs::clear_override_locked(int slot_index, SlotInfo& slot) {
                 spdlog::warn("{} clear_async failed for slot {}: {}", tag, slot_index, err);
             }
         });
+    }
+}
+
+void AmsBackendAd5xIfs::retract_lane_declaration_locked(int slot_index, RetractedFields fields) {
+    // Caller holds mutex_. See the header for why both stores have to move
+    // together.
+    if (!fields.color && !fields.material && !fields.catalog) {
+        return;
+    }
+    helix::ams::retract_lane_declarations(lane_id(slot_index),
+                                          [&fields](helix::ams::Observation& kept) {
+                                              if (fields.color) {
+                                                  kept.color_rgb.reset();
+                                                  // The name travels with the colour it names: a
+                                                  // swatch labelled with a different colour's name
+                                                  // contradicts itself.
+                                                  kept.color_name.reset();
+                                              }
+                                              if (fields.material) {
+                                                  kept.material.reset();
+                                              }
+                                              if (fields.catalog) {
+                                                  kept.catalog_id.reset();
+                                                  kept.product_name.reset();
+                                              }
+                                          });
+}
+
+void AmsBackendAd5xIfs::release_color_material_locks_locked(int slot_index,
+                                                            helix::ams::FilamentSlotOverride& ovr,
+                                                            ReleasedValues disposition) {
+    // Caller holds mutex_. Both stores, always: see the header for why one of
+    // them on its own leaves the released values still painting.
+    ovr.user_locked_color = false;
+    ovr.user_locked_material = false;
+    if (disposition == ReleasedValues::Strip) {
+        // apply_overrides only masks a field the override still carries a real
+        // value for, so clearing these is what lets the firmware-truth
+        // color_rgb/material show through on this frame.
+        ovr.color_set = false;
+        ovr.color_rgb = 0;
+        ovr.color_name.clear();
+        ovr.material.clear();
+        // The catalog pick is scoped to a MATERIAL: "sunlu-pla-plus-2-0" only
+        // makes sense while the lane is PLA, and a Strip release is firmware
+        // re-authoring the material. setup_details_selector() seeds the type
+        // dropdown from catalog_id first, so a stale id drags the editor back
+        // to the old material family and contradicts the firmware truth just
+        // accepted.
+        ovr.catalog_id.clear();
+        ovr.product_name.clear();
+    }
+
+    // The lane's own records are trimmed to match, whatever the disposition:
+    // the values Keep leaves standing are the mirror's to refresh, and a
+    // declaring record outranks the vendor cache the mirror feeds.
+    RetractedFields released;
+    released.color = true;
+    released.material = true;
+    // The catalog pick goes with the material it is scoped to, for the same
+    // reason it goes from the override above.
+    released.catalog = disposition == ReleasedValues::Strip;
+    retract_lane_declaration_locked(slot_index, released);
+
+    // Persist so a restart reloads the released record rather than the locked
+    // one. Capture by value: the callback can fire long after this returns.
+    if (override_store_) {
+        helix::ams::FilamentSlotOverride snapshot = ovr;
+        const std::string tag = backend_log_tag();
+        override_store_->save_async(
+            slot_index, snapshot, [tag, slot_index](bool success, std::string err) {
+                if (!success) {
+                    spdlog::warn("{} lock release persist failed for slot {}: {}", tag, slot_index,
+                                 err);
+                }
+            });
     }
 }
 
@@ -1558,45 +1615,13 @@ void AmsBackendAd5xIfs::release_locked_override_keep_identity_locked(int slot_in
                  "can't carry (#1071-style retention, Bug B)",
                  backend_log_tag(), slot_index);
 
-    // Release the user-locks and strip the firmware-carryable override fields.
-    // apply_overrides only masks a field when the override still carries a real
-    // value (non-empty string / color_set / >0 id), so clearing these lets the
-    // firmware-truth color_rgb/material (refreshed by update_slot_from_state)
-    // show through. The identity fields (brand, spool_name, spoolman_id,
-    // spoolman_vendor_id, weights) stay put.
-    ovr.user_locked_color = false;
-    ovr.user_locked_material = false;
-    ovr.color_set = false;
-    ovr.color_rgb = 0;
-    ovr.color_name.clear();
-    ovr.material.clear();
-    // The catalog pick is scoped to a MATERIAL — "sunlu-pla-plus-2-0" only makes
-    // sense while the lane is PLA. This path exists because firmware just
-    // re-authored the material, so the pick goes with it. Keeping it would be
-    // worse than losing it: setup_details_selector() seeds the type dropdown
-    // from catalog_id first, so a stale id would drag the editor back to the old
-    // material family and contradict the firmware truth we just accepted.
-    // Deliberately NOT counted in has_identity above for the same reason — it is
-    // not firmware-uncarryable metadata like brand/spool_name, it is material-
-    // derived.
-    ovr.catalog_id.clear();
-    ovr.product_name.clear();
-
-    // Persist the trimmed override so a restart reloads the retained identity
-    // (and the released locks) instead of the pre-edit locked record. Capture
-    // by value — the callback can fire long after this returns.
-    if (override_store_) {
-        helix::ams::FilamentSlotOverride snapshot = ovr;
-        const std::string tag = backend_log_tag();
-        override_store_->save_async(slot_index, snapshot,
-                                    [tag, slot_index](bool ok, std::string err) {
-                                        if (!ok) {
-                                            spdlog::warn("{} identity-retain persist failed for "
-                                                         "slot {}: {}",
-                                                         tag, slot_index, err);
-                                        }
-                                    });
-    }
+    // Strip the firmware-carryable values along with the locks: firmware has
+    // just re-authored colour and material, so this frame's truth paints
+    // immediately rather than waiting for a mirror pass. The identity fields
+    // (brand, spool_name, spoolman_id, spoolman_vendor_id, weights) stay put.
+    // catalog_id is material-derived rather than firmware-uncarryable metadata,
+    // which is why has_identity above does not count it.
+    release_color_material_locks_locked(slot_index, ovr, ReleasedValues::Strip);
 }
 
 void AmsBackendAd5xIfs::unlock_auto_tracked_override_on_insert_locked(int slot_index) {
@@ -1624,23 +1649,11 @@ void AmsBackendAd5xIfs::unlock_auto_tracked_override_on_insert_locked(int slot_i
                  "unlocking auto-tracked material/color so the new spool's firmware "
                  "type/color refresh (#1065)",
                  backend_log_tag(), slot_index);
-    ovr.user_locked_material = false;
-    ovr.user_locked_color = false;
-    // Persist the unlock so a restart doesn't reload the pessimistic
-    // !material.empty() lock default and re-stick the old type. The subsequent
-    // update_slot_from_state -> auto-mirror will save again once firmware truth
-    // refreshes the material/color; this first save just makes the unlock
-    // durable even if the same spool goes back in and no material delta follows.
-    if (override_store_) {
-        helix::ams::FilamentSlotOverride snapshot = ovr;
-        const std::string tag = backend_log_tag();
-        override_store_->save_async(
-            slot_index, snapshot, [tag, slot_index](bool success, const std::string& err) {
-                if (!success) {
-                    spdlog::warn("{} unlock persist failed for slot {}: {}", tag, slot_index, err);
-                }
-            });
-    }
+    // Keep the values: the OverwriteAlways mirror refreshes them to the new
+    // spool's firmware truth on the next parse, and the released record is
+    // persisted so a restart cannot reload the pessimistic !material.empty()
+    // lock default and re-stick the old type.
+    release_color_material_locks_locked(slot_index, ovr, ReleasedValues::Keep);
 }
 
 void AmsBackendAd5xIfs::clear_slot_override(int slot_index) {
@@ -2706,6 +2719,11 @@ AmsError AmsBackendAd5xIfs::set_slot_info(int slot_index, const SlotInfo& info, 
             return AmsErrorHelper::invalid_slot(lane_noun(), slot_index, NUM_PORTS - 1);
         }
 
+        // The port as it stood before this edit. stage_user_override needs it to
+        // tell what the user moved from what the editor merely carried back, so
+        // it has to be taken before the writes below.
+        const SlotInfo prior_slot = entry->info;
+
         // Mark slot dirty to prevent parse_save_variables from overwriting our edit
         dirty_[idx] = true;
 
@@ -2770,10 +2788,11 @@ AmsError AmsBackendAd5xIfs::set_slot_info(int slot_index, const SlotInfo& info, 
         // down, so there's only one place that mutates overrides_ for
         // persist=true set_slot_info.
         if (persist) {
-            // The normalized material, not the raw user-typed string: the
-            // on-disk record has to carry a firmware-valid value.
-            overrides_[slot_index] =
-                helix::ams::user_override_from_slot_info(info, normalized_material);
+            // normalize_material() was already applied to the cached materials_
+            // copy; record that instead of the raw user-typed string so the
+            // on-disk record carries a firmware-valid value.
+            helix::ams::stage_user_override(overrides_, slot_index, prior_slot, info,
+                                            normalized_material);
         }
 
         // Treat the user's chosen color as the new "firmware truth" baseline
@@ -2925,8 +2944,8 @@ AmsError AmsBackendAd5xIfs::set_slot_info(int slot_index, const SlotInfo& info, 
     return AmsErrorHelper::success();
 }
 
-void AmsBackendAd5xIfs::update_slot_weight(int slot_index, float remaining_weight_g,
-                                           float total_weight_g, bool persist) {
+void AmsBackendAd5xIfs::update_slot_weight_impl(int slot_index, float remaining_weight_g,
+                                                float total_weight_g, bool persist) {
     if (slot_index < 0 || slot_index >= NUM_PORTS) {
         spdlog::warn("{} update_slot_weight: invalid slot {}", backend_log_tag(), slot_index);
         return;

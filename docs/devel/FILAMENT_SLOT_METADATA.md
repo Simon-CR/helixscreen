@@ -180,7 +180,7 @@ own hardware-event signal:
 
 | Backend | Backend ID | Parse hook | Hardware-event signal | Override-exclusive fields |
 |---------|------------|------------|-----------------------|---------------------------|
-| `AmsBackendAd5xIfs` | `ifs` | `update_slot_from_state` → `apply_overrides` | `Adventurer5M.json` color RGB change | brand, spool_name, spoolman_id, spoolman_vendor_id, weights, color_name |
+| `AmsBackendAd5xIfs` | `ifs` | `update_slot_from_state` → `apply_resolved_lane` | `Adventurer5M.json` color RGB change | brand, spool_name, spoolman_id, spoolman_vendor_id, weights, color_name |
 | `AmsBackendSnapmaker` | `snapmaker` | tail loop at end of `handle_status_update` | `filament_detect.info[ch].CARD_UID` byte-array → canonicalized string | spool_name, spoolman_id, spoolman_vendor_id, remaining_weight_g |
 | `AmsBackendAce` | `ace` | `parse_ace_object` per-slot loop | Status transition: EMPTY/UNKNOWN → present | brand, spool_name, spoolman_id, spoolman_vendor_id, weights, color_name |
 | `AmsBackendCfs` | `cfs` | `handle_status_update` tail loop | Composite `material_type\|color_value` fingerprint | spool_name, spoolman_id, spoolman_vendor_id, remaining_weight_g |
@@ -267,30 +267,69 @@ incomplete during them. AFC/HH overrides go to a private namespace
 
 ## 5. Merge policy
 
-The merge rule (firmware vs override) is documented in
+The merge rule (firmware vs stored record) is documented in
 [`../specs/filament_slots.md`](../specs/filament_slots.md#5-merge-policy).
-Implementation-side there is exactly **one** implementation:
-`helix::ams::merge_override()` (`include/filament_slot_override_store.h` +
-`src/printer/filament_slot_override_store.cpp`). All six backends'
-`apply_overrides` delegate to it (CFS keeps only its presence-promotion tail
-locally) — the per-backend hand-rolled field-walk loops are gone. It carries
-spec §5 (override wins field-by-field, sentinels fall through) plus the two
-cross-field rules that can drop the **whole record** instead of merging:
+Implementation-side a stored record is not merged into a `SlotInfo` at all. It
+is translated into per-source lane records, and the resolver ranks those
+against what firmware states on the current frame.
+
+`ingest_legacy_records()`
+(`src/printer/lane_legacy_migration.cpp#ingest_legacy_records`) runs once per backend
+from its init path, immediately after `load_blocking()`. It hands each parsed
+record to `sources_from_record()`
+(`src/printer/lane_translation.cpp#sources_from_record`), which splits one
+record into the several sources it may legitimately speak for, and files each
+through that source's own funnel: the `LocalUser` part through
+`commit_slot_edit()`, everything else through `ingest()`. The split is by what
+the record says about authorship, not by whether a field holds a value. The
+first row below settles a linked record on its own; the rest are how an
+unlinked one is split:
+
+| What the record holds | Filed as |
+|-----------------------|----------|
+| a `spool_id` above zero | `Spoolman`, for the whole identity: a linked lane's identity is the server's statement, and its lock keys only record that a colour rode in on the binding |
+| a colour or material beside a `helix_locked_*` key present and true **on the wire** | `LocalUser` |
+| a field named in the record's own `helix_declared` set | `LocalUser`, an emptied value included: the set is the one home that can say a user cleared a field |
+| `catalog_id` / `product_name` | `LocalUser` regardless of the lock keys: firmware has no concept of a catalog product, so a value there can only be a pick |
+| anything else the record carries | `Remembered`, which the resolver ranks **below** the current firmware frame |
+| `remaining_weight_g` / `total_weight_g` | `Metered`, always: a weight is a measurement whoever wrote it |
+
+A record written before `helix_declared` existed carries no set, and its brand,
+spool name and vendor id count as declared only beside a true lock flag on the
+same record. That flag is the evidence a person edited the record at all, since
+the auto-mirror writes both flags false and can populate none of those three.
+
+Each backend's parse then ends with `apply_resolved_lane()`
+(`include/ams_backend.h#AmsBackend/apply_resolved_lane`), which lays
+`resolve()`'s answer onto the `SlotInfo` the parse just built. Only fields some
+source actually observed are written, so a field no source spoke to keeps the
+backend's own value, and the fields the resolver does not own (tool mapping,
+extruder name, endless-spool group, error, environment, remaining length, temps,
+indices) are left exactly as the backend set them.
+
+Beside that ranking sit the two cross-field rules that can invalidate a lane's
+declared identity outright. Both are `classify_binding()`
+(`src/printer/lane_binding.cpp#classify_binding`), a pure function over the lane's
+sources and one `BindingReading`; `reconcile_binding()` applies its verdict by
+dropping the records that declared the broken binding (`Spoolman`, `LocalUser`
+and `Remembered`, leaving `Sensed`, `VendorCache` and `Metered` alone), and the
+backend clears its persisted copy with `clear_persisted_override()` so the
+record does not come back at the next start.
 
 - **Rule 1 — external re-bind.** Firmware reports a positive `spoolman_id`
-  different from the override's → the whole record drops, firmware truth
-  paints. Not gated by any capability or setting; can fire on any backend
-  whose firmware reports a positive spool id (AFC, Happy Hare, and
-  flat-schema CFS, which parses a per-slot id). Our own in-flight writes are
-  exempt: backends record them via `AmsBackend::record_own_spool_write()` and
-  feed `AmsBackend::own_write_expectation()` into `MergeOptions`'
-  `suppress_rebind_firmware_{old,new}_id` — the id firmware last reported
-  before the write and the just-written id don't fire; a third id fires and
-  consumes the expectation.
+  different from the one the lane's declaring sources name → verdict `Rebound`.
+  Not gated by any capability or setting; can fire on any backend whose
+  firmware reports a positive spool id (AFC, Happy Hare, and flat-schema CFS,
+  which parses a per-slot id). Our own in-flight writes are exempt: backends
+  call `AmsBackend::record_own_spool_write()` at the write site, and
+  `AmsBackend::reconcile_lane_binding()` feeds
+  `AmsBackend::own_write_expectation()` into `BindingReading`'s own-write pair:
+  the id firmware last reported before the write and the just-written id do not
+  fire; a third id fires and consumes the expectation.
 - **Rule 2 — eject.** `AmsBackend::printer_reports_spool_ids()` (true only
   on AFC and Happy Hare) arms **only** this rule: there a firmware id ≤ 0
-  while the override holds a positive id is the plugin's own eject signal,
-  and it clears the record only when the `ams/keep_spool_info_on_eject`
+  while the lane still declares a positive id is the plugin's own eject
+  signal, and it clears only when the `ams/keep_spool_info_on_eject`
   setting is off (default on — "Keep Spool Info on Eject" toggle in the AMS
   Management overlay, shown only where the capability is true). Caveat: with
   AFC's own retention on (`remember_spool = true` everywhere) firmware never
@@ -298,19 +337,35 @@ cross-field rules that can drop the **whole record** instead of merging:
   `printer_retains_spool_info()` detects that shape and the overlay disables
   the toggle with a note instead.
 
-Sentinel values that fall through to firmware:
+The id `classify_binding()` compares against must be firmware's own standing
+word for the lane, never a `SlotInfo` field: `apply_resolved_lane()` writes the
+lane's resolved `spoolman_id` back into that struct, so a caller reading it
+would compare a record against itself and no binding could ever look broken.
 
-| Field type | "Unset" sentinel |
-|------------|------------------|
+**Exactly one reader may consume an own-write expectation.**
+`own_write_expectation()` is single-shot: the frame that matches the written id
+erases the entry. It has to be consumed at the site that sees firmware's own
+spool id and nowhere else, or the expectation ends an id early and the next
+frame reads our own in-flight write as somebody else's re-bind.
+`reconcile_lane_binding()` is its only caller, so that holds by construction
+rather than by discipline.
+
+What counts as a value the record "carries" at all, per field type:
+
+| Field type | Treated as "nothing here" |
+|------------|---------------------------|
 | `std::string` | empty string |
 | `int` (ids) | 0 |
-| `float` (weights) | -1.0 |
-| `uint32_t` (color_rgb) | 0 |
+| `float` (weights) | negative |
+| `uint32_t` (`color_rgb`) | `color_set` false, or the value `AMS_DEFAULT_SLOT_COLOR` (`0x808080`), which is where a cleared slot and a colourless record both land |
 
-The sentinels match what `FilamentSlotOverride` emits as "missing" on
-serialization — ensuring a round-trip through JSON preserves the
-override-vs-firmware distinction. When adding new fields to the struct, pick
-a sentinel that a user could never legitimately enter for that field.
+`color_set` is why colour needs two tests rather than one: pure black is a real
+filament colour, so `color_rgb == 0` cannot mean "unset". `is_declarable_color()`
+(`src/printer/lane_translation.cpp#is_declarable_color`) is the second, and it is
+deliberately a struct-side answer only. A producer writing `#808080` on a *wire*
+is stating a grey, which `read_lane_color()` reads as an observation. When adding
+a field to the struct, pick a "nothing here" value a user could never legitimately
+enter for it.
 
 ---
 
@@ -326,11 +381,11 @@ Four distinct clear paths, handled separately:
   "different spool". The baseline is recorded on first observation after
   startup and NEVER triggers a clear on its own — otherwise every app launch
   would wipe overrides.
-- **Merge-rule clears (re-bind / eject).** The two cross-field rules in
-  `merge_override()` (§5) can drop the whole record during `apply_overrides`:
-  an external re-bind (firmware reports a different positive spool id), or —
-  only where `printer_reports_spool_ids()` is true and the setting is off —
-  a firmware eject signal.
+- **Binding-rule clears (re-bind / eject).** The two cross-field rules
+  `classify_binding()` decides (§5) drop the lane's declaring sources and the
+  backend's persisted record with them: an external re-bind (firmware reports a
+  different positive spool id), or, only where `printer_reports_spool_ids()` is
+  true and the setting is off, a firmware eject signal.
 - **Self-wipe prevention.** When the user edits the color on IFS, the IFS
   backend pre-updates `last_firmware_color_` to the user's new RGB before
   pushing the override. Without this, the next `Adventurer5M.json` read
@@ -431,4 +486,6 @@ re-editing every slot:
 - **Source anchors**:
   - Struct: `include/filament_slot_override.h` (`FilamentSlotOverride`)
   - Store: `include/filament_slot_override_store.h` + `src/printer/filament_slot_override_store.cpp` — `load_blocking` (line 565), `save_async` (line 663), `clear_async` (line 717), `cache_path` (line 345), `try_migrate_legacy` (line 385), `read_cache` (line 243), `write_cache_slot` (line 150)
-  - Per-backend `apply_overrides` helpers: `src/printer/ams_backend_ad5x_ifs.cpp`, `src/printer/ams_backend_snapmaker.cpp`, `src/printer/ams_backend_ace.cpp`, `src/printer/ams_backend_cfs.cpp`
+  - Record to lane sources: `src/printer/lane_translation.cpp` (`sources_from_record`), `src/printer/lane_legacy_migration.cpp` (`ingest_legacy_records`)
+  - Lane sources to `SlotInfo`: `src/printer/lane_resolver.cpp` (`resolve`), `src/printer/lane_apply.cpp` (`apply_resolved`), `src/printer/ams_backend.cpp` (`AmsBackend::apply_resolved_lane`)
+  - Binding rules: `src/printer/lane_binding.cpp` (`classify_binding`, `reconcile_binding`)

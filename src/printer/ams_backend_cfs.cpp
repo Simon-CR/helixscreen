@@ -14,6 +14,7 @@
 #include "filament_slot_override_store.h"
 #include "json_utils.h"
 #include "klipper_error_table.h"
+#include "lane_legacy_migration.h"
 #include "lane_source_store.h"
 #include "lane_translation.h"
 #include "lvgl/src/others/translation/lv_translation.h"
@@ -344,6 +345,8 @@ void AmsBackendCfs::on_started() {
         // in under mutex_. Holding mutex_ during the swap ensures the parse
         // path sees a coherent map rather than a torn write.
         auto loaded = override_store_->load_blocking();
+        helix::ams::ingest_legacy_records(*override_store_, helix::ams::LegacyLockKeys::LaneData,
+                                          backend_index());
         const auto loaded_count = loaded.size();
         {
             std::lock_guard<std::mutex> lock(mutex_);
@@ -1299,6 +1302,19 @@ void AmsBackendCfs::handle_status_update(const nlohmann::json& notification) {
                     if (slot.spoolman_id > 0)
                         cache.spoolman_id = slot.spoolman_id;
                     helix::ams::ingest(lane, cache);
+
+                    // Whether the identity declared on this bay still names
+                    // what is in it. The id is new_info's, which is the flat
+                    // schema's own parse; the stock schema states none and
+                    // leaves this at 0, where the re-bind arm cannot fire.
+                    // Nor can the eject arm: printer_reports_spool_ids() is
+                    // false here, so a bay reading 0 is the everyday reading
+                    // and never an eject.
+                    if (reconcile_lane_binding(slot.global_index, slot.spoolman_id) !=
+                        helix::ams::BindingVerdict::Holds) {
+                        helix::ams::clear_persisted_override(override_store_.get(), overrides_,
+                                                             slot.global_index, backend_log_tag());
+                    }
                 }
             }
 
@@ -1604,7 +1620,7 @@ void AmsBackendCfs::handle_status_update(const nlohmann::json& notification) {
                             slot.material, slot.status == SlotStatus::AVAILABLE,
                             helix::ams::MirrorPolicy::FillUnsetOnly, backend_log_tag());
                     }
-                    apply_overrides(slot, global_idx);
+                    apply_resolved_lane(slot, global_idx);
                 }
             }
         }
@@ -2045,6 +2061,11 @@ AmsError AmsBackendCfs::set_slot_info(int slot_index, const SlotInfo& info, bool
         // in-flight frames will keep reporting until that echo lands.
         const int previous_firmware_id = target->spoolman_id;
 
+        // The bay as it stood before this edit. stage_user_override needs it to
+        // tell what the user moved from what the editor merely carried back, so
+        // it has to be taken before the writes below.
+        const SlotInfo prior_slot = *target;
+
         // Update in-memory slot state so get_slot_info returns the edit
         // immediately — covers every SlotInfo field the caller may have set,
         // including persist=false previews that must survive until the next
@@ -2083,7 +2104,7 @@ AmsError AmsBackendCfs::set_slot_info(int slot_index, const SlotInfo& info, bool
         // registers the expected post-write fingerprints with rfid_tracker_
         // before dispatching the gcode.
         if (persist) {
-            overrides_[slot_index] = helix::ams::user_override_from_slot_info(info, info.material);
+            helix::ams::stage_user_override(overrides_, slot_index, prior_slot, info);
         }
 
         // Record our own SPOOLMAN_ID write for the fork dialect (the only
@@ -3686,67 +3707,6 @@ AmsError AmsBackendCfs::execute_device_action(const std::string& action_id,
 // Override layering (shared FilamentSlotOverrideStore)
 // ============================================================================
 
-void AmsBackendCfs::apply_overrides(SlotInfo& slot, int slot_index) {
-    // Every caller of apply_overrides runs under mutex_ (handle_status_update
-    // post-parse loop). overrides_ writers also hold mutex_, so the map read
-    // here is implicitly lock-protected. Zero-cost hash miss when the slot
-    // has no override — safe in the hot parse path. The whole spec §5 policy
-    // + the re-bind/eject rules live in helix::ams::merge_override — the
-    // single implementation every backend shares. Rule 1 (re-bind) is NOT
-    // gated by printer_reports_spool_ids(): flat-schema CFS (the community
-    // fork) parses a per-slot spoolman_id, so a firmware id disagreeing with
-    // the override fires Rule 1 there — fork users get the #1281 fix. Rule 2
-    // (eject) IS what the capability gates, and it stays inert here (base
-    // false): on stock CFS firmware never reports ids and 0 is the everyday
-    // reading. Our own fork writes are protected by the own-write
-    // expectation recorded in set_slot_info.
-    auto it = overrides_.find(slot_index);
-    if (it == overrides_.end())
-        return;
-    helix::ams::MergeOptions opts;
-    opts.printer_reports_spool_ids = printer_reports_spool_ids();
-    opts.keep_spool_info_on_eject = SettingsManager::instance().get_ams_keep_spool_info_on_eject();
-    // Read the override BEFORE any erase — merge_override below needs it.
-    const auto& o = it->second;
-    // Own-write echo suppression (SlotFingerprintTracker::expect()
-    // semantics): the flat-schema fork re-writes SPOOLMAN_ID via
-    // _BOX_SLOT_SET, and in-flight frames keep reporting the old firmware
-    // id for a poll or two — Rule 1 must not read that as an external
-    // re-bind. Inert on stock CFS (never reports a positive id).
-    const auto [own_old_id, own_new_id] = own_write_expectation(slot_index, slot.spoolman_id);
-    opts.suppress_rebind_firmware_old_id = own_old_id;
-    opts.suppress_rebind_firmware_new_id = own_new_id;
-    const auto result = helix::ams::merge_override(slot, o, opts);
-
-    // Presence is deliberately NOT touched here. An override says what the user
-    // assigned to this bay, which is a permanent fact; presence is a live one.
-    // Deriving the second from the first made presence a one-way function — it
-    // could rise to AVAILABLE and never fall back — so an assigned bay whose
-    // spool had been pulled rendered as a seated spool forever, and the
-    // "assigned, not present" ghost in ui_ams_slot.cpp (EMPTY + retained
-    // identity, LV_OPA_20) became unreachable on CFS.
-    //
-    // The untagged-spool case that motivated the promotion is covered upstream
-    // by the parse: `vender` reads non-sentinel for ANY occupied bay on CFS
-    // 1.1.3, tagged or not (verified on a K2 Plus holding only third-party
-    // spools — both seated bays reported vender "unknown" with no Creality RFID
-    // anywhere), and `untagged_present` still backstops firmware that does not.
-    // Identity survives an empty bay via clear_stale_override_on_removal_locked;
-    // that is what the ghost renders from.
-
-    if (result.cleared_rebind || result.cleared_eject) {
-        overrides_.erase(it);
-        if (override_store_) {
-            const std::string tag = backend_log_tag();
-            override_store_->clear_async(slot_index, [tag, slot_index](bool ok, std::string err) {
-                if (!ok) {
-                    spdlog::warn("{} clear_async failed for slot {}: {}", tag, slot_index, err);
-                }
-            });
-        }
-    }
-}
-
 std::map<int, int> AmsBackendCfs::collect_insert_probes_locked(const nlohmann::json& box) {
     std::map<int, int> probes;
     // Stock dialect only. The flat/Fork modules define their own command set
@@ -3900,8 +3860,7 @@ bool AmsBackendCfs::clear_stale_override_on_removal_locked(SlotInfo& slot, int s
 void AmsBackendCfs::clear_override_locked(int slot_index, SlotInfo& slot) {
     // Caller must hold mutex_. Erases the in-memory override, resets STRICTLY
     // override-exclusive fields on the live SlotInfo so the cleared state is
-    // visible in the very next get_slot_info() read (apply_overrides is a
-    // no-op for this slot afterwards).
+    // visible in the very next get_slot_info() read.
     //
     // CFS field policy: brand / color_name / total_weight_g come from the
     // RFID material database (FilamentCatalog::resolve_code lookup in
@@ -3910,6 +3869,10 @@ void AmsBackendCfs::clear_override_locked(int slot_index, SlotInfo& slot) {
     // we must NOT re-zero those fields. The override's copies disappear with
     // the erase; firmware's copies stay. Matches Snapmaker policy.
     overrides_.erase(slot_index);
+    // The lane's own records go with it: the erase above and this are one
+    // clear in two stores, and a clear that reached only one would leave
+    // resolve() still reporting the identity just removed.
+    helix::ams::reset_lane_to_machine_readings(lane_id(slot_index));
 
     slot.spool_name.clear();
     slot.spoolman_id = 0;
@@ -4001,11 +3964,21 @@ void AmsBackendCfs::strip_spoolman_link_on_runout_locked(SlotInfo& slot, int slo
     o.spoolman_vendor_id = 0;
     o.updated_at = std::chrono::system_clock::now();
 
-    // Immediate visibility on the live SlotInfo, same pattern as
-    // clear_override_locked: apply_overrides runs after this and its sentinel
-    // rule (id 0 falls through to firmware truth) keeps the zero in place.
+    // Immediate visibility on the live SlotInfo. apply_resolved_lane runs after
+    // this, so the zero only survives if no lane source still declares the id,
+    // which is what the retraction below is for.
     slot.spoolman_id = 0;
     slot.spoolman_vendor_id = 0;
+
+    // The lane's own records lose the handle too, and only the handle: #1390 is
+    // exactly that a bay's identity outlives the spool and labels the one
+    // loaded next, so brand, material and colour stay standing. Both declaring
+    // sources carry the retraction, since either can hold the id: the user's
+    // record the binding they chose, the server's the spool it named.
+    helix::ams::retract_lane_declarations(lane_id(slot_index), [](helix::ams::Observation& kept) {
+        kept.spoolman_id.reset();
+        kept.spoolman_vendor_id.reset();
+    });
 
     spdlog::info("{} slot {} reads empty after a confirmed runout - dropping the remembered "
                  "Spoolman link (spool {}), keeping identity",

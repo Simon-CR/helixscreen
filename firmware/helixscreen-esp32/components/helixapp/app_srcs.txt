@@ -135,8 +135,11 @@ src/printer/ams_state.cpp
 src/printer/ams_subscription_backend.cpp
 src/printer/lane_echo.cpp
 src/printer/lane_resolver.cpp
+src/printer/lane_apply.cpp
 src/printer/lane_source_store.cpp
 src/printer/lane_translation.cpp
+src/printer/lane_legacy_migration.cpp
+src/printer/lane_binding.cpp
 src/printer/bed_dimensions.cpp
 src/printer/chamber_heater_assignment.cpp
 src/printer/chamber_heater_backend_dragonbreath.cpp

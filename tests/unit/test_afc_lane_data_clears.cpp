@@ -19,6 +19,8 @@
 #include "ams_backend_afc.h"
 #include "ams_types.h"
 #include "test_helpers/afc_test_access.h"
+#include "test_helpers/registered_backend.h"
+#include "test_helpers/seeded_override.h"
 
 #include <string>
 
@@ -79,8 +81,12 @@ class AfcLaneDataClearHelper : public AmsBackendAfc {
     }
 
     void set_override(int slot_index, const helix::ams::FilamentSlotOverride& o) {
-        std::lock_guard<std::mutex> lock(mutex_);
-        AfcTestAccess::overrides(*this)[slot_index] = o;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            AfcTestAccess::overrides(*this)[slot_index] = o;
+        }
+        // The backend's own init files both stores together.
+        helix::test::file_override_as_lane_records(*this, slot_index, o);
     }
 
     [[nodiscard]] std::string brand(int slot_index) const {
@@ -120,7 +126,8 @@ nlohmann::json both_lanes(const nlohmann::json& lane1,
 } // namespace
 
 TEST_CASE("AFC lane_data treats a null spool_id as an explicit clear", "[ams][afc][1195]") {
-    AfcLaneDataClearHelper afc;
+    helix::test::RegisteredBackend<AfcLaneDataClearHelper> afc_reg;
+    AfcLaneDataClearHelper& afc = *afc_reg;
     afc.set_spool_id(0, 42);
     REQUIRE(afc.spool_id(0) == 42);
 
@@ -156,7 +163,8 @@ TEST_CASE("AFC lane_data treats a null spool_id as an explicit clear", "[ams][af
 }
 
 TEST_CASE("AFC lane_data applies the user's slot overrides", "[ams][afc][1195]") {
-    AfcLaneDataClearHelper afc;
+    helix::test::RegisteredBackend<AfcLaneDataClearHelper> afc_reg;
+    AfcLaneDataClearHelper& afc = *afc_reg;
 
     helix::ams::FilamentSlotOverride o;
     o.brand = "Polymaker";
@@ -207,7 +215,8 @@ TEST_CASE("AFC lane_data adopts the filament name, like the status path", "[ams]
     // here is that only the status parser read a name at all, so a lane whose
     // data arrived solely through the lane_data path had none, and the loaded
     // card fell back to the algorithmic colour name.
-    AfcLaneDataClearHelper afc;
+    helix::test::RegisteredBackend<AfcLaneDataClearHelper> afc_reg;
+    AfcLaneDataClearHelper& afc = *afc_reg;
 
     SECTION("a name in the DB record reaches the slot") {
         afc.feed_lane_data(
@@ -238,10 +247,12 @@ TEST_CASE("AFC lane_data adopts the filament name, like the status path", "[ams]
     }
 
     SECTION("a user-entered name still wins over firmware's") {
-        // apply_overrides() must run AFTER the parse, same as the status path.
-        helix::ams::FilamentSlotOverride o;
-        o.spool_name = "My Pink Spool";
-        afc.set_override(0, o);
+        // A name the user typed is their declaration, and a declaration
+        // outranks what the lane_data frame states, on this parse and every
+        // later one.
+        SlotInfo edit = afc.get_slot_info(0);
+        edit.spool_name = "My Pink Spool";
+        helix::test::edit_slot_as_user(afc, 0, edit);
 
         afc.feed_lane_data(both_lanes(nlohmann::json{{"filament_name", "Ambrosia Pink"}}));
         CHECK(afc.spool_name(0) == "My Pink Spool");
@@ -263,7 +274,8 @@ TEST_CASE("AFC lane_data reads the shared #833 key spellings", "[ams][afc][833]"
     // `filament_name`; the surfaces differ on purpose.) A reader that only knew
     // the attribute spellings would see every #833 lane as unbranded and
     // unnamed, which is the whole point of the upstream change.
-    AfcLaneDataClearHelper afc;
+    helix::test::RegisteredBackend<AfcLaneDataClearHelper> afc_reg;
+    AfcLaneDataClearHelper& afc = *afc_reg;
 
     SECTION("`name` reaches the slot's spool name") {
         afc.feed_lane_data(
@@ -292,10 +304,10 @@ TEST_CASE("AFC lane_data reads the shared #833 key spellings", "[ams][afc][833]"
     }
 
     SECTION("a user's override still wins over both") {
-        helix::ams::FilamentSlotOverride o;
-        o.brand = "Elegoo";
-        o.spool_name = "My Pink Spool";
-        afc.set_override(0, o);
+        SlotInfo edit = afc.get_slot_info(0);
+        edit.brand = "Elegoo";
+        edit.spool_name = "My Pink Spool";
+        helix::test::edit_slot_as_user(afc, 0, edit);
 
         afc.feed_lane_data(
             both_lanes(nlohmann::json{{"name", "Ambrosia Pink"}, {"vendor_name", "Polymaker"}}));
@@ -383,7 +395,9 @@ TEST_CASE("AFC lane_data and status paths agree about the null clear", "[ams][af
 
 TEST_CASE("AFC lane_data never resizes a registry that already exists",
           "[ams][afc][lane-data-race]") {
-    AfcLaneDataClearHelper afc(std::vector<std::string>{"lane1", "lane2", "lane3", "lane4"});
+    helix::test::RegisteredBackend<AfcLaneDataClearHelper> afc_reg(
+        std::vector<std::string>{"lane1", "lane2", "lane3", "lane4"});
+    AfcLaneDataClearHelper& afc = *afc_reg;
     REQUIRE(afc.slot_count() == 4);
 
     SECTION("a payload holding only the first lane leaves all four standing") {

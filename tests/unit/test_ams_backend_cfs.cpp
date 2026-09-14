@@ -20,6 +20,8 @@
 #include "settings_manager.h"
 #include "test_helpers/cfs_test_access.h"
 #include "test_helpers/print_state_test_drivers.h"
+#include "test_helpers/registered_backend.h"
+#include "test_helpers/seeded_override.h"
 
 #include <filesystem>
 #include <memory>
@@ -1544,7 +1546,8 @@ TEST_CASE("CFS backend has environment sensors", "[ams][cfs]") {
     // (The old body was REQUIRE(true) with a comment claiming a compile-time
     // check. AmsBackendCfs is perfectly constructible with a null API - the
     // rest of this file does it all over - so just ask the object.)
-    AmsBackendCfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendCfs> backend_reg(nullptr, nullptr);
+    AmsBackendCfs& backend = *backend_reg;
 
     static_assert(
         std::is_same_v<decltype(std::declval<const AmsBackendCfs&>().has_environment_sensors()),
@@ -1913,7 +1916,8 @@ TEST_CASE("CFS has no per-slot prep sensors", "[ams][cfs]") {
     // CFS tracks slot inventory via material database (RFID/software), not
     // per-gate optical sensors. slot_has_prep_sensor must return false so the
     // filament path canvas draws continuous lines without sensor dot gaps.
-    AmsBackendCfs backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendCfs> backend_reg(nullptr, nullptr);
+    AmsBackendCfs& backend = *backend_reg;
 
     SECTION("all slots report no prep sensor") {
         for (int i = 0; i < 16; i++) {
@@ -1938,7 +1942,8 @@ TEST_CASE("CFS override loaded at init is applied over firmware data",
     state.init_subjects(false);
     MoonrakerAPIMock api(client, state);
 
-    AmsBackendCfs backend(&api, nullptr);
+    helix::test::RegisteredBackend<AmsBackendCfs> backend_reg(&api, nullptr);
+    AmsBackendCfs& backend = *backend_reg;
     auto store = std::make_unique<helix::ams::FilamentSlotOverrideStore>(&api, "cfs");
     FilamentSlotOverrideStoreTestAccess::set_cache_directory(*store, tmp.path);
     CfsTestAccess::inject_override_store(backend, std::move(store));
@@ -2024,7 +2029,8 @@ TEST_CASE("CFS set_slot_info(persist=true) writes to store", "[ams][cfs][filamen
     state.init_subjects(false);
     MoonrakerAPIMock api(client, state);
 
-    AmsBackendCfs backend(&api, nullptr);
+    helix::test::RegisteredBackend<AmsBackendCfs> backend_reg(&api, nullptr);
+    AmsBackendCfs& backend = *backend_reg;
     auto store = std::make_unique<helix::ams::FilamentSlotOverrideStore>(&api, "cfs");
     FilamentSlotOverrideStoreTestAccess::set_cache_directory(*store, tmp.path);
     CfsTestAccess::inject_override_store(backend, std::move(store));
@@ -2072,7 +2078,8 @@ TEST_CASE("CFS set_slot_info(persist=false) does NOT write to store",
     state.init_subjects(false);
     MoonrakerAPIMock api(client, state);
 
-    AmsBackendCfs backend(&api, nullptr);
+    helix::test::RegisteredBackend<AmsBackendCfs> backend_reg(&api, nullptr);
+    AmsBackendCfs& backend = *backend_reg;
     auto store = std::make_unique<helix::ams::FilamentSlotOverrideStore>(&api, "cfs");
     FilamentSlotOverrideStoreTestAccess::set_cache_directory(*store, tmp.path);
     CfsTestAccess::inject_override_store(backend, std::move(store));
@@ -2125,7 +2132,8 @@ TEST_CASE("CFS RFID fingerprint change clears override (hardware swap detected)"
     state.init_subjects(false);
     MoonrakerAPIMock api(client, state);
 
-    AmsBackendCfs backend(&api, nullptr);
+    helix::test::RegisteredBackend<AmsBackendCfs> backend_reg(&api, nullptr);
+    AmsBackendCfs& backend = *backend_reg;
     auto store = std::make_unique<helix::ams::FilamentSlotOverrideStore>(&api, "cfs");
     FilamentSlotOverrideStoreTestAccess::set_cache_directory(*store, tmp.path);
     CfsTestAccess::inject_override_store(backend, std::move(store));
@@ -2223,7 +2231,8 @@ TEST_CASE("CFS first RFID observation does NOT clear override",
     state.init_subjects(false);
     MoonrakerAPIMock api(client, state);
 
-    AmsBackendCfs backend(&api, nullptr);
+    helix::test::RegisteredBackend<AmsBackendCfs> backend_reg(&api, nullptr);
+    AmsBackendCfs& backend = *backend_reg;
     auto store = std::make_unique<helix::ams::FilamentSlotOverrideStore>(&api, "cfs");
     FilamentSlotOverrideStoreTestAccess::set_cache_directory(*store, tmp.path);
     CfsTestAccess::inject_override_store(backend, std::move(store));
@@ -2267,7 +2276,8 @@ TEST_CASE("CFS empty RFID fingerprint does not update baseline or clear",
     state.init_subjects(false);
     MoonrakerAPIMock api(client, state);
 
-    AmsBackendCfs backend(&api, nullptr);
+    helix::test::RegisteredBackend<AmsBackendCfs> backend_reg(&api, nullptr);
+    AmsBackendCfs& backend = *backend_reg;
     auto store = std::make_unique<helix::ams::FilamentSlotOverrideStore>(&api, "cfs");
     FilamentSlotOverrideStoreTestAccess::set_cache_directory(*store, tmp.path);
     CfsTestAccess::inject_override_store(backend, std::move(store));
@@ -2312,7 +2322,8 @@ TEST_CASE("CFS override preserved across unchanged parses", "[ams][cfs][filament
     state.init_subjects(false);
     MoonrakerAPIMock api(client, state);
 
-    AmsBackendCfs backend(&api, nullptr);
+    helix::test::RegisteredBackend<AmsBackendCfs> backend_reg(&api, nullptr);
+    AmsBackendCfs& backend = *backend_reg;
     auto store = std::make_unique<helix::ams::FilamentSlotOverrideStore>(&api, "cfs");
     FilamentSlotOverrideStoreTestAccess::set_cache_directory(*store, tmp.path);
     CfsTestAccess::inject_override_store(backend, std::move(store));
@@ -2378,7 +2389,8 @@ TEST_CASE("CFS: box.filament selection index does not fake a loaded slot", "[ams
     helix::PrinterState state;
     state.init_subjects(false);
     MoonrakerAPIMock api(client, state);
-    AmsBackendCfs backend(&api, nullptr);
+    helix::test::RegisteredBackend<AmsBackendCfs> backend_reg(&api, nullptr);
+    AmsBackendCfs& backend = *backend_reg;
     auto store = std::make_unique<helix::ams::FilamentSlotOverrideStore>(&api, "cfs");
     FilamentSlotOverrideStoreTestAccess::set_cache_directory(*store, tmp.path);
     CfsTestAccess::inject_override_store(backend, std::move(store));
@@ -2406,7 +2418,8 @@ TEST_CASE("CFS: partial box.filament update does not clear active slot", "[ams][
     helix::PrinterState state;
     state.init_subjects(false);
     MoonrakerAPIMock api(client, state);
-    AmsBackendCfs backend(&api, nullptr);
+    helix::test::RegisteredBackend<AmsBackendCfs> backend_reg(&api, nullptr);
+    AmsBackendCfs& backend = *backend_reg;
     auto store = std::make_unique<helix::ams::FilamentSlotOverrideStore>(&api, "cfs");
     FilamentSlotOverrideStoreTestAccess::set_cache_directory(*store, tmp.path);
     CfsTestAccess::inject_override_store(backend, std::move(store));
@@ -2436,7 +2449,8 @@ TEST_CASE("CFS: box-only update does not clobber sensor-derived filament_loaded"
     helix::PrinterState state;
     state.init_subjects(false);
     MoonrakerAPIMock api(client, state);
-    AmsBackendCfs backend(&api, nullptr);
+    helix::test::RegisteredBackend<AmsBackendCfs> backend_reg(&api, nullptr);
+    AmsBackendCfs& backend = *backend_reg;
     auto store = std::make_unique<helix::ams::FilamentSlotOverrideStore>(&api, "cfs");
     FilamentSlotOverrideStoreTestAccess::set_cache_directory(*store, tmp.path);
     CfsTestAccess::inject_override_store(backend, std::move(store));
@@ -2470,7 +2484,8 @@ TEST_CASE("CFS: user override does not fake presence on an empty bay", "[ams][cf
     helix::PrinterState state;
     state.init_subjects(false);
     MoonrakerAPIMock api(client, state);
-    AmsBackendCfs backend(&api, nullptr);
+    helix::test::RegisteredBackend<AmsBackendCfs> backend_reg(&api, nullptr);
+    AmsBackendCfs& backend = *backend_reg;
     auto store = std::make_unique<helix::ams::FilamentSlotOverrideStore>(&api, "cfs");
     FilamentSlotOverrideStoreTestAccess::set_cache_directory(*store, tmp.path);
     CfsTestAccess::inject_override_store(backend, std::move(store));
@@ -2562,12 +2577,18 @@ struct CfsOverrideRig {
     MoonrakerClientMock client{MoonrakerClientMock::PrinterType::VORON_24};
     helix::PrinterState state;
     std::unique_ptr<MoonrakerAPIMock> api;
-    std::unique_ptr<AmsBackendCfs> backend;
+    // Registered, because lane_id() answers INVALID_LANE_ID for a backend
+    // AmsState does not know, and every lane funnel drops a record addressed
+    // to that. Declared after api_ so it is torn down first: clear_backends()
+    // destroys the backend, which still holds the api pointer.
+    std::optional<helix::test::RegisteredBackend<AmsBackendCfs>> registration;
+    AmsBackendCfs* backend = nullptr;
 
     explicit CfsOverrideRig(const std::string& name) : tmp(name) {
         state.init_subjects(false);
         api = std::make_unique<MoonrakerAPIMock>(client, state);
-        backend = std::make_unique<AmsBackendCfs>(api.get(), nullptr);
+        registration.emplace(api.get(), nullptr);
+        backend = &**registration;
         auto store = std::make_unique<helix::ams::FilamentSlotOverrideStore>(api.get(), "cfs");
         FilamentSlotOverrideStoreTestAccess::set_cache_directory(*store, tmp.path);
         CfsTestAccess::inject_override_store(*backend, std::move(store));
@@ -2597,7 +2618,7 @@ TEST_CASE("CFS user edit survives the firmware echo of our own color push",
     edit.material = "ASA-CF";
     edit.color_name = "Dark Gray";
     edit.color_rgb = 0x1A1A1A;
-    REQUIRE(rig.backend->set_slot_info(0, edit, /*persist=*/true).success());
+    helix::test::edit_slot_as_user(*rig.backend, 0, edit);
 
     auto staged = CfsTestAccess::get_override(*rig.backend, 0);
     REQUIRE(staged.has_value());
@@ -2681,7 +2702,7 @@ TEST_CASE("CFS genuine swap while a color push is in flight still clears the ove
     SlotInfo edit;
     edit.material = "ASA-CF";
     edit.color_rgb = 0x1A1A1A;
-    REQUIRE(rig.backend->set_slot_info(0, edit, /*persist=*/true).success());
+    helix::test::edit_slot_as_user(*rig.backend, 0, edit);
     REQUIRE(CfsTestAccess::get_override(*rig.backend, 0).has_value());
 
     // Before the echo arrives the user yanks the spool and inserts another one.
@@ -2897,17 +2918,21 @@ json make_runout_removed_box(int useup, const std::string& active) {
     return box;
 }
 
-// Link bay D's lane to Spoolman spool 137 through the real persist path, so
-// both the in-memory override and the lane_data record carry the id.
+// Link bay D's lane to Spoolman spool 137 the way the application does: the
+// user states the binding, and the server states what spool 137 is. Binding
+// and identity are separate statements - a commit that changes spoolman_id
+// declares the binding alone, because the brand, colour and material that ride
+// in with a link are the server's word and not a value anyone chose.
 void link_lane_four_to_spool_137(AmsBackendCfs& backend) {
-    SlotInfo edit;
+    SlotInfo edit = backend.get_slot_info(3);
     edit.material = "ASA-CF";
     edit.brand = "Elegoo";
     edit.spool_name = "Black ASA";
     edit.color_rgb = 0x1A1A1A;
     edit.spoolman_id = 137;
     edit.spoolman_vendor_id = 21;
-    REQUIRE(backend.set_slot_info(3, edit, /*persist=*/true).success());
+    helix::test::edit_slot_as_user(backend, 3, edit);
+    helix::test::spool_states(backend, 3, edit);
 }
 
 } // namespace
@@ -2939,8 +2964,11 @@ TEST_CASE("CFS runout invalidates the exhausted lane's remembered Spoolman link"
         CHECK(ovr->material == "ASA-CF");
         CHECK(ovr->brand == "Elegoo");
         CHECK(ovr->spool_name == "Black ASA");
-        CHECK(ovr->user_locked_color);
-        CHECK(ovr->user_locked_material);
+        // Remembered, not claimed. Linking a spool carries the server's colour
+        // and material in without a person choosing either, so the record keeps
+        // them without outranking a machine that later states its own.
+        CHECK_FALSE(ovr->user_locked_color);
+        CHECK_FALSE(ovr->user_locked_material);
     }
     SECTION("the live slot shows the drop immediately") {
         auto info = rig.backend->get_slot_info(3);
@@ -3067,7 +3095,7 @@ TEST_CASE("CFS: a labeled untagged spool stays AVAILABLE while it is seated",
     edit.brand = "Ambrosia";
     edit.spool_name = "Black ASA-GF";
     edit.color_rgb = 0x000000;
-    REQUIRE(rig.backend->set_slot_info(0, edit, /*persist=*/true).success());
+    helix::test::edit_slot_as_user(*rig.backend, 0, edit);
     rig.poll(box_seated);
 
     SECTION("seated + labeled renders solid, not ghosted") {
@@ -3124,7 +3152,7 @@ TEST_CASE("CFS: labeling an untagged bay does not blank it on vender-sentinel fi
     edit.material = "ASA-GF";
     edit.spool_name = "Black ASA-GF";
     edit.color_rgb = 0x000000;
-    REQUIRE(rig.backend->set_slot_info(0, edit, /*persist=*/true).success());
+    helix::test::edit_slot_as_user(*rig.backend, 0, edit);
 
     // Firmware now echoes our own code back on every frame, byte-identical to
     // a tag read. Nothing about the physical bay changed.
@@ -3178,7 +3206,7 @@ TEST_CASE("CFS: relabeling a TAGGED bay still suppresses the untagged fallback",
     edit.material = "ASA-CF";
     edit.color_name = "Dark Gray";
     edit.color_rgb = 0x1A1A1A;
-    REQUIRE(rig.backend->set_slot_info(0, edit, /*persist=*/true).success());
+    helix::test::edit_slot_as_user(*rig.backend, 0, edit);
     rig.poll(box_seated);
 
     SECTION("still AVAILABLE while seated") {

@@ -132,37 +132,50 @@ AI-assisted design and build at this project's scale produced duplicated logic i
 
 The direction is proven: `format_temperature_pair()` ([`src/ui/ui_temperature_utils.cpp#format_temperature_pair`](../../../src/ui/ui_temperature_utils.cpp#L61)) consolidated what were two hand-rolled current/target string subjects into one widget-owned formatter, and [`SLOT_COMPONENT_DESIGNS.md`](../SLOT_COMPONENT_DESIGNS.md) records the measured reason string formatting cannot move into XML formulas (the evaluator is integer-only). Consolidations like that are the template.
 
-### Provenance debt: a value's origin is inferred from its shape
+### Provenance debt: what still infers an origin from a value's shape
 
-This one is half paid, and the half that is paid is the half nobody can see. The model that
-carries an origin - `Observation`, `LaneSources` and `resolve()`, described in
-[`07-filament-ams.md`](07-filament-ams.md) § "Lane identity by source" - is fully supplied:
-all nine AMS backends file readings into it, and the human edit path files declarations.
-**Nothing consumes one.** No surface reads a `LaneSources`, `resolve()` has no production
-caller, and every lane a user sees is still firmware-reported `SlotInfo` merged with a
-persisted `FilamentSlotOverride`, where a field's origin is re-derived from the value it
-holds: `!= 0`, `!empty()`, `>= 0.0f`. Those tests answer "is there a value here", and the
-code asks them where it means "did a human choose this". They agree on most inputs, which is
-what makes the disagreements hard to see. Finishing the producers changed nothing a user can
-observe, and the questions below are what a read path has to answer before it can.
+The principal debt is paid. The model that carries an origin - `Observation`, `LaneSources`
+and `resolve()`, described in [`07-filament-ams.md`](07-filament-ams.md) § "Lane identity by
+source" - is both supplied and read: all nine AMS backends file readings into it, the human
+edit path files declarations, a stored record's authorship travels on two lock flags and a
+declared set rather than being re-derived from what its fields happen to hold, and every
+backend's parse ends by laying the resolved lane back onto the `SlotInfo` it just built. A
+value a user sees is ranked by where it came from.
 
-The live instance is AD5X filament colour. `set_slot_info()`
-([`src/printer/ams_backend_ad5x_ifs.cpp#set_slot_info`](../../../src/printer/ams_backend_ad5x_ifs.cpp)) sets
-`user_locked_color` whenever `persist` is true, so assigning a Spoolman spool records "the
-user chose this colour" when the user chose a *spool* and the colour arrived with the
-binding. A colour picked afterwards from the printer's own COLOR menu enters through
-`apply_color_menu_slot_row()`
+What is left is the residue, and it is worth naming precisely rather than declaring the
+category closed.
+
+**Shape still decides, in one place: a record written before the authorship keys existed.**
+`from_lane_data_record()`
+([`src/printer/filament_slot_override_store.cpp#from_lane_data_record`](../../../src/printer/filament_slot_override_store.cpp))
+defaults a missing `helix_locked_color` from `color_set` and a missing `helix_locked_material`
+from `!material.empty()` - the value's shape standing in for its origin, deliberately and
+pessimistically, so an upgrade cannot hand a user's saved colour to the auto-mirror. The lane
+source model does not honour that guess: `sources_from_record()` requires the lock key to be
+present and true **on the wire**, so the same legacy record's colour is filed as `Remembered`
+and yields to a firmware frame that restates it, while the stored copy the mirror sees stays
+locked and is not refreshed. The two answers are each defensible on their own and they
+disagree; the legacy rule is what has to go for them to converge, and it cannot go while
+records written before the keys are still out there.
+
+**A lock outlives the printer's own colour menu, and that is deliberate.** A colour the user
+picked in HelixScreen sets `user_locked_color`, and a row rendered by the printer's COLOR menu
+arrives through `apply_color_menu_slot_row()`
 ([`src/printer/ams_backend_ad5x_ifs.cpp#apply_color_menu_slot_row`](../../../src/printer/ams_backend_ad5x_ifs.cpp)),
-which refreshes the firmware-truth arrays and leaves the lock standing, so the auto-mirror
-re-lays the locked colour and the pick never reaches the panel.
-
-Releasing the lock when a menu row moves is **not** the fix. The test
+which refreshes the firmware-truth arrays and leaves the lock standing, so the locked colour
+keeps painting. Releasing the lock when a menu row moves is **not** the fix, and the test
 `AD5X IFS COLOR-menu slot row does not clear a user-locked override` in
-[`tests/unit/test_ams_backend_ad5x_ifs.cpp`](../../../tests/unit/test_ams_backend_ad5x_ifs.cpp) pins the
-opposite on purpose: every COLOR macro emits those rows, so honouring them would drop a
-locked choice for the act of opening the dialog. The line below the offending one already
-asks the right question for material (`user_locked_material = !normalized_material.empty()`);
-colour has no equivalent signal to ask, because a colour's value cannot say who chose it.
+[`tests/unit/test_ams_backend_ad5x_ifs.cpp`](../../../tests/unit/test_ams_backend_ad5x_ifs.cpp)
+pins the opposite on purpose: every COLOR macro emits those rows, so honouring them would drop
+a locked choice for the act of opening the dialog. Only a `CHANGE_ZCOLOR` in the gcode stream,
+which is an unambiguous deliberate edit, clears it (#981).
+
+What makes that policy rather than debt is that a lock means a person moved that field.
+`user_edit_observation()`
+([`src/printer/lane_translation.cpp#user_edit_observation`](../../../src/printer/lane_translation.cpp))
+treats a binding change as a statement about the binding and claims none of the fields that
+travelled in with it, and `amend_authorship()` derives both lock flags from that one answer, so
+binding a Spoolman spool records no colour choice and leaves the lane auto-tracking.
 
 **A backend can read its own user's edit back as firmware truth.** Six backends write a
 user's identity to the printer - AFC, Happy Hare, CFS, AD5X IFS, QIDI Box and Snapmaker - and
@@ -175,28 +188,34 @@ confusion: `set_slot_info()` writes the edited colour and material straight into
 `update_slot_from_state()` derives its firmware-truth record from, so the edit lands in that
 record before any gcode leaves the process, with no printer involved at all (#1631).
 
-**Another tool's declaration is recorded as the printer's.** `to_lane_data_record()`
+**Another tool's declaration has no source of its own.** `to_lane_data_record()`
 ([`src/printer/filament_slot_override_store.cpp#to_lane_data_record`](../../../src/printer/filament_slot_override_store.cpp))
 always emits both `helix_locked_*` keys, false included, and `classify_declaration()`
 ([`src/printer/lane_translation.cpp#classify_declaration`](../../../src/printer/lane_translation.cpp))
-reads present-but-false as unlocked. So a record written by Mainsail, OrcaSlicer or a hand
-edit classifies as `VendorCache`, which means the printer's remembered identity. On an ACE,
-whose firmware states only colour and material, that is how brand, spool name,
-`spoolman_vendor_id` and weights reach a firmware-truth bucket having never come from
-firmware. `VendorCache` is the least wrong of the five sources that exist, so reclassifying is
-not obviously the fix (#1632).
+reads present-but-false as unlocked, so a record written by Mainsail, OrcaSlicer or a hand edit
+carries no evidence of who wrote it. The sharp half of this does not arise: such a record
+classifies as `Remembered` rather than as a firmware reading, so on an ACE - whose firmware
+states only colour and material - brand, spool name and `spoolman_vendor_id` stay out of a
+firmware-truth bucket they never came from, and `Remembered` ranking below `VendorCache` means
+a firmware frame that does state a field still wins. What is left is that a third party's
+deliberate statement and our own remembered copy share one rung, and nothing distinguishes
+them (#1632).
 
-**A resync refreshes the model, not what a user sees.** `request_resync()`
+**A backend's stored-record map is frozen at init, and it is what we write back.**
+A lane is not rendered from that map, so `request_resync()`
 ([`src/printer/ams_subscription_backend.cpp#request_resync`](../../../src/printer/ams_subscription_backend.cpp))
-re-reads the shared `lane_data` namespace and files what it holds, but the override map
-`apply_overrides()` renders from is loaded once at init and is not touched, so a record another
-writer has changed since startup reaches the source model without reaching the rendered slot
-(#1629).
+now reaches the panel: the records it files land on the lane and the next parse lays them on.
+Two limits remain. The round trip is made only where `firmware_publishes_lane_identity()` is
+false, which today is the tool changer alone, so on every other backend a record another writer
+changed since startup is never re-read at all. And the `overrides_` map each backend loads once
+at init is still what the auto-mirror reads and re-POSTs: `save_async()` writes the whole record
+from that struct, so a mirror write can push a field back to the value we loaded at boot over a
+change somebody else made since (#1629).
 
 The echo question has three hand-built answers here, `AmsBackend::own_write_expectation`
 ([`include/ams_backend.h#own_write_expectation`](../../../include/ams_backend.h)),
-`SlotFingerprintTracker::expect`
-([`include/filament_slot_override_store.h#SlotFingerprintTracker/expect`](../../../include/filament_slot_override_store.h))
+`SlotFingerprintTracker::expect_any_of`
+([`include/filament_slot_override_store.h#SlotFingerprintTracker/expect_any_of`](../../../include/filament_slot_override_store.h))
 and `helix::ams::OwnWriteEchoes`
 ([`include/lane_echo.h#OwnWriteEchoes`](../../../include/lane_echo.h)), each suppressing one
 flavour of "is this reading someone else's write or the echo of my own?" for one backend
@@ -204,8 +223,12 @@ family. `Observation` carries no field for the answer, so the source model state
 source spoke and not whose write it was, which is the reason a precedence table alone does
 not finish this.
 
-User-visible symptom and workaround for the AD5X case are in
-[`../../user/TROUBLESHOOTING.md`](../../user/TROUBLESHOOTING.md).
+A user-facing entry for the AD5X colour case is in
+[`../../user/TROUBLESHOOTING.md`](../../user/TROUBLESHOOTING.md), and
+[`../../user/guide/filament-tracking.md`](../../user/guide/filament-tracking.md) links to it.
+Both attribute the symptom to a Spoolman assignment recording a colour lock. A binding change
+claims no field but the binding, so that attribution does not describe the code, and neither
+entry has been re-checked against an AD5X.
 
 ### Deliberate tolerations: C++ that is correct, not debt
 

@@ -4,6 +4,7 @@
 #include "filament_slot_override.h"
 #include "filament_slot_override_store.h"
 #include "filament_variants.h"
+#include "lane_translation.h"
 #include "moonraker_api_mock.h"
 #include "moonraker_client_mock.h"
 #include "printer_state.h"
@@ -178,72 +179,211 @@ TEST_CASE("populate_temps_from_slot_info wires SlotInfo temps onto the override"
     }
 }
 
-TEST_CASE("user_override_from_slot_info signs a user edit", "[filament_slot_override][ams]") {
-    using helix::ams::user_override_from_slot_info;
-
-    SECTION("a supplied colour and material both lock") {
-        helix::SlotInfo info;
-        info.brand = "Polymaker";
-        info.spool_name = "PolyLite PLA Orange";
-        info.spoolman_id = 42;
-        info.color_rgb = 0xFF5500;
-        info.color_name = "Orange";
-
-        const auto ovr = user_override_from_slot_info(info, "PLA");
-
-        CHECK(ovr.brand == "Polymaker");
-        CHECK(ovr.spool_name == "PolyLite PLA Orange");
-        CHECK(ovr.spoolman_id == 42);
-        CHECK(ovr.material == "PLA");
-        CHECK(ovr.color_rgb == 0xFF5500u);
-        CHECK(ovr.color_set);
-        CHECK(ovr.user_locked_color);
-        CHECK(ovr.user_locked_material);
-    }
-
-    SECTION("the material the caller passes is what records and what locks") {
-        // A backend may persist a normalized form rather than the string the
-        // user typed, so the lock has to follow the recorded value.
-        helix::SlotInfo info;
-        info.material = "pla";
-        const auto ovr = user_override_from_slot_info(info, "PLA");
-        CHECK(ovr.material == "PLA");
-        CHECK(ovr.user_locked_material);
-    }
-
-    SECTION("an edit carrying no material does not lock material") {
-        helix::SlotInfo info;
-        info.color_rgb = 0x112233;
-        const auto ovr = user_override_from_slot_info(info, "");
-        CHECK(ovr.material.empty());
-        CHECK_FALSE(ovr.user_locked_material);
-        CHECK(ovr.user_locked_color); // the colour WAS supplied
-    }
-}
-
-TEST_CASE("user_override_from_slot_info records a picked black and refuses the no-reading "
-          "sentinel",
+TEST_CASE("user_override_from_slot_info records a colour the user chose and refuses the sentinel",
           "[filament_slot_override][ams]") {
     using helix::ams::user_override_from_slot_info;
 
-    // Both directions, spelled as literals rather than through
-    // is_declarable_color: a test that asked the same question the production
-    // gate asks would pass whichever way that gate answered.
-    SECTION("pure black is a pick, so it records and locks") {
+    // The lane held nothing before these edits, so every value below is one the
+    // user supplied.
+    const helix::SlotInfo empty_lane;
+
+    // The sentinel is spelled as a literal rather than through
+    // is_declarable_color: a test that asked the production gate its own
+    // question would pass whichever way that gate answered.
+    SECTION("pure black is a colour a user can choose") {
         helix::SlotInfo info;
         info.color_rgb = 0x000000;
-        const auto ovr = user_override_from_slot_info(info, "PLA");
+        const auto ovr = user_override_from_slot_info(empty_lane, info, nullptr);
         CHECK(ovr.color_set);
         CHECK(ovr.color_rgb == 0x000000u);
         CHECK(ovr.user_locked_color);
     }
 
-    SECTION("the 0x808080 no-reading sentinel neither records nor locks") {
+    SECTION("the no-colour sentinel is not a choice") {
         helix::SlotInfo info;
         info.color_rgb = 0x808080;
-        const auto ovr = user_override_from_slot_info(info, "PLA");
+        const auto ovr = user_override_from_slot_info(empty_lane, info, nullptr);
         CHECK_FALSE(ovr.color_set);
         CHECK_FALSE(ovr.user_locked_color);
+    }
+
+    SECTION("the colour name is the user's own text either way") {
+        helix::SlotInfo info;
+        info.color_rgb = 0x808080;
+        info.color_name = "Warm Grey";
+        const auto ovr = user_override_from_slot_info(empty_lane, info, nullptr);
+        CHECK(ovr.color_name == "Warm Grey");
+    }
+}
+
+TEST_CASE("user_override_from_slot_info signs the fields the user supplied",
+          "[filament_slot_override][ams]") {
+    using helix::ams::user_override_from_slot_info;
+
+    // The lane held nothing before these edits, so every value below is one the
+    // user supplied.
+    const helix::SlotInfo empty_lane;
+
+    SECTION("a colour and a material the user gave are both the user's") {
+        helix::SlotInfo info;
+        info.color_rgb = 0x1E5AA8;
+        info.material = "PETG";
+        const auto ovr = user_override_from_slot_info(empty_lane, info, nullptr);
+        CHECK(ovr.user_locked_color);
+        CHECK(ovr.user_locked_material);
+    }
+
+    SECTION("a colour the user gave locks while a material they left empty does not") {
+        helix::SlotInfo info;
+        info.color_rgb = 0x112233;
+        const auto ovr = user_override_from_slot_info(empty_lane, info, "", nullptr);
+        CHECK(ovr.material.empty());
+        CHECK_FALSE(ovr.user_locked_material);
+        CHECK(ovr.user_locked_color);
+    }
+
+    SECTION("a field the user left empty stays open to a firmware report") {
+        helix::SlotInfo info;
+        info.color_rgb = 0x808080;
+        info.brand = "Polymaker";
+        const auto ovr = user_override_from_slot_info(empty_lane, info, nullptr);
+        CHECK_FALSE(ovr.user_locked_color);
+        CHECK_FALSE(ovr.user_locked_material);
+    }
+
+    SECTION("the rest of the identity rides along") {
+        helix::SlotInfo info;
+        info.brand = "Polymaker";
+        info.spool_name = "Blue PETG 1kg";
+        info.spoolman_id = 42;
+        info.spoolman_vendor_id = 7;
+        info.remaining_weight_g = 730.0f;
+        info.total_weight_g = 1000.0f;
+        info.catalog_id = "polymaker-polylite-petg";
+        info.product_name = "PolyLite PETG";
+        info.bed_temp = 80;
+        info.nozzle_temp_min = 230;
+        info.nozzle_temp_max = 250;
+        const auto ovr = user_override_from_slot_info(empty_lane, info, nullptr);
+        CHECK(ovr.brand == "Polymaker");
+        CHECK(ovr.spool_name == "Blue PETG 1kg");
+        CHECK(ovr.spoolman_id == 42);
+        CHECK(ovr.spoolman_vendor_id == 7);
+        CHECK(ovr.remaining_weight_g == Catch::Approx(730.0f));
+        CHECK(ovr.total_weight_g == Catch::Approx(1000.0f));
+        CHECK(ovr.catalog_id == "polymaker-polylite-petg");
+        CHECK(ovr.product_name == "PolyLite PETG");
+        CHECK(ovr.bed_temp == 80);
+        CHECK(ovr.nozzle_temp == 240);
+        // save_async stamps this; a record built here carries no time of its own.
+        CHECK(ovr.updated_at.time_since_epoch().count() == 0);
+    }
+
+    SECTION("a backend that normalizes the material records and signs that spelling") {
+        helix::SlotInfo info;
+        info.material = "Silk PLA";
+        const auto ovr = user_override_from_slot_info(empty_lane, info, "SILK", nullptr);
+        CHECK(ovr.material == "SILK");
+        CHECK(ovr.user_locked_material);
+    }
+
+    SECTION("a normalized material that comes back empty locks nothing") {
+        helix::SlotInfo info;
+        info.material = "Silk PLA";
+        const auto ovr = user_override_from_slot_info(empty_lane, info, "", nullptr);
+        CHECK(ovr.material.empty());
+        CHECK_FALSE(ovr.user_locked_material);
+    }
+}
+
+TEST_CASE("user_override_from_slot_info amends the record's authorship onto this edit's",
+          "[filament_slot_override][ams]") {
+    using helix::ams::declared_field_names;
+    using helix::ams::user_override_from_slot_info;
+
+    // The lane as the machine reported it, which is what the editor seeds its
+    // working copy from.
+    helix::SlotInfo firmware_lane;
+    firmware_lane.brand = "Firmware Brand";
+    firmware_lane.material = "PLA";
+    firmware_lane.color_rgb = 0x3355FF;
+
+    SECTION("a lane with no record yet declares only what this edit moved") {
+        helix::SlotInfo edited = firmware_lane;
+        edited.brand = "Hatchbox";
+        const auto ovr = user_override_from_slot_info(firmware_lane, edited, nullptr);
+        CHECK(declared_field_names(ovr.declared) == nlohmann::json::array({"brand"}));
+        CHECK_FALSE(ovr.user_locked_color);
+        CHECK_FALSE(ovr.user_locked_material);
+    }
+
+    SECTION("an edit that moves nothing keeps every declaration the record had") {
+        // The shape the consumption meter produces: a persist with a
+        // weight-only diff behind it.
+        helix::SlotInfo chose_all = firmware_lane;
+        chose_all.brand = "Hatchbox";
+        chose_all.material = "ASA";
+        chose_all.color_rgb = 0x1E5AA8;
+        const auto prior = user_override_from_slot_info(firmware_lane, chose_all, nullptr);
+        REQUIRE(prior.user_locked_color);
+        REQUIRE(prior.user_locked_material);
+        REQUIRE(declared_field_names(prior.declared) == nlohmann::json::array({"brand"}));
+
+        helix::SlotInfo weighed = chose_all;
+        weighed.remaining_weight_g = 730.0f;
+        const auto ovr = user_override_from_slot_info(chose_all, weighed, &prior);
+        CHECK(ovr.user_locked_color);
+        CHECK(ovr.user_locked_material);
+        CHECK(declared_field_names(ovr.declared) == nlohmann::json::array({"brand"}));
+        CHECK(ovr.remaining_weight_g == Catch::Approx(730.0f));
+    }
+
+    SECTION("a prior declaration whose value has since moved is not claimed") {
+        // The brand on the lane is no longer the one the record declared, and
+        // this edit says nothing about it. Signing it would hand the machine
+        // back its own reading as a declaration it may not correct.
+        helix::SlotInfo chose_brand = firmware_lane;
+        chose_brand.brand = "Hatchbox";
+        const auto prior = user_override_from_slot_info(firmware_lane, chose_brand, nullptr);
+        REQUIRE(declared_field_names(prior.declared) == nlohmann::json::array({"brand"}));
+
+        helix::SlotInfo moved_lane = chose_brand;
+        moved_lane.brand = "Elegoo";
+        helix::SlotInfo edited = moved_lane;
+        edited.material = "ASA";
+        const auto ovr = user_override_from_slot_info(moved_lane, edited, &prior);
+        CHECK(ovr.brand == "Elegoo");
+        CHECK(declared_field_names(ovr.declared) == nlohmann::json::array());
+        CHECK(ovr.user_locked_material);
+    }
+
+    SECTION("a colour the record declared is dropped when the lane no longer holds it") {
+        helix::SlotInfo chose_colour = firmware_lane;
+        chose_colour.color_rgb = 0x1E5AA8;
+        const auto prior = user_override_from_slot_info(firmware_lane, chose_colour, nullptr);
+        REQUIRE(prior.user_locked_color);
+
+        helix::SlotInfo moved_lane = chose_colour;
+        moved_lane.color_rgb = 0xB22222;
+        helix::SlotInfo edited = moved_lane;
+        edited.spool_name = "Bench spool";
+        const auto ovr = user_override_from_slot_info(moved_lane, edited, &prior);
+        CHECK(ovr.color_rgb == 0xB22222u);
+        CHECK_FALSE(ovr.user_locked_color);
+        CHECK(declared_field_names(ovr.declared) == nlohmann::json::array({"spool_name"}));
+    }
+
+    SECTION("a material the record locked stays locked when the edit leaves it alone") {
+        helix::SlotInfo chose_material = firmware_lane;
+        chose_material.material = "ASA";
+        const auto prior = user_override_from_slot_info(firmware_lane, chose_material, nullptr);
+        REQUIRE(prior.user_locked_material);
+
+        helix::SlotInfo edited = chose_material;
+        edited.spool_name = "Bench spool";
+        const auto ovr = user_override_from_slot_info(chose_material, edited, &prior);
+        CHECK(ovr.material == "ASA");
+        CHECK(ovr.user_locked_material);
     }
 }
 
@@ -251,10 +391,11 @@ TEST_CASE("a field the user never supplied stays fillable by the auto-mirror",
           "[filament_slot_override][ams]") {
     // The lock is what stops the mirror, so locking a field the user left
     // alone would strand that lane with no value and no way to ever get one.
+    const helix::SlotInfo empty_lane;
     std::unordered_map<int, FilamentSlotOverride> overrides;
     helix::SlotInfo info;
     info.color_rgb = 0x808080; // no colour reading
-    overrides[0] = helix::ams::user_override_from_slot_info(info, "");
+    overrides[0] = helix::ams::user_override_from_slot_info(empty_lane, info, "", nullptr);
 
     const bool changed = helix::ams::mirror_firmware_to_lane_data(
         nullptr, overrides, 0, 0x1188FF, "PETG", /*slot_has_filament=*/true,
@@ -3403,180 +3544,6 @@ TEST_CASE("FilamentSlotOverrideStore uses the namespace it was given",
         FilamentSlotOverrideStore store(&api, "happy_hare", LaneKeyStyle::Lane,
                                         "helix-screen-hh-overrides");
         CHECK(store.namespace_for_test() != "lane_data");
-    }
-}
-
-// ============================================================================
-// merge_override — shared spec §5 implementation + re-bind/eject rule matrix
-// ============================================================================
-
-TEST_CASE("merge_override rule matrix", "[ams][override-merge]") {
-    using helix::ams::merge_override;
-    helix::SlotInfo slot;
-    const auto ovr_with = [](int id) {
-        helix::ams::FilamentSlotOverride o;
-        o.brand = "Polymaker";
-        o.spool_name = "PLA Black";
-        o.spoolman_id = id;
-        o.material = "PLA";
-        o.color_set = true;
-        o.color_rgb = 0x000000;
-        o.catalog_id = "sku-1";
-        return o;
-    };
-
-    SECTION("no rules fire when firmware agrees with the override") {
-        slot.spoolman_id = 42;
-        auto o = ovr_with(42);
-        auto r = merge_override(slot, o, {});
-        CHECK_FALSE(r.cleared_rebind);
-        CHECK_FALSE(r.cleared_eject);
-        CHECK(slot.spoolman_id == 42);
-        CHECK(slot.brand == "Polymaker");
-    }
-
-    SECTION("re-bind: firmware reports a different positive id — whole record drops, firmware "
-            "truth paints") {
-        slot.spoolman_id = 7;
-        auto o = ovr_with(42);
-        auto r = merge_override(slot, o, {});
-        CHECK(r.cleared_rebind);
-        CHECK(slot.spoolman_id == 7); // firmware truth
-        CHECK(slot.brand.empty());    // no override field painted
-        CHECK(slot.material.empty());
-    }
-
-    SECTION("re-bind ignores the setting — an explicit external write is not a preference") {
-        slot.spoolman_id = 7;
-        helix::ams::MergeOptions opts;
-        opts.keep_spool_info_on_eject = true;
-        auto r = merge_override(slot, ovr_with(42), opts);
-        CHECK(r.cleared_rebind);
-    }
-
-    SECTION("re-bind never fires on eject zero") {
-        slot.spoolman_id = 0;
-        auto r = merge_override(slot, ovr_with(42), {});
-        CHECK_FALSE(r.cleared_rebind);
-    }
-
-    SECTION("own-write suppression: stale firmware id (pre-write) does not clear; "
-            "fields still paint") {
-        // HelixScreen itself re-linked 42 -> 169; an in-flight frame still
-        // reports the old firmware id 42. Rule 1 must not read that stale
-        // frame as an external re-bind and eat the just-saved override.
-        slot.spoolman_id = 42;
-        helix::ams::MergeOptions opts;
-        opts.suppress_rebind_firmware_old_id = 42;
-        opts.suppress_rebind_firmware_new_id = 169;
-        auto r = merge_override(slot, ovr_with(169), opts);
-        CHECK_FALSE(r.cleared_rebind);
-        CHECK_FALSE(r.cleared_eject);
-        // Suppression changes ONLY the clear decision — the §5 field merge
-        // paints the override normally.
-        CHECK(slot.spoolman_id == 169);
-        CHECK(slot.brand == "Polymaker");
-        CHECK(slot.material == "PLA");
-    }
-
-    SECTION("own-write suppression: the echo (firmware reports the new id) does not clear") {
-        slot.spoolman_id = 169;
-        helix::ams::MergeOptions opts;
-        opts.suppress_rebind_firmware_old_id = 42;
-        opts.suppress_rebind_firmware_new_id = 169;
-        auto r = merge_override(slot, ovr_with(169), opts);
-        CHECK_FALSE(r.cleared_rebind);
-        CHECK(slot.brand == "Polymaker");
-    }
-
-    SECTION("own-write suppression: a third firmware id still clears — external change wins") {
-        slot.spoolman_id = 200;
-        helix::ams::MergeOptions opts;
-        opts.suppress_rebind_firmware_old_id = 42;
-        opts.suppress_rebind_firmware_new_id = 169;
-        auto r = merge_override(slot, ovr_with(169), opts);
-        CHECK(r.cleared_rebind);
-        CHECK(slot.spoolman_id == 200);
-        CHECK(slot.brand.empty());
-    }
-
-    SECTION("eject: firmware 0 on an id-reporting backend — retention ON keeps the record") {
-        slot.spoolman_id = 0;
-        helix::ams::MergeOptions opts;
-        opts.printer_reports_spool_ids = true;
-        opts.keep_spool_info_on_eject = true;
-        auto r = merge_override(slot, ovr_with(42), opts);
-        CHECK_FALSE(r.cleared_eject);
-        CHECK(slot.spoolman_id == 42); // override wins, designed retention
-        CHECK(slot.brand == "Polymaker");
-    }
-
-    SECTION("eject: firmware 0 on an id-reporting backend — setting OFF clears") {
-        slot.spoolman_id = 0;
-        helix::ams::MergeOptions opts;
-        opts.printer_reports_spool_ids = true;
-        opts.keep_spool_info_on_eject = false;
-        auto r = merge_override(slot, ovr_with(42), opts);
-        CHECK(r.cleared_eject);
-        CHECK_FALSE(r.cleared_rebind);
-        CHECK(slot.spoolman_id == 0);
-        CHECK(slot.brand.empty());
-    }
-
-    SECTION("eject rule inert on backends that never report ids (default options)") {
-        // IFS/ACE/CFS/Snapmaker: firmware id is 0 every poll; a setting-OFF
-        // user must not have every override nuked.
-        slot.spoolman_id = 0;
-        helix::ams::MergeOptions opts;
-        opts.keep_spool_info_on_eject = false;
-        auto r = merge_override(slot, ovr_with(42), opts);
-        CHECK_FALSE(r.cleared_eject);
-        CHECK(slot.spoolman_id == 42);
-    }
-
-    SECTION("eject rule needs a linked override — an unlinked record is never ejected") {
-        slot.spoolman_id = 0;
-        helix::ams::MergeOptions opts;
-        opts.printer_reports_spool_ids = true;
-        opts.keep_spool_info_on_eject = false;
-        auto r = merge_override(slot, ovr_with(0), opts); // override holds color only
-        CHECK_FALSE(r.cleared_eject);
-        CHECK(slot.color_rgb == 0x000000); // its fields still merge
-    }
-
-    SECTION("spec §5 field merge: sentinels fall through to firmware") {
-        slot.spoolman_id = 9;
-        slot.remaining_weight_g = 111.f;
-        slot.brand = "Elegoo";
-        helix::ams::FilamentSlotOverride o; // all sentinels
-        auto r = merge_override(slot, o, {});
-        CHECK_FALSE(r.cleared_rebind);
-        CHECK(slot.brand == "Elegoo");
-        CHECK(slot.remaining_weight_g == 111.f);
-        CHECK(slot.spoolman_id == 9);
-    }
-
-    SECTION("spec §5 field merge: override values win field-by-field") {
-        slot.brand = "Elegoo";
-        slot.spool_name = "firmware-name";
-        slot.material = "PETG";
-        auto o = ovr_with(0);
-        o.spool_name = "user-name";
-        o.remaining_weight_g = 50.f;
-        auto r = merge_override(slot, o, {});
-        CHECK(slot.brand == "Polymaker");
-        CHECK(slot.spool_name == "user-name");
-        CHECK(slot.material == "PLA");
-        CHECK(slot.remaining_weight_g == 50.f);
-        CHECK(slot.catalog_id == "sku-1");
-    }
-
-    SECTION("weight zero is a real value, not a sentinel") {
-        slot.remaining_weight_g = -1.f;
-        auto o = ovr_with(0);
-        o.remaining_weight_g = 0.f;
-        merge_override(slot, o, {});
-        CHECK(slot.remaining_weight_g == 0.f);
     }
 }
 

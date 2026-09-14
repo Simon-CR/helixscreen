@@ -6,14 +6,13 @@
  * @brief External re-bind clears our override; eject honors the retention
  * setting (#1281). Firmware truth must win back a lane another writer re-bound.
  *
- * merge_override()'s rule matrix (test_filament_slot_override_store.cpp) pins
- * the pure function. This file pins the WIRING: AmsBackendAfc's live status
- * path must consult it, drop the in-memory record on an external re-bind, and
- * gate the eject clear on the keep-spool-info setting.
+ * classify_binding()'s verdict matrix (test_lane_binding.cpp) pins the pure
+ * function. This file pins the WIRING: AmsBackendAfc's live status path must
+ * reach it, drop the in-memory record on an external re-bind, and gate the
+ * eject clear on the keep-spool-info setting.
  */
 
 #include "../lvgl_test_fixture.h"
-#include "test_helpers/afc_test_access.h"
 #include "ams_backend_afc.h"
 #include "ams_backend_cfs.h"
 #include "ams_types.h"
@@ -21,7 +20,10 @@
 #include "moonraker_client_mock.h"
 #include "printer_state.h"
 #include "settings_manager.h"
+#include "test_helpers/afc_test_access.h"
 #include "test_helpers/cfs_test_access.h"
+#include "test_helpers/registered_backend.h"
+#include "test_helpers/seeded_override.h"
 
 #include <string>
 
@@ -39,8 +41,12 @@ class AfcRebindHelper : public AmsBackendAfc {
     }
 
     void set_override(int slot_index, const helix::ams::FilamentSlotOverride& o) {
-        std::lock_guard<std::mutex> lock(mutex_);
-        AfcTestAccess::overrides(*this)[slot_index] = o;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            AfcTestAccess::overrides(*this)[slot_index] = o;
+        }
+        // The backend's own init files both stores together.
+        helix::test::file_override_as_lane_records(*this, slot_index, o);
     }
 
     /// Drive the live status path, so assertions see what the UI would paint.
@@ -74,7 +80,8 @@ class AfcRebindHelper : public AmsBackendAfc {
     }
 
     /// Consult AmsBackend::own_write_expectation under mutex_ (as
-    /// apply_overrides does) to observe/consume the pending expectation.
+    /// reconcile_lane_binding does) to observe/consume the pending
+    /// expectation.
     [[nodiscard]] std::pair<int, int> peek_expectation(int slot_index, int firmware_id) {
         std::lock_guard<std::mutex> lock(mutex_);
         return own_write_expectation(slot_index, firmware_id);
@@ -96,11 +103,12 @@ helix::ams::FilamentSlotOverride spool_override(int spoolman_id) {
 
 TEST_CASE_METHOD(LVGLTestFixture, "AFC external re-bind clears our override (#1281 step 7)",
                  "[ams][afc][override-merge]") {
-    // Post-change apply_overrides() reads the retention setting; give the
-    // settings singleton the production-default world before any merge runs.
+    // The status path reads the retention setting; give the settings
+    // singleton the production-default world before any frame is fed.
     SettingsManager::instance().init_subjects();
 
-    AfcRebindHelper afc;
+    helix::test::RegisteredBackend<AfcRebindHelper> afc_reg;
+    AfcRebindHelper& afc = *afc_reg;
     afc.set_override(0, spool_override(42));
     // Firmware (via Mainsail/AFC macro) now reports a DIFFERENT spool:
     afc.feed_stepper("lane1", nlohmann::json{{"spool_id", 169}});
@@ -115,7 +123,8 @@ TEST_CASE_METHOD(LVGLTestFixture, "AFC eject retains by default, clears with set
     settings.init_subjects();
 
     settings.set_ams_keep_spool_info_on_eject(true);
-    AfcRebindHelper afc;
+    helix::test::RegisteredBackend<AfcRebindHelper> afc_reg;
+    AfcRebindHelper& afc = *afc_reg;
     afc.set_override(0, spool_override(42));
     afc.feed_stepper("lane1", nlohmann::json{{"spool_id", 42}}); // firmware echoes our id
     CHECK(afc.visible_spool_id(0) == 42);
@@ -148,7 +157,8 @@ TEST_CASE_METHOD(LVGLTestFixture, "Non-id backends: eject rule inert, field merg
     state.init_subjects(false);
     MoonrakerAPIMock api(client, state);
 
-    helix::printer::AmsBackendCfs backend(&api, nullptr);
+    helix::test::RegisteredBackend<helix::printer::AmsBackendCfs> backend_reg(&api, nullptr);
+    helix::printer::AmsBackendCfs& backend = *backend_reg;
     helix::ams::FilamentSlotOverride ovr;
     ovr.brand = "Polymaker"; // a real user assignment — no id, no locks
     ovr.material = "PLA";
@@ -193,10 +203,11 @@ TEST_CASE_METHOD(LVGLTestFixture, "AFC own re-link survives the echo race (own-w
     // SET_SPOOL_ID); in-flight status frames still report the old firmware
     // id 42, and Rule 1 must not read that stale frame as an external
     // re-bind and destroy the just-saved override. Mirrors
-    // SlotFingerprintTracker::expect() semantics.
+    // SlotFingerprintTracker's expectation-set semantics.
     SettingsManager::instance().init_subjects();
 
-    AfcRebindHelper afc;
+    helix::test::RegisteredBackend<AfcRebindHelper> afc_reg;
+    AfcRebindHelper& afc = *afc_reg;
     // The editor path: stage the override, then record the write the way
     // set_slot_info does when it emits SET_SPOOL_ID (previous id = what
     // firmware last reported).
@@ -228,7 +239,8 @@ TEST_CASE_METHOD(LVGLTestFixture,
                  "[ams][afc][override-merge]") {
     SettingsManager::instance().init_subjects();
 
-    AfcRebindHelper afc;
+    helix::test::RegisteredBackend<AfcRebindHelper> afc_reg;
+    AfcRebindHelper& afc = *afc_reg;
     // 42 -> 169, then a second write before the echo landed: 169 -> 180.
     // The stored pair must keep the ORIGINAL previous id (42) so stale
     // frames reporting 42 stay suppressed.

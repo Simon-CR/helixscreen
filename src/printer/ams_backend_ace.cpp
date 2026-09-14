@@ -18,6 +18,7 @@
 
 #include "i_moonraker_api.h"
 #include "i_moonraker_client.h"
+#include "lane_legacy_migration.h"
 #include "lane_source_store.h"
 #include "lane_translation.h"
 #include "lvgl/src/others/translation/lv_translation.h"
@@ -88,6 +89,8 @@ void AmsBackendAce::on_started() {
         // in under mutex_. Holding mutex_ during the swap ensures the parse
         // path sees a coherent map rather than a torn write.
         auto loaded = override_store_->load_blocking();
+        helix::ams::ingest_legacy_records(*override_store_, helix::ams::LegacyLockKeys::LaneData,
+                                          backend_index());
         const auto loaded_count = loaded.size();
         {
             std::lock_guard<std::mutex> lock(mutex_);
@@ -497,6 +500,10 @@ AmsError AmsBackendAce::set_slot_info(int slot_index, const SlotInfo& info, bool
         // including persist=false previews that must survive until the next
         // firmware parse.
         auto& slot = system_info_.units[0].slots[slot_index];
+        // The lane as it stood before this edit. stage_user_override needs it to
+        // tell what the user moved from what the editor merely carried back, so
+        // it has to be taken before the writes below.
+        const SlotInfo prior_slot = slot;
         slot.color_rgb = info.color_rgb;
         slot.color_name = info.color_name;
         slot.material = info.material;
@@ -518,7 +525,7 @@ AmsError AmsBackendAce::set_slot_info(int slot_index, const SlotInfo& info, bool
         // edits are in-memory only and will be overwritten by the next
         // firmware parse (expected preview contract).
         if (persist) {
-            overrides_[slot_index] = helix::ams::user_override_from_slot_info(info, info.material);
+            helix::ams::stage_user_override(overrides_, slot_index, prior_slot, info);
         }
     }
 
@@ -967,7 +974,7 @@ void AmsBackendAce::parse_ace_object(const json& data) {
                 // that includes color and material, since ACE hardware
                 // doesn't carry brand/spool_name/weights at all and the user
                 // edit is the authoritative source for color/material too.
-                apply_overrides(slot, idx);
+                apply_resolved_lane(slot, idx);
             }
         }
     }
@@ -1749,47 +1756,6 @@ AmsError AmsBackendAce::execute_device_action(const std::string& action_id, cons
 // Slot Override Layering (shared FilamentSlotOverrideStore)
 // ============================================================================
 
-void AmsBackendAce::apply_overrides(SlotInfo& slot, int slot_index) {
-    // overrides_ writers (on_started initial load, set_slot_info persist path)
-    // hold mutex_, and every caller of apply_overrides runs under mutex_ via
-    // parse_ace_object — so the map read here is implicitly lock-protected.
-    // The whole spec §5 policy + the re-bind/eject rules live in
-    // helix::ams::merge_override — the single implementation every backend
-    // shares. Rule 1 (re-bind) is NOT gated by the capability: it can fire
-    // on any backend whose firmware reports a positive spool id disagreeing
-    // with the override (AFC, Happy Hare, flat-schema CFS). ACE's firmware
-    // never reports one, so Rule 1 cannot fire here today — but that is a
-    // fact about this firmware, not what the capability gates. Rule 2
-    // (eject) IS what printer_reports_spool_ids() gates (base false here:
-    // 0 is ACE's everyday reading, never an eject), and the erase branch is
-    // correct tomorrow if a firmware ever starts reporting ids.
-    auto it = overrides_.find(slot_index);
-    if (it == overrides_.end())
-        return;
-    helix::ams::MergeOptions opts;
-    opts.printer_reports_spool_ids = printer_reports_spool_ids();
-    opts.keep_spool_info_on_eject = SettingsManager::instance().get_ams_keep_spool_info_on_eject();
-    // Own-write echo suppression (SlotFingerprintTracker::expect()
-    // semantics): Rule 1 must not read an in-flight stale firmware id as an
-    // external re-bind. ACE never writes firmware ids, so this is always
-    // {0, 0} today — the call keeps one shape across backends.
-    const auto [own_old_id, own_new_id] = own_write_expectation(slot_index, slot.spoolman_id);
-    opts.suppress_rebind_firmware_old_id = own_old_id;
-    opts.suppress_rebind_firmware_new_id = own_new_id;
-    const auto result = helix::ams::merge_override(slot, it->second, opts);
-    if (result.cleared_rebind || result.cleared_eject) {
-        overrides_.erase(it);
-        if (override_store_) {
-            const std::string tag = backend_log_tag();
-            override_store_->clear_async(slot_index, [tag, slot_index](bool ok, std::string err) {
-                if (!ok) {
-                    spdlog::warn("{} clear_async failed for slot {}: {}", tag, slot_index, err);
-                }
-            });
-        }
-    }
-}
-
 void AmsBackendAce::check_hardware_event_clear(SlotInfo& slot, int slot_index, SlotStatus prev,
                                                SlotStatus curr) {
     // ACE has no RFID UID to track. Detect "new spool inserted" as a status
@@ -1829,6 +1795,10 @@ void AmsBackendAce::clear_override_locked(int slot_index, SlotInfo& slot) {
     // (firmware doesn't populate them). Color and material come from the
     // parse and are left alone so the new spool's firmware data surfaces.
     overrides_.erase(slot_index);
+    // The lane's own records go with it: the erase above and this are one
+    // clear in two stores, and a clear that reached only one would leave
+    // resolve() still reporting the identity just removed.
+    helix::ams::reset_lane_to_machine_readings(lane_id(slot_index));
 
     slot.brand.clear();
     slot.spool_name.clear();

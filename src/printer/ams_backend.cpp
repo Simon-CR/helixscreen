@@ -6,6 +6,7 @@
 #include "ams_backend_afc.h"
 #include "ams_backend_happy_hare.h"
 #include "ams_state.h"
+#include "settings_manager.h"
 #ifdef HELIX_ENABLE_MOCKS
 #include "ams_backend_mock.h"
 #include "app_globals.h"
@@ -30,6 +31,7 @@
 #include "filament_database.h"
 #include "filament_variants.h"
 #include "i_moonraker_api.h"
+#include "lane_apply.h"
 #include "printer_discovery.h"
 #include "runtime_config.h"
 
@@ -39,6 +41,7 @@
 #include <cctype>
 #include <cstdlib>
 #include <string_view>
+#include <tuple>
 
 namespace helix {
 
@@ -315,6 +318,47 @@ std::pair<int, int> AmsBackend::own_write_expectation(int slot_index, int firmwa
     // this poll, keep the entry for the next one. firmware_id <= 0: no
     // signal; the echo may still be in flight, so the entry survives.
     return {old_id, new_id};
+}
+
+helix::ams::BindingVerdict AmsBackend::reconcile_lane_binding(int slot_index,
+                                                              int firmware_spool_id) {
+    helix::ams::BindingReading reading;
+    reading.firmware_spool_id = firmware_spool_id;
+    reading.printer_reports_spool_ids = printer_reports_spool_ids();
+    reading.keep_spool_info_on_eject =
+        helix::SettingsManager::instance().get_ams_keep_spool_info_on_eject();
+    std::tie(reading.own_write_old_id, reading.own_write_new_id) =
+        own_write_expectation(slot_index, firmware_spool_id);
+    return helix::ams::reconcile_binding(lane_id(slot_index), reading);
+}
+
+void AmsBackend::update_slot_weight(int slot_index, float remaining_weight_g, float total_weight_g,
+                                    bool persist) {
+    // File the reading before the backend stores it, so a backend that refuses
+    // the write still leaves the meter's own number on the lane rather than a
+    // record that disagrees with every store.
+    //
+    // Only what this call states is filed. A total below zero is the caller
+    // saying it has no total to report, and the record says so rather than
+    // carrying an old one forward: an unobserved total leaves whatever the
+    // backend holds standing, which is the same "leave it unchanged" the
+    // parameter asks for.
+    helix::ams::Observation metered(helix::ams::ObservationSource::Metered);
+    if (remaining_weight_g >= 0.0F) {
+        metered.remaining_weight_g = remaining_weight_g;
+    }
+    if (total_weight_g >= 0.0F) {
+        metered.total_weight_g = total_weight_g;
+    }
+    if (metered.remaining_weight_g.has_value() || metered.total_weight_g.has_value()) {
+        helix::ams::ingest(lane_id(slot_index), metered);
+    }
+
+    update_slot_weight_impl(slot_index, remaining_weight_g, total_weight_g, persist);
+}
+
+void AmsBackend::apply_resolved_lane(SlotInfo& slot, int slot_index) {
+    helix::ams::apply_resolved(slot, helix::ams::resolved_lane(lane_id(slot_index)));
 }
 
 std::string AmsBackend::normalize_material(const std::string& material) const {

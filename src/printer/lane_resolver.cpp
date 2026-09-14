@@ -18,7 +18,13 @@ ResolvedLane resolve(const LaneSources& sources) {
     // Identity, highest priority last so each pass overwrites the weaker one.
     // A source that did not observe a field leaves the weaker source's value
     // standing, which is why every field is an optional rather than a sentinel.
+    //
+    // Remembered sits at the bottom. It is our own disk copy from before this
+    // session, so a machine that states a brand on this frame outranks it; a
+    // machine that states nothing about brand leaves it standing, because a
+    // VendorCache record only carries what its own frame said.
     const Observation* identity_ladder[] = {
+        sources.remembered.has_value() ? &*sources.remembered : nullptr,
         sources.vendor_cache.has_value() ? &*sources.vendor_cache : nullptr,
         sources.local_user.has_value() ? &*sources.local_user : nullptr,
         sources.spoolman.has_value() ? &*sources.spoolman : nullptr,
@@ -55,6 +61,12 @@ ResolvedLane resolve(const LaneSources& sources) {
     // contradicts itself, and first_non_blank ranks an explicit name above one
     // derived from the value. Nothing else in the identity block is overridden
     // this way: brand, spool name and catalog identity belong to the spool.
+    //
+    // The name is set even when the pick carried none, and engaged-empty rather
+    // than left unobserved: a pick with no name is a statement that the old name
+    // no longer describes the swatch, so it has to reach the lane and clear it.
+    // Leaving it unobserved would let the spool's name stand beside a colour it
+    // contradicts.
     if (sources.local_user.has_value() && sources.local_user->color_rgb.has_value()) {
         out.color_rgb = *sources.local_user->color_rgb;
         out.color_name = sources.local_user->color_name.value_or(std::string{});

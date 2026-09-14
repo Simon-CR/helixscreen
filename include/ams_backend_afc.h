@@ -563,9 +563,10 @@ class AmsBackendAfc : public AmsSubscriptionBackend {
     std::unique_ptr<helix::ams::FilamentSlotOverrideStore> lane_publish_store_;
     std::unordered_map<int, helix::ams::FilamentSlotOverride> overrides_;
     /// Layer the user override over firmware values. Callers hold mutex_.
-    void apply_overrides(SlotInfo& slot, int slot_index);
-    /// Build + persist an override from a user edit. Callers hold mutex_.
-    void persist_override(int slot_index, const SlotInfo& info);
+    /// Build + persist an override from a user edit. Callers hold mutex_ and
+    /// pass the lane as it stood before the edit, which is what says which
+    /// fields the user actually moved.
+    void persist_override(int slot_index, const SlotInfo& original, const SlotInfo& info);
 
     /// Async callback safety guard. Tokens shared with AfcConfigManager instances.
     helix::AsyncLifetimeGuard lifetime_;
@@ -902,8 +903,8 @@ class AmsBackendAfc : public AmsSubscriptionBackend {
      * identity — re-inserting the spool would paint the retained id here
      * while AFC/Mainsail show an unknown spool. Sends the same
      * SET_SPOOL_ID write the editor re-link uses, wrapped in
-     * record_own_spool_write() so the echo cannot trip the merge's re-bind
-     * clear.
+     * record_own_spool_write() so the echo cannot classify as a re-bind and
+     * drop the records that declared the binding.
      *
      * Gates: retention setting on, override holds a spool id for the lane,
      * and firmware's freshest spool_id reading is 0/null (a
@@ -915,6 +916,24 @@ class AmsBackendAfc : public AmsSubscriptionBackend {
      * @param lane_name Lane identifier (e.g., "lane1") for the gcode
      */
     void maybe_reassert_retained_spool_link(int slot_index, const std::string& lane_name);
+
+    /**
+     * @brief Drop a binding firmware has stopped agreeing with, in both stores
+     *
+     * Both parsers state a spool id, so both invalidate on one: which of them
+     * ran last is not allowed to decide whether a stale binding still paints.
+     *
+     * The verdict is reached on every frame rather than only where a clear
+     * might follow, because reaching it is also what retires the own-write
+     * expectation for this lane.
+     *
+     * @param slot_index Registry slot index for this lane, as the binding
+     *                   check numbers it
+     * @param slot The lane, which carries the key its stored override is
+     *             filed under
+     * @param firmware_spool_id The id firmware states this frame, 0 for none
+     */
+    void invalidate_broken_binding(int slot_index, const SlotInfo& slot, int firmware_spool_id);
 
     /**
      * @brief Parse AFC_hub object for per-hub sensor state

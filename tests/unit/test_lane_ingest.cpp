@@ -3,6 +3,7 @@
 #include "filament_slot_override.h"
 #include "filament_slot_override_store.h"
 #include "helix_test_fixture.h"
+#include "lane_resolver.h"
 #include "lane_source_store.h"
 #include "lane_translation.h"
 #include "test_helpers/log_capture.h"
@@ -15,8 +16,10 @@ using helix::ams::classify_declaration;
 using helix::ams::declared_from_record;
 using helix::ams::ingest;
 using helix::ams::lane_sources;
+using helix::ams::LegacyLockKeys;
 using helix::ams::Observation;
 using helix::ams::ObservationSource;
+using helix::ams::sources_from_record;
 
 // The store treats a lane id as an opaque key, so these cases use bare
 // integers. Everything that produces an id goes through lane_id_for().
@@ -404,6 +407,16 @@ helix::ams::FilamentSlotOverride record_from(const nlohmann::json& j) {
     REQUIRE(parsed.has_value());
     return parsed->second;
 }
+
+/// A filament_slot_overrides.json entry, parsed with the cache's own reader.
+/// The cache spells almost every field differently from a lane_data record
+/// (color_rgb as a bare integer rather than a "#RRGGBB" string, spoolman_id
+/// rather than spool_id, no vendor/vendor_name alias for brand), so a test
+/// standing in for a real cache document has to go through from_json, not
+/// from_lane_data_record, or it is not exercising the shape it claims to.
+helix::ams::FilamentSlotOverride cache_record_from(const nlohmann::json& j) {
+    return helix::ams::from_json(j);
+}
 } // namespace
 
 TEST_CASE("a linked record is the server's declaration, locks unread", "[lane][ingest]") {
@@ -441,7 +454,7 @@ TEST_CASE("an unlinked record with a real lock is the user's declaration", "[lan
     CHECK(declared_from_record(rec, wire).color_rgb == 0xBCBCBC);
 }
 
-TEST_CASE("an unlinked record with no lock key is a cache, not a user", "[lane][ingest]") {
+TEST_CASE("an unlinked record with no lock key is remembered, not declared", "[lane][ingest]") {
     // The load default reads a missing helix_locked_color back as color_set,
     // so a legacy record carrying a colour arrives looking locked. Only a key
     // that is actually present is a human's signature.
@@ -452,8 +465,8 @@ TEST_CASE("an unlinked record with no lock key is a cache, not a user", "[lane][
     const auto rec = record_from(wire);
     REQUIRE(rec.user_locked_color); // the load default, not a declaration
 
-    CHECK(classify_declaration(rec, wire) == ObservationSource::VendorCache);
-    CHECK(declared_from_record(rec, wire).source == ObservationSource::VendorCache);
+    CHECK(classify_declaration(rec, wire) == ObservationSource::Remembered);
+    CHECK(declared_from_record(rec, wire).source == ObservationSource::Remembered);
 }
 
 TEST_CASE("a record with a zero spool id is unlinked", "[lane][ingest]") {
@@ -480,7 +493,7 @@ TEST_CASE("a record with no colour does not claim one", "[lane][ingest]") {
     // The record's own default reads user_locked_material as true (material
     // is non-empty), but the wire carries no lock key at all: the classifier
     // must side with the wire, not the struct's legacy-preservation default.
-    CHECK(classify_declaration(rec, wire) == ObservationSource::VendorCache);
+    CHECK(classify_declaration(rec, wire) == ObservationSource::Remembered);
 
     const auto obs = declared_from_record(rec, wire);
     CHECK(obs.material == "PLA");
@@ -568,4 +581,206 @@ TEST_CASE("a fully populated record observes every field it carries", "[lane][in
     CHECK(*obs.remaining_weight_g == Catch::Approx(512.0f));
     REQUIRE(obs.total_weight_g.has_value());
     CHECK(*obs.total_weight_g == Catch::Approx(1000.0f));
+}
+
+// ============================================================================
+// sources_from_record: splitting a legacy stored record across sources
+// ============================================================================
+
+TEST_CASE("A stored record carrying a spool binding migrates to the server's rung",
+          "[lane][ingest]") {
+    // Verbatim in shape to a lane migrating off the old scheme: a Spoolman
+    // binding, both locks true, and a stored colour equal to the linked
+    // spool's own.
+    const nlohmann::json wire = {{"lane", "0"},
+                                 {"spool_id", 7},
+                                 {"color", "#FFFFFF"},
+                                 {"helix_material", "PETG"},
+                                 {"vendor", "Kingroon"},
+                                 {"helix_locked_color", true},
+                                 {"helix_locked_material", true}};
+    const auto rec = record_from(wire);
+
+    const auto sources = sources_from_record(rec, wire);
+
+    // The deciding field is color_rgb, and the deciding question is which
+    // source holds it. Both locks are true, so a classifier that read them
+    // would put white on the user's rung, where it would outrank the server
+    // permanently. It has to land on Spoolman's.
+    REQUIRE(sources.spoolman.has_value());
+    REQUIRE(sources.spoolman->color_rgb.has_value());
+    CHECK(*sources.spoolman->color_rgb == 0xFFFFFF);
+    CHECK_FALSE(sources.local_user.has_value());
+}
+
+TEST_CASE("An unlinked stored record without the lock key is remembered, not declared",
+          "[lane][ingest]") {
+    // The load default is safe_bool(j, "helix_locked_color", o.color_set), so
+    // a legacy record with a colour and no key parses back as locked. Reading
+    // the struct instead of the document would migrate every legacy lane as
+    // user-authored.
+    const nlohmann::json wire = {{"lane", "2"}, {"color", "#ED2C2C"}, {"helix_material", "PLA"}};
+    const auto rec = record_from(wire);
+
+    const auto sources = sources_from_record(rec, wire);
+
+    REQUIRE(sources.remembered.has_value());
+    REQUIRE(sources.remembered->color_rgb.has_value());
+    CHECK(*sources.remembered->color_rgb == 0xED2C2C);
+    CHECK(sources.remembered->material == "PLA");
+    CHECK_FALSE(sources.local_user.has_value());
+}
+
+TEST_CASE("An unlinked stored record with the lock key set true is the user's own",
+          "[lane][ingest]") {
+    const nlohmann::json wire = {{"lane", "2"},
+                                 {"color", "#BCBCBC"},
+                                 {"helix_material", "PLA"},
+                                 {"helix_locked_color", true},
+                                 {"helix_locked_material", false}};
+    const auto rec = record_from(wire);
+
+    const auto sources = sources_from_record(rec, wire);
+
+    // color_rgb is the deciding field for the colour lock and material is the
+    // deciding field for the material lock. They classify independently, so
+    // this record splits across two sources.
+    REQUIRE(sources.local_user.has_value());
+    REQUIRE(sources.local_user->color_rgb.has_value());
+    CHECK(*sources.local_user->color_rgb == 0xBCBCBC);
+    CHECK_FALSE(sources.local_user->material.has_value());
+
+    REQUIRE(sources.remembered.has_value());
+    REQUIRE(sources.remembered->material.has_value());
+    CHECK(*sources.remembered->material == "PLA");
+    CHECK_FALSE(sources.remembered->color_rgb.has_value());
+}
+
+TEST_CASE("An unlinked stored record with the lock key set false is remembered", "[lane][ingest]") {
+    // The explicit false is the auto-mirror's own signature. It must not be
+    // treated like an absent key that happens to read the same in the struct.
+    const nlohmann::json wire = {{"lane", "1"},
+                                 {"color", "#112233"},
+                                 {"helix_material", "ABS"},
+                                 {"helix_locked_color", false},
+                                 {"helix_locked_material", false}};
+    const auto rec = record_from(wire);
+
+    const auto sources = sources_from_record(rec, wire);
+
+    CHECK_FALSE(sources.local_user.has_value());
+    REQUIRE(sources.remembered.has_value());
+    CHECK(sources.remembered->color_rgb == 0x112233);
+}
+
+TEST_CASE("A catalog pick is always the user's, because firmware cannot make one",
+          "[lane][ingest]") {
+    const nlohmann::json wire = {{"lane", "0"},
+                                 {"helix_material", "PLA"},
+                                 {"helix_catalog_id", "sunlu-pla-plus-2-0"},
+                                 {"helix_product_name", "PLA+ 2.0"}};
+    const auto rec = record_from(wire);
+
+    const auto sources = sources_from_record(rec, wire);
+
+    // catalog_id is the deciding field: no lock key is present, so the
+    // material beside it lands on the cache, and the catalog pick must not
+    // follow it there.
+    REQUIRE(sources.local_user.has_value());
+    REQUIRE(sources.local_user->catalog_id.has_value());
+    CHECK(*sources.local_user->catalog_id == "sunlu-pla-plus-2-0");
+    CHECK(*sources.local_user->product_name == "PLA+ 2.0");
+    REQUIRE(sources.remembered.has_value());
+    CHECK(sources.remembered->material == "PLA");
+}
+
+TEST_CASE("The two lock-key spellings read the same document differently", "[lane][ingest]") {
+    // lane_data spells its lock keys with the helix_ prefix. Reading the same
+    // wire under the LocalCache spelling has to miss the lock entirely: it is
+    // looking for a key ("user_locked_color") this document never wrote.
+    const nlohmann::json wire = {{"lane", "0"}, {"color", "#BCBCBC"}, {"helix_locked_color", true}};
+    const auto rec = record_from(wire);
+
+    const auto as_lane_data = sources_from_record(rec, wire, LegacyLockKeys::LaneData);
+    REQUIRE(as_lane_data.local_user.has_value());
+    CHECK(*as_lane_data.local_user->color_rgb == 0xBCBCBC);
+
+    const auto as_local_remembered = sources_from_record(rec, wire, LegacyLockKeys::LocalCache);
+    CHECK_FALSE(as_local_remembered.local_user.has_value());
+    REQUIRE(as_local_remembered.remembered.has_value());
+    CHECK(*as_local_remembered.remembered->color_rgb == 0xBCBCBC);
+}
+
+TEST_CASE("A remembered record carrying a brand is not dropped by its own parser",
+          "[lane][ingest]") {
+    // filament_slot_overrides.json writes the bare "brand" key (to_json);
+    // from_lane_data_record instead reads "vendor" / "vendor_name" and would
+    // read this document's brand as absent. Parsing it with from_json, the
+    // reader that actually knows this shape, is what keeps the brand.
+    const nlohmann::json wire = {
+        {"brand", "Kingroon"}, {"material", "PETG"}, {"user_locked_color", true}};
+    const auto rec = cache_record_from(wire);
+    REQUIRE(rec.brand == "Kingroon");
+
+    const auto sources = sources_from_record(rec, wire, LegacyLockKeys::LocalCache);
+
+    // The record names no declared set, so its brand answers to the lock flag
+    // it does carry: a true one is the evidence a person edited this record, so
+    // the brand is theirs. No lock key names material, so material is the
+    // cache's.
+    REQUIRE(sources.local_user.has_value());
+    REQUIRE(sources.local_user->brand.has_value());
+    CHECK(*sources.local_user->brand == "Kingroon");
+    REQUIRE(sources.remembered.has_value());
+    REQUIRE(sources.remembered->material.has_value());
+    CHECK(*sources.remembered->material == "PETG");
+}
+
+TEST_CASE("Weights migrate to the meter, never to a declaration", "[lane][ingest]") {
+    const nlohmann::json wire = {{"lane", "0"},
+                                 {"helix_material", "PLA"},
+                                 {"remaining_weight_g", 218.0},
+                                 {"total_weight_g", 1000.0}};
+    const auto rec = record_from(wire);
+
+    const auto sources = sources_from_record(rec, wire);
+
+    REQUIRE(sources.metered.has_value());
+    CHECK(sources.metered->remaining_weight_g == Catch::Approx(218.0f));
+    CHECK(sources.metered->total_weight_g == Catch::Approx(1000.0f));
+    // A weight is not evidence of presence.
+    CHECK_FALSE(sources.metered->present.has_value());
+}
+
+TEST_CASE("A linked record's weight still migrates to the meter, not to Spoolman",
+          "[lane][ingest]") {
+    const nlohmann::json wire = {{"lane", "0"}, {"spool_id", 7}, {"remaining_weight_g", 42.0}};
+    const auto rec = record_from(wire);
+
+    const auto sources = sources_from_record(rec, wire);
+
+    REQUIRE(sources.metered.has_value());
+    CHECK(sources.metered->remaining_weight_g == Catch::Approx(42.0f));
+    REQUIRE(sources.spoolman.has_value());
+    CHECK_FALSE(sources.spoolman->remaining_weight_g.has_value());
+}
+
+TEST_CASE("Nothing a stored record migrates is ever evidence that a lane is occupied",
+          "[lane][ingest]") {
+    // The scenario the split exists for: an ejected lane whose stored record
+    // still holds colour, material and a spool binding.
+    const nlohmann::json wire = {{"lane", "0"},
+                                 {"spool_id", 7},
+                                 {"color", "#FFFFFF"},
+                                 {"helix_material", "PETG"},
+                                 {"helix_locked_color", true},
+                                 {"helix_locked_material", true}};
+    const auto rec = record_from(wire);
+
+    const auto sources = sources_from_record(rec, wire);
+
+    CHECK_FALSE(sources.sensed.has_value());
+    // A stored record is a declaration, never a sensor reading, so it leaves
+    // presence unobserved rather than asserting the lane is empty.
+    CHECK_FALSE(helix::ams::resolve(sources).present.has_value());
 }

@@ -425,7 +425,6 @@ class AmsBackendAce : public AmsSubscriptionBackend {
     // events. ACE hardware doesn't carry brand/spool/weights, so the override
     // is the only source for those fields; color/material come from both the
     // firmware and user edits and the override wins per the merge policy.
-    void apply_overrides(SlotInfo& slot, int slot_index);
 
     // Hardware-event detection: ACE has no RFID UID, so "user physically
     // swapped the spool" is inferred from a status transition EMPTY -> present
@@ -433,7 +432,7 @@ class AmsBackendAce : public AmsSubscriptionBackend {
     // is cleared so stale brand/spool_name/spoolman_id from the previous
     // spool don't bleed onto the new one. Override-exclusive fields on `slot`
     // are zeroed in place so the cleared state is visible in the very next
-    // get_slot_info() read (apply_overrides then no-ops for that slot).
+    // get_slot_info() read.
     //
     // Called from parse_ace_object BEFORE apply_overrides, so the check
     // decides based on parsed firmware status (not override-masked data). The

@@ -443,8 +443,8 @@ class AmsBackendAd5xIfs : public AmsSubscriptionBackend {
     // and NEVER rewrites Adventurer5M.json / _IFS_VARS or re-locks material —
     // the firmware-facing writers in set_slot_info() are what reverted the
     // user's material on every 60 s consumption persist (#981).
-    void update_slot_weight(int slot_index, float remaining_weight_g, float total_weight_g,
-                            bool persist) override;
+    void update_slot_weight_impl(int slot_index, float remaining_weight_g, float total_weight_g,
+                                 bool persist) override;
     AmsError set_tool_mapping_impl(int tool_number, int slot_index) override;
 
     // Restore the module's identity tool map (T<n> -> lane n+1). The wire
@@ -701,7 +701,6 @@ class AmsBackendAd5xIfs : public AmsSubscriptionBackend {
     // firmware data untouched. Called from update_slot_from_state so every
     // parse path (save_variables, Adventurer5M.json, GET_ZCOLOR SILENT=1) picks
     // up the override before the SlotInfo is exposed via events.
-    void apply_overrides(SlotInfo& slot, int slot_index);
     // External-edit sync: if the firmware-reported color for `slot_index`
     // differs from the previously observed value, treat it as an external
     // color/material edit (Mainsail console, AD5X LCD, native zmod dialog,
@@ -783,8 +782,42 @@ class AmsBackendAd5xIfs : public AmsSubscriptionBackend {
     // apply_overrides lets firmware truth through, while RETAINING the identity
     // metadata — mirroring the #1071 insert/eject retention. If nothing but
     // firmware fields were in the override (no identity to keep), it falls back
-    // to a full clear_override_locked() erase so the pre-existing #981 tests
-    // (locked-but-no-brand overrides) still see a clean wipe.
+    // to a full clear_override_locked() erase so a locked-but-no-brand override
+    // still sees a clean wipe.
+    //
+    // The lane's own LocalUser record is trimmed to match, because that record
+    // is what resolve() paints from and it outranks the vendor cache: a release
+    // that reached only overrides_ would go on showing the colour and material
+    // the user has stopped declaring (#1646).
+    /// Which of the firmware-owned fields a lane has stopped declaring.
+    struct RetractedFields {
+        bool color = false; ///< color_rgb, and the colour name that travels with it.
+        bool material = false;
+        bool catalog = false; ///< The catalog pick, which is scoped to a material.
+    };
+    // Retract a lane's stored declaration of the fields named in @p fields,
+    // leaving every other field of those records standing. A change reaching
+    // overrides_ alone leaves resolve() painting what the record no longer
+    // says, because a declaring record outranks the vendor cache this frame
+    // filed (#1646, #1654). helix::ams::retract_lane_declarations performs the
+    // retraction itself; what this decides is which fields travel together.
+    // Caller holds mutex_.
+    void retract_lane_declaration_locked(int slot_index, RetractedFields fields);
+
+    /// What a lock release does with the firmware-carryable values themselves.
+    enum class ReleasedValues {
+        Strip, ///< Clear them, so firmware truth shows through on this frame.
+        Keep,  ///< Leave them for the OverwriteAlways auto-mirror to refresh.
+    };
+    // Release the user's colour and material locks on one slot, in BOTH stores
+    // that hold the lane. overrides_ decides what a reload carries; the lane's
+    // LocalUser record is what resolve() paints from and it outranks the vendor
+    // cache, so a release reaching only one of them goes on showing the colour
+    // and material the user has stopped declaring (#1646). The rest of that
+    // declaration - brand, spool name, ids, weights - is left standing, which
+    // is what makes this a retraction rather than a clear. Caller holds mutex_.
+    void release_color_material_locks_locked(int slot_index, helix::ams::FilamentSlotOverride& ovr,
+                                             ReleasedValues disposition);
     void release_locked_override_keep_identity_locked(int slot_index, SlotInfo& slot);
     // Called on the empty->present (physical insert) edge for a lane. Drops the
     // color/material user-lock flags on an AUTO-TRACKED override (one with no
@@ -794,7 +827,9 @@ class AmsBackendAd5xIfs : public AmsSubscriptionBackend {
     // insert itself is the "this lane's contents changed" signal. A lane with a
     // deliberate Spoolman binding (spoolman_id > 0) is left untouched: #1071
     // retains it across an eject/insert cycle. brand/spool_name/spoolman_id/
-    // weights are never modified — only the two lock flags. Caller holds mutex_.
+    // weights are never modified: the override keeps its colour and material
+    // values for the mirror to refresh, and only the locks and the lane's
+    // matching LocalUser declaration go. Caller holds mutex_.
     // See docs/devel/FILAMENT_MANAGEMENT.md § "AD5X IFS material/color reconcile".
     void unlock_auto_tracked_override_on_insert_locked(int slot_index);
     void parse_adventurer_json(const std::string& content);

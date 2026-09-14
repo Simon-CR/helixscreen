@@ -38,7 +38,7 @@ namespace {
 // Outer Moonraker DB key for a slot. NOTE the two styles have DIFFERENT bases:
 //   Lane -> "lane<i+1>"  (1-based, AFC/Happy Hare convention)
 //   Tool -> "T<i>"       (0-based, Orca/Mainsail tool convention)
-// Both carry the SAME 0-based inner "lane" field (to_lane_data_record above).
+// Both carry the SAME 0-based inner "lane" field (to_lane_data_record).
 // IMPORTANT: changing the base of one style without the other silently breaks
 // interop — the outer key and inner "lane" field are deliberately offset for
 // Lane style (1-based key, 0-based field) and aligned for Tool style.
@@ -90,96 +90,6 @@ std::chrono::system_clock::time_point parse_iso8601(const std::string& s) {
 #else
     return std::chrono::system_clock::from_time_t(timegm(&tm));
 #endif
-}
-
-// Convert FilamentSlotOverride + slot_index to the AFC-shaped JSON Orca expects,
-// plus our extension fields (prefixed comment fields are HelixScreen-only, silently
-// ignored by Orca 2.3.2 which only reads the top 5 required fields).
-//
-// NOTE on indexing: the outer Moonraker DB key style varies (laneN 1-based for
-// filament systems, T<n> 0-based for tool changers) but the "lane" field inside
-// the record is ALWAYS 0-based (matches Orca's tool-index interpretation). The
-// outer key is produced by format_lane_key() above; this function writes the
-// 0-based inner field.
-nlohmann::json to_lane_data_record(int slot_index, const FilamentSlotOverride& o) {
-    nlohmann::json j;
-    j["lane"] = std::to_string(slot_index); // REQUIRED by Orca (0-based)
-    // Emit color only when the override actually has one set. Pure black
-    // (#000000) is a legitimate user choice and a real firmware-detected
-    // color (K2 reports loaded black PLA as RGB 0x000000), so the previous
-    // `color_rgb != 0` check was wrong — it conflated "no color set" with
-    // "color set to black". `color_set` is the explicit signal.
-    if (o.color_set) {
-        char buf[16];
-        std::snprintf(buf, sizeof(buf), "#%06X", o.color_rgb & 0x00FFFFFFu);
-        j["color"] = buf;
-    }
-    // Two strings, deliberately. OrcaSlicer reads `material` and matches it by
-    // exact string equality against its filament library; a string it cannot
-    // match does NOT degrade gracefully — it resolves to a PLA preset
-    // (Preset.cpp:3300), which means PLA temps on whatever is really loaded. So
-    // `material` carries a conservative, matchable string.
-    //
-    // `helix_material` carries our precise identity ("ASA-GF"), which Orca
-    // ignores. Without it, load_blocking would read back the degraded string
-    // and permanently forget what the user actually loaded.
-    if (!o.material.empty()) {
-        const std::string match = filament::orca_match_type(o.material);
-        if (!match.empty())
-            j["material"] = match;
-        j["helix_material"] = o.material;
-    }
-    // Catalog product identity. HelixScreen-only (Orca and the AMS plugins have
-    // no notion of a branded product id), hence the helix_ prefix in this shared
-    // namespace. Emitted independently: a pick whose id later stops resolving
-    // still has a name worth keeping, and a name with no id is a legitimate
-    // half-record rather than a reason to drop both.
-    if (!o.catalog_id.empty())
-        j["helix_catalog_id"] = o.catalog_id;
-    if (!o.product_name.empty())
-        j["helix_product_name"] = o.product_name;
-    // helix_locked_* are HelixScreen-internal markers. Always emit both (even
-    // when false) so a future re-load can distinguish "explicit auto-mirror,
-    // safe to track" from "missing key, fall back to pessimistic default."
-    // OrcaSlicer's MoonrakerPrinterAgent ignores unknown fields, so the two
-    // extra booleans per slot cost nothing on its side.
-    j["helix_locked_color"] = o.user_locked_color;
-    j["helix_locked_material"] = o.user_locked_material;
-    if (!o.brand.empty()) {
-        j["vendor"] = o.brand;      // legacy key, ours
-        j["vendor_name"] = o.brand; // the shared lane_data spelling, established by
-                                    // Happy Hare and adopted by AFC in #833, so a
-                                    // reader of this namespace finds our overrides
-                                    // under the one key it already looks for.
-                                    // Zero-cost alias (consumers ignore unknown keys).
-    }
-    if (o.spoolman_id > 0)
-        j["spool_id"] = o.spoolman_id;
-    if (o.updated_at.time_since_epoch().count() > 0) {
-        j["scan_time"] = format_iso8601(o.updated_at);
-    }
-    // Resolve at emit time — see resolved_temps() for the rule. The local
-    // cache (to_json) goes through the same resolver so the two stores never
-    // disagree on what an override means.
-    auto temps = resolved_temps(o);
-    if (temps.bed_temp > 0)
-        j["bed_temp"] = temps.bed_temp;
-    if (temps.nozzle_temp > 0)
-        j["nozzle_temp"] = temps.nozzle_temp;
-    if (!o.spool_name.empty()) {
-        j["spool_name"] = o.spool_name; // legacy key, ours
-        j["name"] = o.spool_name;       // the shared lane_data spelling — same rationale
-                                        // as `vendor_name` above
-    }
-    if (o.spoolman_vendor_id > 0)
-        j["spoolman_vendor_id"] = o.spoolman_vendor_id;
-    if (o.remaining_weight_g >= 0)
-        j["remaining_weight_g"] = o.remaining_weight_g;
-    if (o.total_weight_g >= 0)
-        j["total_weight_g"] = o.total_weight_g;
-    if (!o.color_name.empty())
-        j["color_name"] = o.color_name;
-    return j;
 }
 
 // Update the on-disk cache file with the current state of one slot.
@@ -408,6 +318,106 @@ std::optional<int> implied_slot_from_key(const std::string& key) {
 
 } // namespace
 
+// Convert FilamentSlotOverride + slot_index to the AFC-shaped JSON Orca expects,
+// plus our extension fields (prefixed comment fields are HelixScreen-only, silently
+// ignored by Orca 2.3.2 which only reads the top 5 required fields).
+//
+// NOTE on indexing: the outer Moonraker DB key style varies (laneN 1-based for
+// filament systems, T<n> 0-based for tool changers) but the "lane" field inside
+// the record is ALWAYS 0-based (matches Orca's tool-index interpretation). The
+// outer key is produced by format_lane_key(); this function writes the
+// 0-based inner field.
+//
+// Namespace-scope (not anonymous) for the same reason from_lane_data_record below
+// is: this is the wire-format emitter, and a fixture seeding a stored override
+// needs the document that override would have been written as. Production callers
+// in this file keep calling it unqualified.
+nlohmann::json to_lane_data_record(int slot_index, const FilamentSlotOverride& o) {
+    nlohmann::json j;
+    j["lane"] = std::to_string(slot_index); // REQUIRED by Orca (0-based)
+    // Emit color only when the override actually has one set. Pure black
+    // (#000000) is a legitimate user choice and a real firmware-detected
+    // color (K2 reports loaded black PLA as RGB 0x000000), so the previous
+    // `color_rgb != 0` check was wrong — it conflated "no color set" with
+    // "color set to black". `color_set` is the explicit signal.
+    if (o.color_set) {
+        char buf[16];
+        std::snprintf(buf, sizeof(buf), "#%06X", o.color_rgb & 0x00FFFFFFu);
+        j["color"] = buf;
+    }
+    // Two strings, deliberately. OrcaSlicer reads `material` and matches it by
+    // exact string equality against its filament library; a string it cannot
+    // match does NOT degrade gracefully — it resolves to a PLA preset
+    // (Preset.cpp:3300), which means PLA temps on whatever is really loaded. So
+    // `material` carries a conservative, matchable string.
+    //
+    // `helix_material` carries our precise identity ("ASA-GF"), which Orca
+    // ignores. Without it, load_blocking would read back the degraded string
+    // and permanently forget what the user actually loaded.
+    if (!o.material.empty()) {
+        const std::string match = filament::orca_match_type(o.material);
+        if (!match.empty())
+            j["material"] = match;
+        j["helix_material"] = o.material;
+    }
+    // Catalog product identity. HelixScreen-only (Orca and the AMS plugins have
+    // no notion of a branded product id), hence the helix_ prefix in this shared
+    // namespace. Emitted independently: a pick whose id later stops resolving
+    // still has a name worth keeping, and a name with no id is a legitimate
+    // half-record rather than a reason to drop both.
+    if (!o.catalog_id.empty())
+        j["helix_catalog_id"] = o.catalog_id;
+    if (!o.product_name.empty())
+        j["helix_product_name"] = o.product_name;
+    // helix_locked_* are HelixScreen-internal markers. Always emit both (even
+    // when false) so a future re-load can distinguish "explicit auto-mirror,
+    // safe to track" from "missing key, fall back to pessimistic default."
+    // OrcaSlicer's MoonrakerPrinterAgent ignores unknown fields, so the two
+    // extra booleans per slot cost nothing on its side.
+    j["helix_locked_color"] = o.user_locked_color;
+    j["helix_locked_material"] = o.user_locked_material;
+    // Authorship for the identity fields that own no lock flag. Always emitted,
+    // for the same reason the two flags are: an empty array says this record
+    // declares none of them, which a reader must be able to tell apart from a
+    // record written before the key existed.
+    j["helix_declared"] = declared_field_names(o.declared);
+    if (!o.brand.empty()) {
+        j["vendor"] = o.brand;      // legacy key, ours
+        j["vendor_name"] = o.brand; // the shared lane_data spelling, established by
+                                    // Happy Hare and adopted by AFC in #833, so a
+                                    // reader of this namespace finds our overrides
+                                    // under the one key it already looks for.
+                                    // Zero-cost alias (consumers ignore unknown keys).
+    }
+    if (o.spoolman_id > 0)
+        j["spool_id"] = o.spoolman_id;
+    if (o.updated_at.time_since_epoch().count() > 0) {
+        j["scan_time"] = format_iso8601(o.updated_at);
+    }
+    // Resolve at emit time — see resolved_temps() for the rule. The local
+    // cache (to_json) goes through the same resolver so the two stores never
+    // disagree on what an override means.
+    auto temps = resolved_temps(o);
+    if (temps.bed_temp > 0)
+        j["bed_temp"] = temps.bed_temp;
+    if (temps.nozzle_temp > 0)
+        j["nozzle_temp"] = temps.nozzle_temp;
+    if (!o.spool_name.empty()) {
+        j["spool_name"] = o.spool_name; // legacy key, ours
+        j["name"] = o.spool_name;       // the shared lane_data spelling — same rationale
+                                        // as `vendor_name` above
+    }
+    if (o.spoolman_vendor_id > 0)
+        j["spoolman_vendor_id"] = o.spoolman_vendor_id;
+    if (o.remaining_weight_g >= 0)
+        j["remaining_weight_g"] = o.remaining_weight_g;
+    if (o.total_weight_g >= 0)
+        j["total_weight_g"] = o.total_weight_g;
+    if (!o.color_name.empty())
+        j["color_name"] = o.color_name;
+    return j;
+}
+
 // Parse AFC-shaped record (+ our extensions) back into FilamentSlotOverride.
 // Returns (slot_index, override) where slot_index comes from the "lane" field
 // (which Orca requires). nullopt if the record is malformed (non-object or
@@ -465,6 +475,12 @@ std::optional<std::pair<int, FilamentSlotOverride>> from_lane_data_record(const 
     o.user_locked_color = helix::json_util::safe_bool(j, "helix_locked_color", o.color_set);
     o.user_locked_material =
         helix::json_util::safe_bool(j, "helix_locked_material", !o.material.empty());
+    // A record with no key declares nothing here. The legacy rule for what a
+    // keyless record's identity fields count as lives in sources_from_record,
+    // which can still see whether the key was on the wire; this struct cannot.
+    if (j.contains("helix_declared")) {
+        o.declared = declared_fields_from_names(j["helix_declared"]);
+    }
     // Prefer our own `vendor` key; fall back to `vendor_name`, the shared
     // lane_data spelling that Happy Hare established (mmu_server
     // push_lane_data) and AFC adopted in AFCProject/AFC-Klipper-Add-On#833, so
@@ -554,6 +570,7 @@ nlohmann::json to_json(const FilamentSlotOverride& o) {
         {"product_name", o.product_name},
         {"user_locked_color", o.user_locked_color},
         {"user_locked_material", o.user_locked_material},
+        {"declared", declared_field_names(o.declared)},
         {"bed_temp", o.bed_temp},
         {"nozzle_temp", o.nozzle_temp},
         {"updated_at", format_iso8601(o.updated_at)},
@@ -595,6 +612,12 @@ FilamentSlotOverride from_json(const nlohmann::json& j) {
     o.user_locked_color = helix::json_util::safe_bool(j, "user_locked_color", o.color_set);
     o.user_locked_material =
         helix::json_util::safe_bool(j, "user_locked_material", !o.material.empty());
+    // Same split as from_lane_data_record: absent means the record says
+    // nothing, and what a keyless record's identity counts as is the reader's
+    // rule, not this struct's.
+    if (j.contains("declared")) {
+        o.declared = declared_fields_from_names(j["declared"]);
+    }
     o.bed_temp = helix::json_util::safe_int(j, "bed_temp", 0);
     o.nozzle_temp = helix::json_util::safe_int(j, "nozzle_temp", 0);
     if (j.contains("updated_at") && j["updated_at"].is_string()) {
@@ -627,41 +650,92 @@ void populate_temps_from_slot_info(FilamentSlotOverride& ovr, const SlotInfo& in
     }
 }
 
-FilamentSlotOverride user_override_from_slot_info(const SlotInfo& info,
-                                                  const std::string& material) {
+FilamentSlotOverride user_override_from_slot_info(const SlotInfo& original, const SlotInfo& edited,
+                                                  const std::string& material,
+                                                  const FilamentSlotOverride* prior) {
     FilamentSlotOverride ovr;
-    ovr.brand = info.brand;
-    ovr.spool_name = info.spool_name;
-    ovr.spoolman_id = info.spoolman_id;
-    ovr.spoolman_vendor_id = info.spoolman_vendor_id;
-    ovr.remaining_weight_g = info.remaining_weight_g;
-    ovr.total_weight_g = info.total_weight_g;
-    ovr.color_name = info.color_name;
+    ovr.brand = edited.brand;
+    ovr.spool_name = edited.spool_name;
+    ovr.spoolman_id = edited.spoolman_id;
+    ovr.spoolman_vendor_id = edited.spoolman_vendor_id;
+    ovr.remaining_weight_g = edited.remaining_weight_g;
+    ovr.total_weight_g = edited.total_weight_g;
+    ovr.color_name = edited.color_name;
     ovr.material = material;
-    // Catalog product identity. Persisted so a reopen restores the EXACT
+    // Catalog product identity. Persisted so a reopen can restore the EXACT
     // product rather than the alphabetically-first variant of the same
-    // vendor+material. No firmware has a notion of a catalog product, so
-    // auto-mirror never writes these and a non-empty value is always a user
-    // pick; that is why they need no lock of their own.
-    ovr.catalog_id = info.catalog_id;
-    ovr.product_name = info.product_name;
-    // A deliberate pure black (#000000) records; the "no colour reading"
-    // sentinel does not.
-    if (is_declarable_color(info.color_rgb)) {
-        ovr.color_rgb = info.color_rgb;
+    // vendor+material. Firmware has no notion of a catalog product, so a
+    // non-empty value can only be a user pick and needs no lock of its own.
+    ovr.catalog_id = edited.catalog_id;
+    ovr.product_name = edited.product_name;
+    // A deliberate pure black (#000000) is a reading and records; the "no
+    // colour reading" sentinel is not one and does not.
+    if (is_declarable_color(edited.color_rgb)) {
+        ovr.color_rgb = edited.color_rgb;
         ovr.color_set = true;
     }
-    // Sign the edit as the user's so a mirror policy cannot overwrite it
-    // (#965). Locking a field the user did not supply would be worse than
-    // leaving it open: a lock on an unrecorded colour blocks both policies
-    // from ever filling that lane from firmware.
-    ovr.user_locked_color = ovr.color_set;
-    ovr.user_locked_material = !material.empty();
+
+    // What the user actually said, as opposed to what the record now carries.
+    // Every field above travels because the lane must show it; only the fields
+    // this observation names are the user's own word. The editor opens on the
+    // lane's current state, so a value the machine supplied and the user never
+    // moved reaches `edited` looking exactly like something they typed, and the
+    // diff is the only thing that can tell them apart.
+    const Observation declaration = user_edit_observation(original, edited);
+
+    // Authorship is AMENDED onto the record the lane already had, never
+    // replaced: this edit speaks about the fields it moved and says nothing
+    // about the rest, so a choice made in an earlier edit stays the user's
+    // word while the value it stood over is still the one on the record. The
+    // lane's own source record is amended the same way, by commit_slot_edit.
+    //
+    // A record replaced instead would lose a colour declared in an earlier
+    // edit the moment a later edit touched only the brand, and the consumption
+    // meter would clear every declaration on the lane on its next persist:
+    // persist=true means "write this down", not "a user typed this".
+    const FilamentSlotOverride no_prior_record;
+    const RecordAuthorship authorship =
+        amend_authorship(declaration, prior != nullptr ? *prior : no_prior_record, ovr);
+    // The two locks mark their fields as the user's word rather than something
+    // the store merely remembered, both to the auto-mirror policies and to the
+    // reload that classifies the record (#965). The roster rows with no flag
+    // of their own keep the same answer in the declared set.
+    ovr.user_locked_color = authorship.user_locked_color;
+    ovr.user_locked_material = authorship.user_locked_material;
+    ovr.declared = authorship.declared;
+
     // SlotInfo carries the user's edit OR the bound Spoolman spool's filament
     // profile; the material-DB fallback for fields left at 0 is applied at
     // emit time inside resolved_temps().
-    populate_temps_from_slot_info(ovr, info);
+    populate_temps_from_slot_info(ovr, edited);
+    // updated_at left default: save_async stamps a fresh value.
     return ovr;
+}
+
+FilamentSlotOverride user_override_from_slot_info(const SlotInfo& original, const SlotInfo& edited,
+                                                  const FilamentSlotOverride* prior) {
+    return user_override_from_slot_info(original, edited, edited.material, prior);
+}
+
+FilamentSlotOverride& stage_user_override(std::unordered_map<int, FilamentSlotOverride>& overrides,
+                                          int slot_index, const SlotInfo& original,
+                                          const SlotInfo& edited, const std::string& material) {
+    // Built against the entry this call replaces, so the find has to happen
+    // before the insert: operator[] on a lane with no record yet would hand
+    // the amend a default-constructed record that declares nothing, which is
+    // the same answer but by accident rather than on purpose.
+    const auto existing = overrides.find(slot_index);
+    FilamentSlotOverride amended = user_override_from_slot_info(
+        original, edited, material, existing == overrides.end() ? nullptr : &existing->second);
+    FilamentSlotOverride& staged = overrides[slot_index];
+    staged = std::move(amended);
+    return staged;
+}
+
+FilamentSlotOverride& stage_user_override(std::unordered_map<int, FilamentSlotOverride>& overrides,
+                                          int slot_index, const SlotInfo& original,
+                                          const SlotInfo& edited) {
+    return stage_user_override(overrides, slot_index, original, edited, edited.material);
 }
 
 // ============================================================================
@@ -1200,6 +1274,7 @@ void FilamentSlotOverrideStore::reload_async(ReloadCallback cb) {
 
 std::unordered_map<int, FilamentSlotOverride> FilamentSlotOverrideStore::load_blocking_impl() {
     std::unordered_map<int, FilamentSlotOverride> result;
+    lane_data_records_.clear();
     if (!api_)
         return result;
 
@@ -1295,8 +1370,9 @@ std::unordered_map<int, FilamentSlotOverride> FilamentSlotOverrideStore::load_bl
                      anomalies.key_inner_mismatch, anomalies.unparseable, anomalies.duplicate_slot);
     }
 
-    for (auto& [slot, entry] : parse_namespace_document(received_copy, key_style_, backend_id_)) {
-        result[slot] = std::move(entry.record);
+    lane_data_records_ = parse_namespace_document(received_copy, key_style_, backend_id_);
+    for (const auto& [slot, entry] : lane_data_records_) {
+        result[slot] = entry.record;
     }
 
     // One-shot heal: records written before orca_match_type existed (or whose
@@ -1821,10 +1897,6 @@ FingerprintEvent SlotFingerprintTracker::observe(int slot_index, const std::stri
     return FingerprintEvent::Changed;
 }
 
-void SlotFingerprintTracker::expect(int slot_index, std::string expected_value) {
-    expected_[slot_index] = {std::move(expected_value)};
-}
-
 void SlotFingerprintTracker::expect_any_of(int slot_index,
                                            std::vector<std::string> expected_values) {
     std::vector<std::string> kept;
@@ -1860,7 +1932,7 @@ void SlotFingerprintTracker::clear() {
 }
 
 // =============================================================================
-// merge_override — shared spec §5 implementation
+// Override store construction, persisted clears, external lane publishing
 // =============================================================================
 
 LoadedOverrideStore make_loaded_override_store(IMoonrakerAPI* api, std::string backend_id,
@@ -1878,61 +1950,23 @@ LoadedOverrideStore make_loaded_override_store(IMoonrakerAPI* api, std::string b
     return result;
 }
 
-MergeResult merge_override(SlotInfo& slot, const FilamentSlotOverride& o,
-                           const MergeOptions& options) {
-    // Rule 1 — external re-bind. Another well-behaved writer (Mainsail, the
-    // AFC plugin) explicitly set a DIFFERENT spool on this lane. That is a
-    // statement, not a guess: the whole record drops, firmware truth paints.
-    // Never gated by the setting; never fires on eject's 0/null (#1281 step 7).
-    // The two suppress ids exclude our OWN in-flight re-links: after
-    // HelixScreen writes a spool id, status frames already parsed (or parsed
-    // before the write lands) keep reporting the OLD firmware id for a poll
-    // or two — that stale frame is us, not Mainsail (SlotFingerprintTracker
-    // ::expect() semantics; see MergeOptions). Suppression only skips this
-    // clear; the field merge below still paints the override.
-    if (slot.spoolman_id > 0 && o.spoolman_id > 0 && slot.spoolman_id != o.spoolman_id &&
-        slot.spoolman_id != options.suppress_rebind_firmware_old_id &&
-        slot.spoolman_id != options.suppress_rebind_firmware_new_id) {
-        MergeResult r;
-        r.cleared_rebind = true;
-        return r;
+bool clear_persisted_override(FilamentSlotOverrideStore* store,
+                              std::unordered_map<int, FilamentSlotOverride>& overrides,
+                              int slot_index, const std::string& log_tag) {
+    auto it = overrides.find(slot_index);
+    if (it == overrides.end()) {
+        return false;
     }
-    // Rule 2 — eject signal, setting-gated. Only meaningful where firmware
-    // reports ids while loaded (AFC, Happy Hare): there, 0/null is the eject
-    // the plugin itself writes. Elsewhere 0 is the everyday reading — stock
-    // CFS firmware reports no ids at all, and flat-schema CFS parses a
-    // per-slot id without giving 0 an eject meaning — so the rule stays
-    // inert.
-    if (options.printer_reports_spool_ids && slot.spoolman_id <= 0 && o.spoolman_id > 0 &&
-        !options.keep_spool_info_on_eject) {
-        MergeResult r;
-        r.cleared_eject = true;
-        return r;
+    overrides.erase(it);
+    if (store) {
+        store->clear_async(slot_index, [log_tag, slot_index](bool ok, std::string err) {
+            if (!ok) {
+                spdlog::warn("{} override clear persist failed for slot {}: {}", log_tag,
+                             slot_index, err);
+            }
+        });
     }
-    // Spec §5 — override wins field-by-field; sentinels fall through.
-    if (!o.brand.empty())
-        slot.brand = o.brand;
-    if (!o.spool_name.empty())
-        slot.spool_name = o.spool_name;
-    if (o.spoolman_id > 0)
-        slot.spoolman_id = o.spoolman_id;
-    if (o.spoolman_vendor_id > 0)
-        slot.spoolman_vendor_id = o.spoolman_vendor_id;
-    if (o.remaining_weight_g >= 0.0f)
-        slot.remaining_weight_g = o.remaining_weight_g;
-    if (o.total_weight_g >= 0.0f)
-        slot.total_weight_g = o.total_weight_g;
-    if (o.color_set)
-        slot.color_rgb = o.color_rgb;
-    if (!o.color_name.empty())
-        slot.color_name = o.color_name;
-    if (!o.material.empty())
-        slot.material = o.material;
-    if (!o.catalog_id.empty())
-        slot.catalog_id = o.catalog_id;
-    if (!o.product_name.empty())
-        slot.product_name = o.product_name;
-    return {};
+    return true;
 }
 
 bool publish_external_lane(FilamentSlotOverrideStore* store, int lane_index, const SlotInfo* spool,

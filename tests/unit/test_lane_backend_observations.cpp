@@ -35,6 +35,7 @@
 #include "test_helpers/qidi_box_test_access.h"
 #include "test_helpers/registered_backend.h"
 #include "test_helpers/scoped_runtime_config.h"
+#include "test_helpers/seeded_override.h"
 #include "test_helpers/snapmaker_test_access.h"
 #include "test_helpers/toolchanger_test_access.h"
 #include "toolchanger_addon.h"
@@ -115,16 +116,6 @@ void feed_ace(AmsBackendAce& backend, const nlohmann::json& data) {
     nlohmann::json notification;
     notification["params"] = nlohmann::json::array({params, 0.0});
     AceTestAccess::handle_status_update(backend, notification);
-}
-
-/// A user colour and material that disagree with whatever firmware reports.
-helix::ams::FilamentSlotOverride user_colour_and_material() {
-    helix::ams::FilamentSlotOverride user;
-    user.color_rgb = 0x00FF00u;
-    user.color_set = true;
-    user.user_locked_color = true;
-    user.material = "ABS";
-    return user;
 }
 
 /// One `[fila<N>]` section, the shape apply_filas_list() reads out of the
@@ -416,23 +407,21 @@ TEST_CASE_METHOD(LVGLTestFixture, "an override never reaches AD5X's vendor-cache
     Ad5xHarness harness(nullptr, nullptr);
     Ad5xIfsTestAccess::set_ifs_status_ports_seen(*harness, true);
 
-    // A user colour that disagrees with what the vendor file says. SlotInfo is
-    // persistent across frames and apply_overrides rewrites it in place, so
-    // entry->info.color_rgb is this value by the time the frame ends. A
-    // translation reading it back would file the user's own choice as something
-    // the vendor store remembers.
-    helix::ams::FilamentSlotOverride user;
-    user.color_rgb = 0x00FF00u;
-    user.color_set = true;
-    user.user_locked_color = true;
-    Ad5xIfsTestAccess::seed_override(*harness, 1, user);
+    // A user colour that disagrees with what the vendor file goes on to say.
+    // SlotInfo is persistent across frames and the lane re-layer rewrites it in
+    // place, so entry->info.color_rgb is this value by the time the frame ends.
+    // A translation reading it back would file the user's own choice as
+    // something the vendor store remembers.
+    helix::SlotInfo edit = harness->get_slot_info(1);
+    edit.color_rgb = 0x00FF00u;
+    helix::test::edit_slot_as_user(*harness, 1, edit);
 
     Ad5xIfsTestAccess::set_color(*harness, 1, "ED2C2C");
     Ad5xIfsTestAccess::set_port_presence(*harness, 1, true);
 
-    // Precondition, not the behaviour under test: unless the override actually
-    // wins on the merged slot, there is no laundering for the case to catch and
-    // the assertion below would hold for the wrong reason.
+    // Precondition, not the behaviour under test: unless the user's colour
+    // actually wins on the merged slot, there is no laundering for the case to
+    // catch and the assertion below would hold for the wrong reason.
     REQUIRE(harness->get_slot_info(1).color_rgb == 0x00FF00u);
 
     const auto lane = lane_sources(harness.lane(1));
@@ -440,11 +429,13 @@ TEST_CASE_METHOD(LVGLTestFixture, "an override never reaches AD5X's vendor-cache
     REQUIRE(lane.vendor_cache->color_rgb.has_value());
     CHECK(*lane.vendor_cache->color_rgb == 0xED2C2Cu);
 
-    // A lane the vendor file says nothing about. Here entry->info.color_rgb
-    // holds the override alone, so a read-back files a colour where the vendor
-    // store has none.
-    Ad5xIfsTestAccess::seed_override(*harness, 2, user);
-    Ad5xIfsTestAccess::set_port_presence(*harness, 2, true);
+    // A lane the vendor file says nothing about, where our own stored record is
+    // the only thing carrying a colour at all. entry->info.color_rgb holds that
+    // colour alone, so a read-back files one where the vendor store has none.
+    helix::ams::FilamentSlotOverride stored;
+    stored.color_rgb = 0x00FF00u;
+    stored.color_set = true;
+    Ad5xIfsTestAccess::seed_override(*harness, 2, stored);
     Ad5xIfsTestAccess::set_port_presence(*harness, 2, true);
 
     REQUIRE(harness->get_slot_info(2).color_rgb == 0x00FF00u);
@@ -601,16 +592,14 @@ TEST_CASE_METHOD(LVGLTestFixture, "an override never reaches AFC's vendor-cache 
     AfcHarness harness(nullptr, nullptr);
     init_afc_lanes(*harness);
 
-    // A user colour and material that disagree with what AFC reports.
-    // apply_overrides() rewrites SlotInfo with these on every frame, so a
-    // translation reading that struct back would file the user's own choice as
-    // something AFC's store remembers.
-    helix::ams::FilamentSlotOverride user;
-    user.color_rgb = 0x00FF00u;
-    user.color_set = true;
-    user.user_locked_color = true;
-    user.material = "ABS";
-    AfcTestAccess::overrides(*harness)[1] = user;
+    // A user colour and material that disagree with what AFC reports. The edit
+    // is re-laid onto SlotInfo at the tail of every frame, so a translation
+    // reading that struct back would file the user's own choice as something
+    // AFC's store remembers.
+    helix::SlotInfo edit = harness->get_slot_info(1);
+    edit.color_rgb = 0x00FF00u;
+    edit.material = "ABS";
+    helix::test::edit_slot_as_user(*harness, 1, edit);
 
     feed_afc_lane(
         *harness, "lane2",
@@ -714,12 +703,13 @@ TEST_CASE_METHOD(LVGLTestFixture, "a spool id AFC did not state is not filed as 
     AfcHarness harness(nullptr, nullptr);
     init_afc_lanes(*harness);
 
-    helix::ams::FilamentSlotOverride user;
-    user.spoolman_id = 99;
-    AfcTestAccess::overrides(*harness)[0] = user;
+    // The user binds a spool to the lane.
+    helix::SlotInfo edit = harness->get_slot_info(0);
+    edit.spoolman_id = 99;
+    helix::test::edit_slot_as_user(*harness, 0, edit);
 
-    // AFC unlinks the lane; the override re-supplies the user's id on the
-    // merged slot, which is the precondition rather than the behaviour.
+    // AFC unlinks the lane; the user's own binding still stands on the merged
+    // slot, which is the precondition rather than the behaviour.
     feed_afc_lane(*harness, "lane1", {{"prep", true}, {"status", "Loaded"}, {"spool_id", nullptr}});
     REQUIRE(harness->get_slot_info(0).spoolman_id == 99);
     REQUIRE_FALSE(lane_sources(harness.lane(0)).vendor_cache->spoolman_id.has_value());
@@ -992,25 +982,27 @@ TEST_CASE_METHOD(LVGLTestFixture, "an override never reaches Happy Hare's vendor
                  "[lane][ingest][happy_hare]") {
     HappyHareHarness harness(nullptr, nullptr);
 
+    // gate_spool_id is what makes the lane re-layer run at all on this path.
+    const nlohmann::json gates = {{"gate_status", nlohmann::json::array({1, 1})},
+                                  {"gate_color", nlohmann::json::array({"a4b2bc", "ed2c2c"})},
+                                  {"gate_material", nlohmann::json::array({"PLA", "PETG"})},
+                                  {"gate_spool_id", nlohmann::json::array({0, 0})}};
+
+    // Frame one gives the backend its gates, which an edit needs to address.
+    feed_mmu(*harness, gates);
+
     // A user colour and material that disagree with what the gate map says.
-    // SlotInfo persists across frames and apply_overrides() rewrites it in
+    // SlotInfo persists across frames and the lane re-layer rewrites it in
     // place, so a translation reading that struct back would file the user's
     // own choice as something Happy Hare's gate map remembers.
-    helix::ams::FilamentSlotOverride user;
-    user.color_rgb = 0x00FF00u;
-    user.color_set = true;
-    user.user_locked_color = true;
-    user.material = "ABS";
-    {
-        std::lock_guard<std::mutex> lock(HappyHareTestAccess::mutex(*harness));
-        HappyHareTestAccess::overrides(*harness)[1] = user;
-    }
+    helix::SlotInfo edit = harness->get_slot_info(1);
+    edit.color_rgb = 0x00FF00u;
+    edit.material = "ABS";
+    helix::test::edit_slot_as_user(*harness, 1, edit);
 
-    // gate_spool_id is what makes apply_overrides() run at all on this path.
-    feed_mmu(*harness, {{"gate_status", nlohmann::json::array({1, 1})},
-                        {"gate_color", nlohmann::json::array({"a4b2bc", "ed2c2c"})},
-                        {"gate_material", nlohmann::json::array({"PLA", "PETG"})},
-                        {"gate_spool_id", nlohmann::json::array({0, 0})}});
+    // Frame two re-states the same gate map, with the user's choice standing on
+    // the merged slot for a read-back to pick up.
+    feed_mmu(*harness, gates);
 
     // Precondition, not the behaviour under test: unless the override actually
     // wins on the merged slot there is no laundering for the case to catch and
@@ -1165,21 +1157,27 @@ TEST_CASE_METHOD(LVGLTestFixture, "a user's own name never decides Happy Hare's 
                  "[lane][ingest][happy_hare]") {
     HappyHareHarness harness(nullptr, nullptr);
 
-    // SlotInfo::color_name is override-merged, so asking it which of the MMU's
-    // two name keys won would let a person's edit answer for the firmware.
-    helix::ams::FilamentSlotOverride user;
-    user.color_name = "User Named It";
-    {
-        std::lock_guard<std::mutex> lock(HappyHareTestAccess::mutex(*harness));
-        HappyHareTestAccess::overrides(*harness)[0] = user;
-    }
+    const nlohmann::json gates = {
+        {"gate_status", nlohmann::json::array({1, 1})},
+        {"gate_spool_id", nlohmann::json::array({0, 0})},
+        {"gate_filament_name", nlohmann::json::array({"EMU Black", "EMU Blue"})}};
 
-    feed_mmu(*harness, {{"gate_status", nlohmann::json::array({1, 1})},
-                        {"gate_spool_id", nlohmann::json::array({0, 0})},
-                        {"gate_filament_name", nlohmann::json::array({"EMU Black", "EMU Blue"})}});
+    // Frame one gives the backend its gates, which an edit needs to address.
+    feed_mmu(*harness, gates);
 
-    // Precondition, not the behaviour under test: the override has to actually
-    // win on the merged slot for there to be anything to launder.
+    // SlotInfo::color_name is a field the user's own edit writes, so asking it
+    // which of the MMU's two name keys won would let a person's edit answer for
+    // the firmware.
+    helix::SlotInfo edit = harness->get_slot_info(0);
+    edit.color_name = "User Named It";
+    helix::test::edit_slot_as_user(*harness, 0, edit);
+
+    // Frame two re-states the same names, with the user's own name standing on
+    // the merged slot for a read-back to pick up.
+    feed_mmu(*harness, gates);
+
+    // Precondition, not the behaviour under test: the edit has to actually win
+    // on the merged slot for there to be anything to launder.
     REQUIRE(harness->get_slot_info(0).color_name == "User Named It");
 
     const auto lane = lane_sources(harness.lane(0));
@@ -1251,18 +1249,27 @@ TEST_CASE_METHOD(LVGLTestFixture, "an override never reaches CFS's vendor-cache 
                  "[lane][ingest][cfs]") {
     CfsHarness harness(nullptr, nullptr);
 
-    // SlotInfo persists across frames and apply_overrides() rewrites it in
+    const nlohmann::json box = flat_box(nlohmann::json::array(
+        {nlohmann::json{{"index", 0}, {"present", false}}, nlohmann::json{{"index", 1},
+                                                                          {"material", "PETG"},
+                                                                          {"brand", "Creality"},
+                                                                          {"color", "#ED2C2C"},
+                                                                          {"present", true}}}));
+
+    // Frame one gives the backend its bays, which an edit needs to address.
+    feed_cfs_box(*harness, box);
+
+    // SlotInfo persists across frames and the lane re-layer rewrites it in
     // place at the convergence pass, so a translation reading that struct back
     // would file the user's own choice as something the box remembers.
-    CfsTestAccess::seed_override(*harness, 1, user_colour_and_material());
+    helix::SlotInfo edit = harness->get_slot_info(1);
+    edit.color_rgb = 0x00FF00u;
+    edit.material = "ABS";
+    helix::test::edit_slot_as_user(*harness, 1, edit);
 
-    feed_cfs_box(*harness,
-                 flat_box(nlohmann::json::array({nlohmann::json{{"index", 0}, {"present", false}},
-                                                 nlohmann::json{{"index", 1},
-                                                                {"material", "PETG"},
-                                                                {"brand", "Creality"},
-                                                                {"color", "#ED2C2C"},
-                                                                {"present", true}}})));
+    // Frame two re-states the same bay, with the user's choice standing on the
+    // merged slot for a read-back to pick up.
+    feed_cfs_box(*harness, box);
 
     // Precondition, not the behaviour under test: unless the override actually
     // wins on the merged slot there is no laundering for this case to catch and
@@ -1510,11 +1517,6 @@ TEST_CASE_METHOD(LVGLTestFixture, "an override never reaches ACE's vendor-cache 
                  "[lane][ingest][ace]") {
     AceHarness harness(nullptr, nullptr);
 
-    // SlotInfo persists across frames and apply_overrides() rewrites it in
-    // place at the end of every slot iteration, so a translation reading that
-    // struct back would file the user's own choice as the hub's memory.
-    AceTestAccess::seed_override(*harness, 1, user_colour_and_material());
-
     feed_ace(*harness,
              nlohmann::json{
                  {"slots", nlohmann::json::array({
@@ -1524,6 +1526,14 @@ TEST_CASE_METHOD(LVGLTestFixture, "an override never reaches ACE's vendor-cache 
                                               {"type", "PETG"}},
                            })},
              });
+
+    // SlotInfo persists across frames and the lane re-layer rewrites it in
+    // place at the end of every slot iteration, so a translation reading that
+    // struct back would file the user's own choice as the hub's memory.
+    helix::SlotInfo edit = harness->get_slot_info(1);
+    edit.color_rgb = 0x00FF00u;
+    edit.material = "ABS";
+    helix::test::edit_slot_as_user(*harness, 1, edit);
 
     // Precondition, not the behaviour under test: unless the override actually
     // wins on the merged slot there is no laundering for this case to catch and
@@ -1958,16 +1968,13 @@ TEST_CASE_METHOD(LVGLTestFixture, "an override never reaches Snapmaker's vendor-
     feed_filament_detect(*harness, tag);
     REQUIRE(harness->get_slot_info(0).color_rgb == 0xED2C2Cu);
 
-    // The user overrides it. apply_overrides runs at the tail of every frame
+    // The user overrides it. The lane re-layer runs at the tail of every frame
     // and rewrites the persistent SlotInfo in place, so from here the merged
     // struct carries the user's colour and material rather than the tag's.
-    //
-    // Both locks are needed for that: this backend mirrors firmware truth back
-    // into the record on the OverwriteAlways policy, which replaces an unlocked
-    // field with what the tag says before apply_overrides ever reads it.
-    auto user = user_colour_and_material();
-    user.user_locked_material = true;
-    SnapmakerTestAccess::seed_override(*harness, 0, user);
+    helix::SlotInfo edit = harness->get_slot_info(0);
+    edit.color_rgb = 0x00FF00u;
+    edit.material = "ABS";
+    helix::test::edit_slot_as_user(*harness, 0, edit);
 
     // Frame two re-reads the same tag. The record must say what the tag says.
     feed_filament_detect(*harness, tag);
@@ -2071,15 +2078,21 @@ TEST_CASE_METHOD(LVGLTestFixture, "an override never becomes a tool changer's ve
     ToolChangerHarness harness(nullptr, nullptr);
     harness->set_discovered_tools({"T0", "T1"});
 
-    // On this backend the override store is the ONLY source of filament
-    // identity, so every identity field on the merged slot is the user's own
-    // statement and there is nothing else for a read-back to pick up.
-    ToolChangerTestAccess::seed_override(*harness, 0, user_colour_and_material());
+    // Only what the status frame below files may answer the assertions, so the
+    // lane starts empty of whatever tool discovery left on it.
+    helix::ams::reset_lane_sources();
+
+    // On this backend a person's edit is the ONLY source of filament identity,
+    // so every identity field on the merged slot is the user's own statement
+    // and there is nothing else for a read-back to pick up.
+    helix::SlotInfo edit = harness->get_slot_info(0);
+    edit.color_rgb = 0x00FF00u;
+    edit.material = "ABS";
+    helix::test::edit_slot_as_user(*harness, 0, edit);
 
     // The production laundering shape, which a second set_discovered_tools()
     // does not reach: a real status frame, where refresh_slot_statuses_locked
-    // files the reading and the tail re-layer runs apply_overrides after it.
-    helix::ams::reset_lane_sources();
+    // files the reading and the tail re-layer runs after it.
     feed_toolchanger(*harness,
                      nlohmann::json{{"toolchanger", {{"status", "ready"}, {"tool_number", 0}}}});
 
@@ -2195,8 +2208,11 @@ TEST_CASE_METHOD(LVGLTestFixture, "Snapmaker's print_task_config writes identity
                  "[lane][ingest][snapmaker]") {
     SnapmakerHarness harness(nullptr, nullptr);
 
+    // Two channels sensed, one tag between them. Channel 0 has a tag read for
+    // print_task_config to contend with; channel 1 has none, so what the merged
+    // struct shows there is the write surface's own work and nothing else.
     feed_filament_detect(*harness, nlohmann::json{
-                                       {"state", nlohmann::json::array({1})},
+                                       {"state", nlohmann::json::array({1, 1})},
                                        {"info", nlohmann::json::array({nlohmann::json{
                                                     {"MAIN_TYPE", "PLA"},
                                                     {"MANUFACTURER", "Snapmaker"},
@@ -2208,20 +2224,28 @@ TEST_CASE_METHOD(LVGLTestFixture, "Snapmaker's print_task_config writes identity
     // sent that command set them: the machine's screen, a slicer, a console, or
     // this backend's own write-back, which firmware mirrors into this struct.
     // It is a write surface and files nothing.
-    feed_print_task_config(*harness,
-                           nlohmann::json{
-                               {"filament_type", nlohmann::json::array({"PETG"})},
-                               {"filament_vendor", nlohmann::json::array({"SomebodyElse"})},
-                               {"filament_color_rgba", nlohmann::json::array({"00FF00FF"})},
-                           });
+    feed_print_task_config(
+        *harness, nlohmann::json{
+                      {"filament_type", nlohmann::json::array({"PETG", "PETG"})},
+                      {"filament_vendor", nlohmann::json::array({"SomebodyElse", "SomebodyElse"})},
+                      {"filament_color_rgba", nlohmann::json::array({"00FF00FF", "00FF00FF"})},
+                  });
 
     // The control: the parse ran and took every field onto the merged struct.
-    REQUIRE(harness->get_slot_info(0).material == "PETG");
-    REQUIRE(harness->get_slot_info(0).brand == "SomebodyElse");
-    REQUIRE(harness->get_slot_info(0).color_rgb == 0x00FF00u);
+    // An unobserved field leaves the backend's own write standing, so the
+    // untagged channel is where that write is visible.
+    REQUIRE(harness->get_slot_info(1).material == "PETG");
+    REQUIRE(harness->get_slot_info(1).brand == "SomebodyElse");
+    REQUIRE(harness->get_slot_info(1).color_rgb == 0x00FF00u);
 
-    // The record still holds the tag read, which is the only thing on this
-    // backend that was measured rather than declared.
+    // And it observed none of it. Nothing read that channel's identity, so a
+    // vendor-cache record there could only have come from this write surface.
+    const auto untagged = lane_sources(harness.lane(1));
+    REQUIRE(untagged.sensed.has_value());
+    CHECK_FALSE(untagged.vendor_cache.has_value());
+
+    // The tagged channel's record still holds the tag read, which is the only
+    // thing on this backend that was measured rather than declared.
     const auto lane = lane_sources(harness.lane(0));
     REQUIRE(lane.vendor_cache.has_value());
     CHECK(lane.vendor_cache->material == "PLA");
@@ -2948,17 +2972,17 @@ TEST_CASE_METHOD(LVGLTestFixture, "a resync re-reads the shared namespace into t
     db.seed("T0", nlohmann::json{{"lane", "0"}, {"material", "ASA"}, {"color", "#A4B2BC"}});
     ToolChangerTestAccess::inject_override_store(*harness, toolchanger_store(db));
 
-    REQUIRE_FALSE(lane_sources(harness.lane(0)).vendor_cache.has_value());
+    REQUIRE_FALSE(lane_sources(harness.lane(0)).remembered.has_value());
 
     harness->request_resync();
     helix::ui::UpdateQueue::instance().drain();
 
     CHECK(db.api.mock_db_namespace_get_count() == 1);
     const auto lane = lane_sources(harness.lane(0));
-    REQUIRE(lane.vendor_cache.has_value());
-    CHECK(lane.vendor_cache->material == "ASA");
-    REQUIRE(lane.vendor_cache->color_rgb.has_value());
-    CHECK(*lane.vendor_cache->color_rgb == 0xA4B2BCu);
+    REQUIRE(lane.remembered.has_value());
+    CHECK(lane.remembered->material == "ASA");
+    REQUIRE(lane.remembered->color_rgb.has_value());
+    CHECK(*lane.remembered->color_rgb == 0xA4B2BCu);
 }
 
 TEST_CASE_METHOD(LVGLTestFixture, "a resync reaches the backend's own block, not slot indices",
@@ -2981,12 +3005,12 @@ TEST_CASE_METHOD(LVGLTestFixture, "a resync reaches the backend's own block, not
 
     // Slot 1, not slot 0: the slot index is carried as well as the block.
     const auto lane = lane_sources(backend->lane_id(1));
-    REQUIRE(lane.vendor_cache.has_value());
-    CHECK(lane.vendor_cache->material == "PC");
+    REQUIRE(lane.remembered.has_value());
+    CHECK(lane.remembered->material == "PC");
 
     // Block 0 belongs to the other backend. Deriving the id from the slot
     // index alone would land the record there.
-    CHECK_FALSE(lane_sources(helix::ams::lane_id_for(0, 1)).vendor_cache.has_value());
+    CHECK_FALSE(lane_sources(helix::ams::lane_id_for(0, 1)).remembered.has_value());
 }
 
 TEST_CASE_METHOD(LVGLTestFixture, "a resync files no declaration for a record naming a spool",
@@ -3005,11 +3029,11 @@ TEST_CASE_METHOD(LVGLTestFixture, "a resync files no declaration for a record na
 
     const auto linked = lane_sources(harness.lane(0));
     CHECK_FALSE(linked.spoolman.has_value());
-    CHECK_FALSE(linked.vendor_cache.has_value());
+    CHECK_FALSE(linked.remembered.has_value());
 
     const auto plain = lane_sources(harness.lane(1));
-    REQUIRE(plain.vendor_cache.has_value());
-    CHECK(plain.vendor_cache->material == "PLA");
+    REQUIRE(plain.remembered.has_value());
+    CHECK(plain.remembered->material == "PLA");
 }
 
 TEST_CASE_METHOD(LVGLTestFixture, "a resync files no declaration for a locked record",
@@ -3031,11 +3055,11 @@ TEST_CASE_METHOD(LVGLTestFixture, "a resync files no declaration for a locked re
     // declared it again at the moment the screen was opened.
     const auto locked = lane_sources(harness.lane(0));
     CHECK_FALSE(locked.local_user.has_value());
-    CHECK_FALSE(locked.vendor_cache.has_value());
+    CHECK_FALSE(locked.remembered.has_value());
 
     const auto plain = lane_sources(harness.lane(1));
-    REQUIRE(plain.vendor_cache.has_value());
-    CHECK(plain.vendor_cache->material == "PLA");
+    REQUIRE(plain.remembered.has_value());
+    CHECK(plain.remembered->material == "PLA");
 }
 
 TEST_CASE_METHOD(LVGLTestFixture, "a re-read that cannot reach the database leaves the lane alone",
@@ -3047,7 +3071,7 @@ TEST_CASE_METHOD(LVGLTestFixture, "a re-read that cannot reach the database leav
 
     harness->request_resync();
     helix::ui::UpdateQueue::instance().drain();
-    REQUIRE(lane_sources(harness.lane(0)).vendor_cache.has_value());
+    REQUIRE(lane_sources(harness.lane(0)).remembered.has_value());
 
     db.seed("T0", nlohmann::json{{"lane", "0"}, {"material", "TPU"}});
     db.api.mock_reject_next_db_get();
@@ -3055,8 +3079,8 @@ TEST_CASE_METHOD(LVGLTestFixture, "a re-read that cannot reach the database leav
     helix::ui::UpdateQueue::instance().drain();
 
     const auto lane = lane_sources(harness.lane(0));
-    REQUIRE(lane.vendor_cache.has_value());
-    CHECK(lane.vendor_cache->material == "PLA");
+    REQUIRE(lane.remembered.has_value());
+    CHECK(lane.remembered->material == "PLA");
 }
 
 // --- The six that do not ---------------------------------------------------

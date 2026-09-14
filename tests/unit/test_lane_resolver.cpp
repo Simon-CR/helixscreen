@@ -87,18 +87,22 @@ TEST_CASE("Presence comes from the sensor and nothing else", "[lane][resolver]")
         spool.material = "PETG";
         lane.apply(spool);
 
-        CHECK_FALSE(helix::ams::resolve(lane).present);
+        // No sensor spoke, so there is no presence reading to report. That is
+        // a third answer, distinct from both "occupied" and "empty".
+        CHECK_FALSE(helix::ams::resolve(lane).present.has_value());
     }
 
     SECTION("the sensor decides, in both directions") {
         Observation sensed(ObservationSource::Sensed);
         sensed.present = true;
         lane.apply(sensed);
-        CHECK(helix::ams::resolve(lane).present);
+        CHECK(helix::ams::resolve(lane).present == true);
 
         sensed.present = false;
         lane.apply(sensed);
-        CHECK_FALSE(helix::ams::resolve(lane).present);
+        // Engaged and false: the sensor looked and found the lane empty, which
+        // is a reading and not the absence of one.
+        CHECK(helix::ams::resolve(lane).present == false);
     }
 }
 
@@ -255,7 +259,10 @@ TEST_CASE("A weight refresh cannot disturb presence or identity", "[lane][resolv
     lane.apply(cache);
 
     const auto before = helix::ams::resolve(lane);
-    REQUIRE_FALSE(before.present);
+    // Engaged and false. Spelled against the value rather than the optional,
+    // because REQUIRE_FALSE on an optional<bool> asks whether anything was
+    // observed and would pass just as happily on a lane nobody sensed.
+    REQUIRE(before.present == false);
 
     for (int i = 0; i < 100; ++i) {
         Observation weight(ObservationSource::Metered);
@@ -263,7 +270,7 @@ TEST_CASE("A weight refresh cannot disturb presence or identity", "[lane][resolv
         lane.apply(weight);
 
         const auto after = helix::ams::resolve(lane);
-        REQUIRE_FALSE(after.present);
+        REQUIRE(after.present == false);
         REQUIRE(after.material == "PETG");
         REQUIRE(after.color_rgb == 0xED2C2C);
     }
@@ -313,7 +320,9 @@ TEST_CASE("A colour the user picks outranks the one that came with the spool", "
         CHECK(r.spoolman_id == 7);
         CHECK(r.brand == "Kingroon");
         CHECK(r.color_rgb == 0xBCBCBC);
-        CHECK(r.color_name.empty());
+        // Engaged and empty. The clear has to reach the lane to displace the
+        // spool's name; an unobserved name would leave that name standing.
+        CHECK(r.color_name == "");
         CHECK(r.material == "PLA");
     }
 }
@@ -332,10 +341,11 @@ TEST_CASE("A sensor that reports no presence reading is not a present lane", "[l
 
     REQUIRE(lane.sensed.has_value());
     const auto r = helix::ams::resolve(lane);
-    CHECK_FALSE(r.present);
+    CHECK_FALSE(r.present.has_value());
     // A sensed reading carries no identity: presence is sensed, identity is
-    // declared, and this colour never reaches the resolved lane.
-    CHECK(r.color_rgb == helix::AMS_DEFAULT_SLOT_COLOR);
+    // declared, and this colour never reaches the resolved lane. Unobserved
+    // rather than grey, so a reader can leave the backend's colour alone.
+    CHECK_FALSE(r.color_rgb.has_value());
 }
 
 TEST_CASE("Every rung of the ladders decides something", "[lane][resolver]") {
@@ -397,7 +407,9 @@ TEST_CASE("Every rung of the ladders decides something", "[lane][resolver]") {
         lane.apply(spool);
 
         const auto r = helix::ams::resolve(lane);
-        CHECK(r.brand.empty());
+        // Engaged and blank, which is what makes it a reading: an unobserved
+        // brand would have left the cache's standing.
+        CHECK(r.brand == "");
         CHECK(r.spool_name == "Kingroon Basic PETG");
     }
 }

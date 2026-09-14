@@ -12,6 +12,7 @@
 #include "filament_slot_override_store.h"
 #include "json_utils.h"
 #include "klipper_extruder_naming.h"
+#include "lane_legacy_migration.h"
 #include "lane_source_store.h"
 #include "lane_translation.h"
 #include "lvgl/src/others/translation/lv_translation.h"
@@ -318,6 +319,8 @@ void AmsBackendSnapmaker::on_started() {
     override_store_ = std::make_unique<helix::ams::FilamentSlotOverrideStore>(
         api_, "snapmaker", helix::ams::lane_key_style_for(get_type()));
     auto loaded = override_store_->load_blocking();
+    helix::ams::ingest_legacy_records(*override_store_, helix::ams::LegacyLockKeys::LaneData,
+                                      backend_index());
     const auto loaded_count = loaded.size();
     {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -761,9 +764,10 @@ AmsError AmsBackendSnapmaker::set_slot_info(int slot_index, const SlotInfo& info
     if (err.result != AmsResult::SUCCESS)
         return err;
 
-    // The channel as it stood before this edit. user_edit_observation needs
-    // the whole struct to answer what the user declared, and that answer is
-    // what the write-back guard suppresses.
+    // The channel as it stood before this edit. Both the stored record and the
+    // write-back guard rest on what the user declared, and only a diff against
+    // this answers that: the editor opens on the lane's current state, so a
+    // value firmware supplied comes back looking like one a person typed.
     SlotInfo prior_slot;
 
     {
@@ -817,7 +821,7 @@ AmsError AmsBackendSnapmaker::set_slot_info(int slot_index, const SlotInfo& info
         // (CFS shares the tracker and DOES register one — it writes
         // color_value back to the box, which is half of its fingerprint.)
         if (persist) {
-            overrides_[slot_index] = helix::ams::user_override_from_slot_info(info, info.material);
+            helix::ams::stage_user_override(overrides_, slot_index, prior_slot, info);
         }
     }
 
@@ -1875,7 +1879,7 @@ void AmsBackendSnapmaker::handle_status_update(const nlohmann::json& notificatio
                 override_store_.get(), overrides_, i, slot->color_rgb, slot->material,
                 slot->status == SlotStatus::AVAILABLE, helix::ams::MirrorPolicy::OverwriteAlways,
                 backend_log_tag());
-            apply_overrides(*slot, i);
+            apply_resolved_lane(*slot, i);
         }
 
         // First-gate (port) filament presence for the ACTIVE tool (#991). The
@@ -1916,51 +1920,6 @@ void AmsBackendSnapmaker::handle_status_update(const nlohmann::json& notificatio
 // ============================================================================
 // Override layering
 // ============================================================================
-
-void AmsBackendSnapmaker::apply_overrides(SlotInfo& slot, int slot_index) {
-    // Every caller of apply_overrides runs under mutex_ (handle_status_update's
-    // tail, set_slot_info's lock block). overrides_ writers also hold mutex_,
-    // so the map read here is implicitly lock-protected. Zero-cost hash miss
-    // when the slot has no override — safe in the hot parse path. The whole
-    // spec §5 policy + the re-bind/eject rules live in
-    // helix::ams::merge_override — the single implementation every backend
-    // shares. Rule 1 (re-bind) is NOT gated by the capability: it can fire
-    // on any backend whose firmware reports a positive spool id disagreeing
-    // with the override (AFC, Happy Hare, flat-schema CFS). Snapmaker
-    // firmware never reports one, so Rule 1 cannot fire here today — but
-    // that is a fact about this firmware, not what the capability gates.
-    // Rule 2 (eject) IS what printer_reports_spool_ids() gates (base false
-    // here: 0 is Snapmaker's everyday reading, never an eject), and the
-    // erase branch is correct tomorrow if a firmware ever starts reporting
-    // ids.
-    auto it = overrides_.find(slot_index);
-    if (it == overrides_.end()) {
-        return;
-    }
-    helix::ams::MergeOptions opts;
-    opts.printer_reports_spool_ids = printer_reports_spool_ids();
-    opts.keep_spool_info_on_eject =
-        helix::SettingsManager::instance().get_ams_keep_spool_info_on_eject();
-    // Own-write echo suppression (SlotFingerprintTracker::expect()
-    // semantics): Rule 1 must not read an in-flight stale firmware id as an
-    // external re-bind. Snapmaker never writes firmware ids, so this is
-    // always {0, 0} today — the call keeps one shape across backends.
-    const auto [own_old_id, own_new_id] = own_write_expectation(slot_index, slot.spoolman_id);
-    opts.suppress_rebind_firmware_old_id = own_old_id;
-    opts.suppress_rebind_firmware_new_id = own_new_id;
-    const auto result = helix::ams::merge_override(slot, it->second, opts);
-    if (result.cleared_rebind || result.cleared_eject) {
-        overrides_.erase(it);
-        if (override_store_) {
-            const std::string tag = backend_log_tag();
-            override_store_->clear_async(slot_index, [tag, slot_index](bool ok, std::string err) {
-                if (!ok) {
-                    spdlog::warn("{} clear_async failed for slot {}: {}", tag, slot_index, err);
-                }
-            });
-        }
-    }
-}
 
 void AmsBackendSnapmaker::check_hardware_event_clear(SlotInfo& slot, int slot_index,
                                                      const std::string& observed_uid) {
@@ -2008,8 +1967,7 @@ void AmsBackendSnapmaker::check_hardware_event_clear(SlotInfo& slot, int slot_in
 void AmsBackendSnapmaker::clear_override_locked(int slot_index, SlotInfo& slot) {
     // Caller must hold mutex_. Erases the in-memory override, resets STRICTLY
     // override-exclusive fields on the live SlotInfo so the cleared state is
-    // visible in the very next get_slot_info() read (apply_overrides is a
-    // no-op for this slot afterwards).
+    // visible in the very next get_slot_info() read.
     //
     // Snapmaker field policy: brand / spool_name / total_weight_g come from
     // the RFID tag in handle_status_update — we must NOT zero those here or
@@ -2018,6 +1976,10 @@ void AmsBackendSnapmaker::clear_override_locked(int slot_index, SlotInfo& slot) 
     // (color_name is not firmware-populated for Snapmaker — RFID has no
     // color-name field — so it's override-exclusive and gets cleared.)
     overrides_.erase(slot_index);
+    // The lane's own records go with it: the erase above and this are one
+    // clear in two stores, and a clear that reached only one would leave
+    // resolve() still reporting the identity just removed.
+    helix::ams::reset_lane_to_machine_readings(lane_id(slot_index));
 
     slot.spoolman_id = 0;
     slot.spoolman_vendor_id = 0;

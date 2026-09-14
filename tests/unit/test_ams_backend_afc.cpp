@@ -11,7 +11,9 @@
 #include "moonraker_api.h"
 #include "settings_manager.h"
 #include "test_helpers/afc_test_access.h"
+#include "test_helpers/registered_backend.h"
 #include "test_helpers/scoped_home_confirm_prompter.h"
+#include "test_helpers/seeded_override.h"
 
 #include <algorithm>
 #include <chrono>
@@ -6350,19 +6352,21 @@ TEST_CASE("AFC can_recover_lane_position requires filament at the hub", "[ams][a
 // lane payload and its lane_data record — so those only ever live here.
 
 TEST_CASE("AFC override survives an eject that clears firmware fields", "[ams][afc][override]") {
-    AmsBackendAfcTestHelper helper;
+    helix::test::RegisteredBackend<AmsBackendAfcTestHelper> helper_reg;
+    AmsBackendAfcTestHelper& helper = *helper_reg;
     helper.initialize_test_lanes(4);
     helper.initialize_slots_from_discovery();
 
-    // User attaches identity to lane 1.
-    SlotInfo info;
+    // User attaches identity to lane 1, through both halves of a commit: the
+    // backend write and the declaration that stands behind it.
+    SlotInfo info = helper.get_slot_info(0);
     info.brand = "Likesilk";
     info.spool_name = "Black ASA";
     info.spoolman_id = 86;
     info.material = "ASA";
     info.color_rgb = 0x1A1A1A;
     info.total_weight_g = 1000.0f;
-    helper.set_slot_info(0, info);
+    helix::test::edit_slot_as_user(helper, 0, info);
 
     // AFC ejects the lane: clear_values() nulls spool_id and empties
     // colour/material, and parse_afc_stepper now represents that faithfully.
@@ -7924,7 +7928,8 @@ TEST_CASE("AFC unresolvable extruder makes no lane attribution claim",
 }
 
 TEST_CASE("AFC names its positions lanes", "[ams][afc][numbering]") {
-    AmsBackendAfc backend(nullptr, nullptr);
+    helix::test::RegisteredBackend<AmsBackendAfc> backend_reg(nullptr, nullptr);
+    AmsBackendAfc& backend = *backend_reg;
     CHECK(backend.lane_noun() == helix::ui::LaneNoun::Lane);
 }
 

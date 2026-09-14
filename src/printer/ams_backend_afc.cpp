@@ -14,6 +14,7 @@
 #include "ams_fault_event.h"
 #include "config.h"
 #include "i_moonraker_api.h"
+#include "lane_legacy_migration.h"
 #include "lane_source_store.h"
 #include "lane_translation.h"
 #include "lvgl/src/others/translation/lv_translation.h"
@@ -279,6 +280,8 @@ void AmsBackendAfc::on_started() {
         override_store_ = std::make_unique<helix::ams::FilamentSlotOverrideStore>(
             api_, "afc", helix::ams::lane_key_style_for(get_type()), OVERRIDE_NAMESPACE);
         auto loaded = override_store_->load_blocking();
+        helix::ams::ingest_legacy_records(*override_store_, helix::ams::LegacyLockKeys::LaneData,
+                                          backend_index());
         const auto loaded_count = loaded.size();
         {
             std::lock_guard<std::mutex> lock(mutex_);
@@ -2312,6 +2315,16 @@ void AmsBackendAfc::parse_afc_state(const nlohmann::json& afc_data,
 // AFC Object Parsing (AFC_stepper, AFC_hub, AFC_extruder)
 // ============================================================================
 
+void AmsBackendAfc::invalidate_broken_binding(int slot_index, const SlotInfo& slot,
+                                              int firmware_spool_id) {
+    if (reconcile_lane_binding(slot_index, firmware_spool_id) == ams::BindingVerdict::Holds) {
+        return;
+    }
+    helix::ams::clear_persisted_override(
+        override_store_.get(), overrides_,
+        slot.global_index >= 0 ? slot.global_index : slot.slot_index, backend_log_tag());
+}
+
 void AmsBackendAfc::parse_afc_stepper(int slot_index, const std::string& lane_name,
                                       const nlohmann::json& data) {
     // Parse AFC_stepper lane{N} object for sensor states and filament info
@@ -2577,11 +2590,6 @@ void AmsBackendAfc::parse_afc_stepper(int slot_index, const std::string& lane_na
         firmware.cache.brand = slot.brand;
     }
 
-    // Re-supply the user's attached identity on top of firmware truth. This is
-    // what keeps a lane's spool across an eject now that the parser honours
-    // AFC's clears.
-    apply_overrides(slot, slot.global_index >= 0 ? slot.global_index : slot.slot_index);
-
     // Derive slot status from sensors and status string.
     // Only recompute status when at least one status-related field is present
     // in the update. Partial updates (e.g., weight-only) must not regress the
@@ -2660,6 +2668,15 @@ void AmsBackendAfc::parse_afc_stepper(int slot_index, const std::string& lane_na
     ams::ingest(lane, firmware.cache);
     ams::ingest(lane, firmware.metered);
 
+    // Does the identity declared on this lane still describe what is in it?
+    // The id compared comes from `firmware`, never from `slot`, for the same
+    // reason the ingests above do: `slot` carries the stored record's id back
+    // after the override merge, so comparing against it would compare a record
+    // with itself and no binding could ever look broken. The own-write
+    // expectation is consulted inside reconcile_lane_binding(), so a frame
+    // still naming the id we just overwrote suppresses the re-bind.
+    invalidate_broken_binding(slot_index, slot, firmware.cache.spoolman_id.value_or(0));
+
     // Presence is the one reading AFC can stop having: prep, load and
     // tool_loaded are real sensors, and a frame naming none of them is not a
     // sensor reporting an empty lane. A record is written whole, so filing one
@@ -2670,6 +2687,12 @@ void AmsBackendAfc::parse_afc_stepper(int slot_index, const std::string& lane_na
         sensed.present = filament_present_now;
         ams::ingest(lane, sensed);
     }
+
+    // Last, because this READS the lane model: every ingest above has to have
+    // landed, the binding has to have been reconciled, and slot.status has to
+    // be this frame's, or the lane paints a reading one frame stale or a
+    // binding that was just dropped.
+    apply_resolved_lane(slot, slot.global_index >= 0 ? slot.global_index : slot.slot_index);
 
     // Populate or clear per-slot error based on lane status
     if (has_status) {
@@ -4218,12 +4241,16 @@ void AmsBackendAfc::parse_lane_data(const nlohmann::json& lane_data) {
         // from it on any AFC version.
         ams::ingest(lane_id(i), firmware.cache);
 
+        // The same binding check parse_afc_stepper() runs, on the id this
+        // parser read.
+        invalidate_broken_binding(i, slot, firmware.cache.spoolman_id.value_or(0));
+
         // Re-supply the user's attached identity on top of firmware truth, the
         // same way parse_afc_stepper() does. Without this, which parser ran last
         // decided whether an override was visible: the status path applied it,
         // the DB path silently dropped it. Must follow every firmware read above
         // so the override still wins.
-        apply_overrides(slot, slot.global_index >= 0 ? slot.global_index : slot.slot_index);
+        apply_resolved_lane(slot, slot.global_index >= 0 ? slot.global_index : slot.slot_index);
 
         // NO WEIGHT IS READ FROM lane_data, on any AFC version. This is deliberate.
         //
@@ -4886,41 +4913,13 @@ AmsError AmsBackendAfc::reset() {
                                 lv_tr("AFC reset failed"));
 }
 
-void AmsBackendAfc::apply_overrides(SlotInfo& slot, int slot_index) {
-    // Callers hold mutex_. The whole spec §5 policy + the re-bind/eject rules
-    // live in helix::ams::merge_override — the single implementation every
-    // backend shares.
-    auto it = overrides_.find(slot_index);
-    if (it == overrides_.end())
-        return;
-    helix::ams::MergeOptions opts;
-    opts.printer_reports_spool_ids = printer_reports_spool_ids();
-    opts.keep_spool_info_on_eject = SettingsManager::instance().get_ams_keep_spool_info_on_eject();
-    // Own-write echo suppression (SlotFingerprintTracker::expect()
-    // semantics): if we just re-linked this lane's spool id, in-flight
-    // frames keep reporting the old firmware id for a poll or two — Rule 1
-    // must not read that stale frame as an external re-bind.
-    const auto [own_old_id, own_new_id] = own_write_expectation(slot_index, slot.spoolman_id);
-    opts.suppress_rebind_firmware_old_id = own_old_id;
-    opts.suppress_rebind_firmware_new_id = own_new_id;
-    const auto result = helix::ams::merge_override(slot, it->second, opts);
-    if (result.cleared_rebind || result.cleared_eject) {
-        overrides_.erase(it);
-        if (override_store_) {
-            override_store_->clear_async(slot_index, [slot_index](bool ok, const std::string& err) {
-                if (!ok)
-                    spdlog::warn("[AMS AFC] override clear persist failed for slot {}: {}",
-                                 slot_index, err);
-            });
-        }
-    }
-}
-
-void AmsBackendAfc::persist_override(int slot_index, const SlotInfo& info) {
-    // Callers hold mutex_.
+void AmsBackendAfc::persist_override(int slot_index, const SlotInfo& original,
+                                     const SlotInfo& info) {
+    // Callers hold mutex_, and @p original is the lane as it stood before this
+    // edit: stage_user_override tells what the user moved from what the editor
+    // merely carried back, so it needs both snapshots.
     const helix::ams::FilamentSlotOverride o =
-        helix::ams::user_override_from_slot_info(info, info.material);
-    overrides_[slot_index] = o;
+        helix::ams::stage_user_override(overrides_, slot_index, original, info);
 
     if (override_store_) {
         override_store_->save_async(slot_index, o, [slot_index](bool ok, std::string err) {
@@ -4935,6 +4934,7 @@ void AmsBackendAfc::clear_slot_override(int slot_index) {
     {
         std::lock_guard<std::mutex> lock(mutex_);
         overrides_.erase(slot_index);
+        helix::ams::reset_lane_to_machine_readings(lane_id(slot_index));
 
         // Also reset the override-exclusive fields on the live slot, so the
         // clear shows up in the very next get_slot_info(). AFC has no concept
@@ -5414,6 +5414,8 @@ AmsError AmsBackendAfc::set_slot_info(int slot_index, const SlotInfo& info, bool
                                                 system_info_.total_slots - 1);
         }
         auto& slot = entry->info;
+        // Snapshotted before the writes below, for persist_override.
+        const SlotInfo prior_slot = slot;
 
         // Capture old spoolman_id before updating for clear detection
         int old_spoolman_id = slot.spoolman_id;
@@ -5472,7 +5474,7 @@ AmsError AmsBackendAfc::set_slot_info(int slot_index, const SlotInfo& info, bool
         // ids at all, and the fields it DOES hold get cleared by its own
         // clear_values() on eject.
         if (persist) {
-            persist_override(slot_index, info);
+            persist_override(slot_index, prior_slot, info);
         }
 
         // Persistence is never version-gated. These SET_* commands have existed

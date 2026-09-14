@@ -20,6 +20,7 @@
 #include "display_numbering.h"
 #include "error_event.h"
 #include "firmware_routing.h"
+#include "lane_binding.h"
 #include "lane_source_store.h"
 #include "tool_mapping_origin.h"
 #include "toolchanger_addon.h"
@@ -1559,18 +1560,31 @@ class AmsBackend {
      * firmware store (#981, AD5X native ZMOD: a 60 s weight persist rewrote
      * ffmType and reverted the user's material).
      *
-     * The default routes through set_slot_info() — correct for backends where
-     * weight and identity share one persist path with no clobber risk. Backends
-     * that write identity to a firmware-owned store override this to persist
-     * weight alone (see AmsBackendAd5xIfs).
+     * Backends implement update_slot_weight_impl(); this wrapper is
+     * deliberately not virtual so no backend can take the weight without the
+     * lane record. Weight arrives from the consumption tracker and from
+     * Spoolman, neither of which is a backend, so this is the only place it
+     * reaches the lane model.
      *
      * @param slot_index Slot to update (0-based)
      * @param remaining_weight_g New remaining weight in grams (>= 0)
      * @param total_weight_g Total weight in grams, or < 0 to leave unchanged
      * @param persist If true, persist to the slot's durable store; else in-memory only
      */
-    virtual void update_slot_weight(int slot_index, float remaining_weight_g, float total_weight_g,
-                                    bool persist) {
+    void update_slot_weight(int slot_index, float remaining_weight_g, float total_weight_g,
+                            bool persist);
+
+    /**
+     * @brief The backend half of update_slot_weight().
+     *
+     * Reached only through that wrapper, which files the meter reading before
+     * returning. The default routes through set_slot_info() — correct for
+     * backends where weight and identity share one persist path with no
+     * clobber risk. Backends that write identity to a firmware-owned store
+     * override this to persist weight alone (see AmsBackendAd5xIfs).
+     */
+    virtual void update_slot_weight_impl(int slot_index, float remaining_weight_g,
+                                         float total_weight_g, bool persist) {
         SlotInfo info = get_slot_info(slot_index);
         info.remaining_weight_g = remaining_weight_g;
         if (total_weight_g >= 0.0f)
@@ -2389,11 +2403,11 @@ class AmsBackend {
 
     /// Whether this backend's firmware reports a Spoolman spool id per slot
     /// while a spool is loaded (AFC and Happy Hare publish spool_id in their
-    /// status). merge_override() uses this to arm ONLY the eject rule: just
-    /// there a firmware id of 0/null means "ejected", while elsewhere 0 is
-    /// the everyday reading and must not clear. The re-bind rule is NOT
-    /// gated by this capability — it can fire on ANY backend whose firmware
-    /// reports a positive spool id that disagrees with the override (AFC,
+    /// status). classify_binding() uses this to arm ONLY the eject verdict:
+    /// just there a firmware id of 0/null means "ejected", while elsewhere 0
+    /// is the everyday reading and must not clear. The re-bind verdict is NOT
+    /// gated by this capability: it can fire on ANY backend whose firmware
+    /// reports a positive spool id that disagrees with the declared one (AFC,
     /// Happy Hare, and flat-schema CFS, whose per-slot spoolman_id parse
     /// feeds it today).
     [[nodiscard]] virtual bool printer_reports_spool_ids() const {
@@ -2421,26 +2435,28 @@ class AmsBackend {
      */
     virtual AmsError set_tool_mapping_impl(int tool_number, int slot_index) = 0;
 
-    /// @name Own-write spool-id expectations (Rule-1 echo-race suppression)
+    /// @name Own-write spool-id expectations (re-bind echo-race suppression)
     ///
     /// When HelixScreen itself writes a spool id to firmware (AFC's
     /// SET_SPOOL_ID, Happy Hare's MMU_GATE_MAP SPOOLID, the CFS fork's
     /// _BOX_SLOT_SET SPOOLMAN_ID), the write is asynchronous: for an
     /// unknown number of polls firmware keeps reporting the OLD id while
-    /// the just-saved override already carries the NEW one. Rule 1
-    /// (external re-bind) in merge_override() would read that stale frame
-    /// as another writer's statement and destroy our own record — the same
-    /// race SlotFingerprintTracker::expect() solves for CFS's RFID pushes.
-    /// Backends that write firmware ids call record_own_spool_write() at
-    /// the write site, and every apply_overrides() consults
-    /// own_write_expectation() to feed MergeOptions' suppress ids.
+    /// the lane's own sources already declare the NEW one. classify_binding()
+    /// would read that stale frame as another writer's statement, and
+    /// reconcile_binding() drops Spoolman, LocalUser and Remembered on that
+    /// verdict, destroying the declaration the edit just filed. Ranking cannot
+    /// stand in for this: the drop happens before ranking decides what paints.
+    /// Backends that write firmware ids call record_own_spool_write() at the
+    /// write site, and reconcile_lane_binding() consults
+    /// own_write_expectation() to fill BindingReading's own-write pair.
     ///
     /// @warning **The caller must already hold the backend's own mutex_.**
     ///          Both methods touch shared state with no internal lock; every
     ///          call site runs inside the backend's mutex_ scope
-    ///          (set_slot_info's lock block, apply_overrides' documented
-    ///          lock-held precondition). The mutexes are plain std::mutex,
-    ///          not recursive — taking the lock again from inside deadlocks.
+    ///          (set_slot_info's lock block, reconcile_lane_binding's
+    ///          documented lock-held precondition). The mutexes are plain
+    ///          std::mutex, not recursive: taking the lock again from inside
+    ///          deadlocks.
     ///@{
 
     /// Record that WE just wrote @p new_id to firmware for this slot.
@@ -2449,23 +2465,67 @@ class AmsBackend {
     /// before the first echo landed keeps the ORIGINAL previous id (a
     /// chained re-link 42->169 then 169->180 suppresses stale 42 frames,
     /// not just 169). @p new_id <= 0 is an unlink: the pending expectation
-    /// is dropped, since nothing will echo but an id Rule 1 ignores.
+    /// is dropped, since nothing will echo but an id the re-bind arm of
+    /// classify_binding() ignores.
     void record_own_spool_write(int slot_index, int new_id, int previous_firmware_id);
 
     /// Consult (and possibly consume) the pending expectation for a slot
     /// given the id firmware reports in THIS frame. Returns the {old, new}
-    /// pair to feed MergeOptions::suppress_rebind_firmware_{old,new}_id;
-    /// {0, 0} when nothing should be suppressed. Consumption mirrors the
-    /// fingerprint tracker's single-shot semantics:
-    ///   - firmware_id == the written id: the echo landed — erased (firmware
-    ///     and override now agree; nothing to suppress).
+    /// pair to feed BindingReading::own_write_{old,new}_id; {0, 0} when
+    /// nothing should be suppressed. Consumption mirrors the fingerprint
+    /// tracker's single-shot semantics:
+    ///   - firmware_id == the written id: the echo landed, so the entry is
+    ///     erased (firmware and the declaration now agree).
     ///   - firmware_id is any OTHER positive id: a genuine external change
-    ///     ends the expectation — erased, nothing suppressed.
+    ///     ends the expectation, erased, nothing suppressed.
     ///   - firmware_id == the old id (stale pre-echo frame): returned as the
     ///     suppression pair; the entry survives for the next poll.
-    ///   - firmware_id <= 0: no signal (Rule 1 cannot fire on it); the entry
-    ///     survives because the echo may still be in flight.
+    ///   - firmware_id <= 0: no signal, since the re-bind arm never fires on
+    ///     0; the entry survives because the echo may still be in flight.
+    ///
+    /// This is the ONE reader that may consume, and it must be the one that
+    /// sees FIRMWARE's own spool id. Consuming on a SlotInfo field would end
+    /// the expectation an id early and leave the next frame reading our own
+    /// in-flight write as somebody else's re-bind.
     std::pair<int, int> own_write_expectation(int slot_index, int firmware_id);
+
+    /// Check this lane's declared binding against the spool id firmware just
+    /// stated, dropping the declaring records when it no longer holds.
+    ///
+    /// @p firmware_spool_id must be firmware's OWN standing word for the lane
+    /// and never a SlotInfo field, which carries the stored record's id back
+    /// once the lane's resolved identity is laid onto it; 0 means firmware
+    /// names no spool. The backend's
+    /// capability and the retention setting are read here, and the own-write
+    /// expectation is consulted here, so a frame that is our own write coming
+    /// back suppresses the re-bind verdict rather than acting on it.
+    ///
+    /// @warning **The caller must already hold the backend's own mutex_**, the
+    ///          same precondition own_write_expectation() carries: this calls
+    ///          it. The mutexes are not recursive.
+    ///
+    /// Returns the verdict so a caller holding a persisted copy of the same
+    /// record can clear that too; the lane sources alone do not outlive a
+    /// restart.
+    helix::ams::BindingVerdict reconcile_lane_binding(int slot_index, int firmware_spool_id);
+
+    /// Lay this lane's resolved identity, presence and weights onto @p slot.
+    ///
+    /// The lane source model is the authority on what a lane shows, so this is
+    /// where a backend hands its freshly parsed SlotInfo over to it. The fields
+    /// SlotInfo carries that the resolver does not own - tool mapping, extruder
+    /// name, endless-spool group, error, environment, remaining length, temps,
+    /// indices - are left exactly as the backend set them.
+    ///
+    /// Only what a source actually observed is written, so a lane nothing has
+    /// been filed against leaves @p slot exactly as the backend built it, and
+    /// so does any single field no source speaks to.
+    ///
+    /// @warning **The caller must already hold the backend's own mutex_.** This
+    ///          performs no I/O and never calls back into a backend, so a lock
+    ///          inversion is not reachable through it; the precondition is the
+    ///          one that guards the SlotInfo being written.
+    void apply_resolved_lane(SlotInfo& slot, int slot_index);
 
     /// Pending per-slot own-write expectation: {id firmware reported before
     /// the write, id we wrote}. Guarded by the subclass's mutex_ (above).

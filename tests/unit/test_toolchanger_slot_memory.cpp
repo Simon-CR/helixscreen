@@ -32,6 +32,8 @@
 #include "moonraker_api_mock.h"
 #include "moonraker_client_mock.h"
 #include "printer_state.h"
+#include "test_helpers/registered_backend.h"
+#include "test_helpers/seeded_override.h"
 
 #include <cstdlib>
 #include <filesystem>
@@ -141,8 +143,10 @@ helix::SlotInfo blue_petg() {
 } // namespace
 
 TEST_CASE("A tool's spool metadata survives rediscovery", "[ams][toolchanger][slot_memory]") {
-    SlotMemoryHelper h(4);
-    REQUIRE(h.set_slot_info(1, blue_petg(), /*persist=*/true).success());
+    helix::test::RegisteredBackend<SlotMemoryHelper> h_reg(4);
+    SlotMemoryHelper& h = *h_reg;
+    helix::test::edit_slot_as_user(h, 1, blue_petg());
+    helix::test::spool_states(h, 1, blue_petg());
 
     // The reconnect path: AmsState calls set_discovered_tools() again, which
     // re-runs initialize_tools() and resets every slot to default grey.
@@ -159,8 +163,10 @@ TEST_CASE("A tool's spool metadata survives rediscovery", "[ams][toolchanger][sl
 
 TEST_CASE("Rediscovery does not leak one tool's spool onto another",
           "[ams][toolchanger][slot_memory]") {
-    SlotMemoryHelper h(4);
-    REQUIRE(h.set_slot_info(1, blue_petg(), /*persist=*/true).success());
+    helix::test::RegisteredBackend<SlotMemoryHelper> h_reg(4);
+    SlotMemoryHelper& h = *h_reg;
+    helix::test::edit_slot_as_user(h, 1, blue_petg());
+    helix::test::spool_states(h, 1, blue_petg());
     h.set_tools(4);
 
     // Slot 0 was never edited: it must still read the untouched default, not
@@ -171,8 +177,10 @@ TEST_CASE("Rediscovery does not leak one tool's spool onto another",
 }
 
 TEST_CASE("A status frame does not undo the user's edit", "[ams][toolchanger][slot_memory]") {
-    SlotMemoryHelper h(4);
-    REQUIRE(h.set_slot_info(2, blue_petg(), /*persist=*/true).success());
+    helix::test::RegisteredBackend<SlotMemoryHelper> h_reg(4);
+    SlotMemoryHelper& h = *h_reg;
+    helix::test::edit_slot_as_user(h, 2, blue_petg());
+    helix::test::spool_states(h, 2, blue_petg());
 
     // refresh_slot_statuses_locked() runs inside the parse and rewrites slot
     // status; the override has to be re-layered after it, not before.
@@ -184,7 +192,8 @@ TEST_CASE("A status frame does not undo the user's edit", "[ams][toolchanger][sl
 }
 
 TEST_CASE("persist=false is a preview, not a memory", "[ams][toolchanger][slot_memory]") {
-    SlotMemoryHelper h(4);
+    helix::test::RegisteredBackend<SlotMemoryHelper> h_reg(4);
+    SlotMemoryHelper& h = *h_reg;
     helix::SlotInfo info = blue_petg();
     REQUIRE(h.set_slot_info(1, info, /*persist=*/false).success());
 
@@ -200,12 +209,14 @@ TEST_CASE("An edit that also remaps a tool keeps both", "[ams][toolchanger][slot
     // set_slot_info() does double duty: metadata AND an ASSIGN_TOOL remap when
     // mapped_tool changed. The remap path returns early, so a persist placed
     // after it would silently drop the metadata on exactly this call.
-    SlotMemoryHelper h(4);
+    helix::test::RegisteredBackend<SlotMemoryHelper> h_reg(4);
+    SlotMemoryHelper& h = *h_reg;
 
     helix::SlotInfo info = blue_petg();
     info.mapped_tool = 3; // slot 1 should answer to T3
 
-    REQUIRE(h.set_slot_info(1, info, /*persist=*/true).success());
+    helix::test::edit_slot_as_user(h, 1, info);
+    helix::test::spool_states(h, 1, info);
 
     REQUIRE(h.sent().size() == 1);
     CHECK(h.sent()[0] == "ASSIGN_TOOL TOOL=T1 N=3");
@@ -264,7 +275,10 @@ TEST_CASE("Tool-changer slot metadata round-trips through Moonraker",
 
     // --- session 1: the user edits tool 1 -----------------------------------
     {
-        StoreBackedHelper h(&api, 4);
+        // Sequential, not simultaneous: each harness opens and closes before the
+        // next, since a second live registration would clear the first.
+        helix::test::RegisteredBackend<StoreBackedHelper> h_reg(&api, 4);
+        StoreBackedHelper& h = *h_reg;
         helix::ToolChangerTestAccess::call_on_started(h);
 
         // The SHARED namespace, not a private one. AFC and Happy Hare must use a
@@ -273,7 +287,8 @@ TEST_CASE("Tool-changer slot metadata round-trips through Moonraker",
         // records are meant to interoperate.
         CHECK(helix::ToolChangerTestAccess::store_namespace(h) == "lane_data");
 
-        REQUIRE(h.set_slot_info(1, blue_petg(), /*persist=*/true).success());
+        helix::test::edit_slot_as_user(h, 1, blue_petg());
+        helix::test::spool_states(h, 1, blue_petg());
     }
 
     // --- what actually landed in the DB -------------------------------------
@@ -294,7 +309,10 @@ TEST_CASE("Tool-changer slot metadata round-trips through Moonraker",
 
     // --- session 2: restart, nothing in memory ------------------------------
     {
-        StoreBackedHelper fresh(&api, 4);
+        // Sequential, not simultaneous: each harness opens and closes before the
+        // next, since a second live registration would clear the first.
+        helix::test::RegisteredBackend<StoreBackedHelper> fresh_reg(&api, 4);
+        StoreBackedHelper& fresh = *fresh_reg;
         // Before the load, the slot is whatever initialize_tools() built.
         CHECK(fresh.get_slot_info(1).color_rgb == helix::AMS_DEFAULT_SLOT_COLOR);
 

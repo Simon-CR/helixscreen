@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
 #include <string>
+#include <unordered_map>
 
 #include "hv/json.hpp"
 
@@ -14,6 +16,76 @@ struct SlotInfo;
 } // namespace helix
 
 namespace helix::ams {
+
+struct FilamentSlotOverride;
+struct Observation;
+class DeclaredFields;
+struct RecordAuthorship;
+
+// The only two functions that may put a bit in a DeclaredFields. Both walk the
+// field roster in lane_translation.cpp and admit only the rows that roster
+// marks as keeping their authorship in the set, which is what keeps colour and
+// material out of it. Declared here so the class below can befriend them.
+[[nodiscard]] RecordAuthorship amend_authorship(const Observation& observed,
+                                                const FilamentSlotOverride& prior,
+                                                const FilamentSlotOverride& amended);
+[[nodiscard]] DeclaredFields declared_fields_from_names(const nlohmann::json& names);
+
+// Which of a stored record's fields the user declared, one bit per row of the
+// field roster in lane_translation.cpp.
+//
+// Authorship rides the roster's axis so a newly editable field needs no flag
+// of its own: it gains a bit here by appearing on the roster, and the reader
+// that routes it already walks that list. The bits are positional, but the
+// wire is keyed by field NAME, so a stored record survives a reordering of the
+// roster.
+//
+// Colour and material are the two fields whose authorship does NOT live here:
+// each owns a lock flag below, which a reader of the shared lane_data
+// namespace also keys on to recognise a HelixScreen record. Two homes for one
+// concept drift, so the set is built so it CANNOT hold those two: the only way
+// to set a bit is through the two roster walks befriended below, both of which
+// admit only rows the roster marks as belonging to the set, and the roster
+// static_asserts that colour and material are not among them. The auto-mirror
+// reads the two lock flags directly, so the bool staying the sole truth for
+// its field is what keeps those reads correct.
+class DeclaredFields {
+  public:
+    /// Rows the bitmask can address. The roster static_asserts against it.
+    static constexpr size_t CAPACITY = 16;
+
+    [[nodiscard]] bool test(size_t index) const {
+        return index < CAPACITY && (bits_ & (uint16_t{1} << index)) != 0;
+    }
+    [[nodiscard]] bool any() const {
+        return bits_ != 0;
+    }
+    [[nodiscard]] bool operator==(const DeclaredFields& other) const {
+        return bits_ == other.bits_;
+    }
+
+  private:
+    void set(size_t index) {
+        if (index < CAPACITY) {
+            bits_ |= static_cast<uint16_t>(uint16_t{1} << index);
+        }
+    }
+
+    friend RecordAuthorship amend_authorship(const Observation&, const FilamentSlotOverride&,
+                                             const FilamentSlotOverride&);
+    friend DeclaredFields declared_fields_from_names(const nlohmann::json&);
+
+    uint16_t bits_ = 0;
+};
+
+/// Everything a record says about who authored its fields, in the two homes
+/// that answer lives in: the colour and material lock flags, and the declared
+/// set for the roster rows with no flag of their own.
+struct RecordAuthorship {
+    bool user_locked_color = false;
+    bool user_locked_material = false;
+    DeclaredFields declared;
+};
 
 struct FilamentSlotOverride {
     // User metadata
@@ -79,6 +151,17 @@ struct FilamentSlotOverride {
     // attribute to either auto-mirror or user edit.
     bool user_locked_color = false;
     bool user_locked_material = false;
+    // Authorship for the identity fields that have no lock flag of their own:
+    // brand, spool name and Spoolman vendor id. A field in this set was the
+    // user's word, so the reader files it as a declaration rather than as
+    // something the store merely remembered, and a later firmware frame
+    // stating the same field does not displace it.
+    //
+    // Persistence: `helix_declared` in the lane_data record, `declared` in the
+    // local cache, both an array of field names. Emitted even when empty, so a
+    // reader can tell "this record declares nothing" from "this record predates
+    // the key" and apply the legacy rule only to the latter.
+    DeclaredFields declared;
     // Recommended print temperatures, written into the lane_data record so
     // OrcaSlicer 2.3.2+ can sync them onto the filament preset. Source order
     // (highest to lowest priority): explicit user entry > Spoolman spool's
@@ -127,26 +210,71 @@ ResolvedTemps resolved_temps(const FilamentSlotOverride& o);
 // 0 (which signals to resolved_temps that the material-DB default should win).
 void populate_temps_from_slot_info(FilamentSlotOverride& ovr, const SlotInfo& info);
 
-// Build the override a backend persists for a user's slot edit. Every AMS
-// backend stages the same fields out of the SlotInfo the edit carried, so the
-// shape lives here instead of once per backend.
+// The record a backend persists for a user's edit that took @p original to
+// @p edited. One shape for every AMS backend, so the rules a backend must not
+// get wrong live here rather than in seven near-identical blocks.
 //
-// `material` is separate from the rest of `info` because a backend may persist
-// a normalized form rather than the string the user typed: AD5X stores the
-// firmware-valid value its own normalize_material() produced, so the raw
-// SlotInfo string is the wrong thing to record and the wrong thing to lock on.
+// The record carries every identity field @p edited holds, because that is what
+// the lane must show. Which of them the record claims as the USER'S word is a
+// narrower question, and user_edit_observation() answers it from the two
+// snapshots: a field is the user's exactly when they moved it. The editor seeds
+// its working copy from the lane's current state, so a firmware-sourced brand,
+// colour or material arrives in @p edited untouched, and a record claiming
+// those would outrank the firmware that supplied them and refuse every later
+// correction (#965).
 //
-// The user-lock flags are part of this shape, not a decoration. A persisted
-// override IS a user edit, and a mirror policy with no way to tell one from a
-// firmware reading will overwrite it (#965). A field locks only where the user
-// actually supplied it: an unrecorded colour and an empty material stay
-// fillable from a later firmware report, and every mirror policy assumes a
-// lock and its value are set together. Colour follows is_declarable_color, so
-// the "no colour reading" sentinel is never recorded as the user's pick.
+// Authorship therefore lands in two homes, both from that one answer: the two
+// lock flags for colour and material, and the declared set for the roster rows
+// that have no flag of their own. A lock needs a value to stand over, so an
+// empty material never locks however the edit moved it: every mirror policy
+// assumes a lock and its value are set together, and a lock over nothing would
+// stop firmware from ever filling that lane.
 //
-// updated_at is left default; save_async stamps a fresh value.
-FilamentSlotOverride user_override_from_slot_info(const SlotInfo& info,
-                                                  const std::string& material);
+// @p prior is the record this lane already had, or nullptr for a lane with
+// none. One edit speaks only about the fields it moved, so this edit's
+// authorship is AMENDED onto that record's rather than replacing it: an
+// earlier choice the edit never mentioned stays the user's word while the
+// value it stood over is still the one the record holds. Without it a brand-
+// only edit would drop a colour declared before it, and the consumption
+// meter's weight-only persist would drop every declaration on the lane.
+// amend_authorship() (lane_translation.h) is that rule.
+//
+// The colour records only when it is a reading rather than the SlotInfo "no
+// colour" sentinel, the question is_declarable_color() answers; a deliberate
+// pure black (#000000) is a reading and records. color_name travels
+// regardless, because it is the user's own text either way.
+//
+// Temps come from populate_temps_from_slot_info(). updated_at is left default
+// so save_async stamps a fresh value.
+FilamentSlotOverride user_override_from_slot_info(const SlotInfo& original, const SlotInfo& edited,
+                                                  const FilamentSlotOverride* prior);
+
+// As above, recording `material` in place of edited.material, for a backend
+// that persists firmware's normalized spelling rather than the string the user
+// typed: AD5X stores the firmware-valid value its own normalize_material()
+// produced, so the raw SlotInfo string is the wrong thing to record and the
+// wrong thing to lock on. Whether the material was declared still follows the
+// edit, since the normalized spelling has no before-value to compare against.
+FilamentSlotOverride user_override_from_slot_info(const SlotInfo& original, const SlotInfo& edited,
+                                                  const std::string& material,
+                                                  const FilamentSlotOverride* prior);
+
+// Build the record for a user's edit and put it in @p overrides under @p
+// slot_index, amending whatever that lane already held there. Returns the
+// staged record.
+//
+// Every backend stages a user's edit into a map of exactly this shape, and the
+// prior record it must amend is the entry this call is about to replace, so
+// finding it belongs here rather than in seven places that would each have to
+// remember to look.
+FilamentSlotOverride& stage_user_override(std::unordered_map<int, FilamentSlotOverride>& overrides,
+                                          int slot_index, const SlotInfo& original,
+                                          const SlotInfo& edited);
+
+// As above, for a backend that records a normalized material spelling.
+FilamentSlotOverride& stage_user_override(std::unordered_map<int, FilamentSlotOverride>& overrides,
+                                          int slot_index, const SlotInfo& original,
+                                          const SlotInfo& edited, const std::string& material);
 
 nlohmann::json to_json(const FilamentSlotOverride& o);
 FilamentSlotOverride from_json(const nlohmann::json& j);

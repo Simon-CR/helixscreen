@@ -12,6 +12,7 @@
 #include "ams_types.h"
 #include "filament_slot_override.h"
 #include "filament_slot_override_store.h"
+#include "test_helpers/seeded_override.h"
 
 #include <array>
 #include <chrono>
@@ -317,8 +318,13 @@ class Ad5xIfsTestAccess {
     // the fixtures instantiate the backend with nullptr api/client.
     static void seed_override(AmsBackendAd5xIfs& b, int slot_index,
                               const helix::ams::FilamentSlotOverride& ovr) {
-        std::lock_guard<std::mutex> lock(b.mutex_);
-        b.overrides_[slot_index] = ovr;
+        {
+            std::lock_guard<std::mutex> lock(b.mutex_);
+            b.overrides_[slot_index] = ovr;
+        }
+        // The backend's own init files both stores together; a fixture that
+        // wrote only this map would leave the lane reading empty.
+        helix::test::file_override_as_lane_records(b, slot_index, ovr);
     }
     // Read the override currently staged for a slot (empty optional if none).
     // Lets tests assert what set_slot_info(persist=true) wrote into the

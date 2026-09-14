@@ -11,6 +11,7 @@
 #include "humidity_sensor_types.h"
 #include "i_moonraker_api.h"
 #include "json_utils.h"
+#include "lane_legacy_migration.h"
 #include "lane_source_store.h"
 #include "lane_translation.h"
 #include "operation_patterns.h" // helix::contains_ci
@@ -153,6 +154,10 @@ void AmsBackendHappyHare::on_started() {
         std::lock_guard<std::mutex> lock(mutex_);
         override_store_ = std::move(loaded.store);
         overrides_ = std::move(loaded.overrides);
+    }
+    if (override_store_) {
+        helix::ams::ingest_legacy_records(*override_store_, helix::ams::LegacyLockKeys::LaneData,
+                                          backend_index());
     }
 
     // Query configfile to determine tip method (cutter vs tip-forming).
@@ -972,10 +977,27 @@ void AmsBackendHappyHare::parse_mmu_state(const nlohmann::json& mmu_data) {
                 reading.spoolman_id.reset();
             }
         }
-        // Re-supply user-attached identity the gate map cannot carry.
+        // The gate map is the one thing Happy Hare states about a gate's
+        // binding, so this is where a binding that has stopped holding is
+        // found. The id compared is the gate's own accumulated reading rather
+        // than entry->info, which carries the resolved record's id back.
+        //
+        // Runs BEFORE the lane is painted below: a binding this drops must be
+        // gone from the model before anything reads it, or the gate paints the
+        // spool that just stopped describing it for one more frame.
         for (size_t i = 0; i < spool_ids.size(); ++i) {
-            if (auto* entry = slots_.get_mut(static_cast<int>(i))) {
-                apply_overrides(entry->info, static_cast<int>(i));
+            const int gate = static_cast<int>(i);
+            if (!slots_.get(gate)) {
+                continue;
+            }
+            // find(), not reading_for(): looking a gate up must not create a
+            // cache record for one that has none.
+            auto it = gate_readings_.find(gate);
+            const int firmware_id =
+                it != gate_readings_.end() ? it->second.spoolman_id.value_or(0) : 0;
+            if (reconcile_lane_binding(gate, firmware_id) != ams::BindingVerdict::Holds) {
+                helix::ams::clear_persisted_override(override_store_.get(), overrides_, gate,
+                                                     backend_log_tag());
             }
         }
         spdlog::trace("[AMS HappyHare] Parsed gate_spool_id for {} gates", spool_ids.size());
@@ -1245,6 +1267,19 @@ void AmsBackendHappyHare::parse_mmu_state(const nlohmann::json& mmu_data) {
     }
     for (const auto& [gate, reading] : gate_readings_) {
         ams::ingest(lane_id(gate), reading);
+    }
+
+    // Paint every gate from the lane, after the two loops above have filed this
+    // frame's readings on it. The gate map is the only thing Happy Hare states
+    // about a binding, and what it cannot carry - a user's own identity - comes
+    // from the lane, so this has to read a model that already holds both. Every
+    // gate rather than the ones one key happened to mention: a lane a key is
+    // silent about still resolves, and a gate with no records at all resolves
+    // to nothing observed and keeps every value the parse set.
+    for (int gate = 0; gate < slots_.slot_count(); ++gate) {
+        if (auto* entry = slots_.get_mut(gate)) {
+            apply_resolved_lane(entry->info, gate);
+        }
     }
 
     // Re-derive every gate's status from the cached gate_status array plus the
@@ -2592,41 +2627,13 @@ AmsError AmsBackendHappyHare::cancel() {
 // Configuration Operations
 // ============================================================================
 
-void AmsBackendHappyHare::apply_overrides(SlotInfo& slot, int slot_index) {
-    // Callers hold mutex_. The whole spec §5 policy + the re-bind/eject rules
-    // live in helix::ams::merge_override — the single implementation every
-    // backend shares.
-    auto it = overrides_.find(slot_index);
-    if (it == overrides_.end())
-        return;
-    helix::ams::MergeOptions opts;
-    opts.printer_reports_spool_ids = printer_reports_spool_ids();
-    opts.keep_spool_info_on_eject = SettingsManager::instance().get_ams_keep_spool_info_on_eject();
-    // Own-write echo suppression (SlotFingerprintTracker::expect()
-    // semantics): if we just re-linked this gate's spool id, in-flight
-    // frames keep reporting the old firmware id for a poll or two — Rule 1
-    // must not read that stale frame as an external re-bind.
-    const auto [own_old_id, own_new_id] = own_write_expectation(slot_index, slot.spoolman_id);
-    opts.suppress_rebind_firmware_old_id = own_old_id;
-    opts.suppress_rebind_firmware_new_id = own_new_id;
-    const auto result = helix::ams::merge_override(slot, it->second, opts);
-    if (result.cleared_rebind || result.cleared_eject) {
-        overrides_.erase(it);
-        if (override_store_) {
-            override_store_->clear_async(slot_index, [slot_index](bool ok, const std::string& err) {
-                if (!ok)
-                    spdlog::warn("[AMS HH] override clear persist failed for slot {}: {}",
-                                 slot_index, err);
-            });
-        }
-    }
-}
-
-void AmsBackendHappyHare::persist_override(int slot_index, const SlotInfo& info) {
-    // Callers hold mutex_.
+void AmsBackendHappyHare::persist_override(int slot_index, const SlotInfo& original,
+                                           const SlotInfo& info) {
+    // Callers hold mutex_, and @p original is the gate as it stood before this
+    // edit: stage_user_override tells what the user moved from what the editor
+    // merely carried back, so it needs both snapshots.
     const helix::ams::FilamentSlotOverride o =
-        helix::ams::user_override_from_slot_info(info, info.material);
-    overrides_[slot_index] = o;
+        helix::ams::stage_user_override(overrides_, slot_index, original, info);
 
     if (override_store_) {
         override_store_->save_async(slot_index, o, [slot_index](bool ok, std::string err) {
@@ -2642,6 +2649,7 @@ void AmsBackendHappyHare::clear_slot_override(int slot_index) {
     {
         std::lock_guard<std::mutex> lock(mutex_);
         overrides_.erase(slot_index);
+        helix::ams::reset_lane_to_machine_readings(lane_id(slot_index));
 
         // Reset the override-exclusive fields on the live slot too: Happy Hare's
         // gate map has no concept of brand / spool_name / total weight / colour
@@ -2714,6 +2722,8 @@ AmsError AmsBackendHappyHare::set_slot_info(int slot_index, const SlotInfo& info
         }
 
         auto& slot = entry->info;
+        // Snapshotted before the writes below, for persist_override.
+        const SlotInfo prior_slot = slot;
 
         // Capture old values BEFORE updating (needed to detect clears / remaps)
         old_spoolman_id = slot.spoolman_id;
@@ -2761,7 +2771,7 @@ AmsError AmsBackendHappyHare::set_slot_info(int slot_index, const SlotInfo& info
         // Record the user's identity in the override store: the gate map cannot
         // hold brand / spool_name / total weight / colour name at all.
         if (persist) {
-            persist_override(slot_index, info);
+            persist_override(slot_index, prior_slot, info);
         }
     }
 

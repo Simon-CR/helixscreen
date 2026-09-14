@@ -61,6 +61,17 @@ struct LaneDataAnomalies {
 // diagnostic; also unit-tested directly.
 [[nodiscard]] LaneDataAnomalies scan_lane_data_anomalies(const nlohmann::json& namespace_doc);
 
+// Emit the lane_data document a stored override is written as.
+//
+// The wire-format emitter, and the inverse of from_lane_data_record below.
+// save_async is its production caller; it is declared here because the lock
+// keys and the declared set live on this document and nowhere else, so a
+// fixture seeding a stored override has to build the same document the store
+// would have written before anything can read authorship back off it. A record
+// classified against an empty document declares nothing, whatever its struct
+// holds.
+[[nodiscard]] nlohmann::json to_lane_data_record(int slot_index, const FilamentSlotOverride& o);
+
 // Parse AFC-shaped record (+ our extensions) back into FilamentSlotOverride.
 // This is the wire-format parser: the shared shape read by scan_lane_data_anomalies,
 // the migration helpers, and load_blocking, and exercised directly by tests to
@@ -178,6 +189,18 @@ class FilamentSlotOverrideStore {
         return backend_id_;
     }
 
+    /// The lane_data records this store's last load_blocking() parsed, each
+    /// paired with the raw document it came from. Migration classification
+    /// needs the document rather than the parsed struct: from_lane_data_record
+    /// defaults a missing helix_locked_* key to the field's own presence, so
+    /// one layer up a legacy record is indistinguishable from a user-authored
+    /// one. Empty before the first load, and empty after a load that fell back
+    /// to the on-disk cache — that path has no wire document to classify
+    /// against.
+    [[nodiscard]] const std::unordered_map<int, LaneDataRecord>& last_lane_data_records() const {
+        return lane_data_records_;
+    }
+
   private:
     // Test-only access to mutate load_timeout_ without exposing a public
     // setter. Per L065, prefer friend-class over test-only public methods.
@@ -210,6 +233,10 @@ class FilamentSlotOverrideStore {
     // truth. The cache exists only so the UI can show last-known metadata
     // when Moonraker is unreachable at backend init.
     std::filesystem::path cache_dir_;
+    // Backing store for last_lane_data_records(). Cleared at the top of every
+    // load_blocking_impl() and populated only on the lane_data parse path, so
+    // a cache-fallback load leaves it empty rather than stale.
+    std::unordered_map<int, LaneDataRecord> lane_data_records_;
     // Absolute path to the cache JSON file. Computed from cache_dir_ (or
     // get_user_config_dir() if empty). One file serves all backends; each
     // backend's slots live under doc[backend_id]["slots"].
@@ -324,6 +351,26 @@ bool mirror_firmware_to_lane_data(FilamentSlotOverrideStore* store,
                                   const std::string& firmware_material, bool slot_has_filament,
                                   MirrorPolicy policy, const std::string& log_tag);
 
+/// Discard a slot's stored override, in memory and on the printer.
+///
+/// The persisted half of a lane invalidation. Dropping a lane's declaring
+/// sources settles what the UI paints now; without this the same record is
+/// read back off the printer by ingest_legacy_records() at the next backend
+/// start and the identity returns. `overrides` also feeds AFC's spool-id
+/// re-assert, which would otherwise push an id for a spool that was swapped
+/// away.
+///
+/// No-op when the slot has no entry, which is also what keeps this from
+/// issuing a second DELETE for a record another path already cleared. Caller
+/// MUST hold the backend's mutex protecting `overrides`; `store` may be null
+/// (a test fixture with no Moonraker API), leaving the in-memory erase alone
+/// to happen. `log_tag` attributes the warn on a failed persist.
+///
+/// Returns true iff an entry was erased.
+bool clear_persisted_override(FilamentSlotOverrideStore* store,
+                              std::unordered_map<int, FilamentSlotOverride>& overrides,
+                              int slot_index, const std::string& log_tag);
+
 /// Publish (or clear) the external / bypass spool as an extra lane one past
 /// the last physical slot, so slicers (OrcaSlicer's MoonrakerPrinterAgent)
 /// can select it as the "next tool over" (T4 beside T0-T3). The record rides
@@ -343,52 +390,6 @@ bool mirror_firmware_to_lane_data(FilamentSlotOverrideStore* store,
 /// Returns true if a record was published (false for the clear path).
 bool publish_external_lane(FilamentSlotOverrideStore* store, int lane_index, const SlotInfo* spool,
                            const std::string& log_tag);
-
-// =============================================================================
-// Shared override-wins merge (filament_slots.md §5)
-// =============================================================================
-//
-// Every AMS backend merges a loaded FilamentSlotOverride onto firmware-reported
-// SlotInfo values before the UI paints a lane. This is the ONE implementation
-// of that policy plus the two cross-field rules (external re-bind, eject) that
-// previously lived as hand-rolled if-chains per backend.
-
-struct MergeOptions {
-    /// From SettingsManager::get_ams_keep_spool_info_on_eject().
-    /// Default true = today's designed retention across eject.
-    bool keep_spool_info_on_eject = true;
-    /// True only on backends whose firmware reports a spool id while a spool
-    /// is loaded (AFC, Happy Hare). There — and only there — a firmware id of
-    /// 0/null means "ejected". Elsewhere 0 is the everyday reading and MUST
-    /// NOT be treated as eject — flat-schema CFS does parse a per-slot spool
-    /// id (arming Rule 1's re-bind) but gives 0 no eject meaning.
-    bool printer_reports_spool_ids = false;
-    /// Own-write echo suppression for Rule 1, mirroring
-    /// SlotFingerprintTracker::expect() semantics. When HelixScreen itself
-    /// just (re)linked a spool id on this slot, in-flight status frames keep
-    /// reporting the OLD firmware id for a poll or two; Rule 1 must not read
-    /// such a stale frame as an external re-bind and destroy the just-saved
-    /// override. Non-zero values are the ids firmware may legitimately
-    /// report while the write is in flight: the id it last reported before
-    /// the write and the id we just wrote. Suppression affects ONLY the
-    /// re-bind clear — the §5 field merge paints the override normally
-    /// either way. 0 = none.
-    int suppress_rebind_firmware_old_id = 0;
-    /// The just-written id (see suppress_rebind_firmware_old_id). 0 = none.
-    int suppress_rebind_firmware_new_id = 0;
-};
-
-struct MergeResult {
-    bool cleared_rebind = false; ///< firmware re-bound to a different spool; record dropped
-    bool cleared_eject = false;  ///< eject signal + setting OFF; record dropped
-};
-
-/// Single implementation of filament_slots.md §5 plus the two cross-field
-/// rules. `slot` carries FIRMWARE-reported values on entry; on return it
-/// carries the values the UI should paint. When either cleared_* is true the
-/// caller must drop its in-memory override and persist the clear.
-MergeResult merge_override(SlotInfo& slot, const FilamentSlotOverride& o,
-                           const MergeOptions& options);
 
 // =============================================================================
 // Shared per-slot firmware-observation baseline tracker
@@ -419,13 +420,14 @@ enum class FingerprintEvent {
 /// bookkeeping — deciding what a given event *means* (clear the override, sync
 /// lane_data, log) stays in each backend, so their policies can differ.
 ///
-/// Beyond the plain baseline compare it carries an `expect()` slot: backends
-/// that write a value back to firmware (CFS's BOX_MODIFY_TN_DATA identity
-/// push) record the value they expect to see echoed. Because the write is
-/// asynchronous, firmware keeps reporting the OLD value for an unknown number
-/// of polls before the echo lands — so the expectation must SURVIVE those
-/// polls rather than overwrite the baseline immediately. Those intervening
-/// polls classify as Unchanged; the echo itself classifies as OwnWriteEcho.
+/// Beyond the plain baseline compare it carries an expectation set: a backend
+/// that writes a value back to firmware (CFS's BOX_MODIFY_TN_DATA identity
+/// push) registers the values it expects to see echoed, via expect_any_of().
+/// Because the write is asynchronous, firmware keeps reporting the OLD value
+/// for an unknown number of polls before the echo lands, so the expectation
+/// must SURVIVE those polls rather than overwrite the baseline immediately.
+/// Those intervening polls classify as Unchanged; the echo itself classifies
+/// as OwnWriteEcho.
 ///
 /// Each expectation is single-shot and is consumed by the first change of any
 /// kind, so a genuine physical swap that lands while a write is in flight is
@@ -449,15 +451,11 @@ class SlotFingerprintTracker {
     FingerprintEvent observe(int slot_index, const std::string& observed,
                              std::string* previous = nullptr);
 
-    /// Record the value this slot is expected to report once a write we just
-    /// issued reaches firmware. Replaces any prior unconsumed expectation.
-    void expect(int slot_index, std::string expected_value);
-
-    /// Multi-write variant of expect(): registers every value the slot may
-    /// report between the first and last echo of a multi-field write (the
-    /// intermediate composites and the final one). Each is consumed only by an
-    /// exact match; any other change clears them all. Empty strings are
-    /// dropped; an all-empty input is equivalent to forget_expected().
+    /// Register every value the slot may report between the first and last
+    /// echo of a multi-field write (the intermediate composites and the final
+    /// one). Each is consumed only by an exact match; any other change clears
+    /// them all. Empty strings are dropped; an all-empty input is equivalent
+    /// to forget_expected().
     void expect_any_of(int slot_index, std::vector<std::string> expected_values);
 
     /// Drop a pending expectation (e.g. the write failed to dispatch, so no
@@ -474,8 +472,8 @@ class SlotFingerprintTracker {
 
   private:
     std::unordered_map<int, std::string> baseline_;
-    /// Pending expected values per slot. Single-element for expect(); the
-    /// intermediate+final composites for expect_any_of().
+    /// Pending expected values per slot: the intermediate and final
+    /// composites expect_any_of() registered.
     std::unordered_map<int, std::vector<std::string>> expected_;
 };
 

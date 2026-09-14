@@ -421,10 +421,13 @@ Remaining caveats:
   Do not edit it while the wrapper is running. [B]
 - Never write a **partial** `tnn_map`: restore expects all 16 keys when the object is
   non-empty, and a partial map can fail restore. [B]
-- A user-labeled **untagged** bay now carries a non-sentinel `material_type`, so it no longer
-  qualifies for the untagged `remain_len` presence fallback (#1077). Bounded: the same edit
-  staged an override, and `apply_overrides` promotes the bay back to AVAILABLE. See the
-  presence rule in `parse_box_status`.
+- A user-labeled **untagged** bay carries a non-sentinel `material_type`, which would
+  otherwise disqualify it from the untagged `remain_len` presence fallback (#1077). Bounded
+  inside the presence rule itself: `parse_box_status` is handed the material codes we pushed
+  ourselves, and discounts a code that matches one of them, so labeling a bay does not change
+  how its presence is read. Nothing outside that rule can rescue it - a stored record supplies
+  identity only, and a bay that reads EMPTY there stays EMPTY. See the presence rule in
+  `parse_box_status`.
 
 ---
 

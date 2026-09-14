@@ -8,6 +8,7 @@
 #include "ams_state.h"
 #include "ams_tool_map_sync.h"
 #include "i_moonraker_api.h"
+#include "lane_legacy_migration.h"
 #include "lane_source_store.h"
 #include "lvgl/src/others/translation/lv_translation.h"
 #include "settings_manager.h"
@@ -88,6 +89,8 @@ void AmsBackendToolChanger::on_started() {
     override_store_ = std::make_unique<helix::ams::FilamentSlotOverrideStore>(
         api_, "toolchanger", helix::ams::lane_key_style_for(get_type()));
     auto loaded = override_store_->load_blocking();
+    helix::ams::ingest_legacy_records(*override_store_, helix::ams::LegacyLockKeys::LaneData,
+                                      backend_index());
     const auto loaded_count = loaded.size();
     {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -98,39 +101,12 @@ void AmsBackendToolChanger::on_started() {
         if (!overrides_.empty() && !system_info_.units.empty()) {
             auto& slots = system_info_.units[0].slots;
             for (size_t i = 0; i < slots.size(); ++i) {
-                apply_overrides(slots[i], static_cast<int>(i));
+                apply_resolved_lane(slots[i], static_cast<int>(i));
             }
         }
     }
     spdlog::info("{} Loaded {} slot overrides from filament_slot store", backend_log_tag(),
                  loaded_count);
-}
-
-void AmsBackendToolChanger::apply_overrides(SlotInfo& slot, int slot_index) {
-    auto it = overrides_.find(slot_index);
-    if (it == overrides_.end()) {
-        return;
-    }
-    helix::ams::MergeOptions opts;
-    opts.printer_reports_spool_ids = printer_reports_spool_ids();
-    opts.keep_spool_info_on_eject =
-        helix::SettingsManager::instance().get_ams_keep_spool_info_on_eject();
-    // Rules 1 and 2 of the merge policy key off a firmware-reported spool id.
-    // klipper-toolchanger reports none, so neither can fire here and the
-    // erase branch below is unreachable today. It is kept because the policy
-    // lives in merge_override(), not in each backend's idea of its firmware.
-    const auto result = helix::ams::merge_override(slot, it->second, opts);
-    if (result.cleared_rebind || result.cleared_eject) {
-        overrides_.erase(it);
-        if (override_store_) {
-            const std::string tag = backend_log_tag();
-            override_store_->clear_async(slot_index, [tag, slot_index](bool ok, std::string err) {
-                if (!ok) {
-                    spdlog::warn("{} clear_async failed for slot {}: {}", tag, slot_index, err);
-                }
-            });
-        }
-    }
 }
 
 // stop(), release_subscriptions(), is_running() provided by AmsSubscriptionBackend
@@ -538,7 +514,7 @@ void AmsBackendToolChanger::handle_status_update(const nlohmann::json& notificat
         if (state_changed && !overrides_.empty() && !system_info_.units.empty()) {
             auto& slots = system_info_.units[0].slots;
             for (size_t i = 0; i < slots.size(); ++i) {
-                apply_overrides(slots[i], static_cast<int>(i));
+                apply_resolved_lane(slots[i], static_cast<int>(i));
             }
         }
     }
@@ -933,7 +909,7 @@ void AmsBackendToolChanger::initialize_tools() {
     if (!overrides_.empty() && !system_info_.units.empty()) {
         auto& slots = system_info_.units[0].slots;
         for (size_t i = 0; i < slots.size(); ++i) {
-            apply_overrides(slots[i], static_cast<int>(i));
+            apply_resolved_lane(slots[i], static_cast<int>(i));
         }
     }
 
@@ -1246,6 +1222,10 @@ AmsError AmsBackendToolChanger::set_slot_info(int slot_index, const SlotInfo& in
         if (!system_info_.units.empty() &&
             slot_index < static_cast<int>(system_info_.units[0].slots.size())) {
             auto& slot = system_info_.units[0].slots[slot_index];
+            // The lane as it stood before this edit. stage_user_override needs it
+            // to tell what the user moved from what the editor merely carried
+            // back, so it has to be taken before the writes below.
+            const SlotInfo prior_slot = slot;
             old_mapped_tool = slot.mapped_tool;
             slot.color_rgb = info.color_rgb;
             slot.color_name = info.color_name;
@@ -1280,8 +1260,7 @@ AmsError AmsBackendToolChanger::set_slot_info(int slot_index, const SlotInfo& in
             // klipper-toolchanger supplies no material, colour, brand or weight,
             // so there is nothing underneath for these to fall through to.
             if (persist) {
-                overrides_[slot_index] =
-                    helix::ams::user_override_from_slot_info(info, info.material);
+                helix::ams::stage_user_override(overrides_, slot_index, prior_slot, info);
             }
         }
     }

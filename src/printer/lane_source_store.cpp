@@ -78,6 +78,15 @@ void LaneSourceStore::clear() {
     warned_edit_drop_.reset();
 }
 
+void LaneSourceStore::drop_source(LaneId lane, ObservationSource source) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto it = lanes_.find(lane);
+    if (it == lanes_.end()) {
+        return;
+    }
+    it->second.drop(source);
+}
+
 bool LaneSourceStore::first_drop_of(DropSite site, LaneId lane) {
     std::lock_guard<std::mutex> lock(mutex_);
     auto& latch = site == DropSite::Producer ? warned_producer_drop_ : warned_edit_drop_;
@@ -134,6 +143,35 @@ void commit_slot_edit(LaneId lane, const Observation& obs) {
         return;
     }
     LaneSourceStore::instance().write(lane, obs, /*amend=*/true);
+}
+
+void drop_lane_source(LaneId lane, ObservationSource source) {
+    if (!is_lane_id(lane)) {
+        return;
+    }
+    LaneSourceStore::instance().drop_source(lane, source);
+}
+
+void reset_lane_to_machine_readings(LaneId lane) {
+    drop_lane_source(lane, ObservationSource::Spoolman);
+    drop_lane_source(lane, ObservationSource::LocalUser);
+    drop_lane_source(lane, ObservationSource::Metered);
+    drop_lane_source(lane, ObservationSource::Remembered);
+}
+
+void retract_lane_declarations(LaneId lane, const std::function<void(Observation&)>& trim) {
+    const LaneSources sources = lane_sources(lane);
+    if (sources.local_user.has_value()) {
+        Observation kept = *sources.local_user;
+        trim(kept);
+        drop_lane_source(lane, ObservationSource::LocalUser);
+        commit_slot_edit(lane, kept);
+    }
+    if (sources.spoolman.has_value()) {
+        Observation kept = *sources.spoolman;
+        trim(kept);
+        ingest(lane, kept);
+    }
 }
 
 LaneSources lane_sources(LaneId lane) {

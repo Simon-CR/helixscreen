@@ -271,8 +271,8 @@ Per-slot user overrides persist through `FilamentSlotOverrideStore` under the
 swapped — clear the stale override; empty UID is "no signal" and never clears; first
 observation only sets the baseline), then `mirror_firmware_to_lane_data()` under
 `OverwriteAlways` so OrcaSlicer's MoonrakerPrinterAgent sees the spool, then
-`apply_overrides()` layering the user's fields back over firmware truth
-(`src/printer/ams_backend_snapmaker.cpp#handle_status_update`, `src/printer/ams_backend_snapmaker.cpp#apply_overrides`).
+`apply_resolved_lane()` laying the lane's resolved identity back over firmware truth
+(`src/printer/ams_backend_snapmaker.cpp#handle_status_update`, `include/ams_backend.h#AmsBackend/apply_resolved_lane`).
 
 Because the UID is a hardware identifier the UI cannot write, this backend registers no
 expected-echo value with the fingerprint tracker — user edits can never masquerade as a
