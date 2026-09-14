@@ -493,20 +493,18 @@ void ToastManager::detach_from_input(lv_obj_t* widget) {
     if (!widget)
         return;
 
-    // A toast being torn down may be an input device's cached press target.
-    // force_remove()/finalize_remove() hand the widget to
-    // safe_delete_deferred_raw(), which reparents it to lv_layer_top() and
-    // async-deletes it; in the window before that delete runs, indev's act_obj
-    // still points at the (soon-to-be-freed) action button. A release/click
-    // dispatched in that window dereferences freed widget memory in
-    // event_send_core (target->spec_attr->event_list) — SIGBUS (#850 pattern;
-    // crash bundle A5V73UV4). lv_indev_reset(NULL, ...) clears the cached
-    // press/scroll target on every pointer device; it is a no-op unless a press
-    // is actually in flight, so an idle auto-dismiss costs nothing.
-    lv_indev_reset(nullptr, widget);
+    // A press in flight on the action button must not complete (#850; bundle
+    // A5V73UV4). Its CLICKED user data is the ToastInstance, which
+    // force_remove() and finalize_remove() erase from active_ before the
+    // widget's async delete runs, and LVGL takes the press away only at that
+    // delete; through the exit animation, a completed click would run the
+    // action of a toast already dismissed. Only a pointer pressing or
+    // scrolling inside the toast is reset: a drag, a slider or a scroll
+    // anywhere else keeps its gesture.
+    helix::ui::reset_input_within(widget);
 
-    // Belt-and-suspenders: a dying toast's action button must not latch a fresh
-    // press once teardown has begun (CLICKABLE gates indev hit-testing).
+    // A dying toast's action button must not latch a fresh press once teardown
+    // has begun (CLICKABLE gates indev hit-testing).
     if (lv_obj_t* action_btn = lv_obj_find_by_name(widget, "toast_action_btn")) {
         lv_obj_remove_flag(action_btn, LV_OBJ_FLAG_CLICKABLE);
     }

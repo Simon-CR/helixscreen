@@ -3,6 +3,7 @@
 
 #include "ui_utils.h"
 
+#include "lvgl/src/indev/lv_indev_private.h" // pointer.act_obj: no public getter outside dispatch
 #include "theme_manager.h"
 
 #include <spdlog/spdlog.h>
@@ -169,6 +170,39 @@ const char* get_owned_user_string(lv_obj_t* obj) {
         return nullptr;
     }
     return static_cast<const char*>(lv_obj_get_user_data(obj));
+}
+
+// ============================================================================
+// Input reset scoped to a subtree
+// ============================================================================
+
+namespace {
+
+bool in_subtree(const lv_obj_t* obj, const lv_obj_t* subtree) {
+    for (; obj != nullptr; obj = lv_obj_get_parent(obj)) {
+        if (obj == subtree) {
+            return true;
+        }
+    }
+    return false;
+}
+
+} // namespace
+
+void reset_input_within(lv_obj_t* subtree) {
+    if (!subtree) {
+        return;
+    }
+    for (lv_indev_t* indev = lv_indev_get_next(nullptr); indev != nullptr;
+         indev = lv_indev_get_next(indev)) {
+        if (lv_indev_get_type(indev) != LV_INDEV_TYPE_POINTER) {
+            continue;
+        }
+        if (in_subtree(indev->pointer.act_obj, subtree) ||
+            in_subtree(lv_indev_get_scroll_obj(indev), subtree)) {
+            lv_indev_reset(indev, subtree);
+        }
+    }
 }
 
 } // namespace helix::ui

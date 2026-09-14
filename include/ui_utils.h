@@ -411,6 +411,18 @@ inline void clear_pressed_state_recursive(lv_obj_t* obj) {
     }
 }
 
+/**
+ * @brief Reset each pointer input device whose press or scroll target is inside @p subtree
+ *
+ * For a subtree being retired while a press may be in flight on it: the rest of that
+ * press (RELEASED, CLICKED) must not reach its objects. A pointer pressing or scrolling
+ * anything else keeps its gesture. lv_indev_reset() clears the target of every pointer
+ * it visits whatever object it names, and a press it clears never gets its RELEASED.
+ *
+ * @param subtree Root of the objects being retired; nullptr resets nothing
+ */
+void reset_input_within(lv_obj_t* subtree);
+
 // ============================================================================
 // Owned user_data strings
 // ============================================================================
