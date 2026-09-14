@@ -166,27 +166,35 @@ The server speaks JSON-RPC over one of two transports, selectable at runtime:
 | `--remote-http-port <n>` | `7130` | HTTP TCP port (implies http) |
 
 **Unix socket** (default) — local, owner-only (0600), no network exposure. The
-`ctl`/`repl` client speaks this. Socket path resolution (client and server use
-the same order):
+`ctl`/`repl` client speaks this.
+
+The **server** binds the first directory its own context yields:
+1. `--remote-socket <path>` (explicit)
+2. `$RUNTIME_DIRECTORY/` (systemd units)
+3. `$XDG_RUNTIME_DIR/`
+4. `/tmp/`
+
+The **client** searches every directory it might find a server in, because it
+usually runs in a different context than the server: a systemd service has
+`$RUNTIME_DIRECTORY` and no `$XDG_RUNTIME_DIR`, an ssh session has the reverse.
 1. `--remote-socket <path>` / `helix-screen ctl -s <path>` (explicit)
 2. `$RUNTIME_DIRECTORY/` (systemd units)
 3. `$XDG_RUNTIME_DIR/`
-4. `/run/helixscreen/`
+4. `/run/helixscreen/` (a client-side guess for systemd's
+   `RuntimeDirectory=helixscreen`, used when the client's own context has
+   neither env var set - an ssh session never inherits the service's)
 5. `/tmp/`
 
-The **server** binds the first of those its own context yields. The **client**
-searches all of them and takes the first socket that answers, because the two
-run in different contexts: a systemd service has `$RUNTIME_DIRECTORY` and no
-`$XDG_RUNTIME_DIR`, an ssh session has the reverse. Resolving a single directory
-on the client side finds nothing the service created and reports that the app is
-not running.
+Exactly one live socket among those directories is used automatically; more
+than one makes the client refuse to guess rather than silently pick one and
+drive the wrong app (see "More than one instance" below).
 
 `$RUNTIME_DIRECTORY` comes from `RuntimeDirectory=helixscreen` in
 `config/helixscreen.service` and has to outrank `/tmp`: that unit also sets
 `ProtectSystem=strict`, which leaves `/tmp` read-only, so a socket there cannot
-be bound on any systemd install. Both sides resolve through
-`src/remote/unix_socket_transport.cpp#control_socket_dir`, so the client cannot
-drift from where the server actually bound.
+be bound on any systemd install. Both sides resolve their own directory through
+`src/remote/unix_socket_transport.cpp#control_socket_dir`; the client's wider
+search is `src/remote/unix_socket_transport.cpp#control_socket_search_dirs`.
 
 **HTTP/TCP** — a minimal `POST /rpc` JSON-RPC endpoint. Binds loopback by
 default; LAN exposure is opt-in via `--remote-http-bind`. This is the base for
@@ -216,11 +224,16 @@ it probes with a `connect()`, finds a live owner, and parks on
 `helixscreen-control-<pid>.sock` beside it, logging a warning. Both stay
 reachable, and neither gets silently hijacked.
 
-The client resolves in the same spirit. If the well-known path is live it uses
-it — so with two apps running, a bare `helix-screen ctl` drives whichever one
-started first, silently. If the well-known path is dead or absent, the client
-looks for pid-suffixed instances: exactly one is used automatically, and
-several make it refuse to guess:
+The client resolves the same way, across every directory in its search list: one
+live well-known socket anywhere is used automatically. If more than one
+directory has a live well-known socket - two unrelated apps, each the first
+instance in its own context, such as a systemd service and a developer's second
+build in an ssh session - the client refuses to guess and lists every one,
+exactly as it does for pid-suffixed instances below.
+
+If no well-known socket is live anywhere, the client looks for pid-suffixed
+instances instead: exactly one is used automatically, and several make it
+refuse to guess, with the same message either way:
 
 ```
 $ helix-screen ctl ls

@@ -125,4 +125,34 @@ std::string well_known_socket_path();
  */
 std::vector<std::string> control_socket_search_dirs();
 
+/**
+ * @brief What a client should do after searching for a live control socket.
+ */
+struct ClientSocketResolution {
+    enum class Status {
+        Found,      ///< Exactly one live socket; connect to `path`.
+        NotRunning, ///< Nothing live anywhere; `path` is the path to report against.
+        Ambiguous,  ///< More than one live socket; see `candidates`.
+    };
+    Status status = Status::NotRunning;
+    std::string path;
+    std::vector<std::string> candidates;
+};
+
+/**
+ * @brief Search @p dirs for a live control socket and decide what to do with it.
+ *
+ * Two passes, each resolved by the same rule: exactly one live socket found is
+ * used without asking, more than one is refused rather than guessed at. The
+ * well-known name is checked first, across every directory, because a
+ * pid-suffixed instance in one directory implies that directory's own
+ * well-known socket is already taken - it is not a second independent app.
+ * Only when no well-known socket answers anywhere does the search fall back to
+ * pid-suffixed instances, again across every directory.
+ *
+ * A caller silently preferring one live socket among several drives a
+ * different app than the one the user meant to reach.
+ */
+ClientSocketResolution resolve_client_socket_path(const std::vector<std::string>& dirs);
+
 } // namespace helix

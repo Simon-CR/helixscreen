@@ -131,11 +131,13 @@ static void print_help(const char* program_name) {
     printf("                       (use with --host/--port; default 127.0.0.1:7125)\n");
     printf("  --probe-egl          Report whether EGL comes up on a GPU here, then exit\n");
     printf("                       (exit 0 = hardware GPU; the launcher gates on this)\n");
+#ifdef HELIX_ENABLE_REMOTE_CONTROL
     printf("  --remote             Enable remote control server (auto in --test mode)\n");
     printf("  --remote-socket <p>  Override remote control socket path\n");
     printf("  --remote-transport <t>  Transport: socket (default) or http\n");
     printf("  --remote-http-bind <h>  HTTP bind host (default 127.0.0.1; implies http)\n");
     printf("  --remote-http-port <n>  HTTP port (default 7130; implies http)\n");
+#endif
     printf("  --rotate <degrees>   Display rotation: 0, 90, 180, 270\n");
     printf("  --render-2d          Force the G-code viewer to the 2D layer renderer\n");
     printf("  --render-3d          Force the G-code viewer to the 3D GLES renderer\n");
@@ -595,7 +597,10 @@ bool parse_cli_args(int argc, char** argv, CliArgs& args, int& screen_width, int
                 args.moonraker_url += "/websocket";
             }
         }
-        // Remote control
+        // Remote control (compiled out of packaged builds, see HELIX_ENABLE_REMOTE_CONTROL
+        // in the Makefile; an unmatched --remote* flag then falls through to the
+        // "ignoring unknown argument" warning below instead of being silently accepted)
+#ifdef HELIX_ENABLE_REMOTE_CONTROL
         else if (strcmp(argv[i], "--remote") == 0) {
             args.remote_control = true;
         } else if (strcmp(argv[i], "--remote-socket") == 0 ||
@@ -662,6 +667,7 @@ bool parse_cli_args(int argc, char** argv, CliArgs& args, int& screen_width, int
             args.remote_transport = "http"; // Selecting an HTTP option implies http
             args.remote_control = true;
         }
+#endif
         // Log destination
         else if (strcmp(argv[i], "--log-dest") == 0 || strncmp(argv[i], "--log-dest=", 11) == 0) {
             const char* value = nullptr;
