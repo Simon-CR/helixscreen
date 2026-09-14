@@ -47,8 +47,9 @@
 import argparse
 import os
 import re
-import subprocess
 import sys
+
+from staged_content import staged_files
 
 HEREDOC = re.compile(r'<<-?\s*(["\']?)([A-Za-z_][A-Za-z0-9_]*)\1')
 TEST_OPEN = re.compile(r'^\s*@test\s+.*\{\s*$')
@@ -214,6 +215,13 @@ def scan(path, src):
 
 
 def collect(args):
+    """Yield (path, text) for every file to scan, content already sourced.
+
+    --staged-only reads each staged .bats file's INDEX content (what the
+    commit will contain), via staged_content.staged_files - not the working
+    tree, which may have been reverted to something clean after staging a
+    violation.
+    """
     if args.paths:
         out = []
         for p in args.paths:
@@ -222,19 +230,28 @@ def collect(args):
                     out += [os.path.join(root, f) for f in files if f.endswith('.bats')]
             else:
                 out.append(p)
-        return sorted(out)
+        for path in sorted(out):
+            try:
+                with open(path, encoding='utf-8', errors='replace') as fh:
+                    yield (path, fh.read())
+            except OSError:
+                continue
+        return
     if args.staged_only:
-        try:
-            r = subprocess.run(['git', 'diff', '--cached', '--name-only', '--diff-filter=ACM'],
-                               capture_output=True, text=True, check=False)
-            return sorted(f for f in r.stdout.split('\n')
-                          if f.endswith('.bats') and os.path.exists(f))
-        except OSError:
-            return []
+        yield from sorted(staged_files(suffixes=('.bats',)))
+        return
     base = 'tests/shell'
     if not os.path.isdir(base):
-        return []
-    return sorted(os.path.join(base, f) for f in os.listdir(base) if f.endswith('.bats'))
+        return
+    for name in sorted(os.listdir(base)):
+        if not name.endswith('.bats'):
+            continue
+        path = os.path.join(base, name)
+        try:
+            with open(path, encoding='utf-8', errors='replace') as fh:
+                yield (path, fh.read())
+        except OSError:
+            continue
 
 
 def main():
@@ -249,14 +266,8 @@ def main():
     ap.add_argument('paths', nargs='*', help='Files or directories (default tests/shell)')
     args = ap.parse_args()
 
-    files = collect(args)
     hits, examined, unplaced, scanned = [], 0, 0, 0
-    for path in files:
-        try:
-            with open(path, encoding='utf-8', errors='replace') as fh:
-                src = fh.read()
-        except OSError:
-            continue
+    for path, src in collect(args):
         scanned += 1
         h, e, u = scan(path, src)
         hits += h

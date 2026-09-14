@@ -1608,7 +1608,19 @@ if [ -f "scripts/check_subscription_null_safety.py" ]; then
   # Baseline: 0 — every subscription-handler `.get<T>()` must have an
   # `.is_<type>()` guard within 15 lines, every `.value("k", default)` must
   # have an explicit `// JSON_NULL_SAFE` opt-out. Don't regress.
-  if python3 scripts/check_subscription_null_safety.py --max-allowed 0 --summary >/tmp/null_safety.out 2>&1; then
+  #
+  # Pre-commit: scan the staged blob for each changed source, not the dirty
+  # working tree. Rule 1's baseline is 0, so a partial (staged-file) scan is
+  # still a sound check of what the commit will contain; CI and manual runs
+  # use the whole-working-tree scan (no flag), which is what the rule-2
+  # per-key baseline needs to detect a now-fixed entry.
+  if [ "$STAGED_ONLY" = true ]; then
+    NULL_SAFETY_ARGS="--staged-only"
+  else
+    NULL_SAFETY_ARGS=""
+  fi
+  # shellcheck disable=SC2086
+  if python3 scripts/check_subscription_null_safety.py $NULL_SAFETY_ARGS --max-allowed 0 --summary >/tmp/null_safety.out 2>&1; then
     section_time $SECTION_START
     echo ""
     cat /tmp/null_safety.out
@@ -1921,7 +1933,19 @@ if [ -f "scripts/check_raw_this_queue_update.py" ]; then
   # a freed observer list (#1146, #1165). Keep it at 0: guard new sites with
   # lifetime_.bg_cb() / tok.defer(), or annotate a genuine exception with
   # // QUEUE_RAW_THIS_OK: <reason>.
-  if python3 scripts/check_raw_this_queue_update.py --max-allowed 0 --summary >/tmp/raw_this_qu.out 2>&1; then
+  #
+  # Pre-commit: scan the staged blob for each changed source, not the dirty
+  # working tree - a violation staged and then reverted on disk must still
+  # fail. A hard gate at 0 stays sound under a partial (staged-file) scan:
+  # any hit is real regardless of scope. CI and manual runs use the
+  # whole-working-tree scan (no flag).
+  if [ "$STAGED_ONLY" = true ]; then
+    RAW_THIS_ARGS="--staged-only"
+  else
+    RAW_THIS_ARGS=""
+  fi
+  # shellcheck disable=SC2086
+  if python3 scripts/check_raw_this_queue_update.py $RAW_THIS_ARGS --max-allowed 0 --summary >/tmp/raw_this_qu.out 2>&1; then
     section_time $SECTION_START
     echo ""
     tail -1 /tmp/raw_this_qu.out
@@ -2359,7 +2383,19 @@ if [ -f "scripts/check_thumbnail_cache_guard.py" ]; then
   # has already been outdated still lands and overwrites a NEWER thumbnail.
   # Build a ThumbnailRequest + ThumbnailLoadContext, or annotate a genuine
   # exception with // THUMB_LEGACY_OK: <reason>.
-  if python3 scripts/check_thumbnail_cache_guard.py >/tmp/thumb_guard.out 2>&1; then
+  #
+  # Pre-commit: scan the staged blob for each changed source, not the dirty
+  # working tree - a violation staged and then reverted on disk must still
+  # fail. A hard gate stays sound under a partial (staged-file) scan: any hit
+  # is real regardless of scope. CI and manual runs use the whole-working-tree
+  # scan (no flag).
+  if [ "$STAGED_ONLY" = true ]; then
+    THUMB_GUARD_ARGS="--staged-only"
+  else
+    THUMB_GUARD_ARGS=""
+  fi
+  # shellcheck disable=SC2086
+  if python3 scripts/check_thumbnail_cache_guard.py $THUMB_GUARD_ARGS >/tmp/thumb_guard.out 2>&1; then
     section_time $SECTION_START
     echo ""
     echo "✅ ThumbnailCache: every src/ consumer passes a ThumbnailLoadContext"
@@ -3130,7 +3166,16 @@ SECTION_START=$(date +%s)
 echo -n "🫥 Checking bats assertions bash 3.2 swallows..."
 
 if [ -f "scripts/check_bats_inert_assertions.py" ]; then
-  if python3 scripts/check_bats_inert_assertions.py >/tmp/bats_inert.out 2>&1; then
+  # Pre-commit: scan the staged blob for each .bats file, not the dirty
+  # working tree - a violation staged and then reverted on disk must still
+  # fail. CI and manual runs use the whole-working-tree scan (no flag).
+  if [ "$STAGED_ONLY" = true ]; then
+    BATS_INERT_ARGS="--staged-only"
+  else
+    BATS_INERT_ARGS=""
+  fi
+  # shellcheck disable=SC2086
+  if python3 scripts/check_bats_inert_assertions.py $BATS_INERT_ARGS >/tmp/bats_inert.out 2>&1; then
     section_time $SECTION_START
     echo ""
     cat /tmp/bats_inert.out

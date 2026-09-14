@@ -381,3 +381,50 @@ void A::f() {
     [ "$status" -eq 0 ]
     [[ "$output" == *'✅'* ]]
 }
+
+# ------------------------------------------------------- --staged-only content
+#
+# --staged-only picks its file SET from `git diff --cached`, but must read
+# each file's STAGED content (the index blob), not the working tree. Stage a
+# violation and then revert the working file to something clean, and a gate
+# that reads the working tree reports nothing while the bad blob commits.
+
+GATE_ABS="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)/scripts/check_raw_this_queue_update.py"
+
+setup_tmp_repo() {
+    TMP_REPO="$(mktemp -d "${BATS_TEST_TMPDIR:-${BATS_TMPDIR:-/tmp}}/raw-this-XXXXXX")"
+    cd "$TMP_REPO" || return 1
+    git init -q
+    git config user.email "test@example.com"
+    git config user.name "Test"
+    mkdir -p src/printer
+    printf 'void f() {\n    helix::ui::queue_update([x]() { x->run(); });\n}\n' \
+        > src/printer/foo.cpp
+    git add -A && git commit -qm base
+}
+
+@test "--staged-only catches a violation in the STAGED blob, not a reverted working file" {
+    setup_tmp_repo
+    printf 'void f() {\n    helix::ui::queue_update([this]() { this->run(); });\n}\n' \
+        > src/printer/foo.cpp
+    git add src/printer/foo.cpp
+    printf 'void f() {\n    helix::ui::queue_update([x]() { x->run(); });\n}\n' \
+        > src/printer/foo.cpp
+    run python3 "$GATE_ABS" --staged-only --max-allowed 0 --summary
+    [ "$status" -eq 1 ]
+    [[ "$output" == *'exceeds baseline'* ]]
+}
+
+@test "--staged-only stays silent on a clean staged file with a dirty violation on disk" {
+    setup_tmp_repo
+    # Genuinely different from the base commit (a second clean call), so the
+    # file shows up as staged at all - content byte-identical to HEAD stages
+    # nothing for git to report, which would pass this test for free.
+    printf 'void f() {\n    helix::ui::queue_update([x]() { x->run(); });\n    helix::ui::queue_update([x]() { x->run(); });\n}\n' \
+        > src/printer/foo.cpp
+    git add src/printer/foo.cpp
+    printf 'void f() {\n    helix::ui::queue_update([this]() { this->run(); });\n}\n' \
+        > src/printer/foo.cpp
+    run python3 "$GATE_ABS" --staged-only --max-allowed 0 --summary
+    [ "$status" -eq 0 ]
+}
