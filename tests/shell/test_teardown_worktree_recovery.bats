@@ -9,7 +9,9 @@
 # past that missing pointer and silently answers for whatever repository it
 # finds next, which for a worktree living under the main tree is the main
 # tree itself. The script then reports the main tree's branch and uncommitted
-# files as the worktree's own, and suggests --force against them.
+# files as the worktree's own, and --force on it attempts to delete the main
+# tree's own checked-out branch - saved only by git's own refusal to delete
+# a branch checked out somewhere.
 #
 # These tests pin that a worktree missing its .git pointer is refused with a
 # clear message naming only its own leftover files, never the main repo's,
@@ -79,19 +81,31 @@ make_worktree() {
     [ -f "$MAIN/main-tree-uncommitted.txt" ]
 }
 
-@test "--force finishes a worktree missing its .git pointer" {
+@test "--force finishes a worktree missing its .git pointer without touching the main tree's branch" {
     make_worktree broken2
     echo leftover > "$MAIN/.worktrees/broken2/leftover.txt"
     rm -f "$MAIN/.worktrees/broken2/.git"
 
     run "$SCRIPT" broken2 --into master --force
     [ "$status" -eq 0 ]
+
+    # Recovery mode skips branch cleanup outright rather than guess at
+    # containment from a repo it can no longer safely query - it must never
+    # even ATTEMPT a branch deletion. Pre-fix, the escaped BRANCH resolves to
+    # the main tree's own checked-out branch, and this exact line
+    # ("Deleting branch 'master'") is what git's own refusal to delete a
+    # checked-out branch happens to save - a near miss, not a guarantee.
+    lacks "Deleting branch" "$output"
+
     [ ! -d "$MAIN/.worktrees/broken2" ]
     run git -C "$MAIN" worktree list --porcelain
     lacks ".worktrees/broken2" "$output"
 
-    # Recovery mode skips branch cleanup rather than guess at containment
-    # from a repo it can no longer safely query - the branch survives.
+    # The main tree's own branch and tracked file are untouched.
+    run git -C "$MAIN" branch --show-current
+    contains "master" "$output"
+    [ -f "$MAIN/README.md" ]
+
     run git -C "$MAIN" branch --list "feature/broken2"
     contains "feature/broken2" "$output"
 }

@@ -74,6 +74,12 @@ done
 say()  { echo -e "$@"; }
 run()  { if (( DRY_RUN )); then echo -e "  ${CYAN}would run:${RESET} $*"; else "$@"; fi; }
 
+# File owner as a login name, GNU stat's -c first (BSD rejects that flag
+# outright), BSD's -f second. Unknown either way rather than aborting -
+# these calls only ever inform a leftover-files report, never a decision.
+file_owner()       { stat -c '%U'    "$1" 2>/dev/null || stat -f '%Su'      "$1" 2>/dev/null || echo '?';   }
+file_owner_group() { stat -c '%U:%G' "$1" 2>/dev/null || stat -f '%Su:%Sg' "$1" 2>/dev/null || echo '?:?'; }
+
 # The main tree is the one git calls the common dir's parent, so this works
 # whether we are invoked from the main tree or from inside some other worktree.
 MAIN_TREE="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
@@ -85,14 +91,46 @@ fi
 
 MAIN_ABS="$(cd "$MAIN_TREE" && pwd -P)"
 
-# Resolve a bare name against .worktrees/, a path as given. realpath -m
-# canonicalizes (resolving symlinks, like the old `cd && pwd -P`) without
-# requiring the path to still exist, so a worktree a previous run already
-# emptied - but never pruned - can still be found and finished.
+# Canonicalize $1 (resolve symlinks) without requiring it to exist, so a
+# worktree a previous run already emptied - but never pruned - can still be
+# found and finished. GNU realpath's -m does exactly this; BSD/macOS
+# realpath has no -m at all (it fails outright), so a `-m` probe on the
+# empty string decides which path this run takes rather than assuming.
+# `cd "$dir" && pwd -P` (portable everywhere) then handles the part of $1
+# that already exists, and the remaining, not-yet-created tail is appended
+# as given - resolving nothing further, but never failing.
+#
+# Probed against "/", which always exists: BSD realpath rejects the -m flag
+# itself regardless of its argument, so the probe's target doesn't matter,
+# only that it can never fail for a reason unrelated to -m support.
+HAVE_REALPATH_M=1
+realpath -m -- "/" >/dev/null 2>&1 || HAVE_REALPATH_M=0
+
+canonicalize_path() {
+    local p="$1"
+    if (( HAVE_REALPATH_M )); then
+        realpath -m -- "$p"
+        return
+    fi
+    if [[ -d "$p" ]]; then
+        (cd -- "$p" && pwd -P)
+        return
+    fi
+    local parent base
+    parent="$(dirname -- "$p")"
+    base="$(basename -- "$p")"
+    if [[ -d "$parent" ]]; then
+        printf '%s/%s\n' "$(cd -- "$parent" && pwd -P)" "$base"
+    else
+        printf '%s\n' "$p"
+    fi
+}
+
+# Resolve a bare name against .worktrees/, a path as given.
 if [[ "$TARGET" == */* || -d "$TARGET" ]]; then
-    CANDIDATE_ABS="$(realpath -m "$TARGET")"
+    CANDIDATE_ABS="$(canonicalize_path "$TARGET")"
 else
-    CANDIDATE_ABS="$(realpath -m "$MAIN_TREE/.worktrees/$TARGET")"
+    CANDIDATE_ABS="$(canonicalize_path "$MAIN_TREE/.worktrees/$TARGET")"
 fi
 
 # Guard: it must be a worktree git knows about, resolved from git's own
@@ -150,16 +188,15 @@ GIT_POINTER_OK=1
 
 if (( ! GIT_POINTER_OK )); then
     say "${YELLOW}! $WT_ABS has no .git of its own.${RESET}"
-    say "A previous teardown of this worktree was interrupted after removing its"
-    say "git pointer but before removing everything else. git commands scoped to"
-    say "this path are skipped - they would silently fall through to the main tree."
+    say "Its git pointer is missing, so any git command scoped to this path would"
+    say "silently fall through to the main tree instead - those checks are skipped."
     say ""
     say "${BOLD}What is left on disk:${RESET}"
     ME="$(id -un)"
     FOUND=0
     while IFS= read -r -d '' f; do
         FOUND=1
-        OWNER="$(stat -c '%U' "$f" 2>/dev/null || echo '?')"
+        OWNER="$(file_owner "$f")"
         if [[ "$OWNER" == "$ME" ]]; then
             say "  $OWNER  $f"
         else
@@ -173,7 +210,7 @@ if (( ! GIT_POINTER_OK )); then
         say "with ${CYAN}--force${RESET} to let this script finish the removal."
         exit 1
     fi
-    say "${YELLOW}--force given: skipping branch cleanup, finishing the removal.${RESET}"
+    say "${YELLOW}--force given: skipping branch cleanup.${RESET}"
     BRANCH=""
     DELETE_BRANCH=0
 else
@@ -255,7 +292,7 @@ else
         say ""
         say "${RED}Error: could not fully remove $WT_ABS - files remain:${RESET}"
         while IFS= read -r f; do
-            say "  $(stat -c '%U:%G' "$f" 2>/dev/null || echo '?:?')  $f"
+            say "  $(file_owner_group "$f")  $f"
         done <<<"$LEFTOVER"
         say "Remove the listed files (root-owned ones need sudo) and rerun this script."
         exit 1
