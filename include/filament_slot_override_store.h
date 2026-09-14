@@ -61,6 +61,17 @@ struct LaneDataAnomalies {
 // diagnostic; also unit-tested directly.
 [[nodiscard]] LaneDataAnomalies scan_lane_data_anomalies(const nlohmann::json& namespace_doc);
 
+// Emit the lane_data document a stored override is written as.
+//
+// The wire-format emitter, and the inverse of from_lane_data_record below.
+// save_async is its production caller; it is declared here because the lock
+// keys and the declared set live on this document and nowhere else, so a
+// fixture seeding a stored override has to build the same document the store
+// would have written before anything can read authorship back off it. A record
+// classified against an empty document declares nothing, whatever its struct
+// holds.
+[[nodiscard]] nlohmann::json to_lane_data_record(int slot_index, const FilamentSlotOverride& o);
+
 // Parse AFC-shaped record (+ our extensions) back into FilamentSlotOverride.
 // This is the wire-format parser: the shared shape read by scan_lane_data_anomalies,
 // the migration helpers, and load_blocking, and exercised directly by tests to

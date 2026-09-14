@@ -7,6 +7,7 @@
 #include "ams_backend.h"
 #include "ams_types.h"
 #include "filament_slot_override.h"
+#include "filament_slot_override_store.h"
 #include "lane_legacy_migration.h"
 #include "lane_source_store.h"
 #include "lane_translation.h"
@@ -26,16 +27,31 @@ namespace helix::test {
 /// Routes each source through the funnel that source is allowed to use, and
 /// classifies with the same pure sources_from_record() the real migration
 /// uses, so a fixture cannot disagree with production about what a record
-/// means. There is no wire JSON in a seeded record, so the legacy lock keys
-/// are absent and the classification rests on the record's own fields.
+/// means.
+///
+/// The wire document is built by to_lane_data_record(), the same emitter
+/// save_async writes through. Authorship is read off that document and not off
+/// the struct: the lock keys and the declared set live there, and a record
+/// classified against an empty object declares nothing at all, so a fixture
+/// handing over one would test the unlocked path while believing it had seeded
+/// a locked record. LegacyLockKeys::LaneData is the only spelling reachable
+/// here because the emitter is the lane_data one, which is also the only
+/// spelling any backend's ingest_legacy_records() passes.
+///
+/// A record this seeds still declares only what it carries. The lock flags
+/// speak for colour and material; every other identity field answers to the
+/// record's own declared set, so a brand on a record whose set is empty is
+/// remembered rather than declared. A fixture that means a person typed the
+/// brand wants edit_slot_as_user() below.
 ///
 /// @p backend must be registered with AmsState, or lane_id() answers
 /// INVALID_LANE_ID and the funnels drop every record. RegisteredBackend is how
 /// a fixture gets that.
 inline void file_override_as_lane_records(const AmsBackend& backend, int slot_index,
                                           const helix::ams::FilamentSlotOverride& ovr) {
-    const helix::ams::LaneSources sources = helix::ams::sources_from_record(
-        ovr, nlohmann::json::object(), helix::ams::LegacyLockKeys::LaneData);
+    const helix::ams::LaneSources sources =
+        helix::ams::sources_from_record(ovr, helix::ams::to_lane_data_record(slot_index, ovr),
+                                        helix::ams::LegacyLockKeys::LaneData);
     helix::ams::file_lane_sources(backend.lane_id(slot_index), sources);
 }
 
