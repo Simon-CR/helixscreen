@@ -47,10 +47,8 @@ class AmsSubscriptionBackend : public AmsBackend {
     /// Re-read the lane-record store a backend names in lane_record_store()
     /// and file what it holds as vendor-cache readings.
     ///
-    /// This refreshes the lane SOURCE MODEL and nothing else. The override map
-    /// apply_overrides() merges onto firmware values is loaded once, at init,
-    /// and is not touched here, so a record another writer has changed since
-    /// then reaches the source model without reaching the rendered slot.
+    /// This refreshes the lane SOURCE MODEL and nothing else. The persisted
+    /// override map is loaded once, at init, and is not touched here.
     /// Refreshing that map is tracked separately: a live map replaced wholesale
     /// mid-session has to answer for an edit made or in flight since it loaded.
     ///

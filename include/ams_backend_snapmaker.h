@@ -452,8 +452,8 @@ class AmsBackendSnapmaker : public AmsSubscriptionBackend {
     /// bleed onto the new spool. Empty observed_uid (no tag / unread) is
     /// treated as "no signal" — never updates the baseline and never clears.
     /// First observation for a slot establishes the baseline and NEVER fires
-    /// a clear. Must be called BEFORE apply_overrides so the clear's field
-    /// reset isn't masked by a stale override layer.
+    /// a clear. Must be called BEFORE apply_resolved_lane so the clear's field
+    /// reset isn't masked by a stale declaration.
     ///
     /// Unlike the AD5X IFS implementation (which uses color as the event
     /// signal and needs a self-wipe guard in set_slot_info), Snapmaker uses
@@ -475,7 +475,8 @@ class AmsBackendSnapmaker : public AmsSubscriptionBackend {
 
     // Persistent per-slot overrides. Writers (on_started bulk load,
     // set_slot_info persist path, check_hardware_event_clear) all hold mutex_.
-    // Reads happen inside apply_overrides which is also under mutex_.
+    // Reads happen inside the parse path's lane_data mirror and the clear
+    // helpers, all of which also hold mutex_.
     std::unique_ptr<helix::ams::FilamentSlotOverrideStore> override_store_;
     std::unordered_map<int, helix::ams::FilamentSlotOverride> overrides_;
 

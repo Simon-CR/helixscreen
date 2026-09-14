@@ -78,9 +78,10 @@ bool natural_less(const std::string& a, const std::string& b) {
 // differs from the color/material handling above: #808 is unimplemented, so we do
 // not know whether an unlinked lane will omit the key or publish "". Guessing
 // wrong in the clearing direction wipes a brand nothing re-supplies. A user's
-// override is safe either way — both callers run apply_overrides() after this
-// reader (#1195 closed that gap on the lane_data path) — so the exposure is lanes
-// with no override at all. Revisit once #808 ships and the payload is observable.
+// declaration is safe either way — both callers run apply_resolved_lane() after
+// this reader (#1195 closed that gap on the lane_data path) — so the exposure is
+// lanes with nothing declared at all. Revisit once #808 ships and the payload is
+// observable.
 bool read_vendor(const nlohmann::json& src, std::string& out) {
     for (const char* key : {"vendor_name", "spool_vendor", "vendor", "brand"}) {
         auto it = src.find(key);
@@ -2423,7 +2424,7 @@ void AmsBackendAfc::parse_afc_stepper(int slot_index, const std::string& lane_na
     // Filament name, as AFC copied it out of Spoolman's filament record
     // (AFC v1.2.0+). Empty is a deliberate clear — clear_values() sets
     // filament_name="" on eject — matching how `color` is handled above.
-    // apply_overrides() runs below, so a user-entered name still wins.
+    // apply_resolved_lane() runs below, so a user-entered name still wins.
     if (data.contains("filament_name") && data["filament_name"].is_string()) {
         slot.spool_name = data["filament_name"].get<std::string>();
         if (slot.spool_name.empty()) {
@@ -2582,8 +2583,8 @@ void AmsBackendAfc::parse_afc_stepper(int slot_index, const std::string& lane_na
     // only refreshes when AFC decides to push. Inert on older firmware; harmless
     // there.
     //
-    // apply_overrides() runs directly below, so a user's brand override still wins
-    // over whatever firmware reports. The lane_data path does the same since #1195.
+    // apply_resolved_lane() runs directly below, so a user's declared brand still
+    // wins over whatever firmware reports. The lane_data path does the same since #1195.
     // read_vendor() writes only when it returns true, so slot.brand is the
     // value it just stored and no key of its ladder is read a second time.
     if (read_vendor(data, slot.brand)) {
@@ -2655,10 +2656,11 @@ void AmsBackendAfc::parse_afc_stepper(int slot_index, const std::string& lane_na
     }
 
     // Translate what AFC has reported into the lane source model. Every value
-    // read here comes from `firmware`, never from `slot`: apply_overrides()
-    // rewrote that struct above with the user's own declarations, and filing
-    // one of those as something a vendor store remembers is the confusion this
-    // model exists to end.
+    // read here comes from `firmware`, never from `slot`: `slot` is entry->info,
+    // which persists across frames, and apply_resolved_lane() has rewritten it
+    // with the user's own declarations on every previous frame (and does so
+    // again further down). Filing one of those as something a vendor store
+    // remembers is the confusion this model exists to end.
     //
     // The cache and the meter are filed on every frame because they are
     // accumulated rather than assembled from this frame. Re-filing them
@@ -2914,7 +2916,7 @@ void AmsBackendAfc::maybe_reassert_retained_spool_link(int slot_index,
     // re-link, so the firmware echo of OUR push cannot be misread by the
     // merge's re-bind rule as another writer's statement.
     const int override_key = [=]() {
-        // Same key convention as the apply_overrides() call above us.
+        // Same key convention as the apply_resolved_lane() call above us.
         auto* entry = slots_.get_mut(slot_index);
         return entry && entry->info.global_index >= 0 ? entry->info.global_index : slot_index;
     }();
@@ -4145,7 +4147,7 @@ void AmsBackendAfc::parse_lane_data(const nlohmann::json& lane_data) {
         // is adopted as-is rather than treated as "keep existing". Without this
         // a lane whose data only ever arrived through the DB path had no name at
         // all, and the loaded card fell back to the algorithmic colour
-        // description. apply_overrides() runs below, so a user-entered name
+        // description. apply_resolved_lane() runs below, so a user-entered name
         // still wins.
         //
         // Key ladder mirrors read_vendor(): `name` is the shared lane_data
@@ -4232,9 +4234,9 @@ void AmsBackendAfc::parse_lane_data(const nlohmann::json& lane_data) {
         }
 
         // File what this snapshot has added to firmware's account of the lane.
-        // The values come from `firmware`, never from `slot`: apply_overrides()
-        // below rewrites that struct with the user's own declarations, and
-        // those are not readings.
+        // The values come from `firmware`, never from `slot`:
+        // apply_resolved_lane() below rewrites that struct with the user's own
+        // declarations, and those are not readings.
         //
         // No Sensed record and no Metered one. lane_data reads no sensor, and
         // the weight comment at the end of this loop is why no weight is read

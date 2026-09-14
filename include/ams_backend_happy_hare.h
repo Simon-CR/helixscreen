@@ -499,9 +499,10 @@ class AmsBackendHappyHare : public AmsSubscriptionBackend {
     /// the keys that changed, so one frame is never the whole map and a record
     /// built from a single frame would blank every field that frame omits.
     ///
-    /// Nothing folds an override into this, which is what separates it from
-    /// SlotInfo: apply_overrides() rewrites that struct in place, so reading it
-    /// back would file a user's own choice as something the MMU remembers.
+    /// Nothing folds a declaration into this, which is what separates it from
+    /// SlotInfo: apply_resolved_lane() rewrites that struct in place, so
+    /// reading it back would file a user's own choice as something the MMU
+    /// remembers.
     std::map<int, helix::ams::Observation> gate_readings_;
 
     // Path visualization state

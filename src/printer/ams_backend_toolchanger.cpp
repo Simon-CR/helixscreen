@@ -806,7 +806,7 @@ void AmsBackendToolChanger::refresh_slot_statuses_locked() {
         //
         // The reading filed is the local this pass computed, never
         // slots[i].status. That struct persists across frames and
-        // apply_overrides() rewrites it, so anything reading it back is one
+        // apply_resolved_lane() rewrites it, so anything reading it back is one
         // inserted line away from filing a user's value as a firmware one.
         helix::ams::Observation sensed(helix::ams::ObservationSource::Sensed);
         sensed.present = slot_status_reports_filament(stamped);
