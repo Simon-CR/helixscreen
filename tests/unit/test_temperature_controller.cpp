@@ -344,10 +344,29 @@ TEST_CASE("TemperatureController swap-preheat guard holds the previous filament 
     }
 }
 
-TEST_CASE("get_temperature_controller returns the registered shared resource",
-          "[temp_controller][globals]") {
-    helix::TemperatureController ctrl(get_printer_state(), nullptr);
-    helix::PanelWidgetManager::instance().register_shared_resource<helix::TemperatureController>(
-        &ctrl);
+namespace {
+// PanelWidgetManager is a process-wide singleton, so registering a raw
+// pointer into it (the same non-owning wiring SubjectInitializer uses at app
+// boot) reaches past this test case's own scope. In production the pointee
+// lives for the app's lifetime; here it is a stack-local TemperatureController,
+// so the registration must be cleared before that object is destroyed or the
+// slot dangles for every test that runs afterward in this binary.
+struct ScopedGlobalController {
+    helix::TemperatureController ctrl{get_printer_state(), nullptr};
+
+    ScopedGlobalController() {
+        helix::PanelWidgetManager::instance()
+            .register_shared_resource<helix::TemperatureController>(&ctrl);
+    }
+
+    ~ScopedGlobalController() {
+        helix::PanelWidgetManager::instance().clear_shared_resources();
+    }
+};
+} // namespace
+
+TEST_CASE_METHOD(ScopedGlobalController,
+                 "get_temperature_controller returns the registered shared resource",
+                 "[temp_controller][globals]") {
     REQUIRE(get_temperature_controller() == &ctrl);
 }
