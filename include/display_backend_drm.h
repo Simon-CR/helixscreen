@@ -11,7 +11,7 @@
 #ifdef HELIX_DISPLAY_DRM
 
 #include "display_backend.h"
-#include "indev_read_hook.h"
+#include "pointer_frame_hook.h"
 #include "touch_calibration_wrapper.h"
 
 #include <string>
@@ -173,25 +173,26 @@ class DisplayBackendDRM : public DisplayBackend {
     bool pointer_is_evdev_ = false;
 
     /// Non-zero only while the scanout plane carries the rotation. It is the
-    /// discriminator for both applied_rotation_degrees() and the pointer hook,
-    /// so the plane path and LVGL's own rotation can never both transform a
-    /// sample (prestonbrown/helixscreen#1275).
+    /// discriminator for both applied_rotation_degrees() and the pointer frame
+    /// hook, so the plane path and LVGL's own rotation can never both transform
+    /// a sample (prestonbrown/helixscreen#1275).
     int plane_rotation_degrees_ = 0;
     int32_t panel_w_ = 0;
     int32_t panel_h_ = 0;
 
-    /// Fronts the touch pointer and the mouse alike, each with the evdev/libinput
-    /// read callback it replaced, which pointer_rotation_read_cb() calls first.
-    helix::IndevReadHook plane_rotation_hook_{pointer_rotation_read_cb};
+    /// Fronts every pointer device this backend opens, each with the
+    /// evdev/libinput read callback it replaced, and gives each sample the
+    /// transform its kind of device needs: a touch panel turns with the plane,
+    /// a relative pointer does not.
+    helix::PointerFrameHook pointer_frames_;
+
+    /// The paths pointer_ and mouse_ were opened on, which decide their kind.
+    std::string pointer_path_;
+    std::string mouse_path_;
 
     /// Opens the touch pointer and the mouse on whichever path finds them. Only
     /// create_input_pointer() calls it, so every device it opens gets the hook.
     void open_pointer_devices();
-
-    /// Reads a pointer device through its own driver, then applies the plane
-    /// rotation. Runs ahead of LVGL's own lv_display_rotate_point(), which is a
-    /// no-op whenever this one is not.
-    static void pointer_rotation_read_cb(lv_indev_t* indev, lv_indev_data_t* data);
     /// Auto-fire the first-run wizard (resistive controllers, broken ABS ranges)
     bool needs_calibration_ = false;
     /// Offer the manual Settings entry point (any real touch panel)

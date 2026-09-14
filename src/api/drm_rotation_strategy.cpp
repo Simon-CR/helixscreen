@@ -63,3 +63,17 @@ PointerXY rotate_pointer_for_plane(PointerXY p, int degrees, int32_t panel_w, in
         return p;
     }
 }
+
+// NAMESPACE_OK: matches rotate_pointer_for_plane, this file's existing global-scope function
+PointerXY unrotate_pointer_for_display(PointerXY p, int degrees, int32_t panel_w, int32_t panel_h) {
+    switch (degrees) {
+    case 90:
+        return {p.y, panel_h - p.x - 1};
+    case 180:
+        return {panel_w - p.x - 1, panel_h - p.y - 1};
+    case 270:
+        return {panel_w - p.y - 1, p.x};
+    default:
+        return p;
+    }
+}
