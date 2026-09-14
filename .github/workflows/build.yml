@@ -53,7 +53,7 @@ jobs:
     # -- a timed-out step cancels the job, so "Save ccache" never runs and the
     # next run is cold for the same reason. A cold run has to be able to FINISH
     # once for the cache to exist at all.
-    timeout-minutes: 220
+    timeout-minutes: 200
 
     steps:
     - name: Checkout repository
@@ -85,7 +85,6 @@ jobs:
           sudo apt-get install -y \
             libsdl2-dev \
             clang \
-            g++-10 \
             make \
             python3 \
             python3-venv \
@@ -186,18 +185,6 @@ jobs:
         make -j$(nproc)
         echo "HelixScreen built successfully"
         ccache -s
-
-    # The Pi, AD5M, K1, K2 and CC1 cross builds link against libstdc++ 10 or
-    # older, well behind this runner's clang. A construct the runner's newer
-    # library accepts and an older one rejects (std::from_chars<float>, absent
-    # before GCC 11) compiles clean here and only breaks on a cross build or a
-    # device. This re-parses every src/ translation unit's own recorded flags
-    # from compile_commands.json (written by the build above) against g++-10
-    # with -fsyntax-only: no codegen, no linking, so it costs minutes, not the
-    # better part of an hour a second full build would.
-    - name: Check old-toolchain compatibility (GCC 10)
-      timeout-minutes: 20
-      run: python3 scripts/check_old_toolchain.py --jobs "$(nproc)"
 
     - name: Build tests
       # The larger half, and the one that actually timed out cold at 70.

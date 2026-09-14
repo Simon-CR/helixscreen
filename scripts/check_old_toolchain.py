@@ -15,6 +15,11 @@ re-runs each src/ translation unit's own flags through the older compiler with
 overloads against these headers." It proves nothing about behavior or about
 targets other than the one --compiler names.
 
+An explicitly named file absent from compile_commands.json (never built
+natively, so there are no flags to borrow) is a FAILURE, not a skip: asking to
+check a specific file and getting nothing checked back is exactly the kind of
+silent pass this script exists to prevent.
+
     scripts/check_old_toolchain.py                # every src/ TU, g++-10
     scripts/check_old_toolchain.py --compiler g++-8 src/foo.cpp
 """
@@ -101,25 +106,32 @@ def main() -> int:
     db = json.loads(db_path.read_text())
     by_file = {os.path.relpath(e["file"], root): e for e in db}
 
+    # An explicitly named file with no db entry counts as failed, not skipped:
+    # a caller asking to check a specific file and getting nothing checked in
+    # return is exactly the silent-pass shape this script exists to avoid.
+    missing: list[str] = []
     if args.files:
         targets = []
         for f in args.files:
             rel = os.path.relpath(os.path.abspath(f), root)
             entry = by_file.get(rel)
             if entry is None:
-                print(f"{rel}: no compile_commands.json entry, skipping", file=sys.stderr)
+                missing.append(rel)
                 continue
             targets.append(entry)
     else:
         targets = [e for rel, e in by_file.items() if rel.startswith("src" + os.sep)]
 
-    if not targets:
+    if not targets and not missing:
         print("no translation units to check - the corpus is empty", file=sys.stderr)
         return 2
 
+    for rel in missing:
+        print(f"{rel}: FAILED (no compile_commands.json entry)")
+
     print(f"Checking {len(targets)} translation unit(s) against {args.compiler}...")
     started = time.monotonic()
-    failures = 0
+    failures = len(missing)
     with ThreadPoolExecutor(max_workers=max(1, args.jobs)) as pool:
         for rel, ok, stderr in pool.map(lambda e: check_one(e, args.compiler, root), targets):
             if not ok:
@@ -128,7 +140,7 @@ def main() -> int:
                 sys.stderr.write(stderr)
     elapsed = time.monotonic() - started
 
-    print(f"summary: {len(targets)} checked, {failures} failed ({elapsed:.1f}s)")
+    print(f"summary: {len(targets) + len(missing)} checked, {failures} failed ({elapsed:.1f}s)")
     return 1 if failures else 0
 
 

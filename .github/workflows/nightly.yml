@@ -83,7 +83,9 @@ jobs:
     name: Build
     needs: gate
     runs-on: ubuntu-22.04
-    timeout-minutes: 180
+    # Covers the three build/check step budgets below (80 + 20 + 85 = 185)
+    # plus setup: apt, caches, npm install, venv, artifact upload.
+    timeout-minutes: 200
 
     steps:
     - name: Checkout repository
@@ -106,7 +108,7 @@ jobs:
           sudo rm -f /etc/apt/sources.list.d/google-chrome*.list
           sudo apt-get update
           sudo apt-get install -y \
-            libsdl2-dev clang make python3 python3-venv npm \
+            libsdl2-dev clang g++-10 make python3 python3-venv npm \
             libssl-dev pkg-config libfmt-dev libcairo2-dev \
             libpango1.0-dev libpng-dev libjpeg-dev \
             libnl-3-dev libnl-genl-3-dev libxml2-utils libusb-1.0-0-dev \
@@ -167,18 +169,35 @@ jobs:
     - name: Setup Python venv
       run: make venv-setup
 
-    # This step does the same work build.yml splits across two steps, but on a
-    # smaller budget: build.yml allows 75 + 70 = 145 minutes, this one allowed
-    # 120 for both. On a cold cache that is not enough: the 2026-08-09 run died
-    # having compiled 754 of 754 test objects, killed at the link. Sized to the
-    # same work, within the job's own 180-minute cap.
-    #
-    # `make test` needs no -j: mk/tests.mk re-execs itself with -j$(NPROC) when
-    # MAKEFLAGS carries no jobserver, so it is already parallel here.
-    - name: Build application + tests
-      timeout-minutes: 165
+    # Nightly usually restores a warm ccache from build.yml's saved entry (see
+    # the ccache policy comment at the top of this file), so this budget is
+    # smaller than a cold-cache number would need: the 2026-08-09 run died
+    # having compiled 754 of 754 test objects, killed at the link, on a colder
+    # cache than nightly normally gets.
+    - name: Build application
+      timeout-minutes: 80
       run: |
         make -j$(nproc)
+        ccache -s
+
+    # The Pi, AD5M, K1, K2 and CC1 cross builds link against libstdc++ 10 or
+    # older, well behind this runner's clang. A construct the runner's newer
+    # library accepts and an older one rejects (std::from_chars<float>, absent
+    # before GCC 11) compiles clean here and only breaks on a cross build or a
+    # device. This re-parses every src/ translation unit's own recorded flags
+    # from compile_commands.json (written by the build above) against g++-10
+    # with -fsyntax-only: no codegen, no linking. Runs nightly rather than in
+    # build.yml's per-push queue, so it costs nothing on every push's own
+    # verdict and still bounds this class of break to under a day.
+    - name: Check old-toolchain compatibility (GCC 10)
+      timeout-minutes: 20
+      run: python3 scripts/check_old_toolchain.py --jobs "$(nproc)"
+
+    # `make test` needs no -j: mk/tests.mk re-execs itself with -j$(NPROC) when
+    # MAKEFLAGS carries no jobserver, so it is already parallel here.
+    - name: Build tests
+      timeout-minutes: 85
+      run: |
         make test
         ccache -s
 
