@@ -224,86 +224,48 @@ TEST_CASE("HelixPluginInstaller state", "[plugin_installer]") {
 }
 
 // ============================================================================
-// Test: install_local() Error Paths
+// Test: install_local_sync() Error Paths
 // ============================================================================
 
-TEST_CASE("HelixPluginInstaller install_local error handling", "[plugin_installer]") {
-    SECTION("install_local fails when not connected to local Moonraker") {
+TEST_CASE("HelixPluginInstaller install_local_sync error handling", "[plugin_installer]") {
+    SECTION("install_local_sync fails when not connected to local Moonraker") {
         helix::HelixPluginInstaller installer;
 
         // Set to remote URL
         installer.set_websocket_url("ws://192.168.1.100:7125/websocket");
 
-        bool callback_called = false;
-        bool callback_success = true;
-        std::string callback_message;
+        const auto result = installer.install_local_sync();
 
-        installer.install_local([&](bool success, const std::string& msg) {
-            callback_called = true;
-            callback_success = success;
-            callback_message = msg;
-        });
-
-        REQUIRE(callback_called);
-        REQUIRE(callback_success == false);
-        REQUIRE(callback_message.find("local Moonraker") != std::string::npos);
+        REQUIRE(result.success == false);
+        REQUIRE(result.message.find("local Moonraker") != std::string::npos);
         // State should remain IDLE since install never started
         REQUIRE(installer.get_state() == helix::PluginInstallState::IDLE);
     }
 
-    SECTION("install_local fails when no URL is set") {
+    SECTION("install_local_sync fails when no URL is set") {
         helix::HelixPluginInstaller installer;
         // No URL set - should fail with "local Moonraker" message
 
-        bool callback_called = false;
-        bool callback_success = true;
+        const auto result = installer.install_local_sync();
 
-        installer.install_local([&](bool success, const std::string&) {
-            callback_called = true;
-            callback_success = success;
-        });
-
-        REQUIRE(callback_called);
-        REQUIRE(callback_success == false);
+        REQUIRE(result.success == false);
     }
 
-    SECTION("install_local fails gracefully when script not found (localhost)") {
+    SECTION("install_local_sync fails gracefully when script not found (localhost)") {
         helix::HelixPluginInstaller installer;
 
         // Set localhost URL so is_local_moonraker() returns true
         installer.set_websocket_url("ws://localhost:7125/websocket");
 
-        bool callback_called = false;
-        bool callback_success = true;
-        std::string callback_message;
-
-        installer.install_local([&](bool success, const std::string& msg) {
-            callback_called = true;
-            callback_success = success;
-            callback_message = msg;
-        });
+        const auto result = installer.install_local_sync();
 
         // In test environment, install.sh likely won't be found
-        // Either way, callback should be called
-        REQUIRE(callback_called);
-
         // If script not found, should fail with appropriate message
-        if (!callback_success) {
-            REQUIRE((callback_message.find("not found") != std::string::npos ||
-                     callback_message.find("failed") != std::string::npos ||
-                     callback_message.find("Failed") != std::string::npos));
+        if (!result.success) {
+            REQUIRE((result.message.find("not found") != std::string::npos ||
+                     result.message.find("failed") != std::string::npos ||
+                     result.message.find("Failed") != std::string::npos));
         }
-    }
-
-    SECTION("install_local handles nullptr callback safely") {
-        helix::HelixPluginInstaller installer;
-        installer.set_websocket_url("ws://192.168.1.100:7125/websocket");
-
-        // Should not crash with nullptr callback
-        installer.install_local(nullptr);
-
-        // State should remain IDLE (install didn't start due to remote URL)
-        REQUIRE(installer.get_state() == helix::PluginInstallState::IDLE);
     }
 }
 
