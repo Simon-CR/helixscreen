@@ -50,7 +50,9 @@ enum class LegacyLockKeys {
 /// The caller's answer wins when there is one. AmsState computes it once from
 /// the editor's own snapshot and files that same answer on the lane, while a
 /// backend's @p original is its own read of the slot at write time, which a
-/// frame landing while the editor was open has already moved.
+/// frame landing while the editor was open has already moved. Every production
+/// edit passes @p declared; the diff exists only for callers not yet split into
+/// apply_user_edit / sync_external_identity.
 [[nodiscard]] Observation edit_declaration(const Observation* declared, const SlotInfo& original,
                                            const SlotInfo& edited);
 

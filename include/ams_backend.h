@@ -1544,14 +1544,17 @@ class AmsBackend {
      * @param info New slot information (only filament fields used)
      * @param persist If true, persist changes to firmware. If false, update
      *               in-memory state only (for external data sync).
-     * @param declared What the user declared in this edit, when the caller has
-     *               already answered that. AmsState::commit_slot_edit diffs the
-     *               editor's own snapshot once and files the same answer on the
-     *               lane, so a persist records its stored authorship from it: the
-     *               backend's own read of the slot can be newer than that
-     *               snapshot, and a second diff against it claims a field a
-     *               firmware frame moved while the editor was open. nullptr
-     *               diffs against that read instead.
+     * @param declared What the user declared in this edit. Every production
+     *               edit passes the observation AmsState::commit_slot_edit
+     *               computed from the editor's own snapshot, which is also what it
+     *               files on the lane, and a persist records its stored authorship
+     *               from it. A persisting call without it re-derives authorship by
+     *               diffing against the backend's own read of the slot: that is
+     *               two before-states, and the backend's read can be newer than
+     *               the editor's snapshot, so the diff claims a field a firmware
+     *               frame moved while the editor was open. The null form exists
+     *               only for callers not yet split into apply_user_edit /
+     *               sync_external_identity.
      * @return AmsError indicating if update succeeded
      */
     virtual AmsError set_slot_info(int slot_index, const SlotInfo& info, bool persist = true,
