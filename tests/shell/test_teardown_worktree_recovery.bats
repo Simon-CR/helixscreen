@@ -40,10 +40,10 @@ make_worktree() {
     make_worktree normal
     run "$SCRIPT" normal --into master
     [ "$status" -eq 0 ]
-    [[ "$output" == *"Teardown complete"* ]]
+    contains "Teardown complete" "$output"
     [ ! -d "$MAIN/.worktrees/normal" ]
     run git -C "$MAIN" worktree list --porcelain
-    [[ "$output" != *".worktrees/normal"* ]]
+    lacks ".worktrees/normal" "$output"
 }
 
 @test "a worktree missing its .git pointer is refused, not misattributed to the main tree" {
@@ -61,18 +61,18 @@ make_worktree() {
     [ "$status" -ne 0 ]
 
     # The whole point: never names the main tree's own state.
-    [[ "$output" != *"main-tree-uncommitted.txt"* ]]
-    [[ "$output" != *"branch:   master"* ]]
+    lacks "main-tree-uncommitted.txt" "$output"
+    lacks "branch:   master" "$output"
 
     # It does explain what is actually left in the worktree.
-    [[ "$output" == *"leftover.txt"* ]]
-    [[ "$output" == *"no .git of its own"* ]]
+    contains "leftover.txt" "$output"
+    contains "no .git of its own" "$output"
 
     # Refusing must not have touched anything - directory and registration
     # are both still there for the operator (or --force) to act on.
     [ -d "$MAIN/.worktrees/broken" ]
     run git -C "$MAIN" worktree list --porcelain
-    [[ "$output" == *".worktrees/broken"* ]]
+    contains ".worktrees/broken" "$output"
 
     # And the main tree's own untracked marker is still just sitting there -
     # nothing tried to report on it, let alone touch it.
@@ -88,23 +88,23 @@ make_worktree() {
     [ "$status" -eq 0 ]
     [ ! -d "$MAIN/.worktrees/broken2" ]
     run git -C "$MAIN" worktree list --porcelain
-    [[ "$output" != *".worktrees/broken2"* ]]
+    lacks ".worktrees/broken2" "$output"
 
     # Recovery mode skips branch cleanup rather than guess at containment
     # from a repo it can no longer safely query - the branch survives.
     run git -C "$MAIN" branch --list "feature/broken2"
-    [[ "$output" == *"feature/broken2"* ]]
+    contains "feature/broken2" "$output"
 }
 
 @test "an unregistered directory is refused, never treated as a worktree" {
     mkdir -p "$BATS_TEST_TMPDIR/not-a-worktree"
     run "$SCRIPT" "$BATS_TEST_TMPDIR/not-a-worktree" --into master
     [ "$status" -ne 0 ]
-    [[ "$output" == *"does not list that path as a worktree"* ]]
+    contains "does not list that path as a worktree" "$output"
 }
 
 @test "the main tree itself is refused even when named directly" {
     run "$SCRIPT" "$MAIN" --into master
     [ "$status" -ne 0 ]
-    [[ "$output" == *"that is the main tree"* ]]
+    contains "that is the main tree" "$output"
 }
