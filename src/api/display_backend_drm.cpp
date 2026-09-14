@@ -514,14 +514,15 @@ lv_indev_t* DisplayBackendDRM::create_input_pointer() {
     // open_pointer_devices() opens passes through here, whichever path found
     // it, and its kind comes from the device itself.
     if (pointer_ != nullptr) {
-        if (const auto kind = pointer_frames_.install(pointer_, pointer_path_, pointer_is_evdev_)) {
+        if (const auto kind =
+                pointer_frames_.install(pointer_, pointer_path_, pointer_is_evdev_, &pointer_)) {
             spdlog::info(
                 "[DRM Backend] Pointer frame hook installed on {} ({} device, plane at {}°)",
                 pointer_path_, helix::input::pointer_kind_name(*kind), plane_rotation_degrees_);
         }
     }
     if (mouse_ != nullptr) {
-        if (const auto kind = pointer_frames_.install(mouse_, mouse_path_, true)) {
+        if (const auto kind = pointer_frames_.install(mouse_, mouse_path_, true, &mouse_)) {
             spdlog::info("[DRM Backend] Mouse frame hook installed on {} ({} device, plane at {}°)",
                          mouse_path_, helix::input::pointer_kind_name(*kind),
                          plane_rotation_degrees_);
