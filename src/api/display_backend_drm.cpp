@@ -241,6 +241,10 @@ DisplayBackendDRM::~DisplayBackendDRM() {
     // pointer indev outlives this backend; if an indev read fired between our
     // destruction and lv_deinit(), calibrated_read_cb would reach the freed
     // calibration_context_ (use-after-free / SIGSEGV). Mirrors ~DisplayBackendFbdev.
+    // The rotation hook comes off first. Where it fronts the calibration wrapper
+    // that hands the wrapper back, and uninstall only silences a device whose read
+    // callback is the wrapper itself.
+    plane_rotation_hook_.restore_all();
     helix::uninstall_calibration_wrapper(pointer_, calibration_context_);
     restore_console();
 }
@@ -491,6 +495,27 @@ lv_display_t* DisplayBackendDRM::create_display(int width, int height) {
 }
 
 lv_indev_t* DisplayBackendDRM::create_input_pointer() {
+    open_pointer_devices();
+
+    // LVGL rotates pointer input from the display's rotation, which the plane
+    // path clears, so the transform is chained onto each device's own read
+    // instead. Every device open_pointer_devices() opens passes through here,
+    // whichever path found it. It is inert until a plane actually owns an angle.
+    if (pointer_ != nullptr) {
+        plane_rotation_hook_.install(pointer_);
+        spdlog::info("[DRM Backend] Pointer rotation hook installed (plane at {}°)",
+                     plane_rotation_degrees_);
+    }
+    if (mouse_ != nullptr) {
+        plane_rotation_hook_.install(mouse_);
+        spdlog::info("[DRM Backend] Mouse rotation hook installed (plane at {}°)",
+                     plane_rotation_degrees_);
+    }
+
+    return pointer_;
+}
+
+void DisplayBackendDRM::open_pointer_devices() {
     std::string device_override;
 
     // Priority 1: Environment variable override (for debugging/testing)
@@ -516,7 +541,7 @@ lv_indev_t* DisplayBackendDRM::create_input_pointer() {
         pointer_ = lv_libinput_create(LV_INDEV_TYPE_POINTER, device_override.c_str());
         if (pointer_ != nullptr) {
             spdlog::info("[DRM Backend] Libinput pointer device created on {}", device_override);
-            return pointer_;
+            return;
         }
 #endif
         // Try evdev as fallback for the specified device
@@ -524,7 +549,7 @@ lv_indev_t* DisplayBackendDRM::create_input_pointer() {
         if (pointer_ != nullptr) {
             pointer_is_evdev_ = true;
             spdlog::info("[DRM Backend] Evdev pointer device created on {}", device_override);
-            return pointer_;
+            return;
         }
         spdlog::warn("[DRM Backend] Could not open specified touch device: {}", device_override);
     }
@@ -1020,18 +1045,6 @@ lv_indev_t* DisplayBackendDRM::create_input_pointer() {
     if (!pointer_ && !mouse_) {
         spdlog::error("[DRM Backend] Failed to create any input device");
     }
-
-    // LVGL rotates pointer input from the display's rotation, which the plane
-    // path clears, so the transform is chained onto the driver's own read
-    // instead. It is inert until a plane actually owns an angle.
-    if (pointer_ != nullptr) {
-        original_read_cb_ = lv_indev_get_read_cb(pointer_);
-        lv_indev_set_read_cb(pointer_, pointer_rotation_read_cb);
-        spdlog::info("[DRM Backend] Pointer rotation hook installed (plane at {}°)",
-                     plane_rotation_degrees_);
-    }
-
-    return pointer_;
 }
 
 lv_indev_t* DisplayBackendDRM::create_input_keyboard() {
@@ -1153,8 +1166,8 @@ void DisplayBackendDRM::pointer_rotation_read_cb(lv_indev_t* indev, lv_indev_dat
         return;
     }
     auto* self = static_cast<DisplayBackendDRM*>(active);
-    if (self->original_read_cb_ != nullptr) {
-        self->original_read_cb_(indev, data);
+    if (!self->plane_rotation_hook_.read_original(indev, data)) {
+        return;
     }
     if (self->plane_rotation_degrees_ == 0 || self->panel_w_ <= 0 || self->panel_h_ <= 0) {
         return;
