@@ -523,9 +523,9 @@ void AdvancedPanel::handle_helix_plugin_uninstall_clicked() {
     opts.owner_token = object_lifetime_.token();
     helix::ui::modal_confirm(
         lv_tr("Uninstall HelixPrint Plugin?"),
-        lv_tr("This removes the plugin's Moonraker component. If old phase-tracking lines are "
-              "still in PRINT_START, they are removed too, with backups kept. A Klipper restart "
-              "applies that."),
+        lv_tr("This removes the plugin's Moonraker component and restarts Moonraker. The printer "
+              "will briefly disconnect. If old phase-tracking lines are still in PRINT_START, "
+              "they are removed too, with backups kept. A Klipper restart applies that."),
         ModalSeverity::Error, lv_tr("Uninstall"), [this]() { run_helix_plugin_uninstall(); }, opts);
 }
 
