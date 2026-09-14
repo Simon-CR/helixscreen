@@ -337,6 +337,53 @@ TEST_CASE_METHOD(XMLTestFixture, "Base layout row fits at TINY_PORTRAIT with a c
     check_row_fits_at(320, 480);
 }
 
+// The inputs must shrink below 120px on a narrow screen (above) but never grow
+// past it on a wide one: a flex_grow column with no cap would give each input
+// far more than 120px at 1024x600, changing how the row has always looked on
+// every screen that was never part of this finding.
+namespace {
+
+void check_row_capped_at(int32_t screen_w, int32_t screen_h) {
+    lv_display_t* disp = lv_display_get_default();
+    REQUIRE(disp != nullptr);
+
+    {
+        ScopedResolution res(disp, screen_w, screen_h);
+        theme_manager_refresh_layout_constants(disp);
+
+        reset_material_temps_singleton();
+        MaterialSettingsManager::instance().clear_override("ABS");
+        set_capability("printer_has_chamber_heater", 1);
+        REQUIRE(lv_xml_register_component_from_file("A:ui_xml/material_temps_overlay.xml") ==
+                LV_RESULT_OK);
+
+        auto& overlay = helix::settings::get_material_temps_overlay();
+        overlay.show(lv_screen_active());
+        helix::ui::UpdateQueue::instance().drain();
+        overlay.handle_material_row_clicked("ABS");
+        lv_obj_update_layout(lv_screen_active());
+
+        for (const char* name :
+             {"edit_nozzle_min", "edit_nozzle_max", "edit_bed_temp", "edit_chamber_temp"}) {
+            lv_obj_t* input = find_widget(name);
+            REQUIRE(input != nullptr);
+            INFO("input " << name);
+            CHECK(lv_obj_get_width(input) <= 120);
+        }
+
+        MaterialSettingsManager::instance().clear_override("ABS");
+        reset_material_temps_singleton();
+    }
+    theme_manager_refresh_layout_constants(disp);
+}
+
+} // namespace
+
+TEST_CASE_METHOD(XMLTestFixture, "Base layout row inputs stay capped at 120px at 1024x600",
+                 "[material_temps][chamber]") {
+    check_row_capped_at(1024, 600);
+}
+
 // The printer's cap is a send-time authority, not a database bound: a value
 // above the cap stores as entered, and TemperatureController clamps it where
 // a target is actually sent (prestonbrown/helixscreen#1615).
