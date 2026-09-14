@@ -27,6 +27,7 @@
 
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -146,6 +147,63 @@ struct CommitFixture : LVGLTestFixture {
         slot.spoolman_id = spoolman_id;
         backend->set_slot_info(0, slot, /*persist=*/false);
         return &api;
+    }
+};
+
+/// An AFC lane linked to spool 42 the way a restart leaves it: the stored
+/// record in both stores, and firmware naming the same spool.
+struct RestartedAfcLinkFixture : CommitFixture {
+    // Emplaced once SettingsManager's subjects exist, and torn down before
+    // CommitFixture's destructor clears AmsState.
+    std::optional<helix::test::RegisteredBackend<AmsBackendAfc>> registration;
+    AmsBackendAfc* afc = nullptr;
+
+    RestartedAfcLinkFixture() {
+        SettingsManager::instance().init_subjects();
+        registration.emplace(nullptr, nullptr);
+        afc = &**registration;
+        AfcTestAccess::initialize_slots(*afc, std::vector<std::string>{"lane1", "lane2"});
+        AmsState::instance().set_moonraker_api(&api);
+
+        const helix::ams::FilamentSlotOverride stored = linked_record(42);
+        {
+            std::lock_guard<std::mutex> lock(AfcTestAccess::mutex(*afc));
+            AfcTestAccess::overrides(*afc)[0] = stored;
+        }
+        helix::test::file_override_as_lane_records(*afc, 0, stored);
+        feed_afc_lane(*afc, "lane1", {{"prep", true}, {"status", "Loaded"}, {"spool_id", 42}});
+        REQUIRE(helix::ams::resolve(helix::ams::lane_sources(lane())).spoolman_id == 42);
+    }
+
+    [[nodiscard]] helix::ams::LaneId lane() const {
+        return registration->lane(0);
+    }
+
+    /// Relink the lane from spool 42 to @p spool_id through the editor.
+    void relink(int spool_id) {
+        SlotInfo original = afc->get_slot_info(0);
+        REQUIRE(original.spoolman_id == 42);
+        SlotInfo relinked = original;
+        relinked.spoolman_id = spool_id;
+        REQUIRE(AmsState::instance().commit_slot_edit(0, original, relinked).success());
+    }
+
+    /// The user's link to @p spool_id stands in the stored record and in the
+    /// lane model after firmware's frame naming @p frame.
+    void check_link_stands(int spool_id, const char* frame) {
+        INFO("after the frame naming " << frame);
+        {
+            std::lock_guard<std::mutex> lock(AfcTestAccess::mutex(*afc));
+            const auto& overrides = AfcTestAccess::overrides(*afc);
+            const auto kept = overrides.find(0);
+            REQUIRE(kept != overrides.end());
+            CHECK(kept->second.spoolman_id == spool_id);
+        }
+
+        const auto sources = helix::ams::lane_sources(lane());
+        REQUIRE(sources.local_user.has_value());
+        CHECK(sources.local_user->spoolman_id == spool_id);
+        CHECK(helix::ams::resolve(sources).spoolman_id == spool_id);
     }
 };
 
@@ -565,50 +623,30 @@ TEST_CASE("an unlink the backend refuses leaves the server's record standing",
 
 TEST_CASE("an AFC relink after a restart survives its own echo",
           "[ams][commit][lane][spoolman][afc]") {
-    CommitFixture f;
-    SettingsManager::instance().init_subjects();
-    helix::test::RegisteredBackend<AmsBackendAfc> afc(nullptr, nullptr);
-    AfcTestAccess::initialize_slots(*afc, std::vector<std::string>{"lane1", "lane2"});
-    auto& ams = AmsState::instance();
-    ams.set_moonraker_api(&f.api);
-
-    // What a restart leaves on a linked lane: the stored record in both stores,
-    // and firmware naming the same spool.
-    const helix::ams::FilamentSlotOverride stored = linked_record(42);
-    {
-        std::lock_guard<std::mutex> lock(AfcTestAccess::mutex(*afc));
-        AfcTestAccess::overrides(*afc)[0] = stored;
-    }
-    helix::test::file_override_as_lane_records(*afc, 0, stored);
-    feed_afc_lane(*afc, "lane1", {{"prep", true}, {"status", "Loaded"}, {"spool_id", 42}});
-    REQUIRE(helix::ams::resolve(helix::ams::lane_sources(afc.lane(0))).spoolman_id == 42);
-
-    SlotInfo original = afc->get_slot_info(0);
-    REQUIRE(original.spoolman_id == 42);
-    SlotInfo relinked = original;
-    relinked.spoolman_id = 99;
-
-    REQUIRE(ams.commit_slot_edit(0, original, relinked).success());
-    CHECK(helix::ams::resolve(helix::ams::lane_sources(afc.lane(0))).spoolman_id.value_or(-1) ==
-          99);
+    RestartedAfcLinkFixture f;
+    f.relink(99);
+    CHECK(helix::ams::resolve(helix::ams::lane_sources(f.lane())).spoolman_id.value_or(-1) == 99);
 
     // Firmware reports the spool we wrote. That is our own write coming back,
     // so the declaration the user just made has to survive it, in the stored
     // record and in the lane model.
-    feed_afc_lane(*afc, "lane1", {{"spool_id", 99}});
+    feed_afc_lane(*f.afc, "lane1", {{"spool_id", 99}});
+    f.check_link_stands(99, "the new spool");
+}
 
-    {
-        std::lock_guard<std::mutex> lock(AfcTestAccess::mutex(*afc));
-        const auto& overrides = AfcTestAccess::overrides(*afc);
-        const auto kept = overrides.find(0);
-        REQUIRE(kept != overrides.end());
-        CHECK(kept->second.spoolman_id == 99);
-    }
+TEST_CASE("an AFC relink after a restart survives a stale frame naming the old spool",
+          "[ams][commit][lane][spoolman][afc]") {
+    RestartedAfcLinkFixture f;
+    f.relink(99);
 
-    const auto sources = helix::ams::lane_sources(afc.lane(0));
-    REQUIRE(sources.local_user.has_value());
-    CHECK(sources.local_user->spoolman_id == 99);
-    CHECK(helix::ams::resolve(sources).spoolman_id == 99);
+    // Firmware keeps reporting the spool it held until the write lands, so a
+    // frame still naming 42 is our own write in flight, not another writer
+    // re-binding the lane.
+    feed_afc_lane(*f.afc, "lane1", {{"spool_id", 42}});
+    f.check_link_stands(99, "the old spool");
+
+    feed_afc_lane(*f.afc, "lane1", {{"spool_id", 99}});
+    f.check_link_stands(99, "the new spool");
 }
 
 TEST_CASE("a later edit amends the user's record instead of replacing it", "[ams][commit][lane]") {
