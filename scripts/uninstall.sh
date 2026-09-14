@@ -4487,9 +4487,12 @@ _rcd_slot() {
 # rc.common's own disable globs), run `enable`, then verify each link by
 # readlink against ../init.d/<name>.
 #
-# Both START and STOP are required: START is the boot slot, and without
-# STOP rc.common makes no K link — this installer requires the shutdown
-# half of the pair.
+# START is required: it is the boot slot, and without it rc.common makes
+# no S link — there is no boot entry to verify. STOP is verified when
+# declared: rc.common makes no K link without one, and this helper also
+# runs against stock firmware scripts we do not author, so an absent or
+# unparseable STOP downgrades to a warning and an S-only verification
+# instead of failing the enable.
 enable_and_verify_rcd() {
     local script="$1"
     local name start stop
@@ -4515,9 +4518,8 @@ enable_and_verify_rcd() {
         return 1
     fi
     if ! stop="$(_rcd_slot STOP "$script")"; then
-        log_error "unparseable STOP= in $script (expected a two-digit slot)"
-        log_error "Manual fix: set STOP=<nn> to a plain number in $script"
-        return 1
+        log_warn "$name: no parseable STOP= in $script — the shutdown half of the boot entry is left unverified"
+        stop=""
     fi
 
     # The glob must expand as root: an unprivileged shell cannot read
@@ -4533,9 +4535,11 @@ enable_and_verify_rcd() {
     fi
 
     _verify_rcd_link "/etc/rc.d/S${start}${name}" "../init.d/$name" "$script" || return 1
-    _verify_rcd_link "/etc/rc.d/K${stop}${name}" "../init.d/$name" "$script" || return 1
+    if [ -n "$stop" ]; then
+        _verify_rcd_link "/etc/rc.d/K${stop}${name}" "../init.d/$name" "$script" || return 1
+    fi
 
-    log_info "$name: rc.d boot links verified (S${start}${name} K${stop}${name})"
+    log_info "$name: rc.d boot links verified (S${start}${name}${stop:+ K${stop}${name}})"
     return 0
 }
 
@@ -4578,17 +4582,19 @@ install_procd_shim_k2() {
 # web-server (killall -9 in the stock app's stop_service, ours included,
 # even with the app already stopped) while disable only removes the app's
 # rc.d links. The hook therefore restores the carve-out at the end of every
-# HelixScreen start, through the rc.common script this installs at
-# /etc/init.d/helix-k2-webserver. The script is the service-shaped starter
-# the hook calls and the manual handle; its rc.d boot entry is
-# belt-and-braces next to the hook's restore.
+# HelixScreen start, through the rc.common procd script this installs at
+# /etc/init.d/helix-k2-webserver — the service-shaped starter and
+# supervisor whose registered instance procd respawns. Its rc.d boot entry
+# is belt-and-braces next to the hook's restore.
 #
-# Must be called AFTER start_service: the service start is what runs
-# platform_stop_competing_uis — the hook's own restore already brings
-# web-server back, and the explicit start here is the same belt-and-braces
-# for paths that bypass the hook (a direct launcher start, say). No-op when
-# the stock app service is absent (a firmware without the stock set has
-# nothing to carve out of) or when procd's rc.common is missing.
+# INSTALL half: runs BEFORE start_service, so the hook's first
+# platform_stop_competing_uis finds the script and the procd instance is
+# registered from the first launch (the hook's bare-launch fallback then
+# stays unreachable for shipped payloads; it exists for degraded installs
+# that never got this script). No-op when the stock app service is absent
+# (a firmware without the stock set has nothing to carve out of) or when
+# procd's rc.common is missing. The START half is
+# start_k2_webserver_backend, which runs after start_service.
 install_k2_webserver_backend() {
     [ "${1:-}" = "k2" ] || return 0
 
@@ -4632,12 +4638,27 @@ install_k2_webserver_backend() {
     enable_and_verify_rcd "$dest" || return 1
 
     log_info "Installed K2 web-server carve-out: $dest (boot symlink verified)"
-    # Bring web-server up now — the stock instance died with the app stop
-    # the service start just ran. A failed start is logged, not fatal: the
-    # boot entry above is already verified, so the carve-out comes up at
-    # the next reboot regardless.
-    if ! $SUDO "$dest" start 2>/dev/null; then
-        log_warn "K2 web-server carve-out: start failed; it will start at the next boot"
+    return 0
+}
+
+# START half of the carve-out install: bring web-server up for the current
+# session, AFTER start_service. The service start's hook already ran
+# platform_stop_competing_uis — its app stop took whatever web-server was
+# live down, and its own restore brings the carve-out back — so this
+# explicit start is belt-and-braces for paths that bypass the hook (a
+# degraded install whose hook was never copied, say). A failed start is
+# logged, not fatal: procd respawns a registered instance, and the verified
+# boot entry brings it up at the next boot. No-op when the carve-out script
+# is not installed.
+start_k2_webserver_backend() {
+    [ "${1:-}" = "k2" ] || return 0
+
+    if [ ! -x /etc/init.d/helix-k2-webserver ]; then
+        return 0
+    fi
+
+    if ! $SUDO /etc/init.d/helix-k2-webserver start 2>/dev/null; then
+        log_warn "K2 web-server carve-out: start failed; procd respawn or the next boot brings it up"
     fi
     return 0
 }

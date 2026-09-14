@@ -846,21 +846,26 @@ main() {
     # already exists.
     configure_alsa_default || true
 
+    # K2: install the web-server carve-out's init script
+    # (prestonbrown/helixscreen#1617) BEFORE the service start, so the
+    # hook's first platform_stop_competing_uis finds the script and the
+    # procd instance is registered from the first launch. No-op off K2.
+    # The || guard keeps a carve-out failure non-fatal under set -eu: a
+    # supplementary backend must not abort the install — the function has
+    # already logged the fault and the manual fix.
+    install_k2_webserver_backend "$platform" ||
+        log_warn "Web-server carve-out incomplete; the UI install itself is fine"
+
     # Start service
     start_service "$platform"
 
-    # K2: install and start the web-server carve-out
-    # (prestonbrown/helixscreen#1617). Must follow start_service: the
-    # service start runs platform_stop_competing_uis, whose app stop+
-    # disable take the stock web-server down — the hook's own restore and
-    # this start both bring the carve-out back for the current session,
-    # and the hook keeps it across reboots and restarts. No-op off K2.
-    # The || guard keeps a carve-out failure non-fatal: we run under
-    # set -eu with the service already started, and a supplementary
-    # backend must not abort the install before cleanup_* runs — the
-    # function has already logged the error and the manual fix.
-    install_k2_webserver_backend "$platform" ||
-        log_warn "Web-server carve-out incomplete; the UI install itself is fine"
+    # K2: bring the carve-out up for this session. The service start just
+    # ran the hook, whose app stop (killall -9) took whatever web-server
+    # was live down; the hook's own restore, this start, and procd's
+    # respawn bring it back. Belt-and-braces for paths that bypass the
+    # hook. No-op off K2; non-fatal on the same || contract.
+    start_k2_webserver_backend "$platform" ||
+        log_warn "Web-server carve-out not started; the UI install itself is fine"
 
     cleanup_old_install
     cleanup_migrated_install

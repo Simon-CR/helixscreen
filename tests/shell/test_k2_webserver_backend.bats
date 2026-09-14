@@ -65,15 +65,23 @@ setup() {
 # dispatch the action, plus the enable/disable symlink handling the boot
 # iterator depends on. enable makes S${START}name + K${STOP}name with both
 # slots read from the target script's own directives (the convention
-# measured on the device), disable rm's the S??/K?? entries in any slot,
-# and enable exits 0 when at least one link was made — the partial-enable
-# trap the installer verifies against.
+# measured on the device), disable rm's the S??/K?? entries in any slot and
+# kills nothing (disable only removes rc.d links), and enable exits 0 when
+# at least one link was made — the partial-enable trap the installer
+# verifies against.
 #
-# stop and disable also kill the service's tracked instances, modeling
-# Tina/procd, where /etc/init.d/app stop+disable take a running web-server
-# down with it. A tracked instance is modeled as
-# a pidfile path listed under var/run/procd-instances/<service> — killing
-# by pid is the sandbox-safe stand-in for procd stopping its instances.
+# A USE_PROCD script gets a one-instance procd model: `start` runs its
+# start_service with procd_open_instance/procd_set_param/
+# procd_close_instance stubs that record the instance's params and spawn
+# the command in the background, tracking its pid via a pidfile line under
+# var/run/procd-instances/<service>. `stop` kills the tracked pids and
+# drops the record (procd's stop waits for exit); `status` reports from the
+# record; `restart` is stop+start. A start whose tracked pid is dead
+# REPLACES the registration — the fake's contract for the registered-but-
+# dead corner; the device pass reconciles with real procd and we adjust if
+# they differ. A script without USE_PROCD keeps legacy dispatch of its own
+# functions, and `stop` also kills the tracked pids (the stock app's
+# stop_service killall takes down whatever is tracked under it).
 write_fake_rc_common() {
     cat > "$MOCK_ROOT/etc/rc.common" << RC_EOF
 #!/bin/sh
@@ -82,6 +90,7 @@ action="\${2:-boot}"
 name=\$(basename "\$script")
 . "\$script"
 instances="$MOCK_ROOT/var/run/procd-instances/\$name"
+instance_params="$MOCK_ROOT/var/run/procd-params-\$name"
 kill_instances() {
     [ -f "\$instances" ] || return 0
     while IFS= read -r pf; do
@@ -89,6 +98,30 @@ kill_instances() {
         _ip=\$(cat "\$pf" 2>/dev/null)
         [ -n "\$_ip" ] && kill "\$_ip" 2>/dev/null
     done < "\$instances"
+    rm -f "\$instances"
+    return 0
+}
+procd_open_instance() {
+    : > "\$instance_params"
+    rm -f "\$instances"
+}
+procd_set_param() {
+    case "\$1" in
+        command) shift; printf 'command %s\n' "\$*" >> "\$instance_params" ;;
+        respawn) shift; printf 'respawn %s\n' "\$*" >> "\$instance_params" ;;
+        env)     shift; printf 'env %s\n' "\$*" >> "\$instance_params" ;;
+    esac
+    return 0
+}
+procd_close_instance() {
+    _cmd=\$(sed -n 's/^command //p' "\$instance_params" | tail -n 1)
+    [ -n "\$_cmd" ] || return 0
+    "\$_cmd" >/dev/null 2>&1 &
+    _pid=\$!
+    _pidfile="$MOCK_ROOT/var/run/procd-\$name.pid"
+    echo "\$_pid" > "\$_pidfile"
+    mkdir -p "$MOCK_ROOT/var/run/procd-instances"
+    echo "\$_pidfile" > "\$instances"
     return 0
 }
 case "\$action" in
@@ -99,11 +132,48 @@ case "\$action" in
         exit 0
         ;;
     disable)
-        kill_instances
         rm -f "$MOCK_ROOT"/etc/rc.d/S??"\$name" "$MOCK_ROOT"/etc/rc.d/K??"\$name"
         ;;
+    start)
+        if [ "\$USE_PROCD" = 1 ]; then
+            start_service
+            exit 0
+        fi
+        command -v start >/dev/null 2>&1 && start
+        ;;
+    stop)
+        if [ "\$USE_PROCD" = 1 ]; then
+            kill_instances
+            exit 0
+        fi
+        kill_instances
+        command -v stop >/dev/null 2>&1 && stop
+        ;;
+    restart)
+        if [ "\$USE_PROCD" = 1 ]; then
+            kill_instances
+            start_service
+            exit 0
+        fi
+        command -v restart >/dev/null 2>&1 && restart
+        ;;
+    status)
+        if [ "\$USE_PROCD" = 1 ]; then
+            if [ -f "\$instances" ]; then
+                while IFS= read -r pf; do
+                    _p=\$(cat "\$pf" 2>/dev/null)
+                    if [ -n "\$_p" ] && kill -0 "\$_p" 2>/dev/null; then
+                        echo "running (PID \$_p)"
+                        exit 0
+                    fi
+                done < "\$instances"
+            fi
+            echo "stopped"
+            exit 1
+        fi
+        command -v status >/dev/null 2>&1 && status
+        ;;
     *)
-        [ "\$action" = "stop" ] && kill_instances
         command -v "\$action" >/dev/null 2>&1 && "\$action"
         ;;
 esac
@@ -131,7 +201,6 @@ redirected_init_script() {
     local out="$BATS_TEST_TMPDIR/k2-webserver.init.redirected"
     sed -e "s|/usr/sbin:/usr/bin:/sbin:/bin:||" \
         -e "s|/usr/bin/web-server|$MOCK_ROOT/usr/bin/web-server|g" \
-        -e "s|/var/run/helix-k2-webserver.pid|$MOCK_ROOT/var/run/helix-k2-webserver.pid|g" \
         "$INIT_SRC" > "$out"
     repoint_rc_common_shebang "$out"
     cat "$out"
@@ -162,15 +231,27 @@ await_launch_count() {
     return 1
 }
 
-# Stateful pidof stand-in: reports web-server alive exactly when the init
-# script's pidfile names a live process — the same question real pidof
-# answers for the hook's guard.
+# Stateful pidof stand-in: reports web-server alive when a tracked
+# instance pid (procd's record) or the stub's own pidfile names a live
+# process — the same question real pidof answers for the guards.
 mock_pidof_webserver() {
     mkdir -p "$BATS_TEST_TMPDIR/bin"
     cat > "$BATS_TEST_TMPDIR/bin/pidof" << PIDOF_EOF
 #!/bin/sh
-if [ -f "$MOCK_ROOT/var/run/helix-k2-webserver.pid" ]; then
-    p=\$(cat "$MOCK_ROOT/var/run/helix-k2-webserver.pid" 2>/dev/null)
+[ "\$1" = web-server ] || exit 1
+if [ -f "$MOCK_ROOT/var/run/procd-instances/helix-k2-webserver" ]; then
+    while IFS= read -r pf; do
+        p=\$(cat "\$pf" 2>/dev/null)
+        if [ -n "\$p" ] && kill -0 "\$p" 2>/dev/null; then
+            echo "\$p"
+            exit 0
+        fi
+    done < "$MOCK_ROOT/var/run/procd-instances/helix-k2-webserver"
+fi
+# A bare-launched stub (no procd record) is still visible by name to a
+# real pidof; the stub's own pidfile models that.
+if [ -f "$BATS_TEST_TMPDIR/webserver.pid" ]; then
+    p=\$(cat "$BATS_TEST_TMPDIR/webserver.pid" 2>/dev/null)
     if [ -n "\$p" ] && kill -0 "\$p" 2>/dev/null; then
         echo "\$p"
         exit 0
@@ -182,12 +263,12 @@ PIDOF_EOF
     export PATH="$BATS_TEST_TMPDIR/bin:$PATH"
 }
 
-# Mark the running web-server as an instance procd tracks under the app
-# service: the hook's /etc/init.d/app stop+disable take a running
-# web-server down on Tina/procd.
+# Mark the running web-server as an instance the stock app service's stop
+# takes down: the hook's /etc/init.d/app stop runs killall -9 over the
+# stock set, ours included.
 seed_app_tracks_webserver() {
     mkdir -p "$MOCK_ROOT/var/run/procd-instances"
-    echo "$MOCK_ROOT/var/run/helix-k2-webserver.pid" \
+    echo "$MOCK_ROOT/var/run/procd-helix-k2-webserver.pid" \
         > "$MOCK_ROOT/var/run/procd-instances/app"
 }
 
@@ -254,16 +335,18 @@ write_shim_source() {
     grep -q 'helix-k2-webserver' "$HOOK"
 }
 
-# --- the init script asset: the procd boot contract ---
+# --- the init script asset: the procd contract ---
 
-@test "k2 init script has the rc.common shebang procd's boot iterator requires" {
+@test "k2 init script has the rc.common shebang rc.common dispatches" {
     head -1 "$INIT_SRC" | grep -q '^#!/bin/sh /etc/rc.common$'
 }
 
-@test "k2 init script declares START, STOP and DEPEND" {
+@test "k2 init script declares START, STOP, DEPEND and USE_PROCD" {
     grep -q '^START=99$' "$INIT_SRC"
     grep -q '^STOP=01$' "$INIT_SRC"
     grep -q '^DEPEND="done"$' "$INIT_SRC"
+    # rc.common supplies stop/restart/status for a USE_PROCD script.
+    grep -q '^USE_PROCD=1$' "$INIT_SRC"
 }
 
 @test "k2 init script passes sh syntax check" {
@@ -277,98 +360,172 @@ write_shim_source() {
 
 @test "k2 init script starts exactly web-server" {
     [ "$(sed -n 's|^WEBSERVER_BIN="/usr/bin/\(.*\)"$|\1|p' "$INIT_SRC")" = "web-server" ]
+    # One instance, running exactly that binary.
+    [ "$(grep -c '^ *procd_set_param command ' "$INIT_SRC")" -eq 1 ]
+    grep -q 'procd_set_param command "$WEBSERVER_BIN"' "$INIT_SRC"
 }
 
-@test "k2 init script never kills by name" {
-    # stop is pidfile-scoped so it cannot take down a stock web-server that
-    # an uninstall-time /etc/init.d/app start just restored. The file check
-    # comes first: a missing file must read as failure, not as "no killall
-    # found".
+@test "k2 init script registers its instance with an unbounded respawn" {
+    grep -q 'procd_set_param respawn' "$INIT_SRC"
+    # retry 0 = respawn forever: the carve-out must outlive arbitrary
+    # crashes, so a bounded retry that gives up during a long outage is
+    # the wrong default.
+    grep -q 'HELIX_WS_RESPAWN_RETRY:-0' "$INIT_SRC"
+    # The instance env mirrors the stock app's.
+    grep -q 'procd_set_param env HOME=/root' "$INIT_SRC"
+}
+
+@test "k2 init script issues no kill anywhere" {
+    # Stopping is procd's: the instance-scoped stop rc.common supplies
+    # under USE_PROCD. A kill issued here could reach a stock web-server
+    # that an uninstall-time /etc/init.d/app start just restored. The file
+    # check comes first: a missing file must read as failure, not as "no
+    # kill found". Comments are excluded — the header narrates the stock
+    # stop's killall.
     [ -f "$INIT_SRC" ]
-    if grep -q 'killall' "$INIT_SRC"; then
-        echo "stop must kill via pidfile, not killall" >&2
+    if sed '/^[[:space:]]*#/d' "$INIT_SRC" | grep -nE '(killall|kill)([[:space:]]|$)'; then
+        echo "the script must not kill; procd owns stopping" >&2
         return 1
     fi
 }
 
 # --- the init script asset: behavior, via the fake rc.common ---
 
-@test "k2 init script: start launches web-server once and records the pidfile" {
+@test "k2 init script: start registers one instance and launches web-server once" {
     write_fake_webserver
     local dest="$MOCK_ROOT/etc/init.d/helix-k2-webserver"
     redirected_init_script > "$dest"
     chmod +x "$dest"
-    mock_command_script "pidof" "exit 1"
+    mock_pidof_webserver
 
     run "$dest" start
     [ "$status" -eq 0 ]
     await_launch_count 1
-    [ -f "$MOCK_ROOT/var/run/helix-k2-webserver.pid" ]
+    local pid
+    pid="$(cat "$MOCK_ROOT/var/run/procd-helix-k2-webserver.pid")"
+    kill -0 "$pid"
+    # The instance record tracks exactly that pid's pidfile.
+    [ "$(cat "$MOCK_ROOT/var/run/procd-instances/helix-k2-webserver")" = \
+       "$MOCK_ROOT/var/run/procd-helix-k2-webserver.pid" ]
 
-    # A second start that sees web-server running launches nothing new.
-    mock_command_script "pidof" "echo 314; exit 0"
+    # A second start that sees web-server running registers nothing new.
     run "$dest" start
     [ "$status" -eq 0 ]
     await_launch_count 1
 }
 
-@test "k2 init script: real lifecycle — stop kills the started pid and clears the pidfile" {
+@test "k2 init script: stop kills the instance process and drops the record" {
     write_fake_webserver
     local dest="$MOCK_ROOT/etc/init.d/helix-k2-webserver"
     redirected_init_script > "$dest"
     chmod +x "$dest"
-    mock_command_script "pidof" "exit 1"
+    mock_pidof_webserver
 
     "$dest" start
     local pid
-    pid="$(cat "$MOCK_ROOT/var/run/helix-k2-webserver.pid")"
+    pid="$(cat "$MOCK_ROOT/var/run/procd-helix-k2-webserver.pid")"
     kill -0 "$pid"
 
     run "$dest" stop
     [ "$status" -eq 0 ]
-    [ ! -f "$MOCK_ROOT/var/run/helix-k2-webserver.pid" ]
+    [ ! -f "$MOCK_ROOT/var/run/procd-instances/helix-k2-webserver" ]
     if kill -0 "$pid" 2>/dev/null; then
         kill -9 "$pid" 2>/dev/null
-        echo "stop left the started web-server alive" >&2
+        echo "stop left the instance process alive" >&2
         return 1
     fi
 }
 
 @test "k2 init script: start skips a missing binary without failing" {
-    # A firmware variant without the Creality stack must boot clean.
+    # A firmware variant without the Creality stack must boot clean, and
+    # registers nothing.
     local dest="$MOCK_ROOT/etc/init.d/helix-k2-webserver"
     redirected_init_script > "$dest"
     chmod +x "$dest"
-    mock_command_script "pidof" "exit 1"
+    mock_pidof_webserver
 
     run "$dest" start
     [ "$status" -eq 0 ]
     [ ! -f "$BATS_TEST_TMPDIR/servers.log" ]
+    [ ! -f "$MOCK_ROOT/var/run/procd-instances/helix-k2-webserver" ]
 }
 
-@test "k2 init script: status reports running and not-running" {
+@test "k2 init script: status reports the tracked instance" {
+    write_fake_webserver
     local dest="$MOCK_ROOT/etc/init.d/helix-k2-webserver"
     redirected_init_script > "$dest"
     chmod +x "$dest"
+    mock_pidof_webserver
 
-    mock_command_script "pidof" "echo 4242; exit 0"
-    run "$dest" status
-    [ "$status" -eq 0 ]
-    contains "web-server is running (PID 4242)" "$output"
-
-    mock_command_script "pidof" "exit 1"
     run "$dest" status
     [ "$status" -ne 0 ]
-    contains "web-server is not running" "$output"
+    contains "stopped" "$output"
+
+    "$dest" start
+    run "$dest" status
+    [ "$status" -eq 0 ]
+    contains "running" "$output"
+}
+
+@test "k2 init script: restart replaces the instance, leaving the new one up" {
+    write_fake_webserver
+    local dest="$MOCK_ROOT/etc/init.d/helix-k2-webserver"
+    redirected_init_script > "$dest"
+    chmod +x "$dest"
+    mock_pidof_webserver
+
+    "$dest" start
+    local old
+    old="$(cat "$MOCK_ROOT/var/run/procd-helix-k2-webserver.pid")"
+
+    run "$dest" restart
+    [ "$status" -eq 0 ]
+    await_launch_count 2
+    local new
+    new="$(cat "$MOCK_ROOT/var/run/procd-helix-k2-webserver.pid")"
+    [ "$new" != "$old" ]
+    kill -0 "$new"
+    if kill -0 "$old" 2>/dev/null; then
+        kill -9 "$old" 2>/dev/null
+        echo "restart left the old instance alive" >&2
+        return 1
+    fi
+}
+
+@test "k2 init script: a killed registered instance is replaced by start" {
+    # The fake's contract for the registered-but-dead corner: start
+    # re-registers (replaces). The device pass reconciles with real procd
+    # and we adjust if they differ.
+    write_fake_webserver
+    local dest="$MOCK_ROOT/etc/init.d/helix-k2-webserver"
+    redirected_init_script > "$dest"
+    chmod +x "$dest"
+    mock_pidof_webserver
+
+    "$dest" start
+    local old
+    old="$(cat "$MOCK_ROOT/var/run/procd-helix-k2-webserver.pid")"
+    kill -9 "$old" 2>/dev/null
+    local tries=0
+    while kill -0 "$old" 2>/dev/null && [ "$tries" -lt 50 ]; do
+        tries=$((tries + 1))
+        sleep 0.1
+    done
+
+    "$dest" start
+    await_launch_count 2
+    local new
+    new="$(cat "$MOCK_ROOT/var/run/procd-helix-k2-webserver.pid")"
+    [ "$new" != "$old" ]
+    kill -0 "$new"
 }
 
 # --- install_k2_webserver_backend ---
 
-@test "k2 install: installs, enables, records and starts the carve-out" {
+@test "k2 install: installs, enables and records the carve-out without starting it" {
     write_fake_webserver
     write_stock_app_service
     redirected_init_script > "$INSTALL_DIR/config/k2-webserver.init"
-    mock_command_script "pidof" "exit 1"
 
     run install_k2_webserver_backend k2
     [ "$status" -eq 0 ]
@@ -380,8 +537,37 @@ write_shim_source() {
     # the K link is the shutdown half of the pair rc.common makes.
     [ "$(readlink "$MOCK_ROOT/etc/rc.d/S99helix-k2-webserver")" = "../init.d/helix-k2-webserver" ]
     [ "$(readlink "$MOCK_ROOT/etc/rc.d/K01helix-k2-webserver")" = "../init.d/helix-k2-webserver" ]
-    # Started within the install: the fake binary recorded its launch.
+    # Launching is the start half's job; the install half never starts.
+    [ ! -f "$BATS_TEST_TMPDIR/servers.log" ]
+}
+
+@test "k2 start half: brings the carve-out up and stays non-fatal when it cannot" {
+    write_fake_webserver
+    write_stock_app_service
+    redirected_init_script > "$INSTALL_DIR/config/k2-webserver.init"
+    install_k2_webserver_backend k2
+    mock_pidof_webserver
+
+    run start_k2_webserver_backend k2
+    [ "$status" -eq 0 ]
     grep -q "launched web-server" "$BATS_TEST_TMPDIR/servers.log"
+
+    # No-op off K2 and without the installed script.
+    run start_k2_webserver_backend pi
+    [ "$status" -eq 0 ]
+    rm -f "$MOCK_ROOT/etc/init.d/helix-k2-webserver"
+    run start_k2_webserver_backend k2
+    [ "$status" -eq 0 ]
+
+    # A failing start warns and returns 0, leaving respawn and the boot
+    # entry as the recovery paths.
+    redirected_init_script > "$MOCK_ROOT/etc/init.d/helix-k2-webserver"
+    chmod +x "$MOCK_ROOT/etc/init.d/helix-k2-webserver"
+    printf '#!/bin/sh\nexit 1\n' > "$MOCK_ROOT/etc/rc.common"
+    chmod +x "$MOCK_ROOT/etc/rc.common"
+    run start_k2_webserver_backend k2
+    [ "$status" -eq 0 ]
+    grep -q "WARN.*start failed" "$BATS_TEST_TMPDIR/log"
 }
 
 @test "k2 install: no-op off the k2 platform" {
@@ -414,21 +600,33 @@ write_shim_source() {
     [ ! -e "$MOCK_ROOT/etc/init.d/helix-k2-webserver" ]
 }
 
-@test "k2 install: reached from the install flow after start_service" {
-    # The function is worthless if nothing invokes it, and it must run
-    # AFTER the service start (which is what stops the stock web-server).
-    grep -q 'install_k2_webserver_backend' "$MAIN_MODULE"
-    awk '/start_service "\$platform"/{seen=1} seen && /install_k2_webserver_backend/{found=1} END{exit !found}' "$MAIN_MODULE"
+@test "k2 install: install half before start_service, start half after" {
+    # Install first so the hook's first platform_stop_competing_uis finds
+    # the script and the procd instance registers from launch; start after
+    # because the service start's hook kills whatever web-server is live.
+    awk '
+        /install_k2_webserver_backend "\$platform"/ { if (!ins) ins = NR }
+        /start_service "\$platform"/ { if (!svc) svc = NR }
+        /start_k2_webserver_backend "\$platform"/ { if (!str) str = NR }
+        END { exit !(ins && svc && str && ins < svc && svc < str) }
+    ' "$MAIN_MODULE"
 }
 
 @test "k2 install: a carve-out failure warns instead of aborting the installer" {
     # The installer runs set -eu with the service already started by the
-    # time this call happens; a bare call returning 1 would kill the whole
-    # install mid-tail and skip the cleanup_* tail.
-    awk '/install_k2_webserver_backend "\$platform"/ {
-            if ($0 ~ /\|\|/) ok=1
-            else if ((getline nxt) > 0 && nxt ~ /log_warn/) ok=1
-         } END { exit !ok }' "$MAIN_MODULE"
+    # time the start half runs; a bare call returning 1 would kill the
+    # whole install mid-tail and skip the cleanup_* tail. Both call sites
+    # carry the non-fatal || contract.
+    awk '
+        /install_k2_webserver_backend "\$platform"/ {
+            if ($0 ~ /\|\|/) ok1 = 1
+            else if ((getline nxt) > 0 && nxt ~ /log_warn/) ok1 = 1
+        }
+        /start_k2_webserver_backend "\$platform"/ {
+            if ($0 ~ /\|\|/) ok2 = 1
+            else if ((getline nxt) > 0 && nxt ~ /log_warn/) ok2 = 1
+        }
+        END { exit !(ok1 && ok2) }' "$MAIN_MODULE"
 }
 
 @test "k2 install: a partial enable without the K01 link fails the carve-out" {
@@ -448,8 +646,8 @@ write_shim_source() {
     [ "$(readlink "$MOCK_ROOT/etc/rc.d/S99helix-k2-webserver")" = "../init.d/helix-k2-webserver" ]
     grep -q "ERROR.*K01helix-k2-webserver" "$BATS_TEST_TMPDIR/log"
     grep -q "Manual fix:.*helix-k2-webserver enable" "$BATS_TEST_TMPDIR/log"
-    # The ledger entry precedes the enable, and the explicit start is
-    # never reached once verification failed.
+    # The ledger entry precedes the enable, and no start half runs after
+    # a failed verification.
     grep -qF "sysv-created:$MOCK_ROOT/etc/init.d/helix-k2-webserver" "$DISABLED_SERVICES_FILE"
     [ ! -f "$BATS_TEST_TMPDIR/servers.log" ]
 }
@@ -552,6 +750,29 @@ write_shim_source() {
     # would route a plain script into rc.common's disable path.
     : > "$MOCK_ROOT/etc/init.d/rcd-probe"
     refute is_rc_common_script "$MOCK_ROOT/etc/init.d/rcd-probe"
+}
+
+@test "k2 rc.d helper: a foreign script without STOP verifies S-only, with a warn" {
+    # STOP is verified-when-declared, not required: the helper also runs
+    # against stock firmware scripts we do not author, and rc.common
+    # simply makes no K link without one.
+    local foreign="$MOCK_ROOT/etc/init.d/foreign-svc"
+
+    printf '#!/bin/sh %s/etc/rc.common\nSTART=99\n' "$MOCK_ROOT" > "$foreign"
+    chmod +x "$foreign"
+    run enable_and_verify_rcd "$foreign"
+    [ "$status" -eq 0 ]
+    [ "$(readlink "$MOCK_ROOT/etc/rc.d/S99foreign-svc")" = "../init.d/foreign-svc" ]
+    [ ! -e "$MOCK_ROOT/etc/rc.d/K01foreign-svc" ]
+    grep -q "WARN.*no parseable STOP" "$BATS_TEST_TMPDIR/log"
+
+    # A non-numeric STOP spelling lands on the same S-only path.
+    printf '#!/bin/sh %s/etc/rc.common\nSTART=99\nSTOP=late\n' "$MOCK_ROOT" > "$foreign"
+    chmod +x "$foreign"
+    run enable_and_verify_rcd "$foreign"
+    [ "$status" -eq 0 ]
+    [ "$(readlink "$MOCK_ROOT/etc/rc.d/S99foreign-svc")" = "../init.d/foreign-svc" ]
+    grep -q "WARN.*no parseable STOP" "$BATS_TEST_TMPDIR/log"
 }
 
 # --- the dev deploy path ---
@@ -668,16 +889,16 @@ write_shim_source() {
     # Carve-out serving before the service start, as after a previous boot.
     "$MOCK_ROOT/etc/init.d/helix-k2-webserver" start
     local pid
-    pid="$(cat "$MOCK_ROOT/var/run/helix-k2-webserver.pid")"
+    pid="$(cat "$MOCK_ROOT/var/run/procd-helix-k2-webserver.pid")"
     kill -0 "$pid"
 
     # platform_stop_competing_uis is what S99helixscreen start runs; its
-    # app stop+disable just killed the instance procd tracked. A live
-    # successor must exist when it returns.
+    # app stop just killed the instance procd tracked. A live successor
+    # must exist when it returns.
     run_hook_stop_competing_uis
 
     local newpid
-    newpid="$(cat "$MOCK_ROOT/var/run/helix-k2-webserver.pid" 2>/dev/null)"
+    newpid="$(cat "$MOCK_ROOT/var/run/procd-helix-k2-webserver.pid" 2>/dev/null)"
     [ -n "$newpid" ]
     kill -0 "$newpid"
     await_launch_count 2
@@ -687,18 +908,18 @@ write_shim_source() {
 
 @test "k2 hook: guarded direct launch when the init script is absent" {
     # An older deploy without /etc/init.d/helix-k2-webserver must still
-    # come back serving after the app disable.
+    # come back serving after the app stop.
     write_fake_webserver
     write_stock_app_service
     seed_app_tracks_webserver
     mock_pidof_webserver
     mock_command_script "killall" 'exit 0'
 
-    # The carve-out's previous instance, pidfile-tracked so app stop can
-    # kill it exactly as procd would.
+    # The carve-out's previous instance, tracked under the app service so
+    # its stop kills it exactly as the stock killall would.
     "$MOCK_ROOT/usr/bin/web-server" >/dev/null 2>&1 &
     local pid=$!
-    echo "$pid" > "$MOCK_ROOT/var/run/helix-k2-webserver.pid"
+    echo "$pid" > "$MOCK_ROOT/var/run/procd-helix-k2-webserver.pid"
     kill -0 "$pid"
 
     run_hook_stop_competing_uis
@@ -712,9 +933,9 @@ write_shim_source() {
 }
 
 @test "k2 hook: restore reuses the init script, not a bare launch" {
-    # The init script writes the pidfile; a bare fallback launch does not.
-    # A rewritten pidfile after the hook is the proof the restore went
-    # through the service-shaped path.
+    # The init script registers a procd instance; a bare fallback launch
+    # does not. A rewritten instance record after the hook is the proof
+    # the restore went through the service-shaped path.
     write_fake_webserver
     write_stock_app_service
     redirected_init_script > "$MOCK_ROOT/etc/init.d/helix-k2-webserver"
@@ -725,15 +946,39 @@ write_shim_source() {
 
     "$MOCK_ROOT/etc/init.d/helix-k2-webserver" start
     local pid
-    pid="$(cat "$MOCK_ROOT/var/run/helix-k2-webserver.pid")"
+    pid="$(cat "$MOCK_ROOT/var/run/procd-helix-k2-webserver.pid")"
     kill -0 "$pid"
 
     run_hook_stop_competing_uis
 
     local newpid
-    newpid="$(cat "$MOCK_ROOT/var/run/helix-k2-webserver.pid" 2>/dev/null)"
+    newpid="$(cat "$MOCK_ROOT/var/run/procd-helix-k2-webserver.pid" 2>/dev/null)"
     [ "$newpid" != "$pid" ]
     kill -0 "$newpid"
 
     kill "$newpid" 2>/dev/null || true
+}
+
+@test "k2 hook: a live web-server is left alone by the restore guards" {
+    # With the stock app service absent, nothing kills the serving
+    # instance; the restore's start sees web-server alive and registers
+    # nothing, so exactly the original instance keeps serving.
+    write_fake_webserver
+    redirected_init_script > "$MOCK_ROOT/etc/init.d/helix-k2-webserver"
+    chmod +x "$MOCK_ROOT/etc/init.d/helix-k2-webserver"
+    mock_pidof_webserver
+    mock_command_script "killall" 'exit 0'
+
+    "$MOCK_ROOT/etc/init.d/helix-k2-webserver" start
+    local pid
+    pid="$(cat "$MOCK_ROOT/var/run/procd-helix-k2-webserver.pid")"
+    kill -0 "$pid"
+
+    run_hook_stop_competing_uis
+
+    await_launch_count 1
+    [ "$(cat "$MOCK_ROOT/var/run/procd-helix-k2-webserver.pid")" = "$pid" ]
+    kill -0 "$pid"
+
+    kill "$pid" 2>/dev/null || true
 }
