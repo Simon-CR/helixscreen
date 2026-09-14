@@ -167,7 +167,8 @@ what gets saved.
   blocks from PRINT_START itself, backing up every file it edits as
   `<file>.bak.<YYYYMMDD_HHMMSS>` first; the edit takes effect at the next Klipper restart.
   A printer instrumented by v0.99.111 or earlier may still carry a duplicated PRINT_START
-  tail from that older writer - only its own `<stem>.bak.<epoch>` backup undoes that part.
+  tail from that older writer; restoring its own `<stem>.bak.<epoch>` backup undoes that
+  part, but discards every config change made after that backup was written.
 
 ### Fixed
 
