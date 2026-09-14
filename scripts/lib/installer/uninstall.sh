@@ -327,7 +327,7 @@ restore_previous_ui_platform() {
         # sorts ahead of it, so the glob admits S links alone; the slot number
         # comes from the stock script's own START directive. A restore claimed
         # without an S link leaves the K2 booting to the logo with no UI.
-        local app_link app_target=""
+        local app_link app_target="" start_fix
         for app_link in /etc/rc.d/S[0-9][0-9]app; do
             [ -L "$app_link" ] || continue
             if [ "$(readlink "$app_link" 2>/dev/null || true)" = "../init.d/app" ]; then
@@ -346,8 +346,13 @@ restore_previous_ui_platform() {
         # the session's UI restored, not just warned about. A failed start
         # leaves nothing serving port 80 until app next starts.
         if ! $SUDO /etc/init.d/app start 2>/dev/null; then
-            log_warn "Creality stock UI failed to start: the stock screen, Creality Cloud and web-server (port 80) stay down until it starts; run: /etc/init.d/app start, or reboot"
-            restore_warned="${restore_warned:+$restore_warned; }Creality stock UI failed to start, so the stock screen, Creality Cloud and web-server (port 80) are down; run: /etc/init.d/app start, or reboot"
+            # A reboot starts the stock UI only through a verified S link.
+            start_fix="run: /etc/init.d/app start"
+            if [ -n "$app_target" ]; then
+                start_fix="$start_fix, or reboot"
+            fi
+            log_warn "Creality stock UI failed to start: the stock screen, Creality Cloud and web-server (port 80) stay down until it starts; $start_fix"
+            restore_warned="${restore_warned:+$restore_warned; }Creality stock UI failed to start, so the stock screen, Creality Cloud and web-server (port 80) are down; $start_fix"
         fi
     fi
 

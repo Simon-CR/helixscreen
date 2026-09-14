@@ -17,6 +17,13 @@
 
 WORKTREE_ROOT="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)"
 
+# The web-server pid pidof reports. It is above pid_max on Linux (at most
+# 4194304) and macOS, so a kill that escapes the shadow reaches no process.
+LIVE_WEBSERVER_PID=9999999
+
+# The host paths patch_bundle rewrites into MOCK_ROOT, as one ERE alternation.
+REDIRECTED_HOST_PATHS='/etc/init\.d/|/etc/rc\.d/|/etc/rc\.common|/mnt/UDISK|/usr/bin/update-cosmos|/var/run/helix|/var/tmp/helix|/tmp/helix|/opt/\._helixscreen|/root/\._helixscreen'
+
 setup() {
     load helpers
     install_gnu_sed_shim
@@ -48,12 +55,14 @@ setup() {
     patch_bundle "$WORKTREE_ROOT/scripts/uninstall.sh" > "$UNINSTALL_BUNDLE"
     patch_bundle "$WORKTREE_ROOT/scripts/install.sh" > "$INSTALL_BUNDLE"
 
-    # The redirect has to be total: a host /etc path left in either copy is a
-    # restore that would act on this machine.
+    # No path in REDIRECTED_HOST_PATHS may survive in either copy: one left
+    # behind is a restore or uninstall step acting on this machine. Paths in
+    # branches these cases never take (COSMOS, Snapmaker U1, the AD5M mods)
+    # are not redirected, and in_bundle's rm refuses any deletion outside the
+    # test's tmpdir.
     local b
     for b in "$UNINSTALL_BUNDLE" "$INSTALL_BUNDLE"; do
-        refute grep -qE '(^|[^A-Za-z0-9_.-])/etc/(init\.d|rc\.d)/' "$b"
-        refute grep -qE '(^|[^A-Za-z0-9_.-])/etc/rc\.common' "$b"
+        refute grep -qE "(^|[^A-Za-z0-9_.-])($REDIRECTED_HOST_PATHS)" "$b"
         refute grep -qE '^main "\$@"$' "$b"
     done
 }
@@ -143,8 +152,10 @@ echo "$FAKE_WEBSERVER_PID"'
 #
 # kill is a shell function in that shell, so `$SUDO kill <pid>` logs rather
 # than signals. The first thing the shell does is prove that: a real kill of an
-# unused pid fails and exits 97, the shadow logs "kill 2147483646". rm refuses
-# any path outside the test's tmpdir, logging it as BLOCKED.
+# unused pid fails and exits 97, the shadow logs "kill 2147483646". pidof is a
+# function handing off to the PATH mock, because BusyBox ash runs its own pidof
+# applet ahead of PATH. rm refuses any path outside the test's tmpdir, logging
+# it as BLOCKED.
 in_bundle() {
     sh -c '
         . "$1"
@@ -153,6 +164,7 @@ in_bundle() {
         PREVIOUS_UI_SCRIPT=""
         INIT_SYSTEM=sysv
         platform=k2
+        pidof() { "$BATS_TEST_TMPDIR/bin/pidof" "$@"; }
         kill() {
             printf "kill %s\n" "$*" >> "$EVENTS"
             if [ -n "$FAKE_WEBSERVER_PID" ] && [ "$1" = "$FAKE_WEBSERVER_PID" ]; then
@@ -179,6 +191,27 @@ in_bundle() {
 RESTORE_BODY='restore_previous_ui_platform k2
 printf "CLAIM=[%s]\n" "$HELIX_RESTORED_UI"
 printf "WARNED=[%s]\n" "${HELIX_RESTORE_WARNED:-}"'
+
+# install.sh --uninstall's uninstall(), with every step before and after the
+# restore stubbed to a no-op or pointed into the sandbox: the restore itself
+# and the closing summary are the real code.
+MODULE_UNINSTALL_BODY='
+detect_init_system() { INIT_SYSTEM=sysv; }
+remove_update_manager_section() { :; }
+remove_moonraker_asvc() { :; }
+find_moonraker_conf() { return 1; }
+uninstall_camera_k2() { :; }
+reenable_disabled_services() { :; }
+remove_config_symlink() { :; }
+clean_helix_state_dirs() { :; }
+remove_legacy_moonraker_block() { :; }
+helix_state_sweep_paths() { :; }
+helix_state_prune_empty_roots() { :; }
+HELIX_INIT_SCRIPTS=""
+HELIX_PROCESSES=""
+HELIX_INSTALL_DIRS="$INSTALL_DIR"
+HELIX_STATE_DIRS=""
+uninstall k2'
 
 # The value of a NAME=[value] line in $output.
 published() {
@@ -275,7 +308,7 @@ assert_kill_precedes_start() {
 # --- 1d: a live web-server is killed before app start ---
 
 @test "k2 restore: live web-server is killed before app start (verified link)" {
-    export FAKE_WEBSERVER_PID=4242
+    export FAKE_WEBSERVER_PID="$LIVE_WEBSERVER_PID"
     local bundle
     for bundle in "$UNINSTALL_BUNDLE" "$INSTALL_BUNDLE"; do
         reset_host
@@ -288,7 +321,7 @@ assert_kill_precedes_start() {
 }
 
 @test "k2 restore: live web-server is killed before app start (warn path)" {
-    export FAKE_WEBSERVER_PID=4242
+    export FAKE_WEBSERVER_PID="$LIVE_WEBSERVER_PID"
     export RC_ENABLE_LINKS=""
     local bundle
     for bundle in "$UNINSTALL_BUNDLE" "$INSTALL_BUNDLE"; do
@@ -318,6 +351,8 @@ assert_kill_precedes_start() {
         contains "Creality Cloud" "$output"
         contains "port 80" "$output"
         contains "port 80" "$(published WARNED)"
+        # The S link is verified in this shape, so a reboot does bring app up.
+        contains "or reboot" "$(published WARNED)"
     done
 }
 
@@ -338,27 +373,8 @@ assert_kill_precedes_start() {
 }
 
 @test "k2 restore warned: install.sh --uninstall's closing lines carry the fix" {
-    # uninstall() with every step before and after the restore stubbed to a
-    # no-op or pointed into the sandbox: the restore itself and the closing
-    # summary are the real code.
     export RC_ENABLE_LINKS=""
-    run in_bundle "$INSTALL_BUNDLE" '
-        detect_init_system() { INIT_SYSTEM=sysv; }
-        remove_update_manager_section() { :; }
-        remove_moonraker_asvc() { :; }
-        find_moonraker_conf() { return 1; }
-        uninstall_camera_k2() { :; }
-        reenable_disabled_services() { :; }
-        remove_config_symlink() { :; }
-        clean_helix_state_dirs() { :; }
-        remove_legacy_moonraker_block() { :; }
-        helix_state_sweep_paths() { :; }
-        helix_state_prune_empty_roots() { :; }
-        HELIX_INIT_SCRIPTS=""
-        HELIX_PROCESSES=""
-        HELIX_INSTALL_DIRS="$INSTALL_DIR"
-        HELIX_STATE_DIRS=""
-        uninstall k2'
+    run in_bundle "$INSTALL_BUNDLE" "$MODULE_UNINSTALL_BODY"
     [ "$status" -eq 0 ] || fail "exited $status: $output"
     assert_sandboxed_run
     contains "HelixScreen uninstalled" "$output"
@@ -369,6 +385,59 @@ assert_kill_precedes_start() {
     contains "HelixScreen uninstalled" "$closing"
     lacks "No previous UI found to restore" "$closing"
     contains "/etc/init.d/app enable" "$closing"
+}
+
+# The caller's "restore incomplete" summary names both manual fixes, and the
+# run offers a reboot nowhere.
+assert_both_fixes_without_reboot() {
+    local summary
+    summary=$(printf '%s\n' "$output" | grep 'Previous UI restore incomplete') \
+        || fail "no restore-incomplete summary: $output"
+    contains "/etc/init.d/app enable" "$summary"
+    contains "/etc/init.d/app start" "$summary"
+    lacks "or reboot" "$output"
+}
+
+@test "k2 restore: no S link and a failed start: both callers give both fixes and no reboot" {
+    # Without an S link a reboot starts nothing, so only the two commands help.
+    export RC_ENABLE_LINKS=""
+    export RC_START_RC=1
+
+    run in_bundle "$UNINSTALL_BUNDLE" 'reenable_previous_ui'
+    [ "$status" -eq 0 ] || fail "standalone exited $status: $output"
+    assert_sandboxed_run
+    contains "boot symlink missing or wrong" "$output"
+    contains "failed to start" "$output"
+    assert_both_fixes_without_reboot
+
+    reset_host
+    run in_bundle "$INSTALL_BUNDLE" "$MODULE_UNINSTALL_BODY"
+    [ "$status" -eq 0 ] || fail "install.sh --uninstall exited $status: $output"
+    assert_sandboxed_run
+    contains "boot symlink missing or wrong" "$output"
+    contains "failed to start" "$output"
+    assert_both_fixes_without_reboot
+}
+
+@test "k2 restore: a second call publishes its own warning state, not the first call's" {
+    local bundle
+    for bundle in "$UNINSTALL_BUNDLE" "$INSTALL_BUNDLE"; do
+        reset_host
+        run in_bundle "$bundle" '
+            export RC_ENABLE_LINKS=""
+            restore_previous_ui_platform k2
+            printf "W1=[%s]\n" "$HELIX_RESTORE_WARNED"
+            export RC_ENABLE_LINKS="S99 K01"
+            restore_previous_ui_platform k2
+            printf "W2=[%s]\n" "$HELIX_RESTORE_WARNED"
+            printf "C2=[%s]\n" "$HELIX_RESTORED_UI"'
+        [ "$status" -eq 0 ] || fail "$bundle exited $status: $output"
+        assert_sandboxed_run
+        [ -n "$(published W1)" ] || fail "setup: the first call must warn ($bundle): $output"
+        [ -n "$(published C2)" ] || fail "setup: the second call must verify the link ($bundle): $output"
+        [ -z "$(published W2)" ] \
+            || fail "the first call's warning survived a clean second call ($bundle): $output"
+    done
 }
 
 # --- 1g: the sysv-created ledger replay stops what the carve-out runs ---
@@ -417,7 +486,7 @@ assert_kill_precedes_start() {
 # --- 1h: the kill the restore depends on exists where the restore runs ---
 
 @test "k2 restore: kill_process_by_name is defined in both bundles and reached by the restore" {
-    export FAKE_WEBSERVER_PID=4242
+    export FAKE_WEBSERVER_PID="$LIVE_WEBSERVER_PID"
     local bundle entry
     for bundle in "$UNINSTALL_BUNDLE" "$INSTALL_BUNDLE"; do
         reset_host
@@ -425,11 +494,12 @@ assert_kill_precedes_start() {
         # reenable_previous_ui; install.sh reaches it through uninstall().
         entry='restore_previous_ui_platform k2'
         [ "$bundle" = "$UNINSTALL_BUNDLE" ] && entry='reenable_previous_ui'
-        run in_bundle "$bundle" "type kill_process_by_name
+        # type words its answer differently in dash, bash and BusyBox ash, but
+        # each says "function" for a defined one and fails for a missing one.
+        run in_bundle "$bundle" "type kill_process_by_name | grep -q function || exit 96
 $entry"
         [ "$status" -eq 0 ] || fail "$bundle exited $status: $output"
         assert_sandboxed_run
-        contains "kill_process_by_name is a shell function" "$output"
         lacks "not found" "$output"
         assert_kill_precedes_start
     done
