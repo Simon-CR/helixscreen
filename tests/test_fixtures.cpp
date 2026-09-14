@@ -17,6 +17,7 @@
 #include "material_settings_manager.h"
 #include "preset_materials.h"
 #include "spdlog/spdlog.h"
+#include "xml_registration.h"
 
 // Forward declaration — defined in favorite_macro_widget.cpp, not exported in any header.
 namespace helix {
@@ -255,12 +256,13 @@ void XMLTestFixture::setup_global_xml_registrations_once() {
 
     // Register components used by filament_catalog_picker (Modal subclass, no
     // pre-registered app-wide entry point yet — Task 5/7 wires that up).
-    // The embedded filament_catalog_selector fragment MUST be registered
-    // before the picker that instantiates it.
+    // register_filament_catalog_components() is the same function production
+    // calls, so the selector's row/add-row/empty-row templates (created by
+    // name at runtime, never referenced from XML markup) can't go missing
+    // from this fixture the way a hand-listed copy of the set could.
     lv_xml_register_component_from_file("A:ui_xml/divider_vertical.xml");
     lv_xml_register_component_from_file("A:ui_xml/modal_button_row.xml");
-    lv_xml_register_component_from_file("A:ui_xml/components/filament_catalog_selector.xml");
-    lv_xml_register_component_from_file("A:ui_xml/components/filament_catalog_picker.xml");
+    helix::register_filament_catalog_components();
 
     // <afc_fault_path> + the afc_fault_segment subject it binds. Embedded by
     // ams_loading_error_modal.xml and action_prompt_modal.xml, both of which
