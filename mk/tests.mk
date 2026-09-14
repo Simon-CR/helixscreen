@@ -432,6 +432,12 @@ test: test-build
 # Quiet on purpose: no banner, no timing line. This is typed dozens of times an
 # hour, and Catch2's own output is the answer.
 #
+# What this costs is make's dependency scan over the tree, 5 to 18s depending on
+# load, against a test run of 0.05 to 0.6s. What it buys is the guarantee that
+# the binary matches your source, which after an edit is not optional: `make -j`
+# builds only the app, so the bare binary would report the previous build's
+# numbers. When nothing has changed, run $(TEST_BIN) directly and skip the scan.
+#
 # An empty F is an error, never a whole-suite run. Falling back to everything is
 # the reflex this target exists to replace, so a typo must not reach it. The
 # guard is a parse-time conditional so a bare `make t` fails without first
@@ -475,13 +481,20 @@ test-run:
 	@echo "$(YELLOW)$(BOLD)make test-run runs nothing. Pick the question you actually have:$(RESET)"; \
 	echo ""; \
 	echo "  $(CYAN)Does the thing I just wrote work?$(RESET)"; \
-	echo "      make t F='exact case name'    ~4s"; \
+	echo "      make t F='exact case name'"; \
 	echo ""; \
 	echo "  $(CYAN)Did I break this area?$(RESET)"; \
-	echo "      make t F='[tag]'              ~5s"; \
+	echo "      make t F='[tag]'"; \
+	echo ""; \
+	echo "  $(CYAN)Nothing has changed since the last build?$(RESET)"; \
+	echo "      $(TEST_BIN) '[tag]'"; \
+	echo "         Skips make's dependency scan (5 to 18s) for a 0.05 to 0.6s run."; \
+	echo "         Correct ONLY when you have not edited code since that build."; \
 	echo ""; \
 	echo "  $(CYAN)Did I break something I was not touching?$(RESET)"; \
-	echo "      make full-test-run            ~25s, and only worth asking once the feature is done"; \
+	echo "      make full-test-run"; \
+	echo "         25s idle, minutes on a loaded box, and only worth asking once"; \
+	echo "         the feature is finished."; \
 	echo ""; \
 	echo "A full run cannot tell you your feature works, only that something else broke."; \
 	echo "Cadence table: tests/CLAUDE.md, 'What to run when'."; \
@@ -1367,9 +1380,9 @@ help-test:
 	echo "$${B}Test Targets$${X}"; \
 	echo ""; \
 	echo "$${C}Main Test Targets:$${X}"; \
-	echo "  $${G}t F='<filter>'$${X}       - Build, then run ONE tag or case (the inner loop, ~4s)"; \
+	echo "  $${G}t F='<filter>'$${X}       - Build, then run ONE tag or case (the inner loop)"; \
 	echo "  $${G}test$${X}                 - Build tests (does not run)"; \
-	echo "  $${G}full-test-run$${X}        - Whole suite in PARALLEL (~25s, the completion gate)"; \
+	echo "  $${G}full-test-run$${X}        - Whole suite in PARALLEL (the completion gate)"; \
 	echo "  $${G}test-run$${X}             - Signpost only: refuses, names the target that fits"; \
 	echo "  $${G}test-serial$${X}          - Run tests sequentially (for debugging)"; \
 	echo "  $${G}test-smoke$${X}           - Quick smoke test (~30s) for rapid iteration"; \

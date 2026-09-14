@@ -15,7 +15,7 @@
 make t F='[tag]'               # build, then run ONE tag or case (the inner loop)
 make test                      # build tests only (does NOT run them)
 make full-test-run             # build AND run the whole suite in parallel
-./build/bin/helix-tests "[tag]"  # run one tag against the binary as it stands
+./build/bin/helix-tests "[tag]"  # one tag with NO dependency scan, 0.05-0.6s
 ```
 
 `make -j` builds **only** the app binary. Run `make test` before `./build/bin/helix-tests`
@@ -134,13 +134,14 @@ Key the choice on the question you actually have, not on a phase of work:
 
 | The question you actually have | Command | Cost |
 |---|---|---|
-| Does the thing I just wrote work? | `make t F='exact case name'` | ~4s |
-| Did I break this area? | `make t F='[tag]'` | ~5s |
-| **Can this test fail at all?** | break the line it covers, rerun that one case, restore | ~8s |
+| Does the thing I just wrote work, and I edited code | `make t F='exact case name'` | 5 to 18s |
+| Same, and nothing has changed since the last build | `./build/bin/helix-tests 'exact case name'` | **0.05s** |
+| Did I break this area | `make t F='[tag]'`, or the binary directly | 5 to 18s, or 0.6s |
+| **Can this test fail at all?** | break the line it covers, rerun that one case, restore | one `make t` cycle |
 | Do any assertions only look like assertions? | `make check-tautology`, `make test-vacuous` | 3s, seconds |
 | Does any test even reach this code? | `make cov-diff` | minutes |
 | Do my changed lines have detection? | `make mutate-diff` | 2-4 min per hunk |
-| Did I break something elsewhere? | `make full-test-run` | ~25s, **once, at the end** |
+| Did I break something elsewhere? | `make full-test-run` | 25s idle, minutes loaded, **once, at the end** |
 
 The rule the table encodes: **a full run cannot tell you your feature works.** It can only
 tell you something else broke, and that question is not interesting until you are done. A
@@ -151,8 +152,35 @@ every way of naming what you want. With no `F` it refuses rather than running ev
 `make test-run` runs nothing at all now: it prints this choice and exits non-zero, because
 the shortest name that ran anything is the one people type.
 
-The middle four rows are the evidence ladder below. "Proving a test can fail" is where each
-one's cost and blind spot is set out; read it there rather than picking from this table.
+Rows four through seven are the evidence ladder below. "Proving a test can fail" is where
+each one's cost and blind spot is set out; read it there rather than picking from this
+table.
+
+### The wrapper costs more than the test
+
+Measured on the build host at load average 37, with five other sessions compiling:
+
+| | |
+|---|---|
+| `make test`, nothing to rebuild | 11.2s |
+| `make t F='[lane]'`, nothing changed | 5.3 to 6.7s over four runs |
+| `./build/bin/helix-tests '[lane]'`, 223 cases | **0.58s**, four runs, no variance |
+| `./build/bin/helix-tests '<one case>'` | **0.05s**, four runs, no variance |
+
+`make`'s dependency scan over this tree is the entire cost, and it is the part that moves
+with load: the same warm `make t` measures about 4s on an idle box and 18s on a busy one.
+The tests do not move at all. Read these as ratios rather than absolutes.
+
+So `make t` buys exactly one thing, the guarantee that the binary matches your source, and
+that guarantee is what the seconds are for.
+
+**When you have edited code it is not optional.** `make -j` builds only the app binary, so
+running `./build/bin/helix-tests` after an edit silently tests the previous build and
+reports the previous run's numbers. That is a green that means nothing.
+
+**When you have not edited code, skip it.** Re-running a failure, trying a different
+filter, checking a neighbouring tag, reading what an assertion actually said: the binary
+already matches your source, and those are 0.05s questions.
 
 ### Four checks the ladder does not make for you
 
