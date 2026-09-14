@@ -107,6 +107,18 @@ struct FilamentPanelTestAccess {
     static float keypad_max_for(::FilamentPanel& p, helix::HeaterType type, int fallback_deg) {
         return p.keypad_max_for(type, fallback_deg);
     }
+
+    // --- Chamber heater --------------------------------------------------
+    // Cool Down's default gcode and a material's chamber target both depend on
+    // whether the printer has a chamber heater.
+
+    static void handle_cooldown(::FilamentPanel& p) {
+        p.handle_cooldown();
+    }
+
+    static int chamber_target(const ::FilamentPanel& p) {
+        return p.chamber_target_;
+    }
 };
 
 } // namespace helix::ui

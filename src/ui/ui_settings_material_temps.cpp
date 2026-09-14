@@ -302,8 +302,10 @@ void MaterialTempsOverlay::show_edit_view(const std::string& material_name) {
     snprintf(edit_name_buf_, sizeof(edit_name_buf_), "%s", material_name.c_str());
     lv_subject_copy_string(&edit_name_subject_, edit_name_buf_);
 
-    // Update defaults hint (chamber is mentioned only when its column is shown)
-    const bool has_chamber = get_printer_state().get_discovery().has_chamber_heater();
+    // Update defaults hint. It mentions the chamber exactly when the chamber column
+    // is shown, so it reads the capability that column binds.
+    lv_subject_t* chamber_column = lv_xml_get_subject(nullptr, "printer_has_chamber_heater");
+    const bool has_chamber = chamber_column && lv_subject_get_int(chamber_column) != 0;
     if (has_chamber) {
         snprintf(edit_defaults_buf_, sizeof(edit_defaults_buf_),
                  lv_tr("Default: %d-%d°C nozzle, %d°C bed, %d°C chamber"), default_nozzle_min,

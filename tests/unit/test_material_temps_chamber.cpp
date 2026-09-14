@@ -423,6 +423,37 @@ TEST_CASE_METHOD(XMLTestFixture, "Saving a chamber value above the printer's cap
 // A chamber override stored while the printer HAD a heater must not hold the
 // edit view hostage on a printer whose heater is gone: the column is hidden,
 // so a cap-driven refusal would name a control the user cannot see or fix.
+TEST_CASE_METHOD(XMLTestFixture,
+                 "The defaults hint mentions the chamber exactly when its column is shown",
+                 "[material_temps][chamber]") {
+    ControllerScope scope(*this);
+    const int chamber_heater = GENERATE(1, 0);
+    CAPTURE(chamber_heater);
+
+    reset_material_temps_singleton();
+    MaterialSettingsManager::instance().clear_override("ABS");
+    set_capability("printer_has_chamber_heater", chamber_heater);
+    REQUIRE(register_component("material_temps_overlay"));
+
+    auto& overlay = helix::settings::get_material_temps_overlay();
+    overlay.show(lv_screen_active());
+    helix::ui::UpdateQueue::instance().drain();
+    overlay.handle_material_row_clicked("ABS");
+
+    lv_obj_t* chamber_input = find_widget("edit_chamber_temp");
+    REQUIRE(chamber_input != nullptr);
+    REQUIRE(hidden(lv_obj_get_parent(chamber_input)) == (chamber_heater == 0));
+
+    lv_obj_t* hint = find_widget("edit_defaults_hint");
+    REQUIRE(hint != nullptr);
+    const std::string text = lv_label_get_text(hint);
+    // The hint was written for this material at all.
+    REQUIRE(text.find("nozzle") != std::string::npos);
+    CHECK((text.find("chamber") != std::string::npos) == (chamber_heater == 1));
+
+    reset_material_temps_singleton();
+}
+
 TEST_CASE_METHOD(XMLTestFixture, "A hidden chamber override cannot block the edit view's save",
                  "[material_temps][chamber][1615]") {
     ControllerScope scope(*this);
