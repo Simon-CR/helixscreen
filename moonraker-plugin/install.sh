@@ -214,66 +214,28 @@ restart_moonraker() {
     fi
 }
 
-# Markers a pre-1.1 HelixScreen wrote around each HELIX_PHASE_* / HELIX_READY
-# call it injected into PRINT_START. A block runs from BEGIN through END,
-# inclusive.
-TRACKING_MARKER_BEGIN='# <<< HELIX_TRACKING v2 >>>'
-TRACKING_MARKER_END='# <<< /HELIX_TRACKING >>>'
-
-# Strip HELIX_TRACKING marker blocks from one file, backing it up first.
-# A file with no BEGIN marker is left byte-identical and gets no backup, so
-# running this twice is harmless. An unpaired BEGIN is left untouched with a
-# warning rather than guessing where the block was meant to end.
-#
-# Returns 0 if the file was edited, 1 if it had an unpaired marker, 2 if it
-# had no markers at all.
-strip_tracking_markers_from_file() {
-    target_file="$1"
-
-    if ! grep -qF "$TRACKING_MARKER_BEGIN" "$target_file"; then
-        return 2
-    fi
-
-    begin_count=$(grep -cF "$TRACKING_MARKER_BEGIN" "$target_file" || true)
-    end_count=$(grep -cF "$TRACKING_MARKER_END" "$target_file" || true)
-    if [ "$begin_count" != "$end_count" ]; then
-        warn "Unmatched HELIX_TRACKING marker in $target_file - leaving it untouched"
-        return 1
-    fi
-
-    backup_file="${target_file}.bak.$(date +%Y%m%d_%H%M%S)"
-    cp "$target_file" "$backup_file"
-    info "Created backup: $backup_file"
-
-    awk -v begin="$TRACKING_MARKER_BEGIN" -v end="$TRACKING_MARKER_END" '
-        index($0, begin) { skip = 1; next }
-        index($0, end) { skip = 0; next }
-        !skip { print }
-    ' "$target_file" > "$target_file.tmp" && mv "$target_file.tmp" "$target_file"
-
-    info "Removed phase-tracking instrumentation from $target_file"
-}
-
-# Strip phase-tracking instrumentation from every .cfg file in the config
-# directory. The markers are self-delimiting, so this does not need to
-# relocate PRINT_START the way the instrumentation that wrote them did.
-# Never restarts Klipper: the edit only takes effect on its next restart, and
-# any instrumented macro call keeps working (as console noise) until then.
+# Strip phase-tracking instrumentation from PRINT_START via the bundled
+# strip_phase_tracking.py, which owns the marker format and the safety
+# contract around editing a printer's config (matched blocks only, a
+# verified backup, symlinks and modes preserved). python3 is what Moonraker
+# itself runs on; its absence here means something else on this printer is
+# already broken. Either way this never aborts the rest of uninstall, and
+# never claims success it cannot back up - a failure is reported and left
+# to the next line, not retried or escalated.
 strip_phase_tracking_instrumentation() {
     scan_dir="$1"
-    stripped_any=false
 
-    for cfg_file in "$scan_dir"/*.cfg; do
-        [ -f "$cfg_file" ] || continue
-        if strip_tracking_markers_from_file "$cfg_file"; then
-            stripped_any=true
-        fi
-    done
-
-    if [ "$stripped_any" = "true" ]; then
-        info "Phase-tracking instrumentation removed from PRINT_START."
-        info "This takes effect at the next Klipper restart - loaded macros keep working until then."
+    if ! command -v python3 > /dev/null 2>&1; then
+        warn "python3 not found - could not check PRINT_START for phase-tracking instrumentation"
+        warn "If a previous HelixScreen instrumented PRINT_START, remove any block between"
+        warn "'# <<< HELIX_TRACKING v2 >>>' and '# <<< /HELIX_TRACKING >>>' by hand, then restart Klipper"
+        return 0
     fi
+
+    if ! python3 "$SCRIPT_DIR/strip_phase_tracking.py" "$scan_dir"; then
+        warn "Phase-tracking strip reported a failure - see the output above"
+    fi
+    return 0
 }
 
 # Auto-uninstall function (non-interactive, for HelixScreen integration)
