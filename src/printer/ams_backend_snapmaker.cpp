@@ -817,37 +817,7 @@ AmsError AmsBackendSnapmaker::set_slot_info(int slot_index, const SlotInfo& info
         // (CFS shares the tracker and DOES register one — it writes
         // color_value back to the box, which is half of its fingerprint.)
         if (persist) {
-            helix::ams::FilamentSlotOverride ovr;
-            ovr.brand = info.brand;
-            ovr.spool_name = info.spool_name;
-            ovr.spoolman_id = info.spoolman_id;
-            ovr.spoolman_vendor_id = info.spoolman_vendor_id;
-            ovr.remaining_weight_g = info.remaining_weight_g;
-            ovr.total_weight_g = info.total_weight_g;
-            ovr.color_rgb = info.color_rgb;
-            ovr.color_set = true; // a user-edit always records a color, even pure black (#000000)
-            ovr.color_name = info.color_name;
-            ovr.material = info.material;
-            // Catalog product identity. Persisted so a reopen can restore the
-            // EXACT product rather than the alphabetically-first variant of the
-            // same vendor+material. Never auto-mirrored (firmware has no notion
-            // of a catalog product), so no user-lock flag is needed: a non-empty
-            // value can only have come from a user pick.
-            ovr.catalog_id = info.catalog_id;
-            ovr.product_name = info.product_name;
-            // User-lock: persist=true edits are sticky against the
-            // OverwriteAlways auto-mirror (#965). Material is only locked
-            // when the user provided one; an explicit empty material means
-            // "let bootstrap fill it on next firmware report."
-            ovr.user_locked_color = true;
-            ovr.user_locked_material = !info.material.empty();
-            // SlotInfo carries the user's edit OR the bound Spoolman spool's
-            // filament profile; the material-DB fallback for fields left at 0
-            // is applied at emit time inside resolved_temps(). Centralized in
-            // the helper so the four AMS backends stay in sync.
-            helix::ams::populate_temps_from_slot_info(ovr, info);
-            // updated_at left default — save_async stamps a fresh value.
-            overrides_[slot_index] = ovr;
+            overrides_[slot_index] = helix::ams::user_override_from_slot_info(info, info.material);
         }
     }
 

@@ -1914,3 +1914,49 @@ TEST_CASE("Retargeting an ACE dryer keeps the time already served", "[ams][ace][
     CHECK(backend.sent("ACE_START_DRYING TEMP=50 DURATION=60"));
     CHECK_FALSE(backend.sent("ACE_START_DRYING TEMP=50 DURATION=240"));
 }
+
+// ACE persists into the SHARED lane_data namespace, which Mainsail, OrcaSlicer
+// and AFC's plugin also read. Publishing the lock flags false beside a user's
+// edit tells every one of them the value is not the user's (#965, #1649).
+TEST_CASE("ACE publishes a persisted edit to lane_data as the user's own",
+          "[ams][ace][filament_slot_override]") {
+    AceTmpCacheDir tmp("issue1649_user_locks");
+    MoonrakerClientMock client(MoonrakerClientMock::PrinterType::VORON_24);
+    helix::PrinterState state;
+    state.init_subjects(false);
+    MoonrakerAPIMock api(client, state);
+
+    AmsBackendAce backend(&api, nullptr);
+    auto store = std::make_unique<helix::ams::FilamentSlotOverrideStore>(&api, "ace");
+    FilamentSlotOverrideStoreTestAccess::set_cache_directory(*store, tmp.path);
+    AceTestAccess::inject_override_store(backend, std::move(store));
+
+    AceTestAccess::parse_ace(backend, json{{"model", "ACE Pro"},
+                                           {"slots", json::array({
+                                                         json{{"status", "empty"}},
+                                                         json{{"status", "empty"}},
+                                                         json{{"status", "empty"}},
+                                                         json{{"status", "empty"}},
+                                                     })}});
+
+    SlotInfo edit;
+    edit.material = "PETG";
+    edit.color_rgb = 0x1188FF;
+    edit.color_name = "Blue";
+    REQUIRE(backend.set_slot_info(0, edit, /*persist=*/true).success());
+
+    auto staged = AceTestAccess::get_override(backend, 0);
+    REQUIRE(staged.has_value());
+    REQUIRE(staged->material == "PETG");
+    REQUIRE(staged->color_rgb == 0x1188FFu);
+    CHECK(staged->user_locked_color);
+    CHECK(staged->user_locked_material);
+
+    // The record every other reader of the namespace actually sees.
+    auto stored = api.mock_get_db_value("lane_data", "lane1");
+    REQUIRE(!stored.is_null());
+    REQUIRE(stored["color"] == "#1188FF");
+    REQUIRE(stored["material"] == "PETG");
+    CHECK(stored["helix_locked_color"] == true);
+    CHECK(stored["helix_locked_material"] == true);
+}

@@ -7927,3 +7927,23 @@ TEST_CASE("AFC names its positions lanes", "[ams][afc][numbering]") {
     AmsBackendAfc backend(nullptr, nullptr);
     CHECK(backend.lane_noun() == helix::ui::LaneNoun::Lane);
 }
+
+// A persisted override IS a user edit. The lock flags are how any consumer of
+// the record tells one from a firmware reading (#965, #1649).
+TEST_CASE("AFC marks a persisted edit as the user's own", "[ams][afc][filament_slot_override]") {
+    AmsBackendAfcTestHelper helper;
+    helper.initialize_test_lanes_with_slots(4);
+
+    SlotInfo info;
+    info.material = "PETG";
+    info.color_rgb = 0x1188FF;
+    info.color_name = "Blue";
+    helper.set_slot_info(0, info, /*persist=*/true);
+
+    auto& overrides = AfcTestAccess::overrides(helper);
+    REQUIRE(overrides.count(0) == 1);
+    REQUIRE(overrides.at(0).material == "PETG");
+    REQUIRE(overrides.at(0).color_rgb == 0x1188FFu);
+    CHECK(overrides.at(0).user_locked_color);
+    CHECK(overrides.at(0).user_locked_material);
+}
