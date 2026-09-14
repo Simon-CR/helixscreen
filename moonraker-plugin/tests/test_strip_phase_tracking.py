@@ -681,6 +681,25 @@ def test_matches_the_old_writers_own_disable_output(tmp_path):
     assert cfg.read_bytes() == old_disable_output
 
 
+def test_a_non_utf8_sibling_cfg_is_skipped_like_the_real_writers(tmp_path):
+    # Both real writers catch every exception while scanning the config
+    # tree, not just OSError, so a sibling file that fails to decode does
+    # not stop either one from finding PRINT_START in a later file. A name
+    # sorting before "printer.cfg" puts it first in the scan.
+    _write_helix_macros_cfg(tmp_path)
+    (tmp_path / "aaa_notes.cfg").write_bytes(b"\xb0 not valid utf-8\n")
+    cfg = tmp_path / "printer.cfg"
+    write(cfg, "[gcode_macro PRINT_START]\ngcode:\n    G28\n")
+
+    enable_result = old_writer.enable(tmp_path)
+    assert enable_result["success"] is True
+    assert old_writer.TRACKING_MARKER_BEGIN in cfg.read_text()
+
+    disable_result = old_writer.disable(tmp_path)
+    assert disable_result["success"] is True
+    assert old_writer.TRACKING_MARKER_BEGIN not in cfg.read_text()
+
+
 def test_matches_the_old_writer_with_no_git_available(tmp_path, monkeypatch):
     # The oracle above must not depend on git being reachable at all - there
     # is no subprocess/git call left in this file to disable, so this proves

@@ -107,7 +107,7 @@ def _find_macro(config_dir: Path, macro_name: str) -> Optional[Tuple[Path, str, 
     for cfg_file in sorted(config_dir.glob("**/*.cfg")):
         try:
             content = cfg_file.read_text()
-        except OSError:
+        except Exception:
             continue
 
         located = _locate_macro_body(content, macro_name)
@@ -156,7 +156,7 @@ def _defined_macro_names(config_dir: Path) -> set:
     for cfg_file in sorted(config_dir.glob("**/*.cfg")):
         try:
             content = cfg_file.read_text()
-        except OSError:
+        except Exception:
             continue
         for match in re.finditer(r"^\[gcode_macro\s+([^\]]+)\]", content, re.MULTILINE):
             names.add(match.group(1).strip().upper())
@@ -293,7 +293,7 @@ def _read_macro_body_legacy(config_dir: Path, macro_name: str) -> Optional[str]:
     for cfg_file in config_dir.glob("**/*.cfg"):
         try:
             content = cfg_file.read_text()
-        except OSError:
+        except Exception:
             continue
 
         match = re.search(rf"\[gcode_macro\s+{macro_name}\]", content, re.IGNORECASE)
@@ -336,7 +336,7 @@ def _update_macro_legacy(config_dir: Path, macro_name: str, gcode: str) -> bool:
     for cfg_file in config_dir.glob("**/*.cfg"):
         try:
             content = cfg_file.read_text()
-        except OSError:
+        except Exception:
             continue
 
         pattern = rf"\[gcode_macro\s+{re.escape(macro_name)}\]"
