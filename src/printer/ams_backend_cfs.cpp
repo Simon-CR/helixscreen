@@ -2061,9 +2061,9 @@ AmsError AmsBackendCfs::set_slot_info(int slot_index, const SlotInfo& info, bool
         // in-flight frames will keep reporting until that echo lands.
         const int previous_firmware_id = target->spoolman_id;
 
-        // The bay as it stood before this edit. user_override_from_slot_info needs
-        // it to tell what the user moved from what the editor merely carried
-        // back, so it has to be taken before the writes below.
+        // The bay as it stood before this edit. stage_user_override needs it to
+        // tell what the user moved from what the editor merely carried back, so
+        // it has to be taken before the writes below.
         const SlotInfo prior_slot = *target;
 
         // Update in-memory slot state so get_slot_info returns the edit
@@ -2104,7 +2104,7 @@ AmsError AmsBackendCfs::set_slot_info(int slot_index, const SlotInfo& info, bool
         // registers the expected post-write fingerprints with rfid_tracker_
         // before dispatching the gcode.
         if (persist) {
-            overrides_[slot_index] = helix::ams::user_override_from_slot_info(prior_slot, info);
+            helix::ams::stage_user_override(overrides_, slot_index, prior_slot, info);
         }
 
         // Record our own SPOOLMAN_ID write for the fork dialect (the only

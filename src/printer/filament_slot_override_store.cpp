@@ -651,7 +651,8 @@ void populate_temps_from_slot_info(FilamentSlotOverride& ovr, const SlotInfo& in
 }
 
 FilamentSlotOverride user_override_from_slot_info(const SlotInfo& original, const SlotInfo& edited,
-                                                  const std::string& material) {
+                                                  const std::string& material,
+                                                  const FilamentSlotOverride* prior) {
     FilamentSlotOverride ovr;
     ovr.brand = edited.brand;
     ovr.spool_name = edited.spool_name;
@@ -682,21 +683,26 @@ FilamentSlotOverride user_override_from_slot_info(const SlotInfo& original, cons
     // diff is the only thing that can tell them apart.
     const Observation declaration = user_edit_observation(original, edited);
 
+    // Authorship is AMENDED onto the record the lane already had, never
+    // replaced: this edit speaks about the fields it moved and says nothing
+    // about the rest, so a choice made in an earlier edit stays the user's
+    // word while the value it stood over is still the one on the record. The
+    // lane's own source record is amended the same way, by commit_slot_edit.
+    //
+    // A record replaced instead would lose a colour declared in an earlier
+    // edit the moment a later edit touched only the brand, and the consumption
+    // meter would clear every declaration on the lane on its next persist:
+    // persist=true means "write this down", not "a user typed this".
+    const FilamentSlotOverride no_prior_record;
+    const RecordAuthorship authorship =
+        amend_authorship(declaration, prior != nullptr ? *prior : no_prior_record, ovr);
     // The two locks mark their fields as the user's word rather than something
     // the store merely remembered, both to the auto-mirror policies and to the
-    // reload that classifies the record (#965).
-    //
-    // A lock protects a value, so there has to be one to protect. The colour
-    // gets that for free, since an observation only ever carries a declarable
-    // colour. The material does not: a clear files an empty string, and a
-    // backend's normalized spelling of what the user typed can come back empty
-    // on its own, and in both cases the lane holds nothing for the lock to
-    // stand over and a later firmware report should be free to fill it.
-    ovr.user_locked_color = declaration.color_rgb.has_value();
-    ovr.user_locked_material = declaration.material.has_value() && !ovr.material.empty();
-    // The same answer, for the roster rows that keep their authorship in the
-    // declared set rather than on a flag of their own.
-    ovr.declared = declared_fields_supplied(declaration);
+    // reload that classifies the record (#965). The roster rows with no flag
+    // of their own keep the same answer in the declared set.
+    ovr.user_locked_color = authorship.user_locked_color;
+    ovr.user_locked_material = authorship.user_locked_material;
+    ovr.declared = authorship.declared;
 
     // SlotInfo carries the user's edit OR the bound Spoolman spool's filament
     // profile; the material-DB fallback for fields left at 0 is applied at
@@ -706,9 +712,30 @@ FilamentSlotOverride user_override_from_slot_info(const SlotInfo& original, cons
     return ovr;
 }
 
-FilamentSlotOverride user_override_from_slot_info(const SlotInfo& original,
-                                                  const SlotInfo& edited) {
-    return user_override_from_slot_info(original, edited, edited.material);
+FilamentSlotOverride user_override_from_slot_info(const SlotInfo& original, const SlotInfo& edited,
+                                                  const FilamentSlotOverride* prior) {
+    return user_override_from_slot_info(original, edited, edited.material, prior);
+}
+
+FilamentSlotOverride& stage_user_override(std::unordered_map<int, FilamentSlotOverride>& overrides,
+                                          int slot_index, const SlotInfo& original,
+                                          const SlotInfo& edited, const std::string& material) {
+    // Built against the entry this call replaces, so the find has to happen
+    // before the insert: operator[] on a lane with no record yet would hand
+    // the amend a default-constructed record that declares nothing, which is
+    // the same answer but by accident rather than on purpose.
+    const auto existing = overrides.find(slot_index);
+    FilamentSlotOverride amended = user_override_from_slot_info(
+        original, edited, material, existing == overrides.end() ? nullptr : &existing->second);
+    FilamentSlotOverride& staged = overrides[slot_index];
+    staged = std::move(amended);
+    return staged;
+}
+
+FilamentSlotOverride& stage_user_override(std::unordered_map<int, FilamentSlotOverride>& overrides,
+                                          int slot_index, const SlotInfo& original,
+                                          const SlotInfo& edited) {
+    return stage_user_override(overrides, slot_index, original, edited, edited.material);
 }
 
 // ============================================================================

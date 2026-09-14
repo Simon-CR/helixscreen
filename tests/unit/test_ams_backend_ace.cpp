@@ -8,6 +8,7 @@
 #include "fake_moonraker_client.h"
 #include "filament_slot_override.h"
 #include "filament_slot_override_store.h"
+#include "lane_translation.h"
 #include "lvgl_test_fixture.h"
 #include "moonraker_api_mock.h"
 #include "moonraker_client_mock.h"
@@ -884,6 +885,69 @@ TEST_CASE("ACE set_slot_info(persist=false) does NOT write to store",
     CHECK(info.brand == "Draft");
     CHECK(info.material == "PLA");
     CHECK(info.color_rgb == 0x123456u);
+}
+
+TEST_CASE_METHOD(HelixTestFixture, "ACE weight persist leaves the lane's declarations standing",
+                 "[ams][ace][filament_slot_override]") {
+    // persist=true means "write this down", not "a person typed this": the
+    // consumption meter reaches this path at pause and at print completion
+    // with no user edit behind it, and its diff moves the weight alone. A
+    // record that took its authorship from that diff would drop every choice
+    // the lane already carried.
+    AceTmpCacheDir tmp("task18_weight_persist");
+    MoonrakerClientMock client(MoonrakerClientMock::PrinterType::VORON_24);
+    helix::PrinterState state;
+    state.init_subjects(false);
+    MoonrakerAPIMock api(client, state);
+
+    helix::test::RegisteredBackend<AmsBackendAce> backend_reg(&api, nullptr);
+    AmsBackendAce& backend = *backend_reg;
+    auto store = std::make_unique<helix::ams::FilamentSlotOverrideStore>(&api, "ace");
+    FilamentSlotOverrideStoreTestAccess::set_cache_directory(*store, tmp.path);
+    AceTestAccess::inject_override_store(backend, std::move(store));
+
+    AceTestAccess::parse_ace(backend, json{{"model", "ACE Pro"},
+                                           {"slots", json::array({
+                                                         json{{"status", "empty"}},
+                                                         json{{"status", "empty"}},
+                                                         json{{"status", "empty"}},
+                                                         json{{"status", "empty"}},
+                                                     })}});
+
+    SlotInfo edit;
+    edit.brand = "Polymaker";
+    edit.material = "PETG";
+    edit.color_rgb = 0x1E5AA8;
+    REQUIRE(backend.set_slot_info(0, edit, /*persist=*/true).success());
+
+    const auto declared = AceTestAccess::get_override(backend, 0);
+    REQUIRE(declared.has_value());
+    REQUIRE(declared->user_locked_color);
+    REQUIRE(declared->user_locked_material);
+    REQUIRE(helix::ams::declared_field_names(declared->declared) == json::array({"brand"}));
+
+    // What the meter does, through the one entry point weight reaches a lane by.
+    backend.update_slot_weight(0, 730.0f, 1000.0f, /*persist=*/true);
+
+    const auto after = AceTestAccess::get_override(backend, 0);
+    REQUIRE(after.has_value());
+    CHECK(after->remaining_weight_g == Catch::Approx(730.0f));
+    CHECK(after->total_weight_g == Catch::Approx(1000.0f));
+    CHECK(after->user_locked_color);
+    CHECK(after->user_locked_material);
+    CHECK(helix::ams::declared_field_names(after->declared) == json::array({"brand"}));
+    CHECK(after->brand == "Polymaker");
+    CHECK(after->material == "PETG");
+    CHECK(after->color_rgb == 0x1E5AA8u);
+
+    // And in the record a restart reads back, where the lock keys are what
+    // tells a stored declaration from a stored memory.
+    const auto stored = api.mock_get_db_value("lane_data", "lane1");
+    REQUIRE(!stored.is_null());
+    CHECK(stored["helix_locked_color"] == true);
+    CHECK(stored["helix_locked_material"] == true);
+    CHECK(stored["helix_declared"] == json::array({"brand"}));
+    CHECK(stored["remaining_weight_g"] == 730.0f);
 }
 
 TEST_CASE("ACE slot transition empty -> present clears override",

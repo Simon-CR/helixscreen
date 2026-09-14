@@ -2781,9 +2781,9 @@ AmsError AmsBackendAd5xIfs::set_slot_info(int slot_index, const SlotInfo& info, 
             return AmsErrorHelper::invalid_slot(lane_noun(), slot_index, NUM_PORTS - 1);
         }
 
-        // The port as it stood before this edit. user_override_from_slot_info needs
-        // it to tell what the user moved from what the editor merely carried
-        // back, so it has to be taken before the writes below.
+        // The port as it stood before this edit. stage_user_override needs it to
+        // tell what the user moved from what the editor merely carried back, so
+        // it has to be taken before the writes below.
         const SlotInfo prior_slot = entry->info;
 
         // Mark slot dirty to prevent parse_save_variables from overwriting our edit
@@ -2853,8 +2853,8 @@ AmsError AmsBackendAd5xIfs::set_slot_info(int slot_index, const SlotInfo& info, 
             // normalize_material() was already applied to the cached materials_
             // copy; record that instead of the raw user-typed string so the
             // on-disk record carries a firmware-valid value.
-            overrides_[slot_index] =
-                helix::ams::user_override_from_slot_info(prior_slot, info, normalized_material);
+            helix::ams::stage_user_override(overrides_, slot_index, prior_slot, info,
+                                            normalized_material);
         }
 
         // Treat the user's chosen color as the new "firmware truth" baseline

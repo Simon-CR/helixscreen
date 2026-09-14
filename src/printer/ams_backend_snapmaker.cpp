@@ -821,7 +821,7 @@ AmsError AmsBackendSnapmaker::set_slot_info(int slot_index, const SlotInfo& info
         // (CFS shares the tracker and DOES register one — it writes
         // color_value back to the box, which is half of its fingerprint.)
         if (persist) {
-            overrides_[slot_index] = helix::ams::user_override_from_slot_info(prior_slot, info);
+            helix::ams::stage_user_override(overrides_, slot_index, prior_slot, info);
         }
     }
 

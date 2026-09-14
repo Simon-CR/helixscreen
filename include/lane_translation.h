@@ -89,22 +89,33 @@ classify_declaration(const FilamentSlotOverride& record, const nlohmann::json& w
                                               const nlohmann::json& wire,
                                               LegacyLockKeys keys = LegacyLockKeys::LaneData);
 
-/// The declared set a user's edit records: every field @p observed carries
-/// whose authorship has no lock flag of its own.
+/// The authorship of a record that amends @p prior with @p observed, where
+/// @p amended is the record about to be stored.
 ///
-/// Takes the observation rather than the record it is about to become, so that
-/// what a person declared is decided once, by user_edit_observation(), and read
-/// here rather than guessed again from the record's values. A record holds what
-/// the lane should show, which includes fields the machine supplied and the
-/// user never moved; only the observation separates the two.
+/// One edit speaks only about the fields it moved, so what it declares is
+/// added to what the lane's record already declared rather than replacing it.
+/// A prior declaration the edit did not mention survives only while @p amended
+/// still holds the value that declaration stood over: a value that moved
+/// without this edit declaring it is no longer the user's word, and claiming
+/// it would hand the machine back its own reading as something it may not
+/// correct.
 ///
-/// Colour and material are deliberately absent. FilamentSlotOverride's
-/// user_locked_color / user_locked_material are their declared bits, and those
-/// flags are load-bearing past authorship - a reader of the shared lane_data
-/// namespace keys on their presence to recognise a record as HelixScreen's.
+/// @p observed rather than @p amended answers what THIS edit declared, so that
+/// question is decided once, by user_edit_observation(), rather than guessed
+/// again from the record's values. A record holds what the lane should show,
+/// which includes fields the machine supplied and the user never moved; only
+/// the observation separates the two.
+///
+/// Colour and material come back on the two lock flags rather than in the
+/// declared set. Those flags are load-bearing past authorship - a reader of
+/// the shared lane_data namespace keys on their presence to recognise a record
+/// as HelixScreen's - and a lock also needs a value to stand over, so a field
+/// @p amended carries nothing in never locks however the edit moved it.
 /// sources_from_record reads each field from whichever of the two homes it
 /// uses, so no caller has to know which is which.
-[[nodiscard]] DeclaredFields declared_fields_supplied(const Observation& observed);
+[[nodiscard]] RecordAuthorship amend_authorship(const Observation& observed,
+                                                const FilamentSlotOverride& prior,
+                                                const FilamentSlotOverride& amended);
 
 /// @p declared as the JSON array of field names both documents persist, under
 /// `helix_declared` in lane_data and `declared` in the local cache.

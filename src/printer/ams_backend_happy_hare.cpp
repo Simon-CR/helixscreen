@@ -2662,10 +2662,10 @@ void AmsBackendHappyHare::apply_overrides(SlotInfo& slot, int slot_index) {
 void AmsBackendHappyHare::persist_override(int slot_index, const SlotInfo& original,
                                            const SlotInfo& info) {
     // Callers hold mutex_, and @p original is the gate as it stood before this
-    // edit: user_override_from_slot_info tells what the user moved from what the
-    // editor merely carried back, so it needs both snapshots.
-    helix::ams::FilamentSlotOverride o = helix::ams::user_override_from_slot_info(original, info);
-    overrides_[slot_index] = o;
+    // edit: stage_user_override tells what the user moved from what the editor
+    // merely carried back, so it needs both snapshots.
+    const helix::ams::FilamentSlotOverride o =
+        helix::ams::stage_user_override(overrides_, slot_index, original, info);
 
     if (override_store_) {
         override_store_->save_async(slot_index, o, [slot_index](bool ok, std::string err) {

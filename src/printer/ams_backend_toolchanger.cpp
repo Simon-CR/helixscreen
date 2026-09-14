@@ -1249,9 +1249,9 @@ AmsError AmsBackendToolChanger::set_slot_info(int slot_index, const SlotInfo& in
         if (!system_info_.units.empty() &&
             slot_index < static_cast<int>(system_info_.units[0].slots.size())) {
             auto& slot = system_info_.units[0].slots[slot_index];
-            // The lane as it stood before this edit. user_override_from_slot_info
-            // needs it to tell what the user moved from what the editor merely
-            // carried back, so it has to be taken before the writes below.
+            // The lane as it stood before this edit. stage_user_override needs it
+            // to tell what the user moved from what the editor merely carried
+            // back, so it has to be taken before the writes below.
             const SlotInfo prior_slot = slot;
             old_mapped_tool = slot.mapped_tool;
             slot.color_rgb = info.color_rgb;
@@ -1287,7 +1287,7 @@ AmsError AmsBackendToolChanger::set_slot_info(int slot_index, const SlotInfo& in
             // klipper-toolchanger supplies no material, colour, brand or weight,
             // so there is nothing underneath for these to fall through to.
             if (persist) {
-                overrides_[slot_index] = helix::ams::user_override_from_slot_info(prior_slot, info);
+                helix::ams::stage_user_override(overrides_, slot_index, prior_slot, info);
             }
         }
     }

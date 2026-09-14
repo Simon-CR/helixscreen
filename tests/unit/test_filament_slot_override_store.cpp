@@ -4,6 +4,7 @@
 #include "filament_slot_override.h"
 #include "filament_slot_override_store.h"
 #include "filament_variants.h"
+#include "lane_translation.h"
 #include "moonraker_api_mock.h"
 #include "moonraker_client_mock.h"
 #include "printer_state.h"
@@ -192,7 +193,7 @@ TEST_CASE("user_override_from_slot_info records a colour the user chose and refu
     SECTION("pure black is a colour a user can choose") {
         helix::SlotInfo info;
         info.color_rgb = 0x000000;
-        const auto ovr = user_override_from_slot_info(empty_lane, info);
+        const auto ovr = user_override_from_slot_info(empty_lane, info, nullptr);
         CHECK(ovr.color_set);
         CHECK(ovr.color_rgb == 0x000000u);
         CHECK(ovr.user_locked_color);
@@ -201,7 +202,7 @@ TEST_CASE("user_override_from_slot_info records a colour the user chose and refu
     SECTION("the no-colour sentinel is not a choice") {
         helix::SlotInfo info;
         info.color_rgb = 0x808080;
-        const auto ovr = user_override_from_slot_info(empty_lane, info);
+        const auto ovr = user_override_from_slot_info(empty_lane, info, nullptr);
         CHECK_FALSE(ovr.color_set);
         CHECK_FALSE(ovr.user_locked_color);
     }
@@ -210,7 +211,7 @@ TEST_CASE("user_override_from_slot_info records a colour the user chose and refu
         helix::SlotInfo info;
         info.color_rgb = 0x808080;
         info.color_name = "Warm Grey";
-        const auto ovr = user_override_from_slot_info(empty_lane, info);
+        const auto ovr = user_override_from_slot_info(empty_lane, info, nullptr);
         CHECK(ovr.color_name == "Warm Grey");
     }
 }
@@ -227,7 +228,7 @@ TEST_CASE("user_override_from_slot_info signs the fields the user supplied",
         helix::SlotInfo info;
         info.color_rgb = 0x1E5AA8;
         info.material = "PETG";
-        const auto ovr = user_override_from_slot_info(empty_lane, info);
+        const auto ovr = user_override_from_slot_info(empty_lane, info, nullptr);
         CHECK(ovr.user_locked_color);
         CHECK(ovr.user_locked_material);
     }
@@ -235,7 +236,7 @@ TEST_CASE("user_override_from_slot_info signs the fields the user supplied",
     SECTION("a colour the user gave locks while a material they left empty does not") {
         helix::SlotInfo info;
         info.color_rgb = 0x112233;
-        const auto ovr = user_override_from_slot_info(empty_lane, info, "");
+        const auto ovr = user_override_from_slot_info(empty_lane, info, "", nullptr);
         CHECK(ovr.material.empty());
         CHECK_FALSE(ovr.user_locked_material);
         CHECK(ovr.user_locked_color);
@@ -245,7 +246,7 @@ TEST_CASE("user_override_from_slot_info signs the fields the user supplied",
         helix::SlotInfo info;
         info.color_rgb = 0x808080;
         info.brand = "Polymaker";
-        const auto ovr = user_override_from_slot_info(empty_lane, info);
+        const auto ovr = user_override_from_slot_info(empty_lane, info, nullptr);
         CHECK_FALSE(ovr.user_locked_color);
         CHECK_FALSE(ovr.user_locked_material);
     }
@@ -263,7 +264,7 @@ TEST_CASE("user_override_from_slot_info signs the fields the user supplied",
         info.bed_temp = 80;
         info.nozzle_temp_min = 230;
         info.nozzle_temp_max = 250;
-        const auto ovr = user_override_from_slot_info(empty_lane, info);
+        const auto ovr = user_override_from_slot_info(empty_lane, info, nullptr);
         CHECK(ovr.brand == "Polymaker");
         CHECK(ovr.spool_name == "Blue PETG 1kg");
         CHECK(ovr.spoolman_id == 42);
@@ -281,7 +282,7 @@ TEST_CASE("user_override_from_slot_info signs the fields the user supplied",
     SECTION("a backend that normalizes the material records and signs that spelling") {
         helix::SlotInfo info;
         info.material = "Silk PLA";
-        const auto ovr = user_override_from_slot_info(empty_lane, info, "SILK");
+        const auto ovr = user_override_from_slot_info(empty_lane, info, "SILK", nullptr);
         CHECK(ovr.material == "SILK");
         CHECK(ovr.user_locked_material);
     }
@@ -289,9 +290,100 @@ TEST_CASE("user_override_from_slot_info signs the fields the user supplied",
     SECTION("a normalized material that comes back empty locks nothing") {
         helix::SlotInfo info;
         info.material = "Silk PLA";
-        const auto ovr = user_override_from_slot_info(empty_lane, info, "");
+        const auto ovr = user_override_from_slot_info(empty_lane, info, "", nullptr);
         CHECK(ovr.material.empty());
         CHECK_FALSE(ovr.user_locked_material);
+    }
+}
+
+TEST_CASE("user_override_from_slot_info amends the record's authorship onto this edit's",
+          "[filament_slot_override][ams]") {
+    using helix::ams::declared_field_names;
+    using helix::ams::user_override_from_slot_info;
+
+    // The lane as the machine reported it, which is what the editor seeds its
+    // working copy from.
+    helix::SlotInfo firmware_lane;
+    firmware_lane.brand = "Firmware Brand";
+    firmware_lane.material = "PLA";
+    firmware_lane.color_rgb = 0x3355FF;
+
+    SECTION("a lane with no record yet declares only what this edit moved") {
+        helix::SlotInfo edited = firmware_lane;
+        edited.brand = "Hatchbox";
+        const auto ovr = user_override_from_slot_info(firmware_lane, edited, nullptr);
+        CHECK(declared_field_names(ovr.declared) == nlohmann::json::array({"brand"}));
+        CHECK_FALSE(ovr.user_locked_color);
+        CHECK_FALSE(ovr.user_locked_material);
+    }
+
+    SECTION("an edit that moves nothing keeps every declaration the record had") {
+        // The shape the consumption meter produces: a persist with a
+        // weight-only diff behind it.
+        helix::SlotInfo chose_all = firmware_lane;
+        chose_all.brand = "Hatchbox";
+        chose_all.material = "ASA";
+        chose_all.color_rgb = 0x1E5AA8;
+        const auto prior = user_override_from_slot_info(firmware_lane, chose_all, nullptr);
+        REQUIRE(prior.user_locked_color);
+        REQUIRE(prior.user_locked_material);
+        REQUIRE(declared_field_names(prior.declared) == nlohmann::json::array({"brand"}));
+
+        helix::SlotInfo weighed = chose_all;
+        weighed.remaining_weight_g = 730.0f;
+        const auto ovr = user_override_from_slot_info(chose_all, weighed, &prior);
+        CHECK(ovr.user_locked_color);
+        CHECK(ovr.user_locked_material);
+        CHECK(declared_field_names(ovr.declared) == nlohmann::json::array({"brand"}));
+        CHECK(ovr.remaining_weight_g == Catch::Approx(730.0f));
+    }
+
+    SECTION("a prior declaration whose value has since moved is not claimed") {
+        // The brand on the lane is no longer the one the record declared, and
+        // this edit says nothing about it. Signing it would hand the machine
+        // back its own reading as a declaration it may not correct.
+        helix::SlotInfo chose_brand = firmware_lane;
+        chose_brand.brand = "Hatchbox";
+        const auto prior = user_override_from_slot_info(firmware_lane, chose_brand, nullptr);
+        REQUIRE(declared_field_names(prior.declared) == nlohmann::json::array({"brand"}));
+
+        helix::SlotInfo moved_lane = chose_brand;
+        moved_lane.brand = "Elegoo";
+        helix::SlotInfo edited = moved_lane;
+        edited.material = "ASA";
+        const auto ovr = user_override_from_slot_info(moved_lane, edited, &prior);
+        CHECK(ovr.brand == "Elegoo");
+        CHECK(declared_field_names(ovr.declared) == nlohmann::json::array());
+        CHECK(ovr.user_locked_material);
+    }
+
+    SECTION("a colour the record declared is dropped when the lane no longer holds it") {
+        helix::SlotInfo chose_colour = firmware_lane;
+        chose_colour.color_rgb = 0x1E5AA8;
+        const auto prior = user_override_from_slot_info(firmware_lane, chose_colour, nullptr);
+        REQUIRE(prior.user_locked_color);
+
+        helix::SlotInfo moved_lane = chose_colour;
+        moved_lane.color_rgb = 0xB22222;
+        helix::SlotInfo edited = moved_lane;
+        edited.spool_name = "Bench spool";
+        const auto ovr = user_override_from_slot_info(moved_lane, edited, &prior);
+        CHECK(ovr.color_rgb == 0xB22222u);
+        CHECK_FALSE(ovr.user_locked_color);
+        CHECK(declared_field_names(ovr.declared) == nlohmann::json::array({"spool_name"}));
+    }
+
+    SECTION("a material the record locked stays locked when the edit leaves it alone") {
+        helix::SlotInfo chose_material = firmware_lane;
+        chose_material.material = "ASA";
+        const auto prior = user_override_from_slot_info(firmware_lane, chose_material, nullptr);
+        REQUIRE(prior.user_locked_material);
+
+        helix::SlotInfo edited = chose_material;
+        edited.spool_name = "Bench spool";
+        const auto ovr = user_override_from_slot_info(chose_material, edited, &prior);
+        CHECK(ovr.material == "ASA");
+        CHECK(ovr.user_locked_material);
     }
 }
 
@@ -303,7 +395,7 @@ TEST_CASE("a field the user never supplied stays fillable by the auto-mirror",
     std::unordered_map<int, FilamentSlotOverride> overrides;
     helix::SlotInfo info;
     info.color_rgb = 0x808080; // no colour reading
-    overrides[0] = helix::ams::user_override_from_slot_info(empty_lane, info, "");
+    overrides[0] = helix::ams::user_override_from_slot_info(empty_lane, info, "", nullptr);
 
     const bool changed = helix::ams::mirror_firmware_to_lane_data(
         nullptr, overrides, 0, 0x1188FF, "PETG", /*slot_has_filament=*/true,
