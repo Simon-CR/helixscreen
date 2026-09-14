@@ -151,6 +151,14 @@ struct LaneWeightShortfall {
     int mapped_backend = -1;
     float needed_g = 0.0f;
     float remaining_g = 0.0f;
+
+    /// The lane's display identity, copied from the AvailableSlot this
+    /// shortfall was measured against so the gate dialog does not re-resolve
+    /// (and, on a multi-unit backend, re-derive the wrong number from
+    /// mapped_slot) what insufficient_lane_weights_in() already found.
+    helix::ui::LaneNoun noun = helix::ui::LaneNoun::Slot;
+    std::string unit_display_name;
+    int local_slot_index = -1;
 };
 
 /**

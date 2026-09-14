@@ -87,17 +87,29 @@ CheckResult warn_result(std::string title, std::string body, std::string proceed
     return r;
 }
 
-/// The word @p available_slots' backend uses for one position, or Slot when
-/// the pairing resolves to nothing — a generic noun beats losing the whole
-/// warning over one unresolvable lane.
-helix::ui::LaneNoun noun_for_slot(const std::vector<AvailableSlot>& available_slots, int slot_index,
-                                  int backend_index) {
+/// The AvailableSlot for the (slot, backend) pair, resolved the same way
+/// FilamentMapper::resolve_mapped_slot() and the mapping card do. nullptr
+/// when the pair is not among @p available_slots.
+const AvailableSlot* resolve_slot_for_display(const std::vector<AvailableSlot>& available_slots,
+                                              int slot_index, int backend_index) {
     for (const auto& slot : available_slots) {
         if (slot.slot_index == slot_index && slot.backend_index == backend_index) {
-            return slot.noun;
+            return &slot;
         }
     }
-    return helix::ui::LaneNoun::Slot;
+    return nullptr;
+}
+
+/// Label a lane for a print-start dialog: the unit-scoped label the mapping
+/// card and remap modal use when the (slot, backend) pair resolves to a live
+/// AvailableSlot, else a generic Slot label from the global index. A generic
+/// label beats losing the whole warning over one unresolvable lane.
+std::string lane_display_label(const std::vector<AvailableSlot>& available_slots, int slot_index,
+                               int backend_index) {
+    if (const auto* slot = resolve_slot_for_display(available_slots, slot_index, backend_index)) {
+        return helix::ui::lane_label(slot->noun, slot->unit_display_name, slot->local_slot_index);
+    }
+    return helix::ui::lane_label(helix::ui::LaneNoun::Slot, slot_index);
 }
 
 /// Ported verbatim from PrintStartController::build_empty_lane_message.
@@ -109,21 +121,19 @@ std::string build_empty_lane_message(const std::vector<std::pair<int, int>>& emp
                                      const std::vector<AvailableSlot>& available_slots) {
     // Name the offending tool(s) and the AMS lane each routes to so the user
     // knows exactly which lane to load. tool_label() spells the gcode tool
-    // ("T0"); lane_label() spells the backend's own word for the position
-    // ("Slot 1", "Lane 1").
+    // ("T0"); lane_display_label() spells the backend's own word for the
+    // position, numbered within its own unit ("Slot 1", "Turtle 2 · Lane 1").
     std::string message;
     if (empty.size() == 1) {
-        const auto noun = noun_for_slot(available_slots, empty[0].second, 0);
         message = fmt::format(lv_tr("{} → {}: no filament loaded."),
                               helix::ui::tool_label(empty[0].first),
-                              helix::ui::lane_label(noun, empty[0].second));
+                              lane_display_label(available_slots, empty[0].second, 0));
     } else {
         message = lv_tr("These tools have no filament loaded:");
         message += "\n\n";
         for (const auto& [tool, slot] : empty) {
-            const auto noun = noun_for_slot(available_slots, slot, 0);
             message += fmt::format("  {} {} → {}\n", LV_SYMBOL_BULLET, helix::ui::tool_label(tool),
-                                   helix::ui::lane_label(noun, slot));
+                                   lane_display_label(available_slots, slot, 0));
         }
     }
     message += "\n\n";
@@ -158,22 +168,22 @@ CheckResult gate_insufficient_lane_weight(const PrintStartContext& ctx) {
     char body[512];
     if (shortfalls.size() == 1) {
         const auto& sf = shortfalls.front();
-        const auto noun = noun_for_slot(ctx.available_slots, sf.mapped_slot, sf.mapped_backend);
-        std::snprintf(body, sizeof(body),
-                      lv_tr("%s has about %.0fg but %s needs about %.0fg. "
-                            "Start anyway?"),
-                      helix::ui::lane_label(noun, sf.mapped_slot).c_str(), sf.remaining_g,
-                      helix::ui::tool_label(sf.tool_index).c_str(), sf.needed_g);
+        std::snprintf(
+            body, sizeof(body),
+            lv_tr("%s has about %.0fg but %s needs about %.0fg. "
+                  "Start anyway?"),
+            helix::ui::lane_label(sf.noun, sf.unit_display_name, sf.local_slot_index).c_str(),
+            sf.remaining_g, helix::ui::tool_label(sf.tool_index).c_str(), sf.needed_g);
     } else {
         // Name every short lane: the user's next move is to remap one of them,
         // and a count alone would not say which.
         std::string list;
         for (const auto& sf : shortfalls) {
-            const auto noun = noun_for_slot(ctx.available_slots, sf.mapped_slot, sf.mapped_backend);
             char one[128];
-            std::snprintf(one, sizeof(one), lv_tr("%s: %.0fg of %.0fg needed"),
-                          helix::ui::lane_label(noun, sf.mapped_slot).c_str(), sf.remaining_g,
-                          sf.needed_g);
+            std::snprintf(
+                one, sizeof(one), lv_tr("%s: %.0fg of %.0fg needed"),
+                helix::ui::lane_label(sf.noun, sf.unit_display_name, sf.local_slot_index).c_str(),
+                sf.remaining_g, sf.needed_g);
             if (!list.empty()) {
                 list += "\n";
             }
@@ -596,6 +606,12 @@ std::vector<LaneWeightShortfall> insufficient_lane_weights_in(const PrintStartCo
             sf.mapped_backend = m.mapped_backend;
             sf.needed_g = static_cast<float>(needed_g);
             sf.remaining_g = lane->remaining_weight_g;
+            // Carry the lane's display identity forward so the gate dialog
+            // labels it within its own unit instead of re-deriving from the
+            // global mapped_slot.
+            sf.noun = lane->noun;
+            sf.unit_display_name = lane->unit_display_name;
+            sf.local_slot_index = lane->local_slot_index;
             shortfalls.push_back(sf);
             spdlog::info("[PrintStartController] Lane short: tool {} -> slot {} needs {:.0f} g, "
                          "has {:.0f} g",

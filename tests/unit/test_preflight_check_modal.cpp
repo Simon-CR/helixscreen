@@ -145,6 +145,45 @@ TEST_CASE_METHOD(LVGLUITestFixture,
     }
 }
 
+TEST_CASE_METHOD(LVGLUITestFixture,
+                 "PreflightCheckModal explanation names a multi-unit lane within its own unit",
+                 "[preflight][modal][ui]") {
+    // Box Turtle 1 (global 0-3) + Night Owl (global 4-5): global slot 5 is
+    // Night Owl's second lane, local index 1 - "Night Owl · Lane 2" on every
+    // other surface (mapping chip, remap modal). The explanation must agree,
+    // not spell it "Lane 6" from the global index.
+    auto& ams = helix::AmsState::instance();
+    ams.init_subjects(false);
+    auto owned_backend = std::make_unique<helix::AmsBackendMock>();
+    auto* backend = owned_backend.get();
+    backend->set_operation_delay(0);
+    ams.set_backend(std::move(owned_backend));
+    backend->set_multi_unit_mode(true);
+
+    helix::PreflightResult pf;
+    pf.checks = {
+        make_check(0, 0xF5A623, "PETG", /*slot=*/5, false, helix::ToolCheck::Severity::EmptySlot)};
+
+    auto owned = std::make_unique<helix::ui::PreflightCheckModal>();
+    auto* modal = owned.get();
+    modal->set_checks(pf);
+    REQUIRE(Modal::show_owned(std::move(owned), test_screen()));
+    process_lvgl(50);
+
+    lv_obj_t* explain = lv_obj_find_by_name(test_screen(), "preflight_explanation");
+    REQUIRE(explain != nullptr);
+    std::string text = lv_label_get_text(explain);
+    CHECK(text.find("Night Owl") != std::string::npos);
+    CHECK(text.find("Lane 2") != std::string::npos);
+    CHECK(text.find("Lane 6") == std::string::npos);
+
+    modal->hide();
+    process_lvgl(50);
+    helix::ui::UpdateQueue::instance().drain();
+    ams.clear_backends();
+    ams.deinit_subjects();
+}
+
 // The Remap affordance is offered only when the backend can actually carry out
 // the pick — the declared route AND its readiness. Asking the route alone
 // offered the button on an AD5X before `_IFS_VARS` discovery, where
