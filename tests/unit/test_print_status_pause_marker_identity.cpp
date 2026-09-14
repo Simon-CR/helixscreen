@@ -3,22 +3,25 @@
 
 /**
  * @file test_print_status_pause_marker_identity.cpp
- * @brief A print-status gcode load names the print it was fetched for
- *        (prestonbrown/helixscreen#1509).
+ * @brief A print-status gcode load only takes effect for the print
+ *        PrinterState currently reports as effective (prestonbrown/helixscreen#1509).
  *
- * When a load completes, the panel publishes the scan's scheduled pauses to
- * PrinterState and records whose geometry the viewer holds. Both must name the
- * file that load was for. Two fetches overlap whenever print A's download is
- * still running as print B starts; if A's load lands and publishes under B's
- * name, A's ticks draw on B's progress bar, and ensure_preview_current()
- * believes B's geometry is on screen.
+ * A gcode fetch crosses a metadata lookup, a download and the viewer's own
+ * background build, and the print can change at any point along that chain.
+ * Every stage compares the print it is fetching or loading against
+ * PrinterState::get_effective_print_filename() before acting on it, and drops
+ * the result instead of applying it when the two no longer match: the
+ * currently-displayed print's geometry, gcode_displayed_file_ and its pause
+ * markers are left exactly as they were, and ensure_preview_current()
+ * reconciles against whichever print is effective by then.
  *
- * A load that lands for a print that is no longer running also leaves the
- * running print's own state alone: the runout badge is not scoped to the stale
- * file's tools, and the stale file's layer count does not become the print's.
+ * A load that DOES apply also leaves the running print's own state alone when
+ * it turns out to be scoped wrong: the runout badge is not scoped to a file
+ * the viewer no longer displays, and a stale file's layer count does not
+ * become the print's.
  *
  * Every download is held by the transfer mock until the test releases it by
- * name, so the overlap is ordered by the test instead of by timing.
+ * name, so two fetches can be made to land in either order.
  */
 
 #include "ui_gcode_viewer.h"
@@ -37,11 +40,13 @@
 #include "moonraker_client_mock.h"
 #include "printer_state.h"
 
+#include <chrono>
 #include <cstdlib>
 #include <filesystem>
 #include <functional>
 #include <memory>
 #include <string>
+#include <thread>
 #include <unistd.h>
 #include <vector>
 
@@ -190,6 +195,46 @@ class PauseMarkerIdentityFixture : public LVGLTestFixture {
         drain();
     }
 
+    /// Complete @p filename's held download for a load the panel is expected
+    /// to drop as no longer the effective print. A dropped load never reaches
+    /// the viewer and never starts a background build, so there is no publish
+    /// to wait on: releasing the download and draining the queue that carries
+    /// it to load_gcode_file() is the whole round trip in the passing case.
+    /// The extra settle wait matters only when a gate under test has been
+    /// removed by hand: it gives a load that slipped past it time to finish
+    /// its background build and deliver, so the assertions that follow see
+    /// its result rather than a work-in-progress false negative.
+    void land_dropped(const std::string& filename) {
+        REQUIRE(transfers_.release(filename));
+        drain();
+        // A load that slipped past the entry gate (a temporary revert, when
+        // proving that gate is load-bearing) starts a real background build,
+        // and the very first one run against a fresh viewer can take well
+        // over a second before it is queued for delivery. Waiting on the
+        // queue rather than a fixed sleep is what makes this reliable either
+        // way; the drain that follows is what actually delivers it, which is
+        // also where the load callback's own identity check - still present
+        // even with the entry gate reverted - routes a stale delivery through
+        // ensure_preview_current() and clears whatever it just installed.
+        wait_for_queued_result(std::chrono::seconds(5));
+        drain();
+    }
+
+    /// Wait on the real clock, without draining the UpdateQueue, until a
+    /// worker has queued something. Lets a test observe a load's background
+    /// build finishing before the result is delivered to the panel.
+    bool wait_for_queued_result(std::chrono::milliseconds budget) {
+        auto& queue = helix::ui::UpdateQueue::instance();
+        const auto deadline = std::chrono::steady_clock::now() + budget;
+        while (std::chrono::steady_clock::now() < deadline) {
+            if (!helix::ui::UpdateQueueTestAccess::queue_empty(queue)) {
+                return true;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        }
+        return !helix::ui::UpdateQueueTestAccess::queue_empty(queue);
+    }
+
     int pause_markers_version() {
         return lv_subject_get_int(state_.get_pause_markers_version_subject());
     }
@@ -236,16 +281,19 @@ TEST_CASE_METHOD(PauseMarkerIdentityFixture,
     start_fetch(PRINT_B);
 
     SECTION("A lands while B is still downloading") {
-        land(PRINT_A);
+        land_dropped(PRINT_A);
 
-        // A's scan was published, so the hidden markers are the identity gate
-        // rejecting it rather than a publish that never happened.
-        REQUIRE_FALSE(state_.get_scheduled_pauses().empty());
-        CHECK_FALSE(state_.pause_markers_match_current_file());
-        CHECK(gcode_displayed_file() == PRINT_A);
+        // A's load never reached the viewer: neither print has anything
+        // displayed yet, its scan was never published, and the widget itself
+        // holds no geometry - not just the panel's own bookkeeping.
+        CHECK(state_.get_scheduled_pauses().empty());
+        CHECK(gcode_displayed_file().empty());
+        CHECK_FALSE(ui_gcode_viewer_has_content(viewer_));
 
         land(PRINT_B);
 
+        // B's own load is the only one that ever applied: PRINT_B carries no
+        // pauses, and its displayed-file name is its own, not A's.
         CHECK(state_.get_scheduled_pauses().empty());
         CHECK(gcode_displayed_file() == PRINT_B);
     }
@@ -253,13 +301,51 @@ TEST_CASE_METHOD(PauseMarkerIdentityFixture,
     SECTION("A lands after B has loaded") {
         land(PRINT_B);
         CHECK(gcode_displayed_file() == PRINT_B);
+        const int version_after_b = pause_markers_version();
+        const char* widget_file_raw = ui_gcode_viewer_get_filename(viewer_);
+        const std::string widget_file_after_b = widget_file_raw ? widget_file_raw : "";
 
-        land(PRINT_A);
+        land_dropped(PRINT_A);
 
-        REQUIRE_FALSE(state_.get_scheduled_pauses().empty());
-        CHECK_FALSE(state_.pause_markers_match_current_file());
-        CHECK(gcode_displayed_file() == PRINT_A);
+        // A's late load is dropped before it reaches the viewer: B's own
+        // geometry and pause markers, published above, are untouched by it -
+        // including the widget's own record of which file it holds, not just
+        // the panel's copy of that name.
+        CHECK(pause_markers_version() == version_after_b);
+        CHECK(state_.get_scheduled_pauses().empty());
+        CHECK(gcode_displayed_file() == PRINT_B);
+        widget_file_raw = ui_gcode_viewer_get_filename(viewer_);
+        CHECK((widget_file_raw ? std::string(widget_file_raw) : std::string()) ==
+              widget_file_after_b);
     }
+}
+
+TEST_CASE_METHOD(PauseMarkerIdentityFixture,
+                 "Print status: a load that goes stale mid-flight is dropped when it is delivered",
+                 "[print_status][pause_markers][1509][slow]") {
+    report_print(PRINT_A);
+    start_fetch(PRINT_A);
+
+    // A is still the effective print when its download lands, so the entry
+    // check passes and the viewer's own background build actually starts.
+    REQUIRE(transfers_.release(PRINT_A));
+    drain();
+
+    // A's build finished and its result is sitting in the UpdateQueue,
+    // undelivered, when the print moves on. Nothing has fetched B's own gcode
+    // yet, so the viewer's widget-level load generation never advances: only
+    // the panel's own identity check, made when the result is delivered, can
+    // catch this.
+    REQUIRE(wait_for_queued_result(std::chrono::seconds(30)));
+
+    nlohmann::json status = {{"print_stats", {{"filename", PRINT_B}}}};
+    state_.update_from_status(status);
+    REQUIRE(state_.get_effective_print_filename() == PRINT_B);
+
+    drain();
+
+    CHECK(gcode_displayed_file().empty());
+    CHECK(state_.get_scheduled_pauses().empty());
 }
 
 namespace {
@@ -328,16 +414,18 @@ TEST_CASE_METHOD(StaleLoadFixture,
     REQUIRE(scoped_runout() == -1);
     REQUIRE(layer_total() == 0);
 
-    land(STALE_PRINT);
+    land_dropped(STALE_PRINT);
 
-    // The stale load reached the panel's load callback: land() waited for its
-    // publish, and its geometry is what the viewer now records.
-    REQUIRE(gcode_displayed_file() == STALE_PRINT);
+    // The stale load is dropped before it reaches the viewer: nothing has
+    // been displayed yet, for either print, and the widget itself holds no
+    // geometry - not just the panel's own bookkeeping.
+    REQUIRE(gcode_displayed_file().empty());
+    CHECK_FALSE(ui_gcode_viewer_has_content(viewer_));
     CHECK(scoped_runout() == -1);
     CHECK(layer_total() == 0);
 
-    // B's own load does apply both, so the two checks above are the stale load
-    // being held back rather than effects that never run.
+    // B's own load does apply both, so the two checks above are the drop
+    // holding the stale load back rather than effects that never run.
     land(PRINT_B);
     CHECK(scoped_runout() == 1);
     CHECK(layer_total() > 0);
@@ -347,33 +435,33 @@ TEST_CASE_METHOD(
     StaleLoadFixture,
     "Print status: a runout-sensor edge does not scope the badge to a stale load's tools",
     "[print_status][pause_markers][1509][slow]") {
+    // The stale print's own load lands while it is still the effective print,
+    // so it applies normally: the viewer really does hold its geometry.
     report_printing(STALE_PRINT);
     start_fetch(STALE_PRINT);
-
-    // The stale print is cancelled and B started while its download is running.
-    report_printing(PRINT_B);
-    start_fetch(PRINT_B);
-
     land(STALE_PRINT);
-
-    // The load callback's own guard already keeps the badge hidden here (it
-    // does not call recompute_scoped_runout() for a load whose print is no
-    // longer effective). The viewer's real content is now the stale print's
-    // geometry (tools 0-3), still sitting there because B's own load has not
-    // landed yet.
     REQUIRE(gcode_displayed_file() == STALE_PRINT);
-    REQUIRE(scoped_runout() == -1);
+    REQUIRE(scoped_runout() == 1);
+
+    // The print moves on, but nothing has fetched B's own gcode yet: the
+    // viewer's widget still physically holds the stale print's geometry
+    // (tools 0-3), even though set_filename() cleared the displayed-file
+    // marker to force a reload.
+    report_printing(PRINT_B);
+    REQUIRE(gcode_displayed_file().empty());
 
     // A runout-sensor edge or an AMS slots_version bump recomputes the badge
     // independently of any load completing (the observers at
     // scoped_runout_observer_ / scoped_runout_slots_observer_ call
-    // recompute_scoped_runout() directly). B's own gcode still has not landed,
-    // so the only tools available to scope against are the stale print's.
+    // recompute_scoped_runout() directly). Without the guard this would read
+    // the stale print's tools straight off the viewer.
     PrintStatusPanelTestAccess::recompute_scoped_runout(*panel_);
     CHECK(scoped_runout() == -1);
 
-    // B's own load does apply the real value, so the check above is the guard
-    // holding the badge back rather than a badge that never updates.
+    // B's own load does apply the real value once it lands, so the check
+    // above is the guard holding the badge back rather than a badge that
+    // never updates.
+    start_fetch(PRINT_B);
     land(PRINT_B);
     CHECK(scoped_runout() == 1);
 }
