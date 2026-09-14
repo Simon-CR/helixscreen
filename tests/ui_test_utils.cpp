@@ -6,6 +6,7 @@
 #include "ui_modal.h"
 #include "ui_update_queue.h"
 
+#include "lib/lvgl/src/core/lv_global.h"
 #include "lib/lvgl/src/misc/lv_timer_private.h"
 #include "platform_info.h"
 #include "spdlog/spdlog.h"
@@ -111,22 +112,26 @@ uint32_t lv_timer_handler_safe() {
                         t->repeat_count--;
                     }
                     const bool exhausted = t->repeat_count == 0;
+                    // Reset LVGL's own delete-tracking flag (lv_timer_private.h)
+                    // right before the call, mirroring lv_timer_exec()'s gate
+                    // (lv_timer.c). lv_async_call's callback (lv_async.c) frees
+                    // its timer BEFORE running the user function, so a nested
+                    // lv_async_call from that user function can allocate its new
+                    // timer at the same address `t` occupied (ABA). Re-finding
+                    // `t` by pointer afterward would then delete that new timer
+                    // instead of doing nothing. The flag tells us definitively
+                    // whether anything was deleted during the call, so a spent
+                    // `t` is never touched again and a still-live `t` is deleted
+                    // directly, with no re-scan.
+                    LV_GLOBAL_DEFAULT()->timer_state.timer_deleted = false;
                     t->timer_cb(t);
                     // Match lv_timer_handler(): it deletes a timer whose repeat
                     // count reached 0 (lv_timer.c:369). Leaving it behind parks
                     // a spent lv_timer_t in LVGL's list holding the callback's
                     // user_data, so an owner destroyed later cannot free what it
-                    // no longer has a handle to. Re-find it rather than reusing
-                    // `t`: the callback may already have deleted it (the common
-                    // one-shot pattern nulls its own handle and returns).
-                    if (exhausted) {
-                        for (lv_timer_t* s = lv_timer_get_next(nullptr); s != nullptr;
-                             s = lv_timer_get_next(s)) {
-                            if (s == t) {
-                                lv_timer_delete(t);
-                                break;
-                            }
-                        }
+                    // no longer has a handle to.
+                    if (exhausted && !LV_GLOBAL_DEFAULT()->timer_state.timer_deleted) {
+                        lv_timer_delete(t);
                     }
                     found = true;
                     break; // Restart iteration since list may have changed
