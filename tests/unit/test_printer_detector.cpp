@@ -5481,9 +5481,8 @@ TEST_CASE("PrinterDetector: preset_default survives database array order, not ju
         fs::create_directories(temp_root / "config_dir");
 
         // Each family's real entries, reversed from printer_database.json's own
-        // order so the base model is last, not first: the shape that used to
-        // decide get_name_for_preset() by database order before the marker
-        // existed. Only "preset" and "preset_default" matter to this lookup.
+        // order so the base model is last, not first. Only "preset" and
+        // "preset_default" matter to this lookup.
         std::ofstream(temp_root / "assets" / "config" / "printer_database.json") << R"JSON({
                 "version": "test-order-1.0",
                 "printers": [
