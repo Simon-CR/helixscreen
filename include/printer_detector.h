@@ -52,6 +52,13 @@ struct PrinterDetectionResult {
     int uncapped_confidence = 0;
     int runner_up_uncapped_confidence = 0;
 
+    /// The printers a person has to choose between. The winner comes first.
+    /// When ambiguous(), every other candidate picturing a different machine
+    /// that the winner does not lead by PrinterDetector::DETECT_MIN_MARGIN
+    /// follows, one name per machine. Only the winner when the detection
+    /// separated; empty when nothing was identified.
+    std::vector<std::string> contenders;
+
     /**
      * @brief Check if detection succeeded
      * @return true if confidence > 0, false otherwise
@@ -60,12 +67,17 @@ struct PrinterDetectionResult {
         return confidence > 0;
     }
 
+    /// How far the winner leads a candidate that scored @p rival_confidence
+    /// published and @p rival_uncapped before the ceiling (0 when unknown).
+    int lead_over(int rival_confidence, int rival_uncapped) const {
+        const int winner = uncapped_confidence > 0 ? uncapped_confidence : confidence;
+        const int rival = rival_uncapped > 0 ? rival_uncapped : rival_confidence;
+        return winner - rival;
+    }
+
     /// How far the winner leads the best candidate with a different outcome.
     int margin() const {
-        const int winner = uncapped_confidence > 0 ? uncapped_confidence : confidence;
-        const int rival = runner_up_uncapped_confidence > 0 ? runner_up_uncapped_confidence
-                                                            : runner_up_confidence;
-        return winner - rival;
+        return lead_over(runner_up_confidence, runner_up_uncapped_confidence);
     }
 
     /// A detection that named a printer without separating it from an

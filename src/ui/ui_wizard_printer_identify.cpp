@@ -37,9 +37,11 @@ using namespace helix;
 // Selector view states, values of the wizard_printer_view subject the XML
 // containers and header bind to.
 namespace {
-constexpr int kViewTiles = 0;  // vendor tile grid (browse level)
-constexpr int kViewVendor = 1; // one vendor's models, back affordance visible
-constexpr int kViewSearch = 2; // flat matches across every machine
+constexpr int kViewTiles = 0;      // vendor tile grid (browse level)
+constexpr int kViewVendor = 1;     // one vendor's models, back affordance visible
+constexpr int kViewSearch = 2;     // flat matches across every machine
+constexpr int kViewCandidates = 3; // the printers a tied detection could not separate
+constexpr int kNoSelection = -1;   // printer_type_selected when nothing is picked
 } // namespace
 
 // ============================================================================
@@ -121,19 +123,34 @@ static PrinterDetectionHint detect_printer_type(const std::string& kinematics) {
     }
 
     // Map detected type_name to list index (filtered by kinematics)
-    int type_index = PrinterDetector::find_list_index(result.type_name, kinematics);
+    const int unknown_index = PrinterDetector::get_unknown_list_index(kinematics);
+    PrinterDetectionHint hint{PrinterDetector::find_list_index(result.type_name, kinematics),
+                              result.confidence, result.type_name};
 
-    if (type_index == PrinterDetector::get_unknown_list_index(kinematics) &&
-        result.confidence > 0) {
+    // A tie is the detector's verdict, not a detection: carry the printers it
+    // could not separate so the step offers them instead of its winner.
+    if (result.ambiguous()) {
+        hint.ambiguous = true;
+        for (const auto& name : result.contenders) {
+            const int index = PrinterDetector::find_list_index(name, kinematics);
+            if (index != unknown_index &&
+                std::find(hint.candidate_indices.begin(), hint.candidate_indices.end(), index) ==
+                    hint.candidate_indices.end()) {
+                hint.candidate_indices.push_back(index);
+            }
+        }
+    }
+
+    if (hint.type_index == unknown_index) {
         spdlog::warn("[Wizard Printer] Detected '{}' ({}% confident) but not found in printer list",
                      result.type_name, result.confidence);
-        return {PrinterDetector::get_unknown_list_index(kinematics), result.confidence,
-                result.type_name + " (not in dropdown list)"};
+        hint.type_name = result.type_name + " (not in dropdown list)";
+        return hint;
     }
 
     spdlog::debug("[Wizard Printer] Auto-detected: {} (confidence: {})", result.type_name,
                   result.confidence);
-    return {type_index, result.confidence, result.type_name};
+    return hint;
 }
 
 // ============================================================================
@@ -244,7 +261,14 @@ void WizardPrinterIdentifyStep::init_subjects() {
 
     // Always run auto-detection (even when config has a saved type, e.g. re-running wizard)
     PrinterDetectionHint hint = detect_printer_type(detected_kinematics_);
-    if (hint.confidence >= 70) {
+    candidate_indices_ = hint.candidate_indices;
+    if (hint.ambiguous) {
+        // The detector could not separate its candidates: offer them, select
+        // nothing, and save only the type the user picks.
+        default_type = kNoSelection;
+        spdlog::info("[{}] Auto-detection tied {} printers in the list; asking the user",
+                     get_name(), candidate_indices_.size());
+    } else if (hint.confidence >= 70) {
         // High-confidence detection overrides saved type
         default_type = hint.type_index;
         spdlog::info("[{}] Auto-detection: {} (confidence: {}%)", get_name(), hint.type_name,
@@ -271,7 +295,9 @@ void WizardPrinterIdentifyStep::init_subjects() {
 
     // Initialize detection status message
     const char* status_msg;
-    if (hint.confidence >= 70) {
+    if (hint.ambiguous) {
+        status_msg = lv_tr("Several printers match - choose yours");
+    } else if (hint.confidence >= 70) {
         snprintf(printer_detection_status_buffer_, sizeof(printer_detection_status_buffer_), "%s",
                  hint.type_name.c_str());
         status_msg = printer_detection_status_buffer_;
@@ -288,16 +314,12 @@ void WizardPrinterIdentifyStep::init_subjects() {
     UI_SUBJECT_INIT_AND_REGISTER_STRING(printer_detection_status_, printer_detection_status_buffer_,
                                         status_msg, "printer_detection_status");
 
-    // Initialize validation state
-    printer_identify_validated_ = (default_name.length() > 0);
-
-    // Control Next button reactively
-    int button_state = printer_identify_validated_ ? 1 : 0;
-    lv_subject_set_int(&connection_test_passed, button_state);
+    name_valid_ = (default_name.length() > 0);
+    update_validation();
 
     subjects_initialized_ = true;
-    spdlog::debug("[{}] Subjects initialized (validation: {}, button_state: {})", get_name(),
-                  printer_identify_validated_ ? "valid" : "invalid", button_state);
+    spdlog::debug("[{}] Subjects initialized (validation: {})", get_name(),
+                  printer_identify_validated_ ? "valid" : "invalid");
 }
 
 // ============================================================================
@@ -355,8 +377,8 @@ void WizardPrinterIdentifyStep::handle_printer_name_changed(lv_event_t* event) {
     bool is_too_long = (trimmed.length() > max_length);
     bool is_valid = !is_empty && !is_too_long;
 
-    printer_identify_validated_ = is_valid;
-    lv_subject_set_int(&connection_test_passed, printer_identify_validated_ ? 1 : 0);
+    name_valid_ = is_valid;
+    update_validation();
 
     // Log validation issues for debugging (Next button state is the user-facing feedback)
     if (is_too_long) {
@@ -380,6 +402,7 @@ void WizardPrinterIdentifyStep::handle_printer_type_changed(lv_event_t* event) {
 
     // Update subject
     lv_subject_set_int(&printer_type_selected_, selected);
+    update_validation();
 
     // Update printer preview image (resolve name from filtered list)
     if (printer_preview_image_) {
@@ -501,6 +524,10 @@ lv_obj_t* WizardPrinterIdentifyStep::create(lv_obj_t* parent) {
         spdlog::warn("[{}] Printer preview image not found in XML", get_name());
     }
 
+    // The wizard enables Next before every step; here the name and the
+    // selection decide it, including on a revisit.
+    update_validation();
+
     lv_obj_update_layout(screen_root_);
 
     spdlog::debug("[{}] Screen created successfully", get_name());
@@ -552,11 +579,14 @@ void WizardPrinterIdentifyStep::cleanup() {
         // Manager's model row via PrinterDetector::apply_type_choice() - both
         // are "the user picked this model", and detection now declines to guess
         // whenever it is unsure, so these hand-pick paths carry real traffic.
-        spdlog::debug("[{}] Saving printer type to config: '{}' (index {})", get_name(), type_name,
-                      type_index);
-
         IMoonrakerAPI* api = get_moonraker_api();
-        if (api) {
+        if (type_index == kNoSelection) {
+            // Nothing was picked, as when detection tied: the saved type stays
+            // what it was, and nothing the detector guessed is written.
+            spdlog::debug("[{}] No printer type selected, not saving one", get_name());
+        } else if (api) {
+            spdlog::debug("[{}] Saving printer type to config: '{}' (index {})", get_name(),
+                          type_name, type_index);
             std::string applied =
                 PrinterDetector::apply_type_choice(config, type_name, api->hardware());
             if (!applied.empty()) {
@@ -649,6 +679,12 @@ void WizardPrinterIdentifyStep::cleanup() {
 
 bool WizardPrinterIdentifyStep::is_validated() const {
     return printer_identify_validated_;
+}
+
+void WizardPrinterIdentifyStep::update_validation() {
+    printer_identify_validated_ =
+        name_valid_ && lv_subject_get_int(&printer_type_selected_) != kNoSelection;
+    lv_subject_set_int(&connection_test_passed, printer_identify_validated_ ? 1 : 0);
 }
 
 // ============================================================================
@@ -824,10 +860,15 @@ void WizardPrinterIdentifyStep::apply_view(int view) {
         }
         const auto& entry = selector_entries_[i];
 
-        const bool show =
-            (view == kViewSearch)
-                ? ui::selector_entry_matches(entry, search_query_)
-                : (view == kViewVendor) && (ui::selector_bucket_of(entry) == active_vendor_);
+        bool show = false;
+        if (view == kViewSearch) {
+            show = ui::selector_entry_matches(entry, search_query_);
+        } else if (view == kViewVendor) {
+            show = ui::selector_bucket_of(entry) == active_vendor_;
+        } else if (view == kViewCandidates) {
+            show = std::find(candidate_indices_.begin(), candidate_indices_.end(),
+                             static_cast<int>(i)) != candidate_indices_.end();
+        }
         if (show) {
             lv_obj_remove_flag(row, LV_OBJ_FLAG_HIDDEN);
             ++visible;
@@ -836,10 +877,10 @@ void WizardPrinterIdentifyStep::apply_view(int view) {
         }
 
         // Child 1 of a row is its vendor label (child 0 is the model name);
-        // shown only while searching, where the flat list mixes vendors.
+        // shown only where the list can mix vendors: search and candidates.
         lv_obj_t* vendor_label = lv_obj_get_child(row, 1);
         if (vendor_label) {
-            if (view == kViewSearch && !entry.group.empty()) {
+            if ((view == kViewSearch || view == kViewCandidates) && !entry.group.empty()) {
                 lv_obj_remove_flag(vendor_label, LV_OBJ_FLAG_HIDDEN);
             } else {
                 lv_obj_add_flag(vendor_label, LV_OBJ_FLAG_HIDDEN);
@@ -853,6 +894,13 @@ void WizardPrinterIdentifyStep::apply_view(int view) {
 
 void WizardPrinterIdentifyStep::enter_initial_view() {
     const int selected = lv_subject_get_int(&printer_type_selected_);
+    if (selected == kNoSelection && !candidate_indices_.empty()) {
+        // A tied detection with nothing picked yet opens on its candidates.
+        active_vendor_.clear();
+        apply_view(kViewCandidates);
+        spdlog::debug("[{}] Opened on {} tied candidates", get_name(), candidate_indices_.size());
+        return;
+    }
     if (selected >= 0 && static_cast<size_t>(selected) < selector_entries_.size()) {
         const auto& entry = selector_entries_[selected];
         // A detected or previously selected machine opens inside its vendor's
@@ -945,6 +993,7 @@ void WizardPrinterIdentifyStep::on_printer_type_item_clicked(lv_event_t* e) {
 
         // Update visual selection
         self->update_list_selection(index);
+        self->update_validation();
 
         // Update printer preview image (resolve name from filtered list)
         if (self->printer_preview_image_) {

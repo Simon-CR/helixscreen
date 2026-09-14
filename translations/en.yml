@@ -1708,6 +1708,7 @@ translations:
   Match: Match
   Match to belt A: Match to belt A
   Match your typical print fan speed: Match your typical print fan speed
+  Matching printers: Matching printers
   Material: Material
   'Material Comfort:': 'Material Comfort:'
   Material Mismatch: Material Mismatch
@@ -2679,6 +2680,7 @@ translations:
   Setup: Setup
   Setup Complete!: Setup Complete!
   Setup Timelapse: Setup Timelapse
+  Several printers match - choose yours: Several printers match - choose yours
   Shadow Intensity: Shadow Intensity
   Share Usage Data: Share Usage Data
   Share anonymous usage statistics to help us make HelixScreen better. No personal data is ever collected.: Share

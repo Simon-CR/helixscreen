@@ -1016,6 +1016,28 @@ PrinterDetectionResult PrinterDetector::detect(const PrinterHardwareData& hardwa
                     break;
                 }
             }
+
+            // The machines a person has to choose between: every outcome the
+            // winner does not lead by the margin floor, one name per machine.
+            // Listed past the winner only when the result is ambiguous, so the
+            // list never disagrees with margin().
+            best_match.contenders.push_back(winner.result.type_name);
+            if (best_match.ambiguous()) {
+                std::vector<const ScoredCandidate*> listed{&winner};
+                for (auto it = candidates.begin() + 1; it != candidates.end(); ++it) {
+                    const bool separated =
+                        best_match.lead_over(it->result.confidence,
+                                             it->result.uncapped_confidence) >= DETECT_MIN_MARGIN;
+                    const bool same_machine =
+                        std::any_of(listed.begin(), listed.end(), [&](const ScoredCandidate* c) {
+                            return it->same_outcome_as(*c);
+                        });
+                    if (!separated && !same_machine) {
+                        listed.push_back(&*it);
+                        best_match.contenders.push_back(it->result.type_name);
+                    }
+                }
+            }
         }
 
         if (best_match.confidence > 0) {

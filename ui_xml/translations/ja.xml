@@ -1570,6 +1570,7 @@
   <translation tag="Match" ja="一致度"/>
   <translation tag="Match to belt A" ja="ベルトAに合わせる"/>
   <translation tag="Match your typical print fan speed" ja="通常の印刷ファン速度に合わせてください"/>
+  <translation tag="Matching printers" ja="一致するプリンター"/>
   <translation tag="Material" ja="素材"/>
   <translation tag="Material Comfort:" ja="素材の適合度:"/>
   <translation tag="Material Mismatch" ja="素材の不一致"/>
@@ -2464,6 +2465,7 @@
   <translation tag="Setup" ja="セットアップ"/>
   <translation tag="Setup Complete!" ja="セットアップ完了！"/>
   <translation tag="Setup Timelapse" ja="タイムラプスを設定"/>
+  <translation tag="Several printers match - choose yours" ja="複数のプリンターが一致します - 選択してください"/>
   <translation tag="Shadow Intensity" ja="影の強度"/>
   <translation tag="Share Usage Data" ja="使用データを共有"/>
   <translation tag="Share anonymous usage statistics to help us make HelixScreen better. No personal data is ever collected." ja="匿名の使用統計を共有して、HelixScreen の改善にご協力ください。個人データは一切収集されません。"/>

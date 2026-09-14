@@ -1570,6 +1570,7 @@
   <translation tag="Match" pt="Correspondência"/>
   <translation tag="Match to belt A" pt="Correspondência à correia A"/>
   <translation tag="Match your typical print fan speed" pt="Ajuste a velocidade típica da ventoinha de impressão"/>
+  <translation tag="Matching printers" pt="Impressoras correspondentes"/>
   <translation tag="Material" pt="Material"/>
   <translation tag="Material Comfort:" pt="Conforto do Material:"/>
   <translation tag="Material Mismatch" pt="Material Incompatível"/>
@@ -2464,6 +2465,7 @@
   <translation tag="Setup" pt="Configuração"/>
   <translation tag="Setup Complete!" pt="Configuração Concluída!"/>
   <translation tag="Setup Timelapse" pt="Configurar Timelapse"/>
+  <translation tag="Several printers match - choose yours" pt="Várias impressoras correspondem - escolha a sua"/>
   <translation tag="Shadow Intensity" pt="Intensidade da Sombra"/>
   <translation tag="Share Usage Data" pt="Compartilhar Dados de Uso"/>
   <translation tag="Share anonymous usage statistics to help us make HelixScreen better. No personal data is ever collected." pt="Compartilhe estatísticas de uso anônimas para nos ajudar a melhorar o HelixScreen. Nenhum dado pessoal é coletado."/>

@@ -1570,6 +1570,7 @@
   <translation tag="Match" ru="Совпадение"/>
   <translation tag="Match to belt A" ru="Совпадение с ремнём A"/>
   <translation tag="Match your typical print fan speed" ru="Настройте типичную скорость вентилятора печати"/>
+  <translation tag="Matching printers" ru="Подходящие принтеры"/>
   <translation tag="Material" ru="Материал"/>
   <translation tag="Material Comfort:" ru="Комфорт материала:"/>
   <translation tag="Material Mismatch" ru="Несоответствие материала"/>
@@ -2464,6 +2465,7 @@
   <translation tag="Setup" ru="Настройка"/>
   <translation tag="Setup Complete!" ru="Настройка завершена!"/>
   <translation tag="Setup Timelapse" ru="Настроить таймлапс"/>
+  <translation tag="Several printers match - choose yours" ru="Подходят несколько принтеров - выберите свой"/>
   <translation tag="Shadow Intensity" ru="Интенсивность тени"/>
   <translation tag="Share Usage Data" ru="Делиться данными использования"/>
   <translation tag="Share anonymous usage statistics to help us make HelixScreen better. No personal data is ever collected." ru="Делитесь анонимной статистикой использования, чтобы помочь нам улучшить HelixScreen. Персональные данные никогда не собираются."/>

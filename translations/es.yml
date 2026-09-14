@@ -1748,6 +1748,7 @@ translations:
   Match to belt A: Coincidencia con la correa A
   Match your typical print fan speed: Ajuste a su velocidad típica de ventilador de
     impresión
+  Matching printers: Impresoras coincidentes
   Material: Material
   'Material Comfort:': 'Confort del material:'
   Material Mismatch: Material Incompatible
@@ -2736,6 +2737,7 @@ translations:
   Setup: 'Configuración inicial'
   Setup Complete!: ¡Configuración Completa!
   Setup Timelapse: Configurar Timelapse
+  Several printers match - choose yours: Varias impresoras coinciden - elija la suya
   Shadow Intensity: Intensidad de Sombra
   Share Usage Data: Compartir datos de uso
   Share anonymous usage statistics to help us make HelixScreen better. No personal data is ever collected.: Comparta

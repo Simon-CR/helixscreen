@@ -11,8 +11,15 @@
 #include "ui_wizard_printer_identify.h"
 
 #include "../lvgl_ui_test_fixture.h"
+#include "../test_helpers/wizard_printer_identify_test_access.h"
+#include "app_globals.h"
+#include "config.h"
 #include "lvgl/lvgl.h"
+#include "lvgl/src/others/translation/lv_translation.h"
+#include "moonraker_api.h"
 #include "printer_detector.h"
+#include "printer_discovery.h"
+#include "wizard_config_paths.h"
 
 #include <spdlog/spdlog.h>
 
@@ -29,6 +36,7 @@ namespace {
 constexpr int kViewTiles = 0;
 constexpr int kViewVendor = 1;
 constexpr int kViewSearch = 2;
+constexpr int kViewCandidates = 3;
 
 std::vector<helix::ui::SelectorEntry> detector_entries() {
     std::vector<helix::ui::SelectorEntry> entries;
@@ -43,6 +51,15 @@ std::vector<helix::ui::SelectorEntry> detector_entries() {
 class WizardPrinterIdentifyUIFixture : public LVGLUITestFixture {
   public:
     WizardPrinterIdentifyUIFixture() {
+        open();
+    }
+
+  protected:
+    // For fixtures that prepare what the step detects before it opens.
+    struct DeferOpen {};
+    explicit WizardPrinterIdentifyUIFixture(DeferOpen) {}
+
+    void open() {
         wizard = ui_wizard_create(test_screen());
         if (!wizard) {
             spdlog::error("[WizardPrinterIdentifyUIFixture] Failed to create wizard!");
@@ -62,6 +79,7 @@ class WizardPrinterIdentifyUIFixture : public LVGLUITestFixture {
         step_root = wizard;
     }
 
+  public:
     ~WizardPrinterIdentifyUIFixture() {
         if (ready_) {
             get_wizard_printer_identify_step()->cleanup();
@@ -431,4 +449,135 @@ TEST_CASE("Wizard selector groups every visible machine exactly once", "[selecto
     };
     CHECK(bucket_of("Custom/Other") == "Custom/Other");
     CHECK(bucket_of("Unknown") == "Unknown");
+}
+
+// ============================================================================
+// Ambiguous detection hands the choice to the user (#1606, #1607)
+// ============================================================================
+
+namespace {
+
+// A K2 whose hostname names neither model and whose config declares no bed:
+// the detector cannot tell the K2 Plus from the K2 Pro.
+class WizardPrinterIdentifyTiedFixture : public WizardPrinterIdentifyUIFixture {
+  public:
+    WizardPrinterIdentifyTiedFixture() : WizardPrinterIdentifyUIFixture(DeferOpen{}) {
+        Config* config = Config::get_instance();
+        saved_type_ = config->get<std::string>(config->df() + helix::wizard::PRINTER_TYPE, "");
+        saved_name_ = config->get<std::string>(config->df() + helix::wizard::PRINTER_NAME, "");
+
+        const std::vector<std::string> objects = {"extruder",
+                                                  "heater_bed",
+                                                  "box",
+                                                  "motor_control",
+                                                  "fan_feedback",
+                                                  "load_ai",
+                                                  "filament_rack",
+                                                  "heater_generic chamber_heater",
+                                                  "temperature_sensor chamber_temp"};
+        helix::PrinterDiscovery& hardware = api()->hardware();
+        hardware.parse_objects(nlohmann::json(objects));
+        hardware.set_printer_objects(objects);
+        hardware.set_hostname("creality-k2");
+        hardware.parse_config_keys(nlohmann::json{{"printer", {{"kinematics", "corexy"}}}});
+        set_moonraker_api(api());
+
+        // The step detects once per printer; make it detect this one.
+        WizardPrinterIdentifyStepTestAccess::forget_printer(*get_wizard_printer_identify_step());
+        open();
+    }
+
+    ~WizardPrinterIdentifyTiedFixture() {
+        close_step();
+        set_moonraker_api(nullptr);
+        // The next fixture opens without a printer and must list every machine.
+        WizardPrinterIdentifyStepTestAccess::forget_printer(*get_wizard_printer_identify_step());
+        Config* config = Config::get_instance();
+        config->set<std::string>(config->df() + helix::wizard::PRINTER_TYPE, saved_type_);
+        config->set<std::string>(config->df() + helix::wizard::PRINTER_NAME, saved_name_);
+    }
+
+    // Leaves the step once, the way Back or Next does.
+    void close_step() {
+        if (ready_) {
+            get_wizard_printer_identify_step()->cleanup();
+            ready_ = false;
+        }
+    }
+
+    int selected_index() {
+        lv_subject_t* subject = lv_xml_get_subject(nullptr, "printer_type_selected");
+        REQUIRE(subject != nullptr);
+        return lv_subject_get_int(subject);
+    }
+
+    bool next_enabled() {
+        lv_subject_t* subject = lv_xml_get_subject(nullptr, "connection_test_passed");
+        REQUIRE(subject != nullptr);
+        return lv_subject_get_int(subject) == 1;
+    }
+
+    std::string saved_type_;
+    std::string saved_name_;
+};
+
+} // namespace
+
+TEST_CASE_METHOD(WizardPrinterIdentifyTiedFixture,
+                 "Wizard opens a tied detection on its candidates with nothing selected",
+                 "[wizard][selector][1606]") {
+    require_ready();
+
+    // The step reads this discovery, and the detector calls it a tie.
+    const PrinterDetectionResult detection = PrinterDetector::auto_detect(api()->hardware());
+    CAPTURE(detection.type_name, detection.runner_up_type_name, detection.margin());
+    REQUIRE(detection.ambiguous());
+
+    SECTION("the tied candidates are listed and nothing is selected") {
+        CHECK(view() == kViewCandidates);
+        std::vector<std::string> shown;
+        for (lv_obj_t* row : visible_rows()) {
+            shown.push_back(row_name(row));
+        }
+        CHECK(shown == std::vector<std::string>{"Creality K2 Plus", "Creality K2 Pro"});
+        CHECK(selected_index() < 0);
+        CHECK_FALSE(next_enabled());
+
+        // The header says why the list is short, and the status names no
+        // machine as the detected one.
+        lv_obj_t* candidates_title = lv_obj_find_by_name(step_root, "candidates_title_label");
+        lv_obj_t* vendor_title = lv_obj_find_by_name(step_root, "vendor_title_label");
+        REQUIRE(candidates_title != nullptr);
+        REQUIRE(vendor_title != nullptr);
+        CHECK_FALSE(lv_obj_has_flag(lv_obj_get_parent(candidates_title), LV_OBJ_FLAG_HIDDEN));
+        CHECK_FALSE(lv_obj_has_flag(candidates_title, LV_OBJ_FLAG_HIDDEN));
+        CHECK(lv_obj_has_flag(vendor_title, LV_OBJ_FLAG_HIDDEN));
+        CHECK(std::string(get_wizard_printer_identify_step()->get_detection_status()) ==
+              lv_tr("Several printers match - choose yours"));
+    }
+
+    SECTION("leaving without a pick persists no printer type") {
+        close_step();
+        Config* config = Config::get_instance();
+        // cleanup() ran: it saved the name it filled in from the hostname.
+        CHECK(config->get<std::string>(config->df() + helix::wizard::PRINTER_NAME, "") ==
+              "creality-k2");
+        CHECK(config->get<std::string>(config->df() + helix::wizard::PRINTER_TYPE, "").empty());
+    }
+
+    SECTION("picking a candidate selects it and enables Next") {
+        lv_obj_t* pro = nullptr;
+        for (lv_obj_t* row : visible_rows()) {
+            if (row_name(row) == "Creality K2 Pro") {
+                pro = row;
+            }
+        }
+        REQUIRE(pro != nullptr);
+        lv_obj_send_event(pro, LV_EVENT_CLICKED, nullptr);
+        CHECK(PrinterDetector::get_list_name_at(selected_index(), "corexy") == "Creality K2 Pro");
+        CHECK(next_enabled());
+        // Leave without a printer so cleanup() only records the pick; applying
+        // the K2 preset is the detector tests' business.
+        set_moonraker_api(nullptr);
+    }
 }

@@ -6120,6 +6120,8 @@ TEST_CASE_METHOD(PrinterDetectorFixture,
         REQUIRE(result.runner_up_confidence == result.confidence);
         REQUIRE(result.margin() == 0);
         REQUIRE_FALSE(PrinterDetector::meets_autosave_threshold(result));
+        // The choice left to the user: one name per machine, winner first.
+        CHECK(result.contenders == std::vector<std::string>{"Creality K2 Plus", "Creality K2 Pro"});
     }
 
     SECTION("A declared 300mm bed separates the K2 Pro") {
@@ -6158,6 +6160,8 @@ TEST_CASE_METHOD(PrinterDetectorFixture,
         REQUIRE(result.runner_up_type_name == "Creality K2 Pro");
         REQUIRE(result.margin() >= PrinterDetector::DETECT_MIN_MARGIN);
         REQUIRE(PrinterDetector::meets_autosave_threshold(result));
+        // A separated detection leaves nothing to choose between.
+        CHECK(result.contenders == std::vector<std::string>{"Creality K2 Plus"});
     }
 
     SECTION("A config that declares no bed leaves the family tie") {
@@ -6206,6 +6210,9 @@ TEST_CASE_METHOD(PrinterDetectorFixture,
         REQUIRE(result.runner_up_uncapped_confidence == 152);
         REQUIRE(result.margin() == -50);
         REQUIRE(result.ambiguous());
+        // The Pro trails on published confidence and leads before the ceiling,
+        // so it is still one of the machines the user chooses between.
+        CHECK(result.contenders == std::vector<std::string>{"Creality K2 Plus", "Creality K2 Pro"});
         REQUIRE_FALSE(PrinterDetector::meets_autosave_threshold(result));
     }
 
