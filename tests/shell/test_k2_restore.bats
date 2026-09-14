@@ -440,6 +440,36 @@ assert_both_fixes_without_reboot() {
     done
 }
 
+# --- the verified slot comes from the script's own directives ---
+
+@test "k2 restore: a stock app declaring START=50 verifies at its own slot" {
+    # The expected S slot is derived from the stock script's own START, so a
+    # firmware variant numbering its boot order differently still verifies.
+    printf '#!/bin/sh %s/etc/rc.common\nSTART=50\nSTOP=01\n' "$MOCK_ROOT" \
+        > "$MOCK_ROOT/etc/init.d/app"
+    chmod +x "$MOCK_ROOT/etc/init.d/app"
+    export RC_ENABLE_LINKS="S50 K01"
+    run in_bundle "$UNINSTALL_BUNDLE" "$RESTORE_BODY"
+    [ "$status" -eq 0 ] || fail "exited $status: $output"
+    assert_sandboxed_run
+    [ -n "$(published CLAIM)" ] || fail "a declared-slot entry went unverified: $output"
+    contains "S50app" "$(published CLAIM)"
+    [ -z "$(published WARNED)" ] || fail "warned despite the declared slot verifying: $output"
+}
+
+@test "k2 restore: a stale different-slot entry is dropped for the declared slot" {
+    # A pre-existing rc.d entry in another slot must not survive beside the
+    # fresh pair: the enable path drops every S??app/K??app first, so the
+    # boot entry ends up exactly where the stock script declares it.
+    ln -s ../init.d/app "$MOCK_ROOT/etc/rc.d/S50app"
+    run in_bundle "$UNINSTALL_BUNDLE" "$RESTORE_BODY"
+    [ "$status" -eq 0 ] || fail "exited $status: $output"
+    assert_sandboxed_run
+    [ ! -e "$MOCK_ROOT/etc/rc.d/S50app" ] || fail "stale S50app survived the restore"
+    [ -L "$MOCK_ROOT/etc/rc.d/S99app" ] || fail "the declared-slot entry is missing"
+    contains "S99app" "$(published CLAIM)"
+}
+
 # --- 1g: the sysv-created ledger replay stops what the carve-out runs ---
 
 @test "k2 uninstall: sysv-created replay stops the running web-server and removes script and links" {
