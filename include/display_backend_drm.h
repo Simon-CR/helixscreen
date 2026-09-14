@@ -11,6 +11,7 @@
 #ifdef HELIX_DISPLAY_DRM
 
 #include "display_backend.h"
+#include "indev_read_hook.h"
 #include "touch_calibration_wrapper.h"
 
 #include <string>
@@ -179,12 +180,17 @@ class DisplayBackendDRM : public DisplayBackend {
     int32_t panel_w_ = 0;
     int32_t panel_h_ = 0;
 
-    /// The evdev/libinput read callback this backend wrapped, called first by
-    /// pointer_rotation_read_cb() before the plane transform is applied.
-    lv_indev_read_cb_t original_read_cb_ = nullptr;
+    /// Fronts the touch pointer and the mouse alike, each with the evdev/libinput
+    /// read callback it replaced, which pointer_rotation_read_cb() calls first.
+    helix::IndevReadHook plane_rotation_hook_{pointer_rotation_read_cb};
 
-    /// Applies the plane rotation to a raw sample. Runs ahead of LVGL's own
-    /// lv_display_rotate_point(), which is a no-op whenever this one is not.
+    /// Opens the touch pointer and the mouse on whichever path finds them. Only
+    /// create_input_pointer() calls it, so every device it opens gets the hook.
+    void open_pointer_devices();
+
+    /// Reads a pointer device through its own driver, then applies the plane
+    /// rotation. Runs ahead of LVGL's own lv_display_rotate_point(), which is a
+    /// no-op whenever this one is not.
     static void pointer_rotation_read_cb(lv_indev_t* indev, lv_indev_data_t* data);
     /// Auto-fire the first-run wizard (resistive controllers, broken ABS ranges)
     bool needs_calibration_ = false;
