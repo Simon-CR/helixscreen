@@ -1589,6 +1589,30 @@ void AmsBackendAd5xIfs::release_locked_override_keep_identity_locked(int slot_in
     ovr.catalog_id.clear();
     ovr.product_name.clear();
 
+    // The lane's own record is trimmed to match: this and the strip above are
+    // one release in two stores, and a release that reached only one would
+    // leave resolve() still painting the colour and material the user has
+    // stopped declaring. The store has no partial retraction, so this composes
+    // one from what it does have. Reading the user's record, dropping it and
+    // re-filing it through the funnel an edit uses leaves the remaining
+    // declaration exactly as strong as it was: an amendment onto a record that
+    // is gone is that record, and a retraction with nothing left to declare
+    // files nothing at all.
+    const helix::ams::LaneId lane = lane_id(slot_index);
+    const helix::ams::LaneSources sources = helix::ams::lane_sources(lane);
+    if (sources.local_user.has_value()) {
+        helix::ams::Observation kept = *sources.local_user;
+        kept.color_rgb.reset();
+        kept.color_name.reset();
+        kept.material.reset();
+        // The catalog pick goes with the material it is scoped to, for the same
+        // reason it goes from the override above.
+        kept.catalog_id.reset();
+        kept.product_name.reset();
+        helix::ams::drop_lane_source(lane, helix::ams::ObservationSource::LocalUser);
+        helix::ams::commit_slot_edit(lane, kept);
+    }
+
     // Persist the trimmed override so a restart reloads the retained identity
     // (and the released locks) instead of the pre-edit locked record. Capture
     // by value — the callback can fire long after this returns.

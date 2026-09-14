@@ -783,8 +783,13 @@ class AmsBackendAd5xIfs : public AmsSubscriptionBackend {
     // apply_overrides lets firmware truth through, while RETAINING the identity
     // metadata — mirroring the #1071 insert/eject retention. If nothing but
     // firmware fields were in the override (no identity to keep), it falls back
-    // to a full clear_override_locked() erase so the pre-existing #981 tests
-    // (locked-but-no-brand overrides) still see a clean wipe.
+    // to a full clear_override_locked() erase so a locked-but-no-brand override
+    // still sees a clean wipe.
+    //
+    // The lane's own LocalUser record is trimmed to match, because that record
+    // is what resolve() paints from and it outranks the vendor cache: a release
+    // that reached only overrides_ would go on showing the colour and material
+    // the user has stopped declaring (#1646).
     void release_locked_override_keep_identity_locked(int slot_index, SlotInfo& slot);
     // Called on the empty->present (physical insert) edge for a lane. Drops the
     // color/material user-lock flags on an AUTO-TRACKED override (one with no

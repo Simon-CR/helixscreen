@@ -14,6 +14,7 @@
 #include "filament_slot_override.h"
 #include "filament_slot_override_store.h"
 #include "filament_variants.h"
+#include "lane_source_store.h"
 #include "moonraker_api_mock.h"
 #include "moonraker_client_mock.h"
 #include "printer_discovery.h"
@@ -8066,6 +8067,127 @@ TEST_CASE("AD5X IFS RUN_ZCOLOR (display-only) leaves a locked override intact (#
         backend, "RUN_ZCOLOR SLOT=1 HEX=46328E TYPE=PETG"));
 
     REQUIRE(Ad5xIfsTestAccess::get_override(backend, 0).has_value());
+}
+
+// ==========================================================================
+// The release reaches BOTH stores that hold a lane's truth - #981, #1646
+// ==========================================================================
+//
+// overrides_ and the lane source store overlap. The override strip alone is
+// not a release: the lane's LocalUser record outranks the vendor cache, so a
+// colour left standing there goes on painting over the firmware truth the
+// CHANGE_ZCOLOR just authored. These three pin the whole retraction - what it
+// takes, what it keeps, and that it happens only on a real release.
+
+TEST_CASE("AD5X IFS external CHANGE_ZCOLOR retracts the user's colour, not their brand (#981)",
+          "[ams][ad5x_ifs][981]") {
+    helix::test::RegisteredBackend<TestableAd5xIfsBackend> backend_reg;
+    auto& backend = *backend_reg;
+    Ad5xIfsTestAccess::set_running(backend, true);
+    Ad5xIfsTestAccess::set_zcolor_supported(backend, false);
+
+    // A firmware frame first, so the lane exists before an edit can address it.
+    Ad5xIfsTestAccess::set_port_presence(backend, 0, true);
+    Ad5xIfsTestAccess::set_color(backend, 0, "898989");
+    Ad5xIfsTestAccess::set_material(backend, 0, "PETG");
+
+    SlotInfo edit = backend.get_slot_info(0);
+    edit.color_rgb = 0xFFFFFF;
+    edit.material = "SILK";
+    edit.brand = "Sunlu";
+    helix::test::edit_slot_as_user(backend, 0, edit);
+
+    {
+        const SlotInfo before = backend.get_slot_info(0);
+        REQUIRE(before.color_rgb == 0xFFFFFF);
+        REQUIRE(before.material == "SILK");
+        REQUIRE(before.brand == "Sunlu");
+    }
+
+    // Deliberate external edit on the zmod screen. SLOT is 1-based -> slot 0.
+    REQUIRE_FALSE(Ad5xIfsTestAccess::on_gcode_response_line(
+        backend, "CHANGE_ZCOLOR SLOT=1 HEX=FEF043 TYPE=PLA"));
+
+    const SlotInfo after = backend.get_slot_info(0);
+    CHECK(after.color_rgb == 0xFEF043);
+    CHECK(after.material == "PLA");
+    CHECK(after.brand == "Sunlu");
+
+    // The record itself, not only what it resolves to on this frame: a colour
+    // left on the user's record wins again the moment firmware stops stating
+    // one, so the frame's answer alone would not show the retraction.
+    const helix::ams::LaneSources sources = helix::ams::lane_sources(backend_reg.lane(0));
+    REQUIRE(sources.local_user.has_value());
+    CHECK_FALSE(sources.local_user->color_rgb.has_value());
+    CHECK_FALSE(sources.local_user->material.has_value());
+    CHECK(sources.local_user->brand == "Sunlu");
+}
+
+TEST_CASE("AD5X IFS external CHANGE_ZCOLOR with no identity to keep clears both stores (#981)",
+          "[ams][ad5x_ifs][981]") {
+    helix::test::RegisteredBackend<TestableAd5xIfsBackend> backend_reg;
+    auto& backend = *backend_reg;
+    Ad5xIfsTestAccess::set_running(backend, true);
+    Ad5xIfsTestAccess::set_zcolor_supported(backend, false);
+
+    Ad5xIfsTestAccess::set_port_presence(backend, 0, true);
+    Ad5xIfsTestAccess::set_color(backend, 0, "898989");
+    Ad5xIfsTestAccess::set_material(backend, 0, "PETG");
+
+    // Colour and material only: nothing the firmware cannot carry, so the
+    // release has nothing to retain and falls back to a full clear.
+    SlotInfo edit = backend.get_slot_info(0);
+    edit.color_rgb = 0xFFFFFF;
+    edit.material = "SILK";
+    helix::test::edit_slot_as_user(backend, 0, edit);
+    REQUIRE(backend.get_slot_info(0).color_rgb == 0xFFFFFF);
+
+    REQUIRE_FALSE(Ad5xIfsTestAccess::on_gcode_response_line(
+        backend, "CHANGE_ZCOLOR SLOT=1 HEX=FEF043 TYPE=PLA"));
+
+    CHECK_FALSE(Ad5xIfsTestAccess::get_override(backend, 0).has_value());
+    const helix::ams::LaneSources sources = helix::ams::lane_sources(backend_reg.lane(0));
+    CHECK_FALSE(sources.local_user.has_value());
+
+    const SlotInfo after = backend.get_slot_info(0);
+    CHECK(after.color_rgb == 0xFEF043);
+    CHECK(after.material == "PLA");
+}
+
+TEST_CASE("AD5X IFS a firmware frame that releases nothing leaves the user's colour winning",
+          "[ams][ad5x_ifs][981]") {
+    // The counterweight to the two above. Only a deliberate CHANGE_ZCOLOR
+    // releases the locks; an ordinary firmware reading is what the locks exist
+    // to outrank, so the user's choice has to survive one intact.
+    helix::test::RegisteredBackend<TestableAd5xIfsBackend> backend_reg;
+    auto& backend = *backend_reg;
+    Ad5xIfsTestAccess::set_running(backend, true);
+    Ad5xIfsTestAccess::set_zcolor_supported(backend, false);
+
+    Ad5xIfsTestAccess::set_port_presence(backend, 0, true);
+    Ad5xIfsTestAccess::set_color(backend, 0, "898989");
+    Ad5xIfsTestAccess::set_material(backend, 0, "PETG");
+
+    SlotInfo edit = backend.get_slot_info(0);
+    edit.color_rgb = 0xFFFFFF;
+    edit.material = "SILK";
+    edit.brand = "Sunlu";
+    helix::test::edit_slot_as_user(backend, 0, edit);
+
+    // Firmware states a different colour and type, with no CHANGE_ZCOLOR
+    // behind it: the post-print FFMInfo revert this lock was added for.
+    Ad5xIfsTestAccess::set_color(backend, 0, "FEF043");
+    Ad5xIfsTestAccess::set_material(backend, 0, "PLA");
+
+    const SlotInfo after = backend.get_slot_info(0);
+    CHECK(after.color_rgb == 0xFFFFFF);
+    CHECK(after.material == "SILK");
+    CHECK(after.brand == "Sunlu");
+
+    const helix::ams::LaneSources sources = helix::ams::lane_sources(backend_reg.lane(0));
+    REQUIRE(sources.local_user.has_value());
+    CHECK(sources.local_user->color_rgb == 0xFFFFFFu);
+    CHECK(sources.local_user->material == "SILK");
 }
 
 TEST_CASE("AD5X IFS CHANGE_ZCOLOR with no locked override is a harmless no-op (#981)",
