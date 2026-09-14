@@ -563,7 +563,6 @@ class AmsBackendAfc : public AmsSubscriptionBackend {
     std::unique_ptr<helix::ams::FilamentSlotOverrideStore> lane_publish_store_;
     std::unordered_map<int, helix::ams::FilamentSlotOverride> overrides_;
     /// Layer the user override over firmware values. Callers hold mutex_.
-    void apply_overrides(SlotInfo& slot, int slot_index);
     /// Build + persist an override from a user edit. Callers hold mutex_ and
     /// pass the lane as it stood before the edit, which is what says which
     /// fields the user actually moved.

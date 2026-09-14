@@ -2403,11 +2403,11 @@ class AmsBackend {
 
     /// Whether this backend's firmware reports a Spoolman spool id per slot
     /// while a spool is loaded (AFC and Happy Hare publish spool_id in their
-    /// status). merge_override() uses this to arm ONLY the eject rule: just
-    /// there a firmware id of 0/null means "ejected", while elsewhere 0 is
-    /// the everyday reading and must not clear. The re-bind rule is NOT
-    /// gated by this capability — it can fire on ANY backend whose firmware
-    /// reports a positive spool id that disagrees with the override (AFC,
+    /// status). classify_binding() uses this to arm ONLY the eject verdict:
+    /// just there a firmware id of 0/null means "ejected", while elsewhere 0
+    /// is the everyday reading and must not clear. The re-bind verdict is NOT
+    /// gated by this capability: it can fire on ANY backend whose firmware
+    /// reports a positive spool id that disagrees with the declared one (AFC,
     /// Happy Hare, and flat-schema CFS, whose per-slot spoolman_id parse
     /// feeds it today).
     [[nodiscard]] virtual bool printer_reports_spool_ids() const {
@@ -2435,26 +2435,28 @@ class AmsBackend {
      */
     virtual AmsError set_tool_mapping_impl(int tool_number, int slot_index) = 0;
 
-    /// @name Own-write spool-id expectations (Rule-1 echo-race suppression)
+    /// @name Own-write spool-id expectations (re-bind echo-race suppression)
     ///
     /// When HelixScreen itself writes a spool id to firmware (AFC's
     /// SET_SPOOL_ID, Happy Hare's MMU_GATE_MAP SPOOLID, the CFS fork's
     /// _BOX_SLOT_SET SPOOLMAN_ID), the write is asynchronous: for an
     /// unknown number of polls firmware keeps reporting the OLD id while
-    /// the just-saved override already carries the NEW one. Rule 1
-    /// (external re-bind) in merge_override() would read that stale frame
-    /// as another writer's statement and destroy our own record — the same
-    /// race SlotFingerprintTracker::expect() solves for CFS's RFID pushes.
-    /// Backends that write firmware ids call record_own_spool_write() at
-    /// the write site, and every apply_overrides() consults
-    /// own_write_expectation() to feed MergeOptions' suppress ids.
+    /// the lane's own sources already declare the NEW one. classify_binding()
+    /// would read that stale frame as another writer's statement, and
+    /// reconcile_binding() drops Spoolman, LocalUser and Remembered on that
+    /// verdict, destroying the declaration the edit just filed. Ranking cannot
+    /// stand in for this: the drop happens before ranking decides what paints.
+    /// Backends that write firmware ids call record_own_spool_write() at the
+    /// write site, and reconcile_lane_binding() consults
+    /// own_write_expectation() to fill BindingReading's own-write pair.
     ///
     /// @warning **The caller must already hold the backend's own mutex_.**
     ///          Both methods touch shared state with no internal lock; every
     ///          call site runs inside the backend's mutex_ scope
-    ///          (set_slot_info's lock block, apply_overrides' documented
-    ///          lock-held precondition). The mutexes are plain std::mutex,
-    ///          not recursive — taking the lock again from inside deadlocks.
+    ///          (set_slot_info's lock block, reconcile_lane_binding's
+    ///          documented lock-held precondition). The mutexes are plain
+    ///          std::mutex, not recursive: taking the lock again from inside
+    ///          deadlocks.
     ///@{
 
     /// Record that WE just wrote @p new_id to firmware for this slot.
@@ -2463,42 +2465,37 @@ class AmsBackend {
     /// before the first echo landed keeps the ORIGINAL previous id (a
     /// chained re-link 42->169 then 169->180 suppresses stale 42 frames,
     /// not just 169). @p new_id <= 0 is an unlink: the pending expectation
-    /// is dropped, since nothing will echo but an id Rule 1 ignores.
+    /// is dropped, since nothing will echo but an id the re-bind arm of
+    /// classify_binding() ignores.
     void record_own_spool_write(int slot_index, int new_id, int previous_firmware_id);
 
     /// Consult (and possibly consume) the pending expectation for a slot
     /// given the id firmware reports in THIS frame. Returns the {old, new}
-    /// pair to feed MergeOptions::suppress_rebind_firmware_{old,new}_id;
-    /// {0, 0} when nothing should be suppressed. Consumption mirrors the
-    /// fingerprint tracker's single-shot semantics:
-    ///   - firmware_id == the written id: the echo landed — erased (firmware
-    ///     and override now agree; nothing to suppress).
+    /// pair to feed BindingReading::own_write_{old,new}_id; {0, 0} when
+    /// nothing should be suppressed. Consumption mirrors the fingerprint
+    /// tracker's single-shot semantics:
+    ///   - firmware_id == the written id: the echo landed, so the entry is
+    ///     erased (firmware and the declaration now agree).
     ///   - firmware_id is any OTHER positive id: a genuine external change
-    ///     ends the expectation — erased, nothing suppressed.
+    ///     ends the expectation, erased, nothing suppressed.
     ///   - firmware_id == the old id (stale pre-echo frame): returned as the
     ///     suppression pair; the entry survives for the next poll.
-    ///   - firmware_id <= 0: no signal (Rule 1 cannot fire on it); the entry
-    ///     survives because the echo may still be in flight.
-    std::pair<int, int> own_write_expectation(int slot_index, int firmware_id);
-
-    /// The same answer own_write_expectation() would give, without ending the
-    /// expectation.
+    ///   - firmware_id <= 0: no signal, since the re-bind arm never fires on
+    ///     0; the entry survives because the echo may still be in flight.
     ///
-    /// For a reader that is not the authority on the binding verdict. Only one
-    /// consult per frame may consume, and it must be the one that sees
-    /// FIRMWARE's own spool id: a reader passing a SlotInfo field carries the
-    /// stored record's id back after an override merge, and consuming on that
-    /// ends the expectation an id early, leaving the next frame to read our
-    /// own in-flight write as somebody else's re-bind.
-    [[nodiscard]] std::pair<int, int> peek_own_write_expectation(int slot_index,
-                                                                 int firmware_id) const;
+    /// This is the ONE reader that may consume, and it must be the one that
+    /// sees FIRMWARE's own spool id. Consuming on a SlotInfo field would end
+    /// the expectation an id early and leave the next frame reading our own
+    /// in-flight write as somebody else's re-bind.
+    std::pair<int, int> own_write_expectation(int slot_index, int firmware_id);
 
     /// Check this lane's declared binding against the spool id firmware just
     /// stated, dropping the declaring records when it no longer holds.
     ///
     /// @p firmware_spool_id must be firmware's OWN standing word for the lane
     /// and never a SlotInfo field, which carries the stored record's id back
-    /// after an override merge; 0 means firmware names no spool. The backend's
+    /// once the lane's resolved identity is laid onto it; 0 means firmware
+    /// names no spool. The backend's
     /// capability and the retention setting are read here, and the own-write
     /// expectation is consulted here, so a frame that is our own write coming
     /// back suppresses the re-bind verdict rather than acting on it.

@@ -320,17 +320,6 @@ std::pair<int, int> AmsBackend::own_write_expectation(int slot_index, int firmwa
     return {old_id, new_id};
 }
 
-std::pair<int, int> AmsBackend::peek_own_write_expectation(int slot_index, int firmware_id) const {
-    auto it = own_write_expectations_.find(slot_index);
-    if (it == own_write_expectations_.end())
-        return {0, 0};
-    const int old_id = it->second.first;
-    const int new_id = it->second.second;
-    if (firmware_id == new_id || (firmware_id > 0 && firmware_id != old_id))
-        return {0, 0};
-    return {old_id, new_id};
-}
-
 helix::ams::BindingVerdict AmsBackend::reconcile_lane_binding(int slot_index,
                                                               int firmware_spool_id) {
     helix::ams::BindingReading reading;

@@ -1932,7 +1932,7 @@ void SlotFingerprintTracker::clear() {
 }
 
 // =============================================================================
-// merge_override — shared spec §5 implementation
+// Override store construction, persisted clears, external lane publishing
 // =============================================================================
 
 LoadedOverrideStore make_loaded_override_store(IMoonrakerAPI* api, std::string backend_id,
@@ -1967,63 +1967,6 @@ bool clear_persisted_override(FilamentSlotOverrideStore* store,
         });
     }
     return true;
-}
-
-MergeResult merge_override(SlotInfo& slot, const FilamentSlotOverride& o,
-                           const MergeOptions& options) {
-    // Rule 1 — external re-bind. Another well-behaved writer (Mainsail, the
-    // AFC plugin) explicitly set a DIFFERENT spool on this lane. That is a
-    // statement, not a guess: the whole record drops, firmware truth paints.
-    // Never gated by the setting; never fires on eject's 0/null (#1281 step 7).
-    // The two suppress ids exclude our OWN in-flight re-links: after
-    // HelixScreen writes a spool id, status frames already parsed (or parsed
-    // before the write lands) keep reporting the OLD firmware id for a poll
-    // or two — that stale frame is us, not Mainsail (SlotFingerprintTracker
-    // ::expect() semantics; see MergeOptions). Suppression only skips this
-    // clear; the field merge below still paints the override.
-    if (slot.spoolman_id > 0 && o.spoolman_id > 0 && slot.spoolman_id != o.spoolman_id &&
-        slot.spoolman_id != options.suppress_rebind_firmware_old_id &&
-        slot.spoolman_id != options.suppress_rebind_firmware_new_id) {
-        MergeResult r;
-        r.cleared_rebind = true;
-        return r;
-    }
-    // Rule 2 — eject signal, setting-gated. Only meaningful where firmware
-    // reports ids while loaded (AFC, Happy Hare): there, 0/null is the eject
-    // the plugin itself writes. Elsewhere 0 is the everyday reading — stock
-    // CFS firmware reports no ids at all, and flat-schema CFS parses a
-    // per-slot id without giving 0 an eject meaning — so the rule stays
-    // inert.
-    if (options.printer_reports_spool_ids && slot.spoolman_id <= 0 && o.spoolman_id > 0 &&
-        !options.keep_spool_info_on_eject) {
-        MergeResult r;
-        r.cleared_eject = true;
-        return r;
-    }
-    // Spec §5 — override wins field-by-field; sentinels fall through.
-    if (!o.brand.empty())
-        slot.brand = o.brand;
-    if (!o.spool_name.empty())
-        slot.spool_name = o.spool_name;
-    if (o.spoolman_id > 0)
-        slot.spoolman_id = o.spoolman_id;
-    if (o.spoolman_vendor_id > 0)
-        slot.spoolman_vendor_id = o.spoolman_vendor_id;
-    if (o.remaining_weight_g >= 0.0f)
-        slot.remaining_weight_g = o.remaining_weight_g;
-    if (o.total_weight_g >= 0.0f)
-        slot.total_weight_g = o.total_weight_g;
-    if (o.color_set)
-        slot.color_rgb = o.color_rgb;
-    if (!o.color_name.empty())
-        slot.color_name = o.color_name;
-    if (!o.material.empty())
-        slot.material = o.material;
-    if (!o.catalog_id.empty())
-        slot.catalog_id = o.catalog_id;
-    if (!o.product_name.empty())
-        slot.product_name = o.product_name;
-    return {};
 }
 
 bool publish_external_lane(FilamentSlotOverrideStore* store, int lane_index, const SlotInfo* spool,

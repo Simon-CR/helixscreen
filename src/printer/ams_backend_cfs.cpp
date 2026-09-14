@@ -3707,69 +3707,6 @@ AmsError AmsBackendCfs::execute_device_action(const std::string& action_id,
 // Override layering (shared FilamentSlotOverrideStore)
 // ============================================================================
 
-void AmsBackendCfs::apply_overrides(SlotInfo& slot, int slot_index) {
-    // Every caller of apply_overrides runs under mutex_ (handle_status_update
-    // post-parse loop). overrides_ writers also hold mutex_, so the map read
-    // here is implicitly lock-protected. Zero-cost hash miss when the slot
-    // has no override — safe in the hot parse path. The whole spec §5 policy
-    // + the re-bind/eject rules live in helix::ams::merge_override — the
-    // single implementation every backend shares. Rule 1 (re-bind) is NOT
-    // gated by printer_reports_spool_ids(): flat-schema CFS (the community
-    // fork) parses a per-slot spoolman_id, so a firmware id disagreeing with
-    // the override fires Rule 1 there — fork users get the #1281 fix. Rule 2
-    // (eject) IS what the capability gates, and it stays inert here (base
-    // false): on stock CFS firmware never reports ids and 0 is the everyday
-    // reading. Our own fork writes are protected by the own-write
-    // expectation recorded in set_slot_info.
-    auto it = overrides_.find(slot_index);
-    if (it == overrides_.end())
-        return;
-    helix::ams::MergeOptions opts;
-    opts.printer_reports_spool_ids = printer_reports_spool_ids();
-    opts.keep_spool_info_on_eject = SettingsManager::instance().get_ams_keep_spool_info_on_eject();
-    // Read the override BEFORE any erase — merge_override below needs it.
-    const auto& o = it->second;
-    // Own-write echo suppression (SlotFingerprintTracker::expect()
-    // semantics): the flat-schema fork re-writes SPOOLMAN_ID via
-    // _BOX_SLOT_SET, and in-flight frames keep reporting the old firmware
-    // id for a poll or two — Rule 1 must not read that as an external
-    // re-bind. Inert on stock CFS (never reports a positive id).
-    // A peek, not a consult: reconcile_lane_binding() is the one reader that
-    // sees firmware's own id, so it is the one that may end the expectation.
-    const auto [own_old_id, own_new_id] = peek_own_write_expectation(slot_index, slot.spoolman_id);
-    opts.suppress_rebind_firmware_old_id = own_old_id;
-    opts.suppress_rebind_firmware_new_id = own_new_id;
-    const auto result = helix::ams::merge_override(slot, o, opts);
-
-    // Presence is deliberately NOT touched here. An override says what the user
-    // assigned to this bay, which is a permanent fact; presence is a live one.
-    // Deriving the second from the first made presence a one-way function — it
-    // could rise to AVAILABLE and never fall back — so an assigned bay whose
-    // spool had been pulled rendered as a seated spool forever, and the
-    // "assigned, not present" ghost in ui_ams_slot.cpp (EMPTY + retained
-    // identity, LV_OPA_20) became unreachable on CFS.
-    //
-    // The untagged-spool case that motivated the promotion is covered upstream
-    // by the parse: `vender` reads non-sentinel for ANY occupied bay on CFS
-    // 1.1.3, tagged or not (verified on a K2 Plus holding only third-party
-    // spools — both seated bays reported vender "unknown" with no Creality RFID
-    // anywhere), and `untagged_present` still backstops firmware that does not.
-    // Identity survives an empty bay via clear_stale_override_on_removal_locked;
-    // that is what the ghost renders from.
-
-    if (result.cleared_rebind || result.cleared_eject) {
-        overrides_.erase(it);
-        if (override_store_) {
-            const std::string tag = backend_log_tag();
-            override_store_->clear_async(slot_index, [tag, slot_index](bool ok, std::string err) {
-                if (!ok) {
-                    spdlog::warn("{} clear_async failed for slot {}: {}", tag, slot_index, err);
-                }
-            });
-        }
-    }
-}
-
 std::map<int, int> AmsBackendCfs::collect_insert_probes_locked(const nlohmann::json& box) {
     std::map<int, int> probes;
     // Stock dialect only. The flat/Fork modules define their own command set

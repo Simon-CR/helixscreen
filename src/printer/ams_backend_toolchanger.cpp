@@ -109,33 +109,6 @@ void AmsBackendToolChanger::on_started() {
                  loaded_count);
 }
 
-void AmsBackendToolChanger::apply_overrides(SlotInfo& slot, int slot_index) {
-    auto it = overrides_.find(slot_index);
-    if (it == overrides_.end()) {
-        return;
-    }
-    helix::ams::MergeOptions opts;
-    opts.printer_reports_spool_ids = printer_reports_spool_ids();
-    opts.keep_spool_info_on_eject =
-        helix::SettingsManager::instance().get_ams_keep_spool_info_on_eject();
-    // Rules 1 and 2 of the merge policy key off a firmware-reported spool id.
-    // klipper-toolchanger reports none, so neither can fire here and the
-    // erase branch below is unreachable today. It is kept because the policy
-    // lives in merge_override(), not in each backend's idea of its firmware.
-    const auto result = helix::ams::merge_override(slot, it->second, opts);
-    if (result.cleared_rebind || result.cleared_eject) {
-        overrides_.erase(it);
-        if (override_store_) {
-            const std::string tag = backend_log_tag();
-            override_store_->clear_async(slot_index, [tag, slot_index](bool ok, std::string err) {
-                if (!ok) {
-                    spdlog::warn("{} clear_async failed for slot {}: {}", tag, slot_index, err);
-                }
-            });
-        }
-    }
-}
-
 // stop(), release_subscriptions(), is_running() provided by AmsSubscriptionBackend
 
 // ============================================================================

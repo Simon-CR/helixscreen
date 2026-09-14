@@ -6,10 +6,10 @@
  * @brief External re-bind clears our override; eject honors the retention
  * setting (#1281). Firmware truth must win back a lane another writer re-bound.
  *
- * merge_override()'s rule matrix (test_filament_slot_override_store.cpp) pins
- * the pure function. This file pins the WIRING: AmsBackendAfc's live status
- * path must consult it, drop the in-memory record on an external re-bind, and
- * gate the eject clear on the keep-spool-info setting.
+ * classify_binding()'s verdict matrix (test_lane_binding.cpp) pins the pure
+ * function. This file pins the WIRING: AmsBackendAfc's live status path must
+ * reach it, drop the in-memory record on an external re-bind, and gate the
+ * eject clear on the keep-spool-info setting.
  */
 
 #include "../lvgl_test_fixture.h"
@@ -80,7 +80,8 @@ class AfcRebindHelper : public AmsBackendAfc {
     }
 
     /// Consult AmsBackend::own_write_expectation under mutex_ (as
-    /// apply_overrides does) to observe/consume the pending expectation.
+    /// reconcile_lane_binding does) to observe/consume the pending
+    /// expectation.
     [[nodiscard]] std::pair<int, int> peek_expectation(int slot_index, int firmware_id) {
         std::lock_guard<std::mutex> lock(mutex_);
         return own_write_expectation(slot_index, firmware_id);
@@ -102,8 +103,8 @@ helix::ams::FilamentSlotOverride spool_override(int spoolman_id) {
 
 TEST_CASE_METHOD(LVGLTestFixture, "AFC external re-bind clears our override (#1281 step 7)",
                  "[ams][afc][override-merge]") {
-    // Post-change apply_overrides() reads the retention setting; give the
-    // settings singleton the production-default world before any merge runs.
+    // The status path reads the retention setting; give the settings
+    // singleton the production-default world before any frame is fed.
     SettingsManager::instance().init_subjects();
 
     helix::test::RegisteredBackend<AfcRebindHelper> afc_reg;

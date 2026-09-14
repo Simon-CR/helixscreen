@@ -392,52 +392,6 @@ bool publish_external_lane(FilamentSlotOverrideStore* store, int lane_index, con
                            const std::string& log_tag);
 
 // =============================================================================
-// Shared override-wins merge (filament_slots.md §5)
-// =============================================================================
-//
-// Every AMS backend merges a loaded FilamentSlotOverride onto firmware-reported
-// SlotInfo values before the UI paints a lane. This is the ONE implementation
-// of that policy plus the two cross-field rules (external re-bind, eject) that
-// previously lived as hand-rolled if-chains per backend.
-
-struct MergeOptions {
-    /// From SettingsManager::get_ams_keep_spool_info_on_eject().
-    /// Default true = today's designed retention across eject.
-    bool keep_spool_info_on_eject = true;
-    /// True only on backends whose firmware reports a spool id while a spool
-    /// is loaded (AFC, Happy Hare). There — and only there — a firmware id of
-    /// 0/null means "ejected". Elsewhere 0 is the everyday reading and MUST
-    /// NOT be treated as eject — flat-schema CFS does parse a per-slot spool
-    /// id (arming Rule 1's re-bind) but gives 0 no eject meaning.
-    bool printer_reports_spool_ids = false;
-    /// Own-write echo suppression for Rule 1, mirroring
-    /// SlotFingerprintTracker::expect() semantics. When HelixScreen itself
-    /// just (re)linked a spool id on this slot, in-flight status frames keep
-    /// reporting the OLD firmware id for a poll or two; Rule 1 must not read
-    /// such a stale frame as an external re-bind and destroy the just-saved
-    /// override. Non-zero values are the ids firmware may legitimately
-    /// report while the write is in flight: the id it last reported before
-    /// the write and the id we just wrote. Suppression affects ONLY the
-    /// re-bind clear — the §5 field merge paints the override normally
-    /// either way. 0 = none.
-    int suppress_rebind_firmware_old_id = 0;
-    /// The just-written id (see suppress_rebind_firmware_old_id). 0 = none.
-    int suppress_rebind_firmware_new_id = 0;
-};
-
-struct MergeResult {
-    bool cleared_rebind = false; ///< firmware re-bound to a different spool; record dropped
-    bool cleared_eject = false;  ///< eject signal + setting OFF; record dropped
-};
-
-/// Single implementation of filament_slots.md §5 plus the two cross-field
-/// rules. `slot` carries FIRMWARE-reported values on entry; on return it
-/// carries the values the UI should paint. When either cleared_* is true the
-/// caller must drop its in-memory override and persist the clear.
-MergeResult merge_override(SlotInfo& slot, const FilamentSlotOverride& o,
-                           const MergeOptions& options);
-
-// =============================================================================
 // Shared per-slot firmware-observation baseline tracker
 // =============================================================================
 

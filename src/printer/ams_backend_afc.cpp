@@ -4914,38 +4914,6 @@ AmsError AmsBackendAfc::reset() {
                                 lv_tr("AFC reset failed"));
 }
 
-void AmsBackendAfc::apply_overrides(SlotInfo& slot, int slot_index) {
-    // Callers hold mutex_. The whole spec §5 policy + the re-bind/eject rules
-    // live in helix::ams::merge_override — the single implementation every
-    // backend shares.
-    auto it = overrides_.find(slot_index);
-    if (it == overrides_.end())
-        return;
-    helix::ams::MergeOptions opts;
-    opts.printer_reports_spool_ids = printer_reports_spool_ids();
-    opts.keep_spool_info_on_eject = SettingsManager::instance().get_ams_keep_spool_info_on_eject();
-    // Own-write echo suppression (SlotFingerprintTracker::expect()
-    // semantics): if we just re-linked this lane's spool id, in-flight
-    // frames keep reporting the old firmware id for a poll or two — Rule 1
-    // must not read that stale frame as an external re-bind.
-    // A peek, not a consult: reconcile_lane_binding() is the one reader that
-    // sees firmware's own id, so it is the one that may end the expectation.
-    const auto [own_old_id, own_new_id] = peek_own_write_expectation(slot_index, slot.spoolman_id);
-    opts.suppress_rebind_firmware_old_id = own_old_id;
-    opts.suppress_rebind_firmware_new_id = own_new_id;
-    const auto result = helix::ams::merge_override(slot, it->second, opts);
-    if (result.cleared_rebind || result.cleared_eject) {
-        overrides_.erase(it);
-        if (override_store_) {
-            override_store_->clear_async(slot_index, [slot_index](bool ok, const std::string& err) {
-                if (!ok)
-                    spdlog::warn("[AMS AFC] override clear persist failed for slot {}: {}",
-                                 slot_index, err);
-            });
-        }
-    }
-}
-
 void AmsBackendAfc::persist_override(int slot_index, const SlotInfo& original,
                                      const SlotInfo& info) {
     // Callers hold mutex_, and @p original is the lane as it stood before this
