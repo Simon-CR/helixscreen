@@ -129,7 +129,8 @@ def main() -> int:
     for rel in missing:
         print(f"{rel}: FAILED (no compile_commands.json entry)")
 
-    print(f"Checking {len(targets)} translation unit(s) against {args.compiler}...")
+    missing_note = f" ({len(missing)} missing from the database, already reported above)" if missing else ""
+    print(f"Checking {len(targets)} translation unit(s) against {args.compiler}...{missing_note}")
     started = time.monotonic()
     failures = len(missing)
     with ThreadPoolExecutor(max_workers=max(1, args.jobs)) as pool:
