@@ -3582,9 +3582,18 @@ AmsError AmsState::commit_slot_edit(int slot_index, const SlotInfo& original,
         SpoolmanManager::invalidate_identity(original.spoolman_id);
     }
 
+    // The user's statement, answered once from the editor's own before and
+    // after. The backend records its stored authorship from this same answer
+    // rather than diffing its own read of the slot, which a frame landing while
+    // the editor was open has already moved.
+    const helix::ams::Observation declaration = helix::ams::user_edit_observation(original, info);
+
     // S3 — backend slot info + firmware gcode
-    AmsError err = backend->set_slot_info(slot_index, info);
-    if (!err.success()) {
+    AmsError err = backend->set_slot_info(slot_index, info, /*persist=*/true, &declaration);
+    // A partly applied edit still changed what it applied: a binding that
+    // reached firmware is bound whatever the call says about the rest. The
+    // error still returns below, so the caller's toast still shows.
+    if (!err.success() && !err.partially_applied) {
         return err;
     }
 
@@ -3592,7 +3601,7 @@ AmsError AmsState::commit_slot_edit(int slot_index, const SlotInfo& original,
     // that is no longer on it. That record outranks the user's, so standing it
     // would keep naming the old spool over an unlink, and would make a relink's
     // own echo read as someone else's rebind, which erases the stored record the
-    // user just saved. Only after the backend accepted: a refused edit leaves
+    // user just saved. Only once the backend applied it: a refused edit leaves
     // the old binding in place, which the record still describes truly.
     if (original.spoolman_id != info.spoolman_id) {
         helix::ams::drop_lane_source(backend->lane_id(slot_index),
@@ -3600,12 +3609,16 @@ AmsError AmsState::commit_slot_edit(int slot_index, const SlotInfo& original,
     }
 
     // Record the user's statement in the lane model, once the backend has
-    // accepted it. The lane is the one this edit was written through, so the
+    // applied it. The lane is the one this edit was written through, so the
     // declaration cannot land on a backend the edit never reached, and a slot
-    // the backend refused gets no declaration at all. The stores around this
-    // are the live read path and are untouched; nothing reads this record yet.
-    helix::ams::commit_slot_edit(backend->lane_id(slot_index),
-                                 helix::ams::user_edit_observation(original, info));
+    // the backend refused gets no declaration at all. Every backend paints its
+    // slots from this record through apply_resolved_lane(), so it is what the
+    // lane shows for each field the user declared.
+    helix::ams::commit_slot_edit(backend->lane_id(slot_index), declaration);
+
+    // A backend that paints from the lane while it applies an edit painted the
+    // lane before this filing and the Spoolman drop above.
+    backend->repaint_slot_from_lane(slot_index);
 
     // S4 + S7
     sync_from_backend();

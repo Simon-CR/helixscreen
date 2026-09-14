@@ -8,7 +8,12 @@
 #include "config.h"
 #include "error_event.h"
 #include "filament_op_router.h"
+#include "filament_slot_override_store.h"
+#include "lane_translation.h"
 #include "moonraker_api.h"
+#include "moonraker_api_mock.h"
+#include "moonraker_client_mock.h"
+#include "printer_state.h"
 #include "settings_manager.h"
 #include "test_helpers/afc_test_access.h"
 #include "test_helpers/registered_backend.h"
@@ -1452,6 +1457,94 @@ TEST_CASE("AFC persistence: skips SET_WEIGHT for zero or negative", "[ams][afc][
         // PASSES: no G-code sent at all currently
         REQUIRE_FALSE(helper.has_gcode_starting_with("SET_WEIGHT"));
     }
+}
+
+namespace {
+
+/// An AFC lane carrying a user's edit that locked its colour and material and
+/// declared its brand, with a store behind it so a persist can be read back
+/// from the record a restart would load.
+struct AfcLockedLaneFixture : HelixTestFixture {
+    MoonrakerClientMock client{MoonrakerClientMock::PrinterType::VORON_24};
+    helix::PrinterState state;
+    std::optional<MoonrakerAPIMock> api;
+    AmsBackendAfcTestHelper helper;
+
+    AfcLockedLaneFixture() {
+        state.init_subjects(false);
+        api.emplace(client, state);
+        helper.initialize_test_lanes_with_slots(4);
+        AfcTestAccess::override_store(helper) =
+            std::make_unique<helix::ams::FilamentSlotOverrideStore>(&*api, "afc");
+
+        SlotInfo edit = helper.get_slot_info(0);
+        edit.brand = "Polymaker";
+        edit.material = "PETG";
+        edit.color_rgb = 0x1E5AA8;
+        REQUIRE(helper.set_slot_info(0, edit).success());
+
+        const auto locked = record();
+        REQUIRE(locked.user_locked_color);
+        REQUIRE(locked.user_locked_material);
+        REQUIRE(helix::ams::declared_field_names(locked.declared) ==
+                nlohmann::json::array({"brand"}));
+        helper.clear_captured_gcodes();
+    }
+
+    [[nodiscard]] helix::ams::FilamentSlotOverride record() {
+        std::lock_guard<std::mutex> lock(AfcTestAccess::mutex(helper));
+        const auto& overrides = AfcTestAccess::overrides(helper);
+        const auto kept = overrides.find(0);
+        REQUIRE(kept != overrides.end());
+        return kept->second;
+    }
+};
+
+} // namespace
+
+TEST_CASE_METHOD(AfcLockedLaneFixture, "AFC weight persist writes the weight and no identity",
+                 "[ams][afc][persistence][filament_slot_override][1652]") {
+    // What the consumption meter's pause and completion flushes do.
+    helper.update_slot_weight(0, 730.0f, 1000.0f, /*persist=*/true);
+
+    // Both of AFC's durable homes for a weight: the lane's own, and the record
+    // a restart reads back.
+    CHECK(helper.has_gcode("SET_WEIGHT LANE=lane1 WEIGHT=730"));
+    const nlohmann::json stored = api->mock_get_db_value("lane_data", "lane1");
+    REQUIRE_FALSE(stored.is_null());
+    CHECK(stored["remaining_weight_g"] == 730.0f);
+
+    // A meter has no identity to state. Restating the edit's would overwrite
+    // whatever has changed the lane's colour, material or spool since.
+    CHECK_FALSE(helper.has_gcode_starting_with("SET_COLOR"));
+    CHECK_FALSE(helper.has_gcode_starting_with("SET_MATERIAL"));
+    CHECK_FALSE(helper.has_gcode_starting_with("SET_SPOOL_ID"));
+
+    const auto after = record();
+    CHECK(after.remaining_weight_g == Catch::Approx(730.0f));
+    CHECK(after.total_weight_g == Catch::Approx(1000.0f));
+    CHECK(after.user_locked_color);
+    CHECK(after.user_locked_material);
+    CHECK(helix::ams::declared_field_names(after.declared) == nlohmann::json::array({"brand"}));
+    CHECK(stored["helix_locked_color"] == true);
+    CHECK(stored["helix_locked_material"] == true);
+    CHECK(stored["helix_declared"] == nlohmann::json::array({"brand"}));
+}
+
+TEST_CASE_METHOD(AfcLockedLaneFixture, "AFC weight update without persist writes nothing durable",
+                 "[ams][afc][persistence][filament_slot_override][1652]") {
+    const nlohmann::json stored_before = api->mock_get_db_value("lane_data", "lane1");
+    REQUIRE_FALSE(stored_before.is_null());
+    const float recorded_before = record().remaining_weight_g;
+
+    helper.update_slot_weight(0, 500.0f, -1.0f, /*persist=*/false);
+
+    // The live slot takes the meter's number...
+    CHECK(helper.get_slot_info(0).remaining_weight_g == Catch::Approx(500.0f));
+    // ...and nothing durable does.
+    CHECK(helper.captured_gcodes.empty());
+    CHECK(api->mock_get_db_value("lane_data", "lane1") == stored_before);
+    CHECK(record().remaining_weight_g == Catch::Approx(recorded_before));
 }
 
 TEST_CASE("AFC persistence: skips SET_SPOOL_ID when both old and new are zero",

@@ -650,7 +650,8 @@ void populate_temps_from_slot_info(FilamentSlotOverride& ovr, const SlotInfo& in
     }
 }
 
-FilamentSlotOverride user_override_from_slot_info(const SlotInfo& original, const SlotInfo& edited,
+FilamentSlotOverride user_override_from_slot_info(const Observation& declaration,
+                                                  const SlotInfo& edited,
                                                   const std::string& material,
                                                   const FilamentSlotOverride* prior) {
     FilamentSlotOverride ovr;
@@ -675,24 +676,18 @@ FilamentSlotOverride user_override_from_slot_info(const SlotInfo& original, cons
         ovr.color_set = true;
     }
 
-    // What the user actually said, as opposed to what the record now carries.
     // Every field above travels because the lane must show it; only the fields
-    // this observation names are the user's own word. The editor opens on the
+    // `declaration` names are the user's own word. The editor opens on the
     // lane's current state, so a value the machine supplied and the user never
-    // moved reaches `edited` looking exactly like something they typed, and the
-    // diff is the only thing that can tell them apart.
-    const Observation declaration = user_edit_observation(original, edited);
-
+    // moved reaches `edited` looking exactly like something they typed.
+    //
     // Authorship is AMENDED onto the record the lane already had, never
     // replaced: this edit speaks about the fields it moved and says nothing
     // about the rest, so a choice made in an earlier edit stays the user's
     // word while the value it stood over is still the one on the record. The
     // lane's own source record is amended the same way, by commit_slot_edit.
-    //
     // A record replaced instead would lose a colour declared in an earlier
-    // edit the moment a later edit touched only the brand, and the consumption
-    // meter would clear every declaration on the lane on its next persist:
-    // persist=true means "write this down", not "a user typed this".
+    // edit the moment a later edit touched only the brand.
     const FilamentSlotOverride no_prior_record;
     const RecordAuthorship authorship =
         amend_authorship(declaration, prior != nullptr ? *prior : no_prior_record, ovr);
@@ -713,20 +708,29 @@ FilamentSlotOverride user_override_from_slot_info(const SlotInfo& original, cons
 }
 
 FilamentSlotOverride user_override_from_slot_info(const SlotInfo& original, const SlotInfo& edited,
+                                                  const std::string& material,
+                                                  const FilamentSlotOverride* prior) {
+    return user_override_from_slot_info(user_edit_observation(original, edited), edited, material,
+                                        prior);
+}
+
+FilamentSlotOverride user_override_from_slot_info(const SlotInfo& original, const SlotInfo& edited,
                                                   const FilamentSlotOverride* prior) {
     return user_override_from_slot_info(original, edited, edited.material, prior);
 }
 
 FilamentSlotOverride& stage_user_override(std::unordered_map<int, FilamentSlotOverride>& overrides,
                                           int slot_index, const SlotInfo& original,
-                                          const SlotInfo& edited, const std::string& material) {
+                                          const SlotInfo& edited, const std::string& material,
+                                          const Observation* declared) {
     // Built against the entry this call replaces, so the find has to happen
     // before the insert: operator[] on a lane with no record yet would hand
     // the amend a default-constructed record that declares nothing, which is
     // the same answer but by accident rather than on purpose.
     const auto existing = overrides.find(slot_index);
-    FilamentSlotOverride amended = user_override_from_slot_info(
-        original, edited, material, existing == overrides.end() ? nullptr : &existing->second);
+    FilamentSlotOverride amended =
+        user_override_from_slot_info(edit_declaration(declared, original, edited), edited, material,
+                                     existing == overrides.end() ? nullptr : &existing->second);
     FilamentSlotOverride& staged = overrides[slot_index];
     staged = std::move(amended);
     return staged;
@@ -734,8 +738,19 @@ FilamentSlotOverride& stage_user_override(std::unordered_map<int, FilamentSlotOv
 
 FilamentSlotOverride& stage_user_override(std::unordered_map<int, FilamentSlotOverride>& overrides,
                                           int slot_index, const SlotInfo& original,
-                                          const SlotInfo& edited) {
-    return stage_user_override(overrides, slot_index, original, edited, edited.material);
+                                          const SlotInfo& edited, const Observation* declared) {
+    return stage_user_override(overrides, slot_index, original, edited, edited.material, declared);
+}
+
+FilamentSlotOverride&
+stage_weight_override(std::unordered_map<int, FilamentSlotOverride>& overrides, int slot_index,
+                      float remaining_weight_g, float total_weight_g) {
+    FilamentSlotOverride& staged = overrides[slot_index];
+    staged.remaining_weight_g = remaining_weight_g;
+    if (total_weight_g >= 0.0f) {
+        staged.total_weight_g = total_weight_g;
+    }
+    return staged;
 }
 
 // ============================================================================
@@ -1967,6 +1982,21 @@ bool clear_persisted_override(FilamentSlotOverrideStore* store,
         });
     }
     return true;
+}
+
+void persist_override_weight(FilamentSlotOverrideStore* store,
+                             std::unordered_map<int, FilamentSlotOverride>& overrides,
+                             int slot_index, float remaining_weight_g, float total_weight_g,
+                             const std::string& log_tag) {
+    const FilamentSlotOverride& staged =
+        stage_weight_override(overrides, slot_index, remaining_weight_g, total_weight_g);
+    if (store) {
+        store->save_async(slot_index, staged, [log_tag, slot_index](bool ok, std::string err) {
+            if (!ok) {
+                spdlog::warn("{} weight persist failed for slot {}: {}", log_tag, slot_index, err);
+            }
+        });
+    }
 }
 
 bool publish_external_lane(FilamentSlotOverrideStore* store, int lane_index, const SlotInfo* spool,

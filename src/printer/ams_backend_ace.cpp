@@ -485,7 +485,8 @@ AmsError AmsBackendAce::cancel() {
 // Configuration
 // ============================================================================
 
-AmsError AmsBackendAce::set_slot_info(int slot_index, const SlotInfo& info, bool persist) {
+AmsError AmsBackendAce::set_slot_info(int slot_index, const SlotInfo& info, bool persist,
+                                      const helix::ams::Observation* declared) {
     {
         std::lock_guard<std::mutex> lock(mutex_);
 
@@ -525,7 +526,7 @@ AmsError AmsBackendAce::set_slot_info(int slot_index, const SlotInfo& info, bool
         // edits are in-memory only and will be overwritten by the next
         // firmware parse (expected preview contract).
         if (persist) {
-            helix::ams::stage_user_override(overrides_, slot_index, prior_slot, info);
+            helix::ams::stage_user_override(overrides_, slot_index, prior_slot, info, declared);
         }
     }
 
@@ -558,6 +559,14 @@ AmsError AmsBackendAce::set_slot_info(int slot_index, const SlotInfo& info, bool
 
     emit_event(EVENT_SLOT_CHANGED, std::to_string(slot_index));
     return AmsErrorHelper::success();
+}
+
+void AmsBackendAce::persist_slot_weight(int slot_index, float remaining_weight_g,
+                                        float total_weight_g) {
+    const std::string tag = backend_log_tag();
+    std::lock_guard<std::mutex> lock(mutex_);
+    helix::ams::persist_override_weight(override_store_.get(), overrides_, slot_index,
+                                        remaining_weight_g, total_weight_g, tag);
 }
 
 AmsError AmsBackendAce::set_tool_mapping_impl(int tool_number, int slot_index) {

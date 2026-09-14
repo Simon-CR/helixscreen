@@ -1545,6 +1545,20 @@ TEST_CASE("QIDI Box set_slot_info emits SAVE_VARIABLE for all three ids",
     REQUIRE(saw_vendor);
 }
 
+TEST_CASE("QIDI Box weight update writes none of the box's identity variables",
+          "[ams][qidi_box][write_path][1652]") {
+    RecordingQidiBackend backend;
+    QidiBoxTestAccess::apply_filas_list(backend, STOCK_FILAS_EXCERPT);
+    // A loaded vendor table makes set_slot_info write vendor_slot for any slot,
+    // so a weight that reached it would show up in what was sent.
+    REQUIRE(QidiBoxTestAccess::vendor_count(backend) > 0);
+
+    // What the consumption meter's pause and completion flushes do.
+    backend.update_slot_weight(0, 500.0f, -1.0f, /*persist=*/true);
+
+    CHECK(backend.sent.empty());
+}
+
 TEST_CASE("QIDI Box set_slot_info skips fields with no mapping", "[ams][qidi_box][write_path]") {
     RecordingQidiBackend backend;
     QidiBoxTestAccess::apply_filas_list(backend, STOCK_FILAS_EXCERPT);

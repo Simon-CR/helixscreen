@@ -2628,12 +2628,13 @@ AmsError AmsBackendHappyHare::cancel() {
 // ============================================================================
 
 void AmsBackendHappyHare::persist_override(int slot_index, const SlotInfo& original,
-                                           const SlotInfo& info) {
-    // Callers hold mutex_, and @p original is the gate as it stood before this
-    // edit: stage_user_override tells what the user moved from what the editor
-    // merely carried back, so it needs both snapshots.
+                                           const SlotInfo& info,
+                                           const helix::ams::Observation* declared) {
+    // Callers hold mutex_. What the user declared comes from @p declared when
+    // the caller passed it down, else from a diff of @p original, the gate as
+    // it stood before this edit, against @p info.
     const helix::ams::FilamentSlotOverride o =
-        helix::ams::stage_user_override(overrides_, slot_index, original, info);
+        helix::ams::stage_user_override(overrides_, slot_index, original, info, declared);
 
     if (override_store_) {
         override_store_->save_async(slot_index, o, [slot_index](bool ok, std::string err) {
@@ -2706,7 +2707,8 @@ void AmsBackendHappyHare::publish_external_spool_lane(const SlotInfo* spool) {
                                       backend_log_tag());
 }
 
-AmsError AmsBackendHappyHare::set_slot_info(int slot_index, const SlotInfo& info, bool persist) {
+AmsError AmsBackendHappyHare::set_slot_info(int slot_index, const SlotInfo& info, bool persist,
+                                            const helix::ams::Observation* declared) {
     int old_spoolman_id = 0;
     int old_mapped_tool = -1;
     {
@@ -2771,7 +2773,7 @@ AmsError AmsBackendHappyHare::set_slot_info(int slot_index, const SlotInfo& info
         // Record the user's identity in the override store: the gate map cannot
         // hold brand / spool_name / total weight / colour name at all.
         if (persist) {
-            persist_override(slot_index, prior_slot, info);
+            persist_override(slot_index, prior_slot, info, declared);
         }
     }
 
@@ -2847,16 +2849,27 @@ AmsError AmsBackendHappyHare::set_slot_info(int slot_index, const SlotInfo& info
     emit_event(EVENT_SLOT_CHANGED, std::to_string(slot_index));
 
     if (!rejected_material.empty()) {
-        return AmsError(AmsResult::COMMAND_FAILED,
-                        "Material '" + rejected_material +
-                            "' contains characters that cannot be "
-                            "sent as a G-code parameter",
-                        lv_tr("Couldn't save the material name"),
-                        lv_tr("Everything else was saved. Rename the material using letters, "
-                              "digits, spaces, and + - _ . ( ) /"));
+        AmsError partial(AmsResult::COMMAND_FAILED,
+                         "Material '" + rejected_material +
+                             "' contains characters that cannot be "
+                             "sent as a G-code parameter",
+                         lv_tr("Couldn't save the material name"),
+                         lv_tr("Everything else was saved. Rename the material using letters, "
+                               "digits, spaces, and + - _ . ( ) /"));
+        // Every other write above has already gone out, the spool id included.
+        partial.partially_applied = true;
+        return partial;
     }
 
     return AmsErrorHelper::success();
+}
+
+void AmsBackendHappyHare::persist_slot_weight(int slot_index, float remaining_weight_g,
+                                              float total_weight_g) {
+    // The gate map holds no weight, so the stored record is its only durable home.
+    std::lock_guard<std::mutex> lock(mutex_);
+    helix::ams::persist_override_weight(override_store_.get(), overrides_, slot_index,
+                                        remaining_weight_g, total_weight_g, "[AMS HappyHare]");
 }
 
 uint64_t AmsBackendHappyHare::firmware_tool_mapping_generation() const {

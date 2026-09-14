@@ -1544,9 +1544,35 @@ class AmsBackend {
      * @param info New slot information (only filament fields used)
      * @param persist If true, persist changes to firmware. If false, update
      *               in-memory state only (for external data sync).
+     * @param declared What the user declared in this edit, when the caller has
+     *               already answered that. AmsState::commit_slot_edit diffs the
+     *               editor's own snapshot once and files the same answer on the
+     *               lane, so a persist records its stored authorship from it: the
+     *               backend's own read of the slot can be newer than that
+     *               snapshot, and a second diff against it claims a field a
+     *               firmware frame moved while the editor was open. nullptr
+     *               diffs against that read instead.
      * @return AmsError indicating if update succeeded
      */
-    virtual AmsError set_slot_info(int slot_index, const SlotInfo& info, bool persist = true) = 0;
+    virtual AmsError set_slot_info(int slot_index, const SlotInfo& info, bool persist = true,
+                                   const helix::ams::Observation* declared = nullptr) = 0;
+
+    /**
+     * @brief Repaint a slot from the lane model once an edit's declaration is on it.
+     *
+     * AmsState::commit_slot_edit calls this after it files the user's
+     * declaration, which it does only once set_slot_info() has returned. A
+     * backend that paints the slot from the lane inside set_slot_info() painted
+     * the lane as it stood before that filing, so a field an earlier edit
+     * declared would go on showing the old value until the next frame. The
+     * default does nothing: a backend whose set_slot_info() writes the edit
+     * straight onto the slot already shows it.
+     *
+     * @param slot_index Slot the edit was written through (0-based, global)
+     */
+    virtual void repaint_slot_from_lane(int slot_index) {
+        (void)slot_index;
+    }
 
     /**
      * @brief Persist only a slot's filament weight (consumption tracking)
@@ -1578,10 +1604,13 @@ class AmsBackend {
      * @brief The backend half of update_slot_weight().
      *
      * Reached only through that wrapper, which files the meter reading before
-     * returning. The default routes through set_slot_info() — correct for
-     * backends where weight and identity share one persist path with no
-     * clobber risk. Backends that write identity to a firmware-owned store
-     * override this to persist weight alone (see AmsBackendAd5xIfs).
+     * returning. The default puts the weight on the live slot through
+     * set_slot_info(persist=false), which writes memory alone, and hands a
+     * persist to persist_slot_weight(). A persist never goes through
+     * set_slot_info(): that is the edit path, which records authorship and
+     * restates identity to firmware, and a meter states neither. A backend
+     * whose set_slot_info() writes more than memory even without persist
+     * overrides this (see AmsBackendAd5xIfs).
      */
     virtual void update_slot_weight_impl(int slot_index, float remaining_weight_g,
                                          float total_weight_g, bool persist) {
@@ -1589,7 +1618,30 @@ class AmsBackend {
         info.remaining_weight_g = remaining_weight_g;
         if (total_weight_g >= 0.0f)
             info.total_weight_g = total_weight_g;
-        set_slot_info(slot_index, info, persist);
+        const AmsError stored = set_slot_info(slot_index, info, /*persist=*/false);
+        if (persist && stored.success()) {
+            persist_slot_weight(slot_index, remaining_weight_g, total_weight_g);
+        }
+    }
+
+    /**
+     * @brief Write a slot's weight to the backend's durable stores, and nothing else.
+     *
+     * The persist half of the default update_slot_weight_impl(), reached once the
+     * live slot already holds the weight. The default writes nothing, for a
+     * backend with no durable home for a weight. An override amends the weights
+     * onto the slot's stored record, whose identity and authorship stand, and
+     * writes any weight store firmware keeps; it restates no identity.
+     *
+     * @param slot_index Slot to update (0-based)
+     * @param remaining_weight_g New remaining weight in grams
+     * @param total_weight_g Total weight in grams, or < 0 to leave unchanged
+     */
+    virtual void persist_slot_weight(int slot_index, float remaining_weight_g,
+                                     float total_weight_g) {
+        (void)slot_index;
+        (void)remaining_weight_g;
+        (void)total_weight_g;
     }
 
     /**

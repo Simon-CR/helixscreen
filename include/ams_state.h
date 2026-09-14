@@ -1502,8 +1502,14 @@ class AmsState {
      * This is the method layer: it performs the edit against every backing
      * store. It also calls the declaration layer,
      * helix::ams::commit_slot_edit() (lane_source_store.h), once the backend
-     * has accepted the edit, recording the user's authorship as a lane source
-     * record. Nothing reads that record yet.
+     * has applied the edit, recording the user's authorship as a lane source
+     * record. The user's declaration is computed once, from @p original and
+     * @p info, and the backend records its stored authorship from that same
+     * answer. Every backend paints its slots from the lane model through
+     * AmsBackend::apply_resolved_lane(), so that record is what the lane shows
+     * for each field the user declared. Once it is filed, the backend repaints
+     * the slot (AmsBackend::repaint_slot_from_lane()), so a backend that paints
+     * while applying the edit shows the new declaration at once.
      *
      * @param slot_index a global slot index on the primary backend. A slot
      *        outside that backend's lane block derives no lane id, and the
@@ -1511,6 +1517,8 @@ class AmsState {
      *        neighbouring backend's lane. The edit itself still runs.
      *
      * @return the AmsError from set_slot_info so callers keep their error toasts.
+     *         An error the backend marks AmsError::partially_applied still
+     *         files what it applied.
      */
     AmsError commit_slot_edit(int slot_index, const SlotInfo& original, const SlotInfo& info);
 

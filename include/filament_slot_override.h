@@ -210,18 +210,19 @@ ResolvedTemps resolved_temps(const FilamentSlotOverride& o);
 // 0 (which signals to resolved_temps that the material-DB default should win).
 void populate_temps_from_slot_info(FilamentSlotOverride& ovr, const SlotInfo& info);
 
-// The record a backend persists for a user's edit that took @p original to
-// @p edited. One shape for every AMS backend, so the rules a backend must not
-// get wrong live here rather than in seven near-identical blocks.
+// The record a backend persists for a user's edit that left the lane at
+// @p edited, where @p declaration is what the user declared in it. One shape for
+// every AMS backend, so the rules a backend must not get wrong live here rather
+// than in seven near-identical blocks.
 //
 // The record carries every identity field @p edited holds, because that is what
 // the lane must show. Which of them the record claims as the USER'S word is a
-// narrower question, and user_edit_observation() answers it from the two
-// snapshots: a field is the user's exactly when they moved it. The editor seeds
-// its working copy from the lane's current state, so a firmware-sourced brand,
-// colour or material arrives in @p edited untouched, and a record claiming
-// those would outrank the firmware that supplied them and refuse every later
-// correction (#965).
+// narrower question, and @p declaration answers it: a field is the user's
+// exactly when they moved it, which user_edit_observation() works out from the
+// editor's two snapshots. The editor seeds its working copy from the lane's
+// current state, so a firmware-sourced brand, colour or material arrives in
+// @p edited untouched, and a record claiming those would outrank the firmware
+// that supplied them and refuse every later correction (#965).
 //
 // Authorship therefore lands in two homes, both from that one answer: the two
 // lock flags for colour and material, and the declared set for the roster rows
@@ -235,9 +236,16 @@ void populate_temps_from_slot_info(FilamentSlotOverride& ovr, const SlotInfo& in
 // authorship is AMENDED onto that record's rather than replacing it: an
 // earlier choice the edit never mentioned stays the user's word while the
 // value it stood over is still the one the record holds. Without it a brand-
-// only edit would drop a colour declared before it, and the consumption
-// meter's weight-only persist would drop every declaration on the lane.
-// amend_authorship() (lane_translation.h) is that rule.
+// only edit would drop a colour declared before it. amend_authorship()
+// (lane_translation.h) is that rule.
+//
+// `material` is recorded in place of edited.material, for a backend that
+// persists firmware's normalized spelling rather than the string the user
+// typed: AD5X stores the firmware-valid value its own normalize_material()
+// produced, so the raw SlotInfo string is the wrong thing to record and the
+// wrong thing to lock on. Whether the material was declared still follows
+// @p declaration, since the normalized spelling has no before-value to compare
+// against.
 //
 // The colour records only when it is a reading rather than the SlotInfo "no
 // colour" sentinel, the question is_declarable_color() answers; a deliberate
@@ -246,15 +254,17 @@ void populate_temps_from_slot_info(FilamentSlotOverride& ovr, const SlotInfo& in
 //
 // Temps come from populate_temps_from_slot_info(). updated_at is left default
 // so save_async stamps a fresh value.
+FilamentSlotOverride user_override_from_slot_info(const Observation& declaration,
+                                                  const SlotInfo& edited,
+                                                  const std::string& material,
+                                                  const FilamentSlotOverride* prior);
+
+// As above, declaring what user_edit_observation(original, edited) answers and
+// recording edited.material.
 FilamentSlotOverride user_override_from_slot_info(const SlotInfo& original, const SlotInfo& edited,
                                                   const FilamentSlotOverride* prior);
 
-// As above, recording `material` in place of edited.material, for a backend
-// that persists firmware's normalized spelling rather than the string the user
-// typed: AD5X stores the firmware-valid value its own normalize_material()
-// produced, so the raw SlotInfo string is the wrong thing to record and the
-// wrong thing to lock on. Whether the material was declared still follows the
-// edit, since the normalized spelling has no before-value to compare against.
+// As above, recording `material` in place of edited.material.
 FilamentSlotOverride user_override_from_slot_info(const SlotInfo& original, const SlotInfo& edited,
                                                   const std::string& material,
                                                   const FilamentSlotOverride* prior);
@@ -267,14 +277,28 @@ FilamentSlotOverride user_override_from_slot_info(const SlotInfo& original, cons
 // prior record it must amend is the entry this call is about to replace, so
 // finding it belongs here rather than in seven places that would each have to
 // remember to look.
+//
+// What the user declared is edit_declaration(declared, original, edited)
+// (lane_translation.h): the caller's own answer whenever it passed one down.
 FilamentSlotOverride& stage_user_override(std::unordered_map<int, FilamentSlotOverride>& overrides,
                                           int slot_index, const SlotInfo& original,
-                                          const SlotInfo& edited);
+                                          const SlotInfo& edited,
+                                          const Observation* declared = nullptr);
 
 // As above, for a backend that records a normalized material spelling.
 FilamentSlotOverride& stage_user_override(std::unordered_map<int, FilamentSlotOverride>& overrides,
                                           int slot_index, const SlotInfo& original,
-                                          const SlotInfo& edited, const std::string& material);
+                                          const SlotInfo& edited, const std::string& material,
+                                          const Observation* declared = nullptr);
+
+// Put a metered weight on the record @p overrides holds for @p slot_index and
+// return it. Only the two weights move: a meter states no identity, so the
+// record's values and its authorship stand as they were. A lane with no record
+// yet gets one carrying the weight alone, and a total below zero leaves the
+// record's total as it was.
+FilamentSlotOverride&
+stage_weight_override(std::unordered_map<int, FilamentSlotOverride>& overrides, int slot_index,
+                      float remaining_weight_g, float total_weight_g);
 
 nlohmann::json to_json(const FilamentSlotOverride& o);
 FilamentSlotOverride from_json(const nlohmann::json& j);

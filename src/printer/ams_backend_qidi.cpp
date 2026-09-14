@@ -1394,7 +1394,8 @@ int AmsBackendQidi::resolve_vendor_id(const std::map<int, std::string>& vendors,
     return 0;
 }
 
-AmsError AmsBackendQidi::set_slot_info(int slot_index, const SlotInfo& info, bool persist) {
+AmsError AmsBackendQidi::set_slot_info(int slot_index, const SlotInfo& info, bool persist,
+                                       const helix::ams::Observation* /*declared*/) {
     spdlog::info("{} set_slot_info(slot={}, material='{}', brand='{}', persist={})",
                  backend_log_tag(), slot_index, info.material, info.brand, persist);
 
@@ -1459,6 +1460,13 @@ AmsError AmsBackendQidi::set_slot_info(int slot_index, const SlotInfo& info, boo
                      backend_log_tag(), slot_index);
     }
     return AmsErrorHelper::success();
+}
+
+void AmsBackendQidi::update_slot_weight_impl(int /*slot_index*/, float /*remaining_weight_g*/,
+                                             float /*total_weight_g*/, bool /*persist*/) {
+    // The box has nowhere to put a weight: its save_variables hold filament,
+    // colour and vendor ids alone, and set_slot_info() writes those whatever
+    // persist says. The wrapper has already filed the reading on the lane.
 }
 
 AmsError AmsBackendQidi::set_tool_mapping_impl(int tool_number, int slot_index) {

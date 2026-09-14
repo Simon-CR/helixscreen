@@ -1207,7 +1207,8 @@ AmsError AmsBackendToolChanger::cancel() {
 // Configuration Operations
 // ============================================================================
 
-AmsError AmsBackendToolChanger::set_slot_info(int slot_index, const SlotInfo& info, bool persist) {
+AmsError AmsBackendToolChanger::set_slot_info(int slot_index, const SlotInfo& info, bool persist,
+                                              const helix::ams::Observation* declared) {
     int old_mapped_tool = -1;
     std::string physical_tool_name;
     {
@@ -1260,7 +1261,7 @@ AmsError AmsBackendToolChanger::set_slot_info(int slot_index, const SlotInfo& in
             // klipper-toolchanger supplies no material, colour, brand or weight,
             // so there is nothing underneath for these to fall through to.
             if (persist) {
-                helix::ams::stage_user_override(overrides_, slot_index, prior_slot, info);
+                helix::ams::stage_user_override(overrides_, slot_index, prior_slot, info, declared);
             }
         }
     }
@@ -1296,6 +1297,14 @@ AmsError AmsBackendToolChanger::set_slot_info(int slot_index, const SlotInfo& in
     }
 
     return AmsErrorHelper::success();
+}
+
+void AmsBackendToolChanger::persist_slot_weight(int slot_index, float remaining_weight_g,
+                                                float total_weight_g) {
+    const std::string tag = backend_log_tag();
+    std::lock_guard<std::mutex> lock(mutex_);
+    helix::ams::persist_override_weight(override_store_.get(), overrides_, slot_index,
+                                        remaining_weight_g, total_weight_g, tag);
 }
 
 AmsError AmsBackendToolChanger::set_tool_mapping_impl(int tool_number, int slot_index) {

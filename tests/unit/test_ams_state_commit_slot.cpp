@@ -5,7 +5,9 @@
 
 #include "../lvgl_test_fixture.h"
 #include "../ui_test_utils.h"
+#include "ams_backend_ad5x_ifs.h"
 #include "ams_backend_afc.h"
+#include "ams_backend_happy_hare.h"
 #include "ams_backend_mock.h"
 #include "ams_error.h"
 #include "ams_state.h"
@@ -21,14 +23,18 @@
 #include "settings_manager.h"
 #include "spoolman_manager.h"
 #include "spoolman_types.h"
+#include "test_helpers/ad5x_ifs_test_access.h"
 #include "test_helpers/afc_test_access.h"
+#include "test_helpers/happy_hare_test_access.h"
 #include "test_helpers/registered_backend.h"
 #include "test_helpers/seeded_override.h"
 
+#include <filesystem>
 #include <memory>
 #include <mutex>
 #include <optional>
 #include <string>
+#include <unistd.h>
 #include <vector>
 
 #include "../catch_amalgamated.hpp"
@@ -890,4 +896,145 @@ TEST_CASE("a weight edit finer than the editor's own tolerance is not a declarat
     const auto sources = helix::ams::lane_sources(lane_of(0));
     REQUIRE(sources.local_user.has_value());
     CHECK(sources.local_user->remaining_weight_g == 500.0f);
+}
+
+TEST_CASE("a frame that lands while the editor is open does not become the user's declaration",
+          "[ams][commit][lane][afc][1652]") {
+    CommitFixture f;
+    SettingsManager::instance().init_subjects();
+    helix::test::RegisteredBackend<AmsBackendAfc> afc(nullptr, nullptr);
+    AfcTestAccess::initialize_slots(*afc, std::vector<std::string>{"lane1", "lane2"});
+    AmsState::instance().set_moonraker_api(&f.api);
+
+    // A stored record that locks nothing: the brand is remembered, not declared.
+    helix::ams::FilamentSlotOverride stored;
+    stored.brand = "Polymaker";
+    stored.material = "PLA";
+    {
+        std::lock_guard<std::mutex> lock(AfcTestAccess::mutex(*afc));
+        AfcTestAccess::overrides(*afc)[0] = stored;
+    }
+    helix::test::file_override_as_lane_records(*afc, 0, stored);
+
+    feed_afc_lane(*afc, "lane1", {{"prep", true}, {"status", "Loaded"}, {"color", "#ED2C2C"}});
+    // The editor takes its snapshot on opening and keeps it until it commits.
+    const SlotInfo original = afc->get_slot_info(0);
+    REQUIRE(original.color_rgb == 0xED2C2Cu);
+
+    // Firmware restates the colour while the editor is open. Nobody declared it.
+    feed_afc_lane(*afc, "lane1", {{"color", "#1E5AA8"}});
+    REQUIRE(afc->get_slot_info(0).color_rgb == 0x1E5AA8u);
+
+    SlotInfo rebranded = original;
+    rebranded.brand = "Elegoo";
+    REQUIRE(AmsState::instance().commit_slot_edit(0, original, rebranded).success());
+
+    const auto sources = helix::ams::lane_sources(afc.lane(0));
+    REQUIRE(sources.local_user.has_value());
+    REQUIRE(sources.local_user->brand == "Elegoo");
+
+    bool record_locks_colour = false;
+    {
+        std::lock_guard<std::mutex> lock(AfcTestAccess::mutex(*afc));
+        const auto& overrides = AfcTestAccess::overrides(*afc);
+        const auto kept = overrides.find(0);
+        REQUIRE(kept != overrides.end());
+        record_locks_colour = kept->second.user_locked_color;
+    }
+    // The stored record and the lane carry one declaration between them, and
+    // the user moved the brand alone.
+    CHECK_FALSE(sources.local_user->color_rgb.has_value());
+    CHECK(record_locks_colour == sources.local_user->color_rgb.has_value());
+}
+
+TEST_CASE("a binding change that reached firmware is filed even though the call returned an error",
+          "[ams][commit][lane][spoolman][afc][1652]") {
+    RestartedAfcLinkFixture f;
+
+    SlotInfo original = f.afc->get_slot_info(0);
+    REQUIRE(original.spoolman_id == 42);
+    SlotInfo relinked = original;
+    relinked.spoolman_id = 99;
+    // AFC sends the spool id first, then refuses a material name it cannot put
+    // in a G-code parameter.
+    relinked.material = "PLA;G28";
+
+    const AmsError err = AmsState::instance().commit_slot_edit(0, original, relinked);
+
+    // The user is still told the material did not save.
+    REQUIRE_FALSE(err.success());
+    CHECK(err.result == AmsResult::COMMAND_FAILED);
+    CHECK_FALSE(err.user_msg.empty());
+
+    const auto sources = helix::ams::lane_sources(f.lane());
+    REQUIRE(sources.local_user.has_value());
+    CHECK(sources.local_user->spoolman_id == 99);
+    // The server's record describes spool 42, and the lane holds spool 99.
+    CHECK_FALSE(sources.spoolman.has_value());
+}
+
+TEST_CASE("a Happy Hare binding change that reached firmware is filed despite a refused material",
+          "[ams][commit][lane][spoolman][happy_hare][1652]") {
+    CommitFixture f;
+    helix::test::RegisteredBackend<AmsBackendHappyHare> hh(nullptr, nullptr);
+    HappyHareTestAccess::slots(*hh).initialize("MMU", std::vector<std::string>{"0", "1"});
+    AmsState::instance().set_moonraker_api(&f.api);
+
+    SlotInfo linked = hh->get_slot_info(0);
+    linked.spoolman_id = 42;
+    REQUIRE(hh->set_slot_info(0, linked, /*persist=*/false).success());
+    helix::test::file_override_as_lane_records(*hh, 0, linked_record(42));
+    REQUIRE(helix::ams::lane_sources(hh.lane(0)).spoolman.has_value());
+
+    const SlotInfo original = hh->get_slot_info(0);
+    REQUIRE(original.spoolman_id == 42);
+    SlotInfo relinked = original;
+    relinked.spoolman_id = 99;
+    relinked.material = "PLA;G28";
+
+    const AmsError err = AmsState::instance().commit_slot_edit(0, original, relinked);
+
+    REQUIRE_FALSE(err.success());
+    CHECK(err.result == AmsResult::COMMAND_FAILED);
+
+    const auto sources = helix::ams::lane_sources(hh.lane(0));
+    REQUIRE(sources.local_user.has_value());
+    CHECK(sources.local_user->spoolman_id == 99);
+    CHECK_FALSE(sources.spoolman.has_value());
+}
+
+TEST_CASE("an AD5X lane shows a re-declared field as soon as the commit returns",
+          "[ams][commit][lane][ad5x_ifs][1652]") {
+    CommitFixture f;
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> ad5x(nullptr, nullptr);
+
+    // A persisted AD5X edit writes Adventurer5M.json, so give it a file of its own.
+    struct RemoveOnExit {
+        std::filesystem::path path;
+        ~RemoveOnExit() {
+            std::error_code ec;
+            std::filesystem::remove(path, ec);
+        }
+    } json_file{std::filesystem::temp_directory_path() /
+                ("helix_commit_ad5x_" + std::to_string(::getpid()) + ".json")};
+    Ad5xIfsTestAccess::set_local_adventurer_json_path(*ad5x, json_file.path.string());
+
+    Ad5xIfsTestAccess::set_port_presence(*ad5x, 0, true);
+    Ad5xIfsTestAccess::set_color(*ad5x, 0, "898989");
+    Ad5xIfsTestAccess::set_material(*ad5x, 0, "PETG");
+
+    SlotInfo original = ad5x->get_slot_info(0);
+    SlotInfo branded = original;
+    branded.brand = "Sunlu";
+    REQUIRE(AmsState::instance().commit_slot_edit(0, original, branded).success());
+    REQUIRE(ad5x->get_slot_info(0).brand == "Sunlu");
+
+    // AD5X paints the slot from the lane while it applies the edit, and the
+    // lane still holds the first declaration at that moment.
+    original = ad5x->get_slot_info(0);
+    SlotInfo rebranded = original;
+    rebranded.brand = "Elegoo";
+    REQUIRE(AmsState::instance().commit_slot_edit(0, original, rebranded).success());
+
+    CHECK(ad5x->get_slot_info(0).brand == "Elegoo");
 }

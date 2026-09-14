@@ -759,15 +759,17 @@ void AmsBackendSnapmaker::prepare_for_resume(int slot_index, ResumeReadyCallback
 // Configuration
 // ============================================================================
 
-AmsError AmsBackendSnapmaker::set_slot_info(int slot_index, const SlotInfo& info, bool persist) {
+AmsError AmsBackendSnapmaker::set_slot_info(int slot_index, const SlotInfo& info, bool persist,
+                                            const helix::ams::Observation* declared) {
     auto err = validate_slot_index(slot_index);
     if (err.result != AmsResult::SUCCESS)
         return err;
 
     // The channel as it stood before this edit. Both the stored record and the
-    // write-back guard rest on what the user declared, and only a diff against
-    // this answers that: the editor opens on the lane's current state, so a
-    // value firmware supplied comes back looking like one a person typed.
+    // write-back guard rest on what the user declared, which @p declared answers
+    // when the caller passed it down and a diff against this answers otherwise:
+    // the editor opens on the lane's current state, so a value firmware supplied
+    // comes back looking like one a person typed.
     SlotInfo prior_slot;
 
     {
@@ -821,7 +823,7 @@ AmsError AmsBackendSnapmaker::set_slot_info(int slot_index, const SlotInfo& info
         // (CFS shares the tracker and DOES register one — it writes
         // color_value back to the box, which is half of its fingerprint.)
         if (persist) {
-            helix::ams::stage_user_override(overrides_, slot_index, prior_slot, info);
+            helix::ams::stage_user_override(overrides_, slot_index, prior_slot, info, declared);
         }
     }
 
@@ -899,8 +901,8 @@ AmsError AmsBackendSnapmaker::set_slot_info(int slot_index, const SlotInfo& info
         if (slot_index >= 0 && slot_index < NUM_TOOLS) {
             std::lock_guard<std::mutex> lock(mutex_);
             own_write_echoes_.stage(slot_index,
-                                    helix::ams::user_edit_observation(prior_slot, info));
-            if (auto* declared = own_write_echoes_.staged(slot_index)) {
+                                    helix::ams::edit_declaration(declared, prior_slot, info));
+            if (auto* staged = own_write_echoes_.staged(slot_index)) {
                 // The POST has to have carried the key. A field the user
                 // cleared is omitted from the body, so firmware keeps the
                 // tag's value and what returns is the tag's, not theirs. RGB_1
@@ -912,16 +914,16 @@ AmsError AmsBackendSnapmaker::set_slot_info(int slot_index, const SlotInfo& info
                 // it does. If it does not, the declared colour simply never
                 // matches an incoming reading and the guard is inert.
                 if (!info_obj.contains("VENDOR"))
-                    declared->brand.reset();
+                    staged->brand.reset();
                 if (!info_obj.contains("MAIN_TYPE"))
-                    declared->material.reset();
+                    staged->material.reset();
                 // SUB_TYPE goes out as the user's spool_name and comes back as
                 // the product line, which is the field the RFID parse files it
                 // under. Relocating here is what lets the shared guard stay a
                 // plain field-by-field filter.
                 if (info_obj.contains("SUB_TYPE"))
-                    declared->product_name = declared->spool_name;
-                declared->spool_name.reset();
+                    staged->product_name = staged->spool_name;
+                staged->spool_name.reset();
             }
             // An unread channel arms against "no tag yet", so the first UID to
             // arrive is a reading and ends the suppression.
@@ -991,6 +993,14 @@ AmsError AmsBackendSnapmaker::set_slot_info(int slot_index, const SlotInfo& info
     // the next firmware status notification triggers a full refresh.
     emit_event(EVENT_SLOT_CHANGED, std::to_string(slot_index));
     return AmsErrorHelper::success();
+}
+
+void AmsBackendSnapmaker::persist_slot_weight(int slot_index, float remaining_weight_g,
+                                              float total_weight_g) {
+    const std::string tag = backend_log_tag();
+    std::lock_guard<std::mutex> lock(mutex_);
+    helix::ams::persist_override_weight(override_store_.get(), overrides_, slot_index,
+                                        remaining_weight_g, total_weight_g, tag);
 }
 
 AmsError AmsBackendSnapmaker::set_tool_mapping_impl(int /*tool_number*/, int /*slot_index*/) {

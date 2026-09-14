@@ -164,7 +164,10 @@ class AmsBackendQidi : public AmsSubscriptionBackend {
         return box_uses_multi_color_ || fw_force_move_enabled_;
     }
 
-    AmsError set_slot_info(int slot_index, const SlotInfo& info, bool persist = true) override;
+    AmsError set_slot_info(int slot_index, const SlotInfo& info, bool persist = true,
+                           const helix::ams::Observation* declared = nullptr) override;
+    void update_slot_weight_impl(int slot_index, float remaining_weight_g, float total_weight_g,
+                                 bool persist) override;
     AmsError set_tool_mapping_impl(int tool_number, int slot_index) override;
     void clear_slot_override(int slot_index) override;
 

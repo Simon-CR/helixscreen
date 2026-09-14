@@ -2715,7 +2715,8 @@ std::vector<std::pair<std::string, std::string>> AmsBackendAd5xIfs::get_material
     };
 }
 
-AmsError AmsBackendAd5xIfs::set_slot_info(int slot_index, const SlotInfo& info, bool persist) {
+AmsError AmsBackendAd5xIfs::set_slot_info(int slot_index, const SlotInfo& info, bool persist,
+                                          const helix::ams::Observation* declared) {
     if (!validate_slot_index(slot_index)) {
         return AmsErrorHelper::invalid_slot(lane_noun(), slot_index, NUM_PORTS - 1);
     }
@@ -2809,7 +2810,7 @@ AmsError AmsBackendAd5xIfs::set_slot_info(int slot_index, const SlotInfo& info, 
             // copy; record that instead of the raw user-typed string so the
             // on-disk record carries a firmware-valid value.
             helix::ams::stage_user_override(overrides_, slot_index, prior_slot, info,
-                                            normalized_material);
+                                            normalized_material, declared);
         }
 
         // Treat the user's chosen color as the new "firmware truth" baseline
@@ -2961,6 +2962,16 @@ AmsError AmsBackendAd5xIfs::set_slot_info(int slot_index, const SlotInfo& info, 
     return AmsErrorHelper::success();
 }
 
+void AmsBackendAd5xIfs::repaint_slot_from_lane(int slot_index) {
+    // set_slot_info() paints through update_slot_from_state() before the edit's
+    // declaration is filed. Only the lane's resolution is stale by now: the
+    // readings and baselines that call took are this edit's own.
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (auto* entry = slots_.get_mut(slot_index)) {
+        apply_resolved_lane(entry->info, slot_index);
+    }
+}
+
 void AmsBackendAd5xIfs::update_slot_weight_impl(int slot_index, float remaining_weight_g,
                                                 float total_weight_g, bool persist) {
     if (slot_index < 0 || slot_index >= NUM_PORTS) {
@@ -2983,15 +2994,11 @@ void AmsBackendAd5xIfs::update_slot_weight_impl(int slot_index, float remaining_
             if (total_weight_g >= 0.0f)
                 entry->info.total_weight_g = total_weight_g;
         }
-        // overrides_[slot] default-constructs a weight-only record when the slot
-        // had no prior override (material empty, color_set=false, locks false —
-        // apply_overrides then layers only the weight). An existing override
-        // (e.g. a user-locked material edit) keeps every other field intact.
-        auto& ovr = overrides_[slot_index];
-        ovr.remaining_weight_g = remaining_weight_g;
-        if (total_weight_g >= 0.0f)
-            ovr.total_weight_g = total_weight_g;
-        ovr_to_save = ovr;
+        // A slot with no prior override gets a weight-only record (material
+        // empty, color_set=false, locks false), so apply_overrides layers only
+        // the weight. An existing override keeps every other field intact.
+        ovr_to_save = helix::ams::stage_weight_override(overrides_, slot_index, remaining_weight_g,
+                                                        total_weight_g);
     }
 
     if (persist && override_store_) {

@@ -438,7 +438,9 @@ class AmsBackendAd5xIfs : public AmsSubscriptionBackend {
     // from screen-activation hooks.
     void request_resync() override;
 
-    AmsError set_slot_info(int slot_index, const SlotInfo& info, bool persist = true) override;
+    AmsError set_slot_info(int slot_index, const SlotInfo& info, bool persist = true,
+                           const helix::ams::Observation* declared = nullptr) override;
+    void repaint_slot_from_lane(int slot_index) override;
     // Weight-only persist: updates remaining/total weight in the override store
     // and NEVER rewrites Adventurer5M.json / _IFS_VARS or re-locks material —
     // the firmware-facing writers in set_slot_info() are what reverted the

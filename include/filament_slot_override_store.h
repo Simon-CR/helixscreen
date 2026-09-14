@@ -371,6 +371,19 @@ bool clear_persisted_override(FilamentSlotOverrideStore* store,
                               std::unordered_map<int, FilamentSlotOverride>& overrides,
                               int slot_index, const std::string& log_tag);
 
+/// Put a metered weight on a slot's stored override, in memory and on the
+/// printer.
+///
+/// The record half of a weight persist: stage_weight_override() moves the
+/// weights and nothing else, and the result is saved. Caller MUST hold the
+/// backend's mutex protecting `overrides`; `store` may be null (a test fixture
+/// with no Moonraker API), leaving the in-memory record alone to move.
+/// `log_tag` attributes the warn on a failed persist.
+void persist_override_weight(FilamentSlotOverrideStore* store,
+                             std::unordered_map<int, FilamentSlotOverride>& overrides,
+                             int slot_index, float remaining_weight_g, float total_weight_g,
+                             const std::string& log_tag);
+
 /// Publish (or clear) the external / bypass spool as an extra lane one past
 /// the last physical slot, so slicers (OrcaSlicer's MoonrakerPrinterAgent)
 /// can select it as the "next tool over" (T4 beside T0-T3). The record rides

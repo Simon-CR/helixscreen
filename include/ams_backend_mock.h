@@ -181,7 +181,8 @@ class AmsBackendMock : public AmsBackend {
      * differs from the slot's current one logs a warning rather than silently
      * doing nothing — use force_slot_status() to stage a mock slot state.
      */
-    AmsError set_slot_info(int slot_index, const SlotInfo& info, bool persist = true) override;
+    AmsError set_slot_info(int slot_index, const SlotInfo& info, bool persist = true,
+                           const helix::ams::Observation* declared = nullptr) override;
     AmsError set_tool_mapping_impl(int tool_number, int slot_index) override;
 
     // Bypass mode

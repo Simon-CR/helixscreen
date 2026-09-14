@@ -4914,13 +4914,13 @@ AmsError AmsBackendAfc::reset() {
                                 lv_tr("AFC reset failed"));
 }
 
-void AmsBackendAfc::persist_override(int slot_index, const SlotInfo& original,
-                                     const SlotInfo& info) {
-    // Callers hold mutex_, and @p original is the lane as it stood before this
-    // edit: stage_user_override tells what the user moved from what the editor
-    // merely carried back, so it needs both snapshots.
+void AmsBackendAfc::persist_override(int slot_index, const SlotInfo& original, const SlotInfo& info,
+                                     const helix::ams::Observation* declared) {
+    // Callers hold mutex_. What the user declared comes from @p declared when
+    // the caller passed it down, else from a diff of @p original, the lane as
+    // it stood before this edit, against @p info.
     const helix::ams::FilamentSlotOverride o =
-        helix::ams::stage_user_override(overrides_, slot_index, original, info);
+        helix::ams::stage_user_override(overrides_, slot_index, original, info, declared);
 
     if (override_store_) {
         override_store_->save_async(slot_index, o, [slot_index](bool ok, std::string err) {
@@ -5400,7 +5400,18 @@ AmsError AmsBackendAfc::cancel() {
 // Configuration Operations
 // ============================================================================
 
-AmsError AmsBackendAfc::set_slot_info(int slot_index, const SlotInfo& info, bool persist) {
+namespace {
+
+/// SET_WEIGHT for a lane, in whole grams. The edit path and a weight persist
+/// both send it, so they share one spelling.
+std::string set_weight_command(const std::string& lane_name, float remaining_weight_g) {
+    return fmt::format("SET_WEIGHT LANE={} WEIGHT={:.0f}", lane_name, remaining_weight_g);
+}
+
+} // namespace
+
+AmsError AmsBackendAfc::set_slot_info(int slot_index, const SlotInfo& info, bool persist,
+                                      const helix::ams::Observation* declared) {
     // Set when the material could not be expressed as a G-code parameter. Reported
     // after every other write has gone out, so a name AFC cannot store costs the user
     // only the material rather than the whole save — but is never silent.
@@ -5475,7 +5486,7 @@ AmsError AmsBackendAfc::set_slot_info(int slot_index, const SlotInfo& info, bool
         // ids at all, and the fields it DOES hold get cleared by its own
         // clear_values() on eject.
         if (persist) {
-            persist_override(slot_index, prior_slot, info);
+            persist_override(slot_index, prior_slot, info, declared);
         }
 
         // Persistence is never version-gated. These SET_* commands have existed
@@ -5532,8 +5543,7 @@ AmsError AmsBackendAfc::set_slot_info(int slot_index, const SlotInfo& info, bool
 
                 // Weight (if valid)
                 if (info.remaining_weight_g > 0) {
-                    execute_gcode(fmt::format("SET_WEIGHT LANE={} WEIGHT={:.0f}", lane_name,
-                                              info.remaining_weight_g));
+                    execute_gcode(set_weight_command(lane_name, info.remaining_weight_g));
                 }
 
                 // Tool mapping (lane → tool number) via SET_MAP.
@@ -5551,16 +5561,35 @@ AmsError AmsBackendAfc::set_slot_info(int slot_index, const SlotInfo& info, bool
     emit_event(EVENT_SLOT_CHANGED, std::to_string(slot_index));
 
     if (!rejected_material.empty()) {
-        return AmsError(AmsResult::COMMAND_FAILED,
-                        "Material '" + rejected_material +
-                            "' contains characters that cannot be "
-                            "sent as a G-code parameter",
-                        lv_tr("Couldn't save the material name"),
-                        lv_tr("Everything else was saved. Rename the material using letters, "
-                              "digits, spaces, and + - _ . ( ) /"));
+        AmsError partial(AmsResult::COMMAND_FAILED,
+                         "Material '" + rejected_material +
+                             "' contains characters that cannot be "
+                             "sent as a G-code parameter",
+                         lv_tr("Couldn't save the material name"),
+                         lv_tr("Everything else was saved. Rename the material using letters, "
+                               "digits, spaces, and + - _ . ( ) /"));
+        // Every other write above has already gone out, the spool id included.
+        partial.partially_applied = true;
+        return partial;
     }
 
     return AmsErrorHelper::success();
+}
+
+void AmsBackendAfc::persist_slot_weight(int slot_index, float remaining_weight_g,
+                                        float total_weight_g) {
+    std::string lane_name;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        helix::ams::persist_override_weight(override_store_.get(), overrides_, slot_index,
+                                            remaining_weight_g, total_weight_g, "[AMS AFC]");
+        lane_name = slots_.name_of(slot_index);
+    }
+    // AFC keeps a lane's weight itself, and SET_WEIGHT is the one SET_* command
+    // a meter has anything to say to.
+    if (!lane_name.empty() && remaining_weight_g > 0) {
+        execute_gcode(set_weight_command(lane_name, remaining_weight_g));
+    }
 }
 
 AmsError AmsBackendAfc::set_tool_mapping_impl(int tool_number, int slot_index) {

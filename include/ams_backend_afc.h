@@ -345,7 +345,10 @@ class AmsBackendAfc : public AmsSubscriptionBackend {
     AmsError cancel() override;
 
     // Configuration
-    AmsError set_slot_info(int slot_index, const SlotInfo& info, bool persist = true) override;
+    AmsError set_slot_info(int slot_index, const SlotInfo& info, bool persist = true,
+                           const helix::ams::Observation* declared = nullptr) override;
+    void persist_slot_weight(int slot_index, float remaining_weight_g,
+                             float total_weight_g) override;
     AmsError set_tool_mapping_impl(int tool_number, int slot_index) override;
 
     // Bypass mode
@@ -566,7 +569,8 @@ class AmsBackendAfc : public AmsSubscriptionBackend {
     /// Build + persist an override from a user edit. Callers hold mutex_ and
     /// pass the lane as it stood before the edit, which is what says which
     /// fields the user actually moved.
-    void persist_override(int slot_index, const SlotInfo& original, const SlotInfo& info);
+    void persist_override(int slot_index, const SlotInfo& original, const SlotInfo& info,
+                          const helix::ams::Observation* declared);
 
     /// Async callback safety guard. Tokens shared with AfcConfigManager instances.
     helix::AsyncLifetimeGuard lifetime_;

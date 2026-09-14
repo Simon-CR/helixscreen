@@ -183,6 +183,10 @@ struct AmsError {
     std::string user_msg;      ///< User-friendly message for UI display
     std::string suggestion;    ///< Suggested recovery action (optional)
     int slot_index = -1;       ///< Slot involved in error (-1 if N/A)
+    /// The operation failed, but writes it made before failing reached the
+    /// backend's stores and stand. A caller that records what the operation
+    /// changed records those too, and still reports the failure.
+    bool partially_applied = false;
 
     /**
      * @brief Construct an AmsError

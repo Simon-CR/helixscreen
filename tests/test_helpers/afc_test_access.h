@@ -68,6 +68,9 @@ class AfcTestAccess {
     template <class B> static auto& overrides(B& b) {
         return b.overrides_;
     }
+    template <class B> static auto& override_store(B& b) {
+        return b.override_store_;
+    }
     /// Namespace the override store was pointed at, or empty when no store was
     /// built. Lets a test assert the PRIVATE namespace without reaching for the
     /// store itself, which stays private.

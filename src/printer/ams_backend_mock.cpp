@@ -1063,7 +1063,8 @@ AmsError AmsBackendMock::check_all_gates() {
     return AmsErrorHelper::success();
 }
 
-AmsError AmsBackendMock::set_slot_info(int slot_index, const SlotInfo& info, bool /*persist*/) {
+AmsError AmsBackendMock::set_slot_info(int slot_index, const SlotInfo& info, bool /*persist*/,
+                                       const helix::ams::Observation* /*declared*/) {
     {
         std::lock_guard<std::mutex> lock(mutex_);
 

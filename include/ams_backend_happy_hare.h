@@ -160,7 +160,10 @@ class AmsBackendHappyHare : public AmsSubscriptionBackend {
     toolchange_phase_template(StepOperationType op) const override;
 
     // Configuration
-    AmsError set_slot_info(int slot_index, const SlotInfo& info, bool persist = true) override;
+    AmsError set_slot_info(int slot_index, const SlotInfo& info, bool persist = true,
+                           const helix::ams::Observation* declared = nullptr) override;
+    void persist_slot_weight(int slot_index, float remaining_weight_g,
+                             float total_weight_g) override;
     AmsError set_tool_mapping_impl(int tool_number, int slot_index) override;
 
     // Bypass mode
@@ -341,7 +344,8 @@ class AmsBackendHappyHare : public AmsSubscriptionBackend {
     /// publish_external_spool_lane. Happy Hare's plugin owns that namespace.
     std::unique_ptr<helix::ams::FilamentSlotOverrideStore> lane_publish_store_;
     std::unordered_map<int, helix::ams::FilamentSlotOverride> overrides_;
-    void persist_override(int slot_index, const SlotInfo& original, const SlotInfo& info);
+    void persist_override(int slot_index, const SlotInfo& original, const SlotInfo& info,
+                          const helix::ams::Observation* declared);
 
     // Build a " GATES=g0,g1,..." suffix targeting a specific unit's gates for
     // MMU_HEATER on multi-unit (EMU) rigs. Returns "" for a single-unit MMU or

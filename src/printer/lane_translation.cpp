@@ -288,6 +288,11 @@ Observation user_edit_observation(const SlotInfo& original, const SlotInfo& edit
     return obs;
 }
 
+Observation edit_declaration(const Observation* declared, const SlotInfo& original,
+                             const SlotInfo& edited) {
+    return declared != nullptr ? *declared : user_edit_observation(original, edited);
+}
+
 ObservationSource classify_declaration(const FilamentSlotOverride& record,
                                        const nlohmann::json& wire, LegacyLockKeys keys) {
     if (record.spoolman_id > 0) {
