@@ -91,10 +91,7 @@ make_worktree() {
 
     # Recovery mode skips branch cleanup outright rather than guess at
     # containment from a repo it can no longer safely query - it must never
-    # even ATTEMPT a branch deletion. Pre-fix, the escaped BRANCH resolves to
-    # the main tree's own checked-out branch, and this exact line
-    # ("Deleting branch 'master'") is what git's own refusal to delete a
-    # checked-out branch happens to save - a near miss, not a guarantee.
+    # even ATTEMPT a branch deletion.
     lacks "Deleting branch" "$output"
 
     [ ! -d "$MAIN/.worktrees/broken2" ]
