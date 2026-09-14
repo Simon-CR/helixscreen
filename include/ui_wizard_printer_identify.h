@@ -34,7 +34,8 @@
  * - printer_name (string) - User-entered printer name
  * - printer_type_selected (int) - Selected index in list
  * - printer_detection_status (string) - Auto-detection status message
- * - wizard_printer_view (int) - Selector view: 0 vendor tiles, 1 vendor models, 2 search
+ * - wizard_printer_view (int) - Selector view: 0 vendor tiles, 1 vendor models, 2 search,
+ *   3 the printers a tied detection could not separate
  * - wizard_printer_vendor_title (string) - Active vendor, bound to the drill-in header
  * - wizard_printer_match_count (int) - Rows visible under the active view
  *
@@ -119,7 +120,7 @@ class WizardPrinterIdentifyStep : public helix::wizard::Step {
     /**
      * @brief Check if printer identification is complete
      *
-     * @return true if printer name is entered
+     * @return true once a printer name is entered and a printer type selected
      */
     bool is_validated() const override;
 
@@ -147,6 +148,8 @@ class WizardPrinterIdentifyStep : public helix::wizard::Step {
     static int find_printer_type_index(const std::string& printer_name);
 
   private:
+    friend class WizardPrinterIdentifyStepTestAccess;
+
     // Screen instance
     lv_obj_t* screen_root_ = nullptr;
 
@@ -172,7 +175,8 @@ class WizardPrinterIdentifyStep : public helix::wizard::Step {
     lv_subject_t printer_name_;
     lv_subject_t printer_type_selected_;
     lv_subject_t printer_detection_status_;
-    // Selector view state: 0 = vendor tiles, 1 = one vendor's models, 2 = search
+    // Selector view state: 0 = vendor tiles, 1 = one vendor's models, 2 = search,
+    // 3 = the printers a tied detection could not separate
     lv_subject_t printer_view_;
     // Active vendor's name while drilled in (bound to the header label)
     lv_subject_t vendor_title_;
@@ -193,9 +197,13 @@ class WizardPrinterIdentifyStep : public helix::wizard::Step {
     std::string active_vendor_;
     // Current search query; empty means normal browsing
     std::string search_query_;
+    // List indices of the printers a tied detection left for the user to choose
+    // between, winner first; empty when detection separated or found nothing
+    std::vector<int> candidate_indices_;
 
     // State tracking
     bool printer_identify_validated_ = false;
+    bool name_valid_ = false; // Printer name is non-empty and fits the buffer
     bool subjects_initialized_ = false;
     bool updating_from_subject_ = false; // Re-entry guard for observer loop prevention
     std::string last_detected_url_;      // Track URL to detect printer changes
@@ -218,7 +226,11 @@ class WizardPrinterIdentifyStep : public helix::wizard::Step {
     void apply_view(int view);
     // Opens the bucket holding the current selection and scrolls to it, or
     // the tile grid when the selection has no vendor (pseudo-machine or none).
+    // A tied detection with nothing selected opens on its candidates.
     void enter_initial_view();
+    // Next needs a valid name and a selected printer type. Publishes the
+    // verdict to connection_test_passed, which gates the wizard's Next button.
+    void update_validation();
 
     // Static trampolines for LVGL callbacks
     static void on_printer_name_changed_static(lv_event_t* e);
@@ -236,9 +248,11 @@ class WizardPrinterIdentifyStep : public helix::wizard::Step {
  * @brief Printer auto-detection hint (confidence + reasoning)
  */
 struct PrinterDetectionHint {
-    int type_index;        // Index into PrinterDetector list
-    int confidence;        // 0-100 (>=70 = auto-select, <70 = suggest)
-    std::string type_name; // Detected printer type name
+    int type_index;                       // Index into PrinterDetector list
+    int confidence;                       // 0-100 (>=70 = auto-select, <70 = suggest)
+    std::string type_name;                // Detected printer type name
+    bool ambiguous = false;               // The detector could not separate its candidates
+    std::vector<int> candidate_indices{}; // Those candidates' list indices, winner first
 };
 
 // ============================================================================

@@ -1727,6 +1727,7 @@ translations:
   Match: Совпадение
   Match to belt A: Совпадение с ремнём A
   Match your typical print fan speed: Настройте типичную скорость вентилятора печати
+  Matching printers: Подходящие принтеры
   Material: Материал
   'Material Comfort:': 'Комфорт материала:'
   Material Mismatch: Несоответствие материала
@@ -2700,6 +2701,7 @@ translations:
   Setup: 'Настройка'
   Setup Complete!: Настройка завершена!
   Setup Timelapse: Настроить таймлапс
+  Several printers match - choose yours: Подходят несколько принтеров - выберите свой
   Shadow Intensity: Интенсивность тени
   Share Usage Data: Делиться данными использования
   Share anonymous usage statistics to help us make HelixScreen better. No personal data is ever collected.: Делитесь
@@ -3466,6 +3468,7 @@ translations:
   AFC's remember_spool is retaining spool info in firmware; that takes precedence over this toggle: Параметр remember_spool в AFC сохраняет данные катушки в прошивке и имеет приоритет над этим переключателем
   AI detection: AI-детекция
   Monitor for print abnormalities (K2 Plus camera-based): Отслеживание дефектов печати (на основе камеры K2 Plus)
+  Monitor for print abnormalities (camera-based): 'Отслеживание дефектов печати (на основе камеры)'
   on unit {}: 'на блоке {}'
   or type a macro name: или введите название макроса
   passive: ''

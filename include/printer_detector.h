@@ -52,6 +52,13 @@ struct PrinterDetectionResult {
     int uncapped_confidence = 0;
     int runner_up_uncapped_confidence = 0;
 
+    /// The printers a person has to choose between. The winner comes first.
+    /// When ambiguous(), every other candidate picturing a different machine
+    /// that the winner does not lead by PrinterDetector::DETECT_MIN_MARGIN
+    /// follows, one name per machine. Only the winner when the detection
+    /// separated; empty when nothing was identified.
+    std::vector<std::string> contenders;
+
     /**
      * @brief Check if detection succeeded
      * @return true if confidence > 0, false otherwise
@@ -60,12 +67,17 @@ struct PrinterDetectionResult {
         return confidence > 0;
     }
 
+    /// How far the winner leads a candidate that scored @p rival_confidence
+    /// published and @p rival_uncapped before the ceiling (0 when unknown).
+    int lead_over(int rival_confidence, int rival_uncapped) const {
+        const int winner = uncapped_confidence > 0 ? uncapped_confidence : confidence;
+        const int rival = rival_uncapped > 0 ? rival_uncapped : rival_confidence;
+        return winner - rival;
+    }
+
     /// How far the winner leads the best candidate with a different outcome.
     int margin() const {
-        const int winner = uncapped_confidence > 0 ? uncapped_confidence : confidence;
-        const int rival = runner_up_uncapped_confidence > 0 ? runner_up_uncapped_confidence
-                                                            : runner_up_confidence;
-        return winner - rival;
+        return lead_over(runner_up_confidence, runner_up_uncapped_confidence);
     }
 
     /// A detection that named a printer without separating it from an
@@ -75,14 +87,20 @@ struct PrinterDetectionResult {
 };
 
 /**
- * @brief Build volume dimensions from bed_mesh configuration
+ * @brief Build volume dimensions from the configfile
+ *
+ * The extents are [stepper_*] travel, which covers the bed plus any overtravel
+ * to a purge or nozzle-clean position. The declared bed is the size a
+ * firmware's own config states for its bed, where it states one.
  */
 struct BuildVolume {
     float x_min = 0.0f;
     float x_max = 0.0f;
     float y_min = 0.0f;
     float y_max = 0.0f;
-    float z_max = 0.0f; ///< Maximum Z height (if available)
+    float z_max = 0.0f;          ///< Maximum Z height (if available)
+    float declared_bed_x = 0.0f; ///< Bed X the firmware config declares (0 if none)
+    float declared_bed_y = 0.0f; ///< Bed Y the firmware config declares (0 if none)
 };
 
 /**
@@ -206,6 +224,9 @@ class PrinterDetector {
      * `name` (e.g. preset "ad5x" → "FlashForge Adventurer 5X"). Used to populate
      * the per-printer `type` field when a platform preset is applied from the
      * installer, so the home panel can resolve the correct printer image.
+     * Several entries can share one preset; the one marked
+     * `"preset_default": true` answers for the family, and a family without a
+     * marked entry answers with its first entry in database order.
      *
      * @param preset_name Platform preset name (e.g., "ad5x", "k1", "cc1")
      * @return Matching printer name, empty string if no entry matches

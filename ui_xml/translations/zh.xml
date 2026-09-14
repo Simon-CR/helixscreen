@@ -1568,6 +1568,7 @@
   <translation tag="Match" zh="匹配度"/>
   <translation tag="Match to belt A" zh="匹配皮带 A"/>
   <translation tag="Match your typical print fan speed" zh="匹配您常用的打印风扇速度"/>
+  <translation tag="Matching printers" zh="匹配的打印机"/>
   <translation tag="Material" zh="材料"/>
   <translation tag="Material Comfort:" zh="材料适配度："/>
   <translation tag="Material Mismatch" zh="材料不匹配"/>
@@ -1605,6 +1606,7 @@
   <translation tag="Mode" zh="模式"/>
   <translation tag="Modified" zh="已修改"/>
   <translation tag="Monitor for print abnormalities (K2 Plus camera-based)" zh="监测打印异常（基于 K2 Plus 摄像头）"/>
+  <translation tag="Monitor for print abnormalities (camera-based)" zh="监测打印异常（基于摄像头）"/>
   <translation tag="Monitor prints in progress — time remaining, current layer, and progress. Tap to pause, resume, or cancel the active job." zh="监控正在进行的打印 — 剩余时间、当前层和进度。点击可暂停、恢复或取消当前任务。"/>
   <translation tag="Monitoring" zh="监控中"/>
   <translation tag="Month" zh="月"/>
@@ -2458,6 +2460,7 @@
   <translation tag="Setup" zh="设置向导"/>
   <translation tag="Setup Complete!" zh="设置完成！"/>
   <translation tag="Setup Timelapse" zh="设置延时摄影"/>
+  <translation tag="Several printers match - choose yours" zh="多台打印机匹配 - 请选择您的打印机"/>
   <translation tag="Shadow Intensity" zh="阴影强度"/>
   <translation tag="Share Usage Data" zh="共享使用数据"/>
   <translation tag="Share anonymous usage statistics to help us make HelixScreen better. No personal data is ever collected." zh="分享匿名使用统计数据，帮助我们改进 HelixScreen。绝不会收集任何个人数据。"/>

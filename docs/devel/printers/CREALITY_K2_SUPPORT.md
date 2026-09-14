@@ -15,6 +15,12 @@ All K2 models use Allwinner ARM Cortex-A7 dual-core processors running Tina Linu
 | K2 Plus | 350 mm cubed | 4.3" 480x800 | Yes (60C) | Yes (CFS) | **Hardware confirmed** |
 | K2 SE | 220x215x245 mm | Unknown | No | Unknown | User-confirmed install (wget) |
 
+Detection has an entry for the K2, K2 Pro and K2 Plus (plus the K2 Plus k2-improvements variant),
+all sharing the `k2` preset. They are told apart by the model hostname or by the bed size the
+firmware declares in `gcode_macro product_param` (250-270, 290-310 and 340-360 mm). The base K2
+entry is the preset's `preset_default`, so a K2 preset install that identifies no K2 machine
+persists "Creality K2". Its image is a copy of the K2 Plus photo until one of the base model exists.
+
 ## Hardware (Confirmed on K2 Plus — 2026-03-23)
 
 | Spec | Value |

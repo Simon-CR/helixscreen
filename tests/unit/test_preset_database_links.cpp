@@ -14,6 +14,7 @@
 
 #include <filesystem>
 #include <fstream>
+#include <map>
 #include <set>
 #include <string>
 #include <vector>
@@ -140,5 +141,30 @@ TEST_CASE("every printer_database.json preset reference resolves to a file",
         json preset = load_json(path);
         REQUIRE(preset.contains("preset"));
         CHECK(preset["preset"].get<std::string>() == ref);
+    }
+}
+
+// Entries that share one preset are one family, and a preset install that
+// identifies no machine of it persists the family's default. That default is
+// named in data with "preset_default", so it must be unambiguous.
+TEST_CASE("each preset names at most one printer_database.json default",
+          "[printer_detector][presets][assets]") {
+    json db = load_json(DB_PATH);
+    std::map<std::string, std::vector<std::string>> defaults;
+    size_t marked = 0;
+    for (const auto& printer : db["printers"]) {
+        if (!printer.value("preset_default", false)) {
+            continue;
+        }
+        ++marked;
+        const std::string preset = printer.value("preset", "");
+        INFO("'" << printer.value("name", "") << "' is a preset_default with no preset");
+        CHECK_FALSE(preset.empty());
+        defaults[preset].push_back(printer.value("name", ""));
+    }
+    REQUIRE(marked >= 1);
+    for (const auto& [preset, names] : defaults) {
+        CAPTURE(preset, names);
+        CHECK(names.size() == 1);
     }
 }

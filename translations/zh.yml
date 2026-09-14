@@ -1604,6 +1604,7 @@ translations:
   Match: 匹配度
   Match to belt A: 匹配皮带 A
   Match your typical print fan speed: 匹配您常用的打印风扇速度
+  Matching printers: 匹配的打印机
   Material: 材料
   'Material Comfort:': 材料适配度：
   Material Mismatch: 材料不匹配
@@ -2521,6 +2522,7 @@ translations:
   Setup: '设置向导'
   Setup Complete!: 设置完成！
   Setup Timelapse: 设置延时摄影
+  Several printers match - choose yours: 多台打印机匹配 - 请选择您的打印机
   Shadow Intensity: 阴影强度
   Share Usage Data: 共享使用数据
   Share anonymous usage statistics to help us make HelixScreen better. No personal data is ever collected.: 分享匿名使用统计数据，帮助我们改进
@@ -3225,6 +3227,7 @@ translations:
   AFC's remember_spool is retaining spool info in firmware; that takes precedence over this toggle: AFC 的 remember_spool 会在固件中保留料盘信息；其优先级高于此开关
   AI detection: AI 检测
   Monitor for print abnormalities (K2 Plus camera-based): 监测打印异常（基于 K2 Plus 摄像头）
+  Monitor for print abnormalities (camera-based): '监测打印异常（基于摄像头）'
   on unit {}: '在单元 {}'
   or type a macro name: 或输入宏名称
   passive: ''

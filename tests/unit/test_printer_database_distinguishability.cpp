@@ -185,15 +185,20 @@ PrinterHardwareData fingerprint_of(const json& entry) {
                 hw.heaters.push_back("heater_bed");
             }
         } else if (type == "build_volume_range" && !volume_set) {
-            // The centre of the entry's own window: the one size the entry
-            // vouches for.
+            // The centre of the entry's own window, on the reading the window
+            // measures: the one size the entry vouches for.
             auto middle = [&](const char* lo, const char* hi) {
                 if (h.contains(lo) && h.contains(hi))
                     return (h.value(lo, 0.0f) + h.value(hi, 0.0f)) / 2.0f;
                 return h.contains(lo) ? h.value(lo, 0.0f) : h.value(hi, 0.0f);
             };
-            hw.build_volume.x_max = middle("min_x", "max_x");
-            hw.build_volume.y_max = middle("min_y", "max_y");
+            if (h.value("measure", "") == "declared_bed") {
+                hw.build_volume.declared_bed_x = middle("min_x", "max_x");
+                hw.build_volume.declared_bed_y = middle("min_y", "max_y");
+            } else {
+                hw.build_volume.x_max = middle("min_x", "max_x");
+                hw.build_volume.y_max = middle("min_y", "max_y");
+            }
             volume_set = true;
         }
     }
@@ -216,9 +221,10 @@ std::string describe(const PrinterHardwareData& hw) {
     std::ostringstream os;
     os << "hostname='" << hw.hostname << "' kinematics='" << hw.kinematics << "' mcu='" << hw.mcu
        << "' cpu_arch='" << hw.cpu_arch << "' volume=" << hw.build_volume.x_max << "x"
-       << hw.build_volume.y_max << " sensors=[" << join(hw.sensors) << "] fans=[" << join(hw.fans)
-       << "] leds=[" << join(hw.leds) << "] heaters=[" << join(hw.heaters) << "] steppers=["
-       << join(hw.steppers) << "] objects=[" << join(hw.printer_objects) << "]";
+       << hw.build_volume.y_max << " declared_bed=" << hw.build_volume.declared_bed_x << "x"
+       << hw.build_volume.declared_bed_y << " sensors=[" << join(hw.sensors) << "] fans=["
+       << join(hw.fans) << "] leds=[" << join(hw.leds) << "] heaters=[" << join(hw.heaters)
+       << "] steppers=[" << join(hw.steppers) << "] objects=[" << join(hw.printer_objects) << "]";
     return os.str();
 }
 

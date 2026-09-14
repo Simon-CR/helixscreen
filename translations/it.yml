@@ -1744,6 +1744,7 @@ translations:
   Match: Corrispondenza
   Match to belt A: Corrispondenza con la cinghia A
   Match your typical print fan speed: Imposta la velocità ventola di stampa tipica
+  Matching printers: Stampanti corrispondenti
   Material: Materiale
   'Material Comfort:': 'Comfort del materiale:'
   Material Mismatch: Materiale non corrispondente
@@ -2726,6 +2727,7 @@ translations:
   Setup: 'Configurazione'
   Setup Complete!: Configurazione completata!
   Setup Timelapse: Configura timelapse
+  Several printers match - choose yours: Più stampanti corrispondono - scegli la tua
   Shadow Intensity: Intensità ombra
   Share Usage Data: Condividi dati d'uso
   Share anonymous usage statistics to help us make HelixScreen better. No personal data is ever collected.: Condividi
@@ -3509,6 +3511,7 @@ translations:
   AFC's remember_spool is retaining spool info in firmware; that takes precedence over this toggle: remember_spool di AFC conserva le informazioni sulla bobina nel firmware; ha la precedenza su questa opzione
   AI detection: Rilevamento AI
   Monitor for print abnormalities (K2 Plus camera-based): Monitora le anomalie di stampa (basato sulla camera del K2 Plus)
+  Monitor for print abnormalities (camera-based): 'Monitora le anomalie di stampa (basato sulla camera)'
   on unit {}: 'sull''unità {}'
   or type a macro name: oppure digita un nome di macro
   passive: ''

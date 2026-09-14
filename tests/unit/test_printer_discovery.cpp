@@ -1738,6 +1738,58 @@ TEST_CASE("PrinterDiscovery: build volume keeps negative axis minimums",
     REQUIRE(discovery.build_volume().x_max == 355.0f);
 }
 
+TEST_CASE("PrinterDiscovery: build volume carries the firmware's declared bed size",
+          "[printer_discovery][build_volume][1606]") {
+    // Stepper travel also covers overtravel to a purge or nozzle-clean
+    // position, so a bed size the firmware's config declares is read beside it.
+    // Shapes from a real K2 Plus, whose product_param macro variables reach
+    // configfile.settings as strings.
+    auto k2_settings = [](const json& bed_x, const json& bed_y) {
+        return json{{"stepper_x", {{"position_min", -10.0}, {"position_max", 352.5}}},
+                    {"stepper_y", {{"position_min", -6.2}, {"position_max", 400.0}}},
+                    {"gcode_macro product_param",
+                     {{"variable_bed_size_x", bed_x}, {"variable_bed_size_y", bed_y}}}};
+    };
+
+    SECTION("product_param's string variables are stored beside the stepper travel") {
+        helix::PrinterDiscovery discovery;
+        REQUIRE(discovery.parse_build_volume(k2_settings("350", "350")));
+        CHECK(discovery.build_volume().x_max == 352.5f);
+        CHECK(discovery.build_volume().declared_bed_x == 350.0f);
+        CHECK(discovery.build_volume().declared_bed_y == 350.0f);
+    }
+
+    SECTION("numeric variables are read too") {
+        helix::PrinterDiscovery discovery;
+        REQUIRE(discovery.parse_build_volume(k2_settings(300, 300)));
+        CHECK(discovery.build_volume().declared_bed_x == 300.0f);
+        CHECK(discovery.build_volume().declared_bed_y == 300.0f);
+    }
+
+    SECTION("a size that is not a positive number on both axes declares nothing") {
+        const std::vector<std::pair<json, json>> malformed = {
+            {"abc", "350"}, {"350", ""},      {"350mm", "350"},
+            {"0", "0"},     {nullptr, "350"}, {"350", json::array({350})}};
+        for (const auto& [bed_x, bed_y] : malformed) {
+            CAPTURE(bed_x.dump(), bed_y.dump());
+            helix::PrinterDiscovery discovery;
+            REQUIRE_NOTHROW(discovery.parse_build_volume(k2_settings(bed_x, bed_y)));
+            CHECK(discovery.build_volume().x_max == 352.5f);
+            CHECK(discovery.build_volume().declared_bed_x == 0.0f);
+            CHECK(discovery.build_volume().declared_bed_y == 0.0f);
+        }
+    }
+
+    SECTION("a config without product_param declares nothing") {
+        helix::PrinterDiscovery discovery;
+        json settings = k2_settings("350", "350");
+        settings.erase("gcode_macro product_param");
+        REQUIRE(discovery.parse_build_volume(settings));
+        CHECK(discovery.build_volume().declared_bed_x == 0.0f);
+        CHECK(discovery.build_volume().declared_bed_y == 0.0f);
+    }
+}
+
 TEST_CASE("PrinterDiscovery: build volume rejects unusable payloads",
           "[printer_discovery][build_volume]") {
     SECTION("Non-object settings is ignored") {
