@@ -501,13 +501,11 @@ lv_indev_t* DisplayBackendDRM::create_input_pointer() {
     // path clears, so the transform is chained onto each device's own read
     // instead. Every device open_pointer_devices() opens passes through here,
     // whichever path found it. It is inert until a plane actually owns an angle.
-    if (pointer_ != nullptr) {
-        plane_rotation_hook_.install(pointer_);
+    if (pointer_ != nullptr && plane_rotation_hook_.install(pointer_)) {
         spdlog::info("[DRM Backend] Pointer rotation hook installed (plane at {}°)",
                      plane_rotation_degrees_);
     }
-    if (mouse_ != nullptr) {
-        plane_rotation_hook_.install(mouse_);
+    if (mouse_ != nullptr && plane_rotation_hook_.install(mouse_)) {
         spdlog::info("[DRM Backend] Mouse rotation hook installed (plane at {}°)",
                      plane_rotation_degrees_);
     }

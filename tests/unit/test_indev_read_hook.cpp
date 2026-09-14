@@ -95,8 +95,9 @@ TEST_CASE_METHOD(IndevReadHookFixture, "Each hooked pointer reads through its ow
     lv_indev_t* touch = make_pointer(touch_driver_read);
     lv_indev_t* mouse = make_pointer(mouse_driver_read);
 
-    hook.install(touch);
-    hook.install(mouse);
+    // The backend logs an installed hook on this answer.
+    CHECK(hook.install(touch));
+    CHECK(hook.install(mouse));
 
     // Both devices really run the hook, or the reads below prove nothing.
     REQUIRE(lv_indev_get_read_cb(touch) == hook_read);
@@ -120,10 +121,11 @@ TEST_CASE_METHOD(IndevReadHookFixture,
     // callback the hook under test finds there is the hook function itself.
     // The same hook installing twice meets exactly this.
     IndevReadHook first{hook_read};
-    first.install(touch);
+    CHECK(first.install(touch));
     REQUIRE(lv_indev_get_read_cb(touch) == hook_read);
 
-    hook.install(touch);
+    // Reported as not installed, so nothing logs a hook that is not there.
+    CHECK_FALSE(hook.install(touch));
 
     read(touch);
     CHECK(g_hook_max_depth == 1);

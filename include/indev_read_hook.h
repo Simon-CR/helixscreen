@@ -33,14 +33,16 @@ class IndevReadHook {
      * never records itself as a device's original and recurses on the next read.
      *
      * @param indev a live device, never nullptr
+     * @return true when this call put the hook in front of @p indev
      */
-    void install(lv_indev_t* indev) {
+    bool install(lv_indev_t* indev) {
         const lv_indev_read_cb_t current = lv_indev_get_read_cb(indev);
         if (current == hook_) {
-            return;
+            return false;
         }
         links_.push_back({indev, current});
         lv_indev_set_read_cb(indev, hook_);
+        return true;
     }
 
     /**
