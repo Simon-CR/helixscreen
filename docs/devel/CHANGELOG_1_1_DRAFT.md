@@ -162,8 +162,12 @@ what gets saved.
   plugin's macro-rewriting service are removed. The screen infers the current phase from
   toolhead movement and temperature cues on the status stream, which works on any printer
   without editing its config. A PRINT_START that carries instrumentation keeps emitting
-  `HELIX:PHASE` markers - harmless, and still parsed. The only way to strip them is by
-  hand: delete the injected lines from the macro.
+  `HELIX:PHASE` markers - harmless, and still parsed. Uninstalling the plugin (the app's
+  Advanced row, or `install.sh --uninstall`/`--uninstall-auto`) now removes those marker
+  blocks from PRINT_START itself, backing up every file it edits as
+  `<file>.bak.<YYYYMMDD_HHMMSS>` first; the edit takes effect at the next Klipper restart.
+  A printer instrumented by v0.99.111 or earlier may still carry a duplicated PRINT_START
+  tail from that older writer - only its own `<stem>.bak.<epoch>` backup undoes that part.
 
 ### Fixed
 

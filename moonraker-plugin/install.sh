@@ -170,6 +170,11 @@ uninstall() {
         info "Plugin symlink not found (already uninstalled?)"
     fi
 
+    config_dir=$(find_config_dir)
+    if [ -n "$config_dir" ]; then
+        strip_phase_tracking_instrumentation "$config_dir"
+    fi
+
     printf '\n'
     printf '%s\n' "Don't forget to:"
     printf '%s\n' "  1. Remove [helix_print] section from moonraker.conf"
@@ -209,6 +214,30 @@ restart_moonraker() {
     fi
 }
 
+# Strip phase-tracking instrumentation from PRINT_START via the bundled
+# strip_phase_tracking.py, which owns the marker format and the safety
+# contract around editing a printer's config (matched blocks only, a
+# verified backup, symlinks and modes preserved). python3 is what Moonraker
+# itself runs on; its absence here means something else on this printer is
+# already broken. Either way this never aborts the rest of uninstall, and
+# never claims success it cannot back up - a failure is reported and left
+# to the next line, not retried or escalated.
+strip_phase_tracking_instrumentation() {
+    scan_dir="$1"
+
+    if ! command -v python3 > /dev/null 2>&1; then
+        warn "python3 not found - could not check PRINT_START for phase-tracking instrumentation"
+        warn "If a previous HelixScreen instrumented PRINT_START, remove any block between"
+        warn "'# <<< HELIX_TRACKING v2 >>>' and '# <<< /HELIX_TRACKING >>>' by hand, then restart Klipper"
+        return 0
+    fi
+
+    if ! python3 "$SCRIPT_DIR/strip_phase_tracking.py" "$scan_dir"; then
+        warn "Phase-tracking strip reported a failure - see the output above"
+    fi
+    return 0
+}
+
 # Auto-uninstall function (non-interactive, for HelixScreen integration)
 auto_uninstall() {
     info "HelixPrint Auto-Uninstall Mode"
@@ -226,11 +255,6 @@ auto_uninstall() {
     # Find config directory
     config_dir=$(find_config_dir)
 
-    # helix_macros.cfg and its printer.cfg include are left in place: the macros
-    # are shared HelixScreen helpers (HELIX_START_PRINT, HELIX_CLEAN_NOZZLE and
-    # friends) that keep working without this plugin, and printer.cfg is
-    # Klipper's config - this uninstall only manages the Moonraker side.
-
     # Remove symlink
     if [ -L "$target" ]; then
         rm "$target"
@@ -239,6 +263,15 @@ auto_uninstall() {
         error "Found regular file (not symlink) at $target - manual removal required"
     else
         info "Plugin symlink not found (already uninstalled?)"
+    fi
+
+    # helix_macros.cfg and its printer.cfg include are left in place: the
+    # macros are shared HelixScreen helpers (HELIX_START_PRINT,
+    # HELIX_CLEAN_NOZZLE and friends) that keep working without this plugin.
+    # Any HELIX_PHASE_*/HELIX_READY calls this plugin's own instrumentation
+    # left in PRINT_START are removed, with a backup, by the call below.
+    if [ -n "$config_dir" ]; then
+        strip_phase_tracking_instrumentation "$config_dir"
     fi
 
     # Remove config section if possible
@@ -270,40 +303,6 @@ auto_uninstall() {
 
     printf '\n'
     info "Auto-uninstall complete!"
-}
-
-# Retire a legacy helix_phase_tracking.cfg: nothing loads that file, and
-# Klipper refuses config load on an include whose target is missing, so the
-# printer.cfg include must leave with the file. Both are backed up to the same
-# timestamped convention as every other config edit here. Guarded on the
-# legacy file existing: with no legacy file, a plain --auto run touches
-# moonraker.conf only.
-cleanup_legacy_phase_cfg() {
-    config_dir="$1"
-    legacy_cfg="$config_dir/helix_phase_tracking.cfg"
-
-    if [ ! -f "$legacy_cfg" ]; then
-        return 0
-    fi
-
-    warn "Found legacy helix_phase_tracking.cfg - the macros live in helix_macros.cfg"
-
-    printer_cfg="$config_dir/printer.cfg"
-    if [ -f "$printer_cfg" ] && grep -q '\[include helix_phase_tracking.cfg\]' "$printer_cfg"; then
-        backup_file="${printer_cfg}.bak.$(date +%Y%m%d_%H%M%S)"
-        cp "$printer_cfg" "$backup_file"
-        info "Created backup: $backup_file"
-
-        grep -v '\[include helix_phase_tracking.cfg\]' "$printer_cfg" > "$printer_cfg.tmp" && mv "$printer_cfg.tmp" "$printer_cfg"
-        info "Removed [include helix_phase_tracking.cfg] from printer.cfg"
-    fi
-
-    legacy_backup="${legacy_cfg}.bak.$(date +%Y%m%d_%H%M%S)"
-    cp "$legacy_cfg" "$legacy_backup"
-    info "Created backup: $legacy_backup"
-
-    rm "$legacy_cfg"
-    info "Removed legacy $legacy_cfg"
 }
 
 # Auto-install function (non-interactive, for HelixScreen integration)
@@ -356,12 +355,6 @@ auto_install() {
     ln -sf "$PLUGIN_FILE" "$target"
     info "Created symlink: $target"
 
-    # First config-touching step: retire any legacy phase-tracking config
-    # before the moonraker.conf edit below.
-    if [ -n "$config_dir" ]; then
-        cleanup_legacy_phase_cfg "$config_dir"
-    fi
-
     # Auto-configure moonraker.conf if possible
     if [ -n "$config_dir" ] && [ -f "$config_dir/moonraker.conf" ]; then
         moonraker_conf="$config_dir/moonraker.conf"
@@ -399,8 +392,11 @@ show_help() {
     printf '\n'
     printf '%s\n' "Options:"
     printf '%s\n' "  --auto, -a              Full auto-install (updates config, restarts Moonraker)"
-    printf '%s\n' "  --uninstall, -u         Remove the plugin symlink (interactive)"
-    printf '%s\n' "  --uninstall-auto        Full auto-uninstall (removes config, restarts Moonraker)"
+    printf '%s\n' "  --uninstall, -u         Remove the plugin symlink and strip PRINT_START"
+    printf '%s\n' "                          instrumentation, if any (interactive)"
+    printf '%s\n' "  --uninstall-auto        Full auto-uninstall: removes the symlink and config"
+    printf '%s\n' "                          section, strips PRINT_START instrumentation, restarts"
+    printf '%s\n' "                          Moonraker"
     printf '%s\n' "  --help, -h              Show this help message"
     printf '\n'
     printf '%s\n' "Arguments:"
