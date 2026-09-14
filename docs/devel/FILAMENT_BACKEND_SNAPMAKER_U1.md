@@ -68,9 +68,16 @@ which is why it is spelled out per row rather than folded into either column.
 **Wired to one object.** `PrinterDiscovery::parse_objects()` sets `has_snapmaker_` when
 the Klipper object list contains `filament_detect` — unique to U1 firmware
 (`include/printer_discovery.h#parse_objects`). Registration order matters: a real aftermarket
-MMU (AFC, Happy Hare, …) always wins even on U1 hardware that also reports
+MMU (AFC, Happy Hare, …) wins even on U1 hardware that also reports
 `filament_detect`; the Snapmaker backend is the fallback for a stock U1 with no MMU,
 and a bare `toolchanger` object alone is not enough (`include/printer_discovery.h#parse_objects`).
+
+`AmsType::ACE` is the one exception to that precedence. An `ace` object beside
+`filament_detect` is [multiACE](FILAMENT_BACKEND_ACE.md), whose slots are nested per unit
+under `aces[]` rather than in the top-level `slots` array `AmsBackendAce` reads, so
+detection declines it and leaves the printer here (prestonbrown/helixscreen#1426). The other
+U1 + ACE Pro mod, DnG-Crafts/U1-Ace, registers `ace_device`, matches no ACE pattern at all,
+and reaches this backend without the exception being involved.
 
 ### Status the Backend Reads
 
