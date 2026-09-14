@@ -65,9 +65,9 @@ setup() {
 # iterator depends on. START is hardcoded to 99 the way the real one reads
 # it from the script's START= line.
 #
-# stop and disable also kill the service's tracked instances, modeling the
-# Tina/procd behavior a K2 Plus proved on hardware: /etc/init.d/app disable
-# took a running web-server down with it. A tracked instance is modeled as
+# stop and disable also kill the service's tracked instances, modeling
+# Tina/procd, where /etc/init.d/app stop+disable take a running web-server
+# down with it. A tracked instance is modeled as
 # a pidfile path listed under var/run/procd-instances/<service> — killing
 # by pid is the sandbox-safe stand-in for procd stopping its instances.
 write_fake_rc_common() {
@@ -132,6 +132,22 @@ write_fake_webserver() {
     chmod +x "$MOCK_ROOT/usr/bin/web-server"
 }
 
+# The fake web-server logs its launch line from inside the backgrounded
+# child, so a count sampled the moment the caller returns can miss the
+# child's write. Poll briefly for the expected count instead of grepping
+# once; on timeout dump the log so the mismatch is readable.
+await_launch_count() {
+    local want="$1" got=""
+    for _ in 1 2 3 4 5; do
+        got="$(grep -c "launched web-server" "$BATS_TEST_TMPDIR/servers.log" || true)"
+        [ "$got" -eq "$want" ] && return 0
+        sleep 1
+    done
+    echo "expected $want launched web-server lines, saw $got:" >&2
+    cat "$BATS_TEST_TMPDIR/servers.log" >&2
+    return 1
+}
+
 # Stateful pidof stand-in: reports web-server alive exactly when the init
 # script's pidfile names a live process — the same question real pidof
 # answers for the hook's guard.
@@ -153,8 +169,8 @@ PIDOF_EOF
 }
 
 # Mark the running web-server as an instance procd tracks under the app
-# service — the on-device condition the K2 Plus proved: the hook's
-# /etc/init.d/app stop+disable take a running web-server down.
+# service: the hook's /etc/init.d/app stop+disable take a running
+# web-server down on Tina/procd.
 seed_app_tracks_webserver() {
     mkdir -p "$MOCK_ROOT/var/run/procd-instances"
     echo "$MOCK_ROOT/var/run/helix-k2-webserver.pid" \
@@ -204,7 +220,7 @@ write_stock_app_service() {
 }
 
 @test "k2: runtime hook still disables the stock app service" {
-    # The fix must not narrow the disable: the display stack and the AI
+    # The disable must not be narrowed: the display stack and the AI
     # daemons stay down at boot by design; the carve-out gets its own
     # starter instead.
     grep -q '/etc/init.d/app disable' "$HOOK"
@@ -262,14 +278,14 @@ write_stock_app_service() {
 
     run "$dest" start
     [ "$status" -eq 0 ]
-    [ "$(grep -c "launched web-server" "$BATS_TEST_TMPDIR/servers.log")" -eq 1 ]
+    await_launch_count 1
     [ -f "$MOCK_ROOT/var/run/helix-k2-webserver.pid" ]
 
     # A second start that sees web-server running launches nothing new.
     mock_command_script "pidof" "echo 314; exit 0"
     run "$dest" start
     [ "$status" -eq 0 ]
-    [ "$(grep -c "launched web-server" "$BATS_TEST_TMPDIR/servers.log")" -eq 1 ]
+    await_launch_count 1
 }
 
 @test "k2 init script: real lifecycle — stop kills the started pid and clears the pidfile" {
@@ -456,14 +472,17 @@ write_stock_app_service() {
     write_stock_app_service
     rm -f "$MOCK_ROOT"/etc/rc.d/*app 2>/dev/null || true
 
-    # Broken shape: enable exits 0 and creates nothing.
-    printf '#!/bin/sh\ncase "$1" in enable) exit 0;; esac\nexit 0\n' \
-        > "$MOCK_ROOT/etc/rc.common"
+    # Broken shape: enable exits 0 and creates nothing. The stub also logs
+    # a start dispatch, so the case can prove the restore still starts the
+    # stock UI for the session despite the unverified boot entry.
+    printf '#!/bin/sh\ncase "$2" in start) echo started >> "%s/app-start.log";; esac\nexit 0\n' \
+        "$BATS_TEST_TMPDIR" > "$MOCK_ROOT/etc/rc.common"
     chmod +x "$MOCK_ROOT/etc/rc.common"
     local broken_out
     broken_out="$( INSTALL_DIR="$INSTALL_DIR" SUDO="" _UNINSTALL_BUNDLE_TEST=1 \
         sh -c ". '$patched'; restore_previous_ui_platform k2" 2>&1 || true )"
     echo "$broken_out" | grep -q "boot symlink missing or wrong"
+    [ -f "$BATS_TEST_TMPDIR/app-start.log" ]
 
     # Working shape: enable creates the link (setup's fake rc.common), so
     # the restore proceeds without the warning.
@@ -479,14 +498,14 @@ write_stock_app_service() {
     fi
 }
 
-# --- liveness is the hook's job: the K2 Plus hardware failure in miniature ---
+# --- liveness is the hook's job ---
 #
-# On real Tina/procd, /etc/init.d/app stop+disable inside
+# On Tina/procd, /etc/init.d/app stop+disable inside
 # platform_stop_competing_uis take a running web-server down, and procd's
-# boot iterator never dispatches S99helix-k2-webserver (device-verified:
-# zero logread lines for it, while S99helixscreen dispatches fine). So the
-# carve-out's liveness must be restored at the END of the hook path — the
-# one path that provably runs at every boot and every service restart.
+# boot iterator never dispatches S99helix-k2-webserver while it dispatches
+# S99helixscreen fine. So the carve-out's liveness must be restored at the
+# END of the hook path — the one path that runs at every boot and every
+# service restart.
 
 @test "k2 hook: a service start with web-server running leaves the carve-out serving" {
     write_fake_webserver
@@ -512,7 +531,7 @@ write_stock_app_service() {
     newpid="$(cat "$MOCK_ROOT/var/run/helix-k2-webserver.pid" 2>/dev/null)"
     [ -n "$newpid" ]
     kill -0 "$newpid"
-    [ "$(grep -c "launched web-server" "$BATS_TEST_TMPDIR/servers.log")" -eq 2 ]
+    await_launch_count 2
 
     kill "$newpid" 2>/dev/null || true
 }
@@ -535,7 +554,7 @@ write_stock_app_service() {
 
     run_hook_stop_competing_uis
 
-    [ "$(grep -c "launched web-server" "$BATS_TEST_TMPDIR/servers.log")" -eq 2 ]
+    await_launch_count 2
     local newpid
     newpid="$(cat "$BATS_TEST_TMPDIR/webserver.pid")"
     kill -0 "$newpid"

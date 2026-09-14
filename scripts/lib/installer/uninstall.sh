@@ -334,9 +334,12 @@ restore_previous_ui_platform() {
         if [ -z "$app_target" ]; then
             log_warn "Stock UI boot symlink missing or wrong (no /etc/rc.d/*app -> ../init.d/app); run: /etc/init.d/app enable"
         else
-            $SUDO /etc/init.d/app start 2>/dev/null || true
             restored_ui="Creality stock UI (/etc/init.d/app, boot via $app_link)"
         fi
+        # Start runs in both branches: the killall above already took the
+        # carve-out's web-server down, so a missing boot symlink must leave
+        # the session's UI restored, not just warned about.
+        $SUDO /etc/init.d/app start 2>/dev/null || true
     fi
 
     # Check for K1/Simple AF GuppyScreen
