@@ -918,6 +918,24 @@ class AmsBackendAfc : public AmsSubscriptionBackend {
     void maybe_reassert_retained_spool_link(int slot_index, const std::string& lane_name);
 
     /**
+     * @brief Drop a binding firmware has stopped agreeing with, in both stores
+     *
+     * Both parsers state a spool id, so both invalidate on one: which of them
+     * ran last is not allowed to decide whether a stale binding still paints.
+     *
+     * The verdict is reached on every frame rather than only where a clear
+     * might follow, because reaching it is also what retires the own-write
+     * expectation for this lane.
+     *
+     * @param slot_index Registry slot index for this lane, as the binding
+     *                   check numbers it
+     * @param slot The lane, which carries the key its stored override is
+     *             filed under
+     * @param firmware_spool_id The id firmware states this frame, 0 for none
+     */
+    void invalidate_broken_binding(int slot_index, const SlotInfo& slot, int firmware_spool_id);
+
+    /**
      * @brief Parse AFC_hub object for per-hub sensor state
      *
      * @param hub_name Name of the hub (e.g., "Turtle_1")
