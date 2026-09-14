@@ -77,6 +77,21 @@ struct AsyncSyncData {
     int slot_index; // Only used if full_sync == false
 };
 
+// Shortens a UTF-8 string to at most max_bytes bytes without splitting a
+// multi-byte codepoint. A raw firmware message (AFC's message.message) has no
+// length bound at all, so a composition can still overrun a subject buffer
+// sized for the longest known translated producer.
+std::string truncate_utf8(const std::string& s, size_t max_bytes) {
+    if (s.size() <= max_bytes) {
+        return s;
+    }
+    size_t end = max_bytes;
+    while (end > 0 && (static_cast<unsigned char>(s[end]) & 0xC0) == 0x80) {
+        --end;
+    }
+    return s.substr(0, end);
+}
+
 } // namespace
 
 // Declared in ams_tool_topology.h; see there for what nullopt means to callers.
@@ -2997,8 +3012,12 @@ void AmsState::recompute_action_detail() {
         }
     }
 
-    if (strcmp(lv_subject_get_string(&ams_action_detail_), new_detail) != 0) {
-        lv_subject_copy_string(&ams_action_detail_, new_detail);
+    // sizeof(action_detail_buf_) - 1 leaves room for the NUL lv_subject_copy_string
+    // writes; truncating here first (rather than letting it truncate) keeps the
+    // cut on a codepoint boundary regardless of which producer overran it.
+    const std::string bounded_detail = truncate_utf8(new_detail, sizeof(action_detail_buf_) - 1);
+    if (strcmp(lv_subject_get_string(&ams_action_detail_), bounded_detail.c_str()) != 0) {
+        lv_subject_copy_string(&ams_action_detail_, bounded_detail.c_str());
     }
 }
 
