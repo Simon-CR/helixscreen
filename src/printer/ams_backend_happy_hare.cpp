@@ -1000,14 +1000,6 @@ void AmsBackendHappyHare::parse_mmu_state(const nlohmann::json& mmu_data) {
                                                      "[AMS HH]");
             }
         }
-        // Re-supply user-attached identity the gate map cannot carry. Last,
-        // because it reads the lane model the two loops above have just
-        // finished writing.
-        for (size_t i = 0; i < spool_ids.size(); ++i) {
-            if (auto* entry = slots_.get_mut(static_cast<int>(i))) {
-                apply_resolved_lane(entry->info, static_cast<int>(i));
-            }
-        }
         spdlog::trace("[AMS HappyHare] Parsed gate_spool_id for {} gates", spool_ids.size());
     }
 
@@ -1275,6 +1267,19 @@ void AmsBackendHappyHare::parse_mmu_state(const nlohmann::json& mmu_data) {
     }
     for (const auto& [gate, reading] : gate_readings_) {
         ams::ingest(lane_id(gate), reading);
+    }
+
+    // Paint every gate from the lane, after the two loops above have filed this
+    // frame's readings on it. The gate map is the only thing Happy Hare states
+    // about a binding, and what it cannot carry - a user's own identity - comes
+    // from the lane, so this has to read a model that already holds both. Every
+    // gate rather than the ones one key happened to mention: a lane a key is
+    // silent about still resolves, and a gate with no records at all resolves
+    // to nothing observed and keeps every value the parse set.
+    for (int gate = 0; gate < slots_.slot_count(); ++gate) {
+        if (auto* entry = slots_.get_mut(gate)) {
+            apply_resolved_lane(entry->info, gate);
+        }
     }
 
     // Re-derive every gate's status from the cached gate_status array plus the
