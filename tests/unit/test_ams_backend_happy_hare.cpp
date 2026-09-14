@@ -1188,9 +1188,9 @@ TEST_CASE("Happy Hare gate_spool_id partial array only updates provided slots",
 
 TEST_CASE("Happy Hare external re-bind clears our override (#1281 step 7)",
           "[ams][happy_hare][override-merge]") {
-    // merge_override()'s rule matrix pins the pure function; this pins the
-    // wiring on the live gate_spool_id path. Another writer (Mainsail, an HH
-    // macro) re-binds gate 0 to a different spool — firmware truth must win
+    // classify_binding()'s verdict matrix pins the pure function; this pins
+    // the wiring on the live gate_spool_id path. Another writer (Mainsail, an
+    // HH macro) re-binds gate 0 to a different spool: firmware truth must win
     // and our whole override record must drop, never setting-gated.
     helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
     AmsBackendHappyHareTestHelper& helper = *helper_reg;

@@ -199,7 +199,7 @@ TEST_CASE_METHOD(HelixTestFixture,
     helix::SlotInfo edited;
     edited.brand = "Hatchbox";
     bool saved = false;
-    store.save_async(0, helix::ams::user_override_from_slot_info(empty_lane, edited),
+    store.save_async(0, helix::ams::user_override_from_slot_info(empty_lane, edited, nullptr),
                      [&](bool, std::string) { saved = true; });
     REQUIRE(saved);
 
@@ -410,7 +410,7 @@ TEST_CASE("A declared brand survives the private cache round-trip", "[lane][migr
     helix::SlotInfo edited;
     edited.brand = "Hatchbox";
     const helix::ams::FilamentSlotOverride ovr =
-        helix::ams::user_override_from_slot_info(empty_lane, edited);
+        helix::ams::user_override_from_slot_info(empty_lane, edited, nullptr);
 
     const nlohmann::json wire = helix::ams::to_json(ovr);
     REQUIRE(wire.contains("declared"));
@@ -476,7 +476,7 @@ TEST_CASE("The declared set cannot carry colour or material", "[lane][migration]
         edited.brand = "Hatchbox";
         edited.material = "PETG";
         edited.color_rgb = 0x3355FF;
-        const auto ovr = helix::ams::user_override_from_slot_info(empty_lane, edited);
+        const auto ovr = helix::ams::user_override_from_slot_info(empty_lane, edited, nullptr);
 
         // The two locks carry colour and material.
         CHECK(ovr.user_locked_color);
@@ -552,7 +552,7 @@ TEST_CASE_METHOD(HelixTestFixture,
     helix::SlotInfo edited = before;
     edited.remaining_weight_g = 730.0F;
 
-    const auto ovr = helix::ams::user_override_from_slot_info(before, edited);
+    const auto ovr = helix::ams::user_override_from_slot_info(before, edited, nullptr);
     CHECK_FALSE(ovr.user_locked_color);
     CHECK_FALSE(ovr.user_locked_material);
     CHECK_FALSE(ovr.declared.any());
@@ -595,7 +595,7 @@ TEST_CASE_METHOD(HelixTestFixture, "An edit that moves the brand claims the bran
     helix::SlotInfo edited = before;
     edited.brand = "Hatchbox";
 
-    const auto ovr = helix::ams::user_override_from_slot_info(before, edited);
+    const auto ovr = helix::ams::user_override_from_slot_info(before, edited, nullptr);
     CHECK_FALSE(ovr.user_locked_color);
     CHECK_FALSE(ovr.user_locked_material);
     const nlohmann::json declared = helix::ams::declared_field_names(ovr.declared);
@@ -638,7 +638,7 @@ TEST_CASE_METHOD(HelixTestFixture, "An edit that clears the brand keeps it clear
     helix::SlotInfo edited = before;
     edited.brand = "";
 
-    const auto ovr = helix::ams::user_override_from_slot_info(before, edited);
+    const auto ovr = helix::ams::user_override_from_slot_info(before, edited, nullptr);
     const nlohmann::json declared = helix::ams::declared_field_names(ovr.declared);
     REQUIRE(declared.is_array());
     CHECK(declared.size() == 1);
@@ -672,7 +672,7 @@ TEST_CASE_METHOD(HelixTestFixture, "An edit that moves the material locks it aga
     helix::SlotInfo edited = before;
     edited.material = "ASA";
 
-    const auto ovr = helix::ams::user_override_from_slot_info(before, edited);
+    const auto ovr = helix::ams::user_override_from_slot_info(before, edited, nullptr);
     CHECK(ovr.user_locked_material);
     CHECK_FALSE(ovr.user_locked_color);
     CHECK_FALSE(ovr.declared.any());
@@ -687,6 +687,56 @@ TEST_CASE_METHOD(HelixTestFixture, "An edit that moves the material locks it aga
     // The colour rode along on the same commit and was never moved, so the
     // machine still owns it.
     CHECK(resolved.color_rgb == 0xFF0000u);
+}
+
+TEST_CASE_METHOD(HelixTestFixture, "A later edit keeps what an earlier edit declared",
+                 "[lane][migration]") {
+    // An edit speaks about the fields it moved and says nothing about the
+    // rest. The colour below was chosen in the first edit and never mentioned
+    // again, so a record built from the second edit alone would hand it back
+    // to the machine while the lane still calls it the user's.
+    MoonrakerClientMock client(MoonrakerClientMock::PrinterType::VORON_24);
+    helix::PrinterState state;
+    state.init_subjects(false);
+    MoonrakerAPIMock api(client, state);
+    FilamentSlotOverrideStore store(&api, "ad5x_ifs");
+
+    const helix::SlotInfo before = firmware_lane();
+    helix::SlotInfo chose_colour = before;
+    chose_colour.color_rgb = 0x1E5AA8;
+    const auto first = helix::ams::user_override_from_slot_info(before, chose_colour, nullptr);
+    REQUIRE(first.user_locked_color);
+    REQUIRE_FALSE(first.declared.any());
+
+    // The editor re-opens on the lane the first edit left behind, and this
+    // time only the brand moves.
+    helix::SlotInfo chose_brand = chose_colour;
+    chose_brand.brand = "Hatchbox";
+    const auto second = helix::ams::user_override_from_slot_info(chose_colour, chose_brand, &first);
+
+    CHECK(second.user_locked_color);
+    CHECK(second.color_rgb == 0x1E5AA8u);
+    const nlohmann::json declared = helix::ams::declared_field_names(second.declared);
+    REQUIRE(declared.is_array());
+    CHECK(declared.size() == 1);
+    CHECK(declared.at(0) == "brand");
+
+    // Both come back as the user's word after a restart, not as something the
+    // record merely remembered.
+    const helix::ams::LaneId lane = reload_into_lane(store, second);
+    const auto sources = lane_sources(lane);
+    REQUIRE(sources.local_user.has_value());
+    CHECK(sources.local_user->brand == "Hatchbox");
+    REQUIRE(sources.local_user->color_rgb.has_value());
+    CHECK(*sources.local_user->color_rgb == 0x1E5AA8u);
+
+    ingest(lane, correcting_frame());
+    const auto resolved = resolved_lane(lane);
+    CHECK(resolved.brand == "Hatchbox");
+    CHECK(resolved.color_rgb == 0x1E5AA8u);
+    // The fields neither edit moved are still the machine's to correct.
+    CHECK(resolved.material == "PETG");
+    CHECK(resolved.spool_name == "Corrected Spool");
 }
 
 TEST_CASE_METHOD(HelixTestFixture, "Linking a spool declares the binding, not what rode in with it",
@@ -708,7 +758,7 @@ TEST_CASE_METHOD(HelixTestFixture, "Linking a spool declares the binding, not wh
     edited.material = "PETG";
     edited.color_rgb = 0x3355FF;
 
-    const auto ovr = helix::ams::user_override_from_slot_info(before, edited);
+    const auto ovr = helix::ams::user_override_from_slot_info(before, edited, nullptr);
     CHECK(ovr.spoolman_id == 42);
     CHECK_FALSE(ovr.user_locked_color);
     CHECK_FALSE(ovr.user_locked_material);

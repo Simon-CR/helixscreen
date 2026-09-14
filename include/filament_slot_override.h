@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <unordered_map>
 
 #include "hv/json.hpp"
 
@@ -19,12 +20,15 @@ namespace helix::ams {
 struct FilamentSlotOverride;
 struct Observation;
 class DeclaredFields;
+struct RecordAuthorship;
 
 // The only two functions that may put a bit in a DeclaredFields. Both walk the
 // field roster in lane_translation.cpp and admit only the rows that roster
 // marks as keeping their authorship in the set, which is what keeps colour and
 // material out of it. Declared here so the class below can befriend them.
-[[nodiscard]] DeclaredFields declared_fields_supplied(const Observation& observed);
+[[nodiscard]] RecordAuthorship amend_authorship(const Observation& observed,
+                                                const FilamentSlotOverride& prior,
+                                                const FilamentSlotOverride& amended);
 [[nodiscard]] DeclaredFields declared_fields_from_names(const nlohmann::json& names);
 
 // Which of a stored record's fields the user declared, one bit per row of the
@@ -67,10 +71,20 @@ class DeclaredFields {
         }
     }
 
-    friend DeclaredFields declared_fields_supplied(const Observation&);
+    friend RecordAuthorship amend_authorship(const Observation&, const FilamentSlotOverride&,
+                                             const FilamentSlotOverride&);
     friend DeclaredFields declared_fields_from_names(const nlohmann::json&);
 
     uint16_t bits_ = 0;
+};
+
+/// Everything a record says about who authored its fields, in the two homes
+/// that answer lives in: the colour and material lock flags, and the declared
+/// set for the roster rows with no flag of their own.
+struct RecordAuthorship {
+    bool user_locked_color = false;
+    bool user_locked_material = false;
+    DeclaredFields declared;
 };
 
 struct FilamentSlotOverride {
@@ -216,6 +230,15 @@ void populate_temps_from_slot_info(FilamentSlotOverride& ovr, const SlotInfo& in
 // assumes a lock and its value are set together, and a lock over nothing would
 // stop firmware from ever filling that lane.
 //
+// @p prior is the record this lane already had, or nullptr for a lane with
+// none. One edit speaks only about the fields it moved, so this edit's
+// authorship is AMENDED onto that record's rather than replacing it: an
+// earlier choice the edit never mentioned stays the user's word while the
+// value it stood over is still the one the record holds. Without it a brand-
+// only edit would drop a colour declared before it, and the consumption
+// meter's weight-only persist would drop every declaration on the lane.
+// amend_authorship() (lane_translation.h) is that rule.
+//
 // The colour records only when it is a reading rather than the SlotInfo "no
 // colour" sentinel, the question is_declarable_color() answers; a deliberate
 // pure black (#000000) is a reading and records. color_name travels
@@ -223,7 +246,8 @@ void populate_temps_from_slot_info(FilamentSlotOverride& ovr, const SlotInfo& in
 //
 // Temps come from populate_temps_from_slot_info(). updated_at is left default
 // so save_async stamps a fresh value.
-FilamentSlotOverride user_override_from_slot_info(const SlotInfo& original, const SlotInfo& edited);
+FilamentSlotOverride user_override_from_slot_info(const SlotInfo& original, const SlotInfo& edited,
+                                                  const FilamentSlotOverride* prior);
 
 // As above, recording `material` in place of edited.material, for a backend
 // that persists firmware's normalized spelling rather than the string the user
@@ -232,7 +256,25 @@ FilamentSlotOverride user_override_from_slot_info(const SlotInfo& original, cons
 // wrong thing to lock on. Whether the material was declared still follows the
 // edit, since the normalized spelling has no before-value to compare against.
 FilamentSlotOverride user_override_from_slot_info(const SlotInfo& original, const SlotInfo& edited,
-                                                  const std::string& material);
+                                                  const std::string& material,
+                                                  const FilamentSlotOverride* prior);
+
+// Build the record for a user's edit and put it in @p overrides under @p
+// slot_index, amending whatever that lane already held there. Returns the
+// staged record.
+//
+// Every backend stages a user's edit into a map of exactly this shape, and the
+// prior record it must amend is the entry this call is about to replace, so
+// finding it belongs here rather than in seven places that would each have to
+// remember to look.
+FilamentSlotOverride& stage_user_override(std::unordered_map<int, FilamentSlotOverride>& overrides,
+                                          int slot_index, const SlotInfo& original,
+                                          const SlotInfo& edited);
+
+// As above, for a backend that records a normalized material spelling.
+FilamentSlotOverride& stage_user_override(std::unordered_map<int, FilamentSlotOverride>& overrides,
+                                          int slot_index, const SlotInfo& original,
+                                          const SlotInfo& edited, const std::string& material);
 
 nlohmann::json to_json(const FilamentSlotOverride& o);
 FilamentSlotOverride from_json(const nlohmann::json& j);

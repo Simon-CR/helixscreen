@@ -1244,51 +1244,6 @@ void AmsBackendAd5xIfs::update_slot_from_state(int slot_index) {
     apply_resolved_lane(entry->info, slot_index);
 }
 
-void AmsBackendAd5xIfs::apply_overrides(SlotInfo& slot, int slot_index) {
-    // overrides_ is mutated in on_started() (initial load) and set_slot_info()
-    // (persisted user edit). Both writers hold mutex_, and every caller of
-    // apply_overrides runs inside update_slot_from_state() under mutex_ — so
-    // the map is implicitly lock-protected here. If a slot has no override
-    // entry, this is a zero-cost hash lookup followed by early return — safe
-    // to call inside the hot parse path. The whole spec §5 policy + the
-    // re-bind/eject rules live in helix::ams::merge_override — the single
-    // implementation every backend shares. Rule 1 (re-bind) is NOT gated by
-    // the capability: it can fire on any backend whose firmware reports a
-    // positive spool id disagreeing with the override (AFC, Happy Hare,
-    // flat-schema CFS). IFS firmware never reports one, so Rule 1 cannot
-    // fire here today — but that is a fact about this firmware, not what
-    // the capability gates. Rule 2 (eject) IS what
-    // printer_reports_spool_ids() gates (base false here: 0 is IFS's
-    // everyday reading, never an eject), and the erase branch is correct
-    // tomorrow if a firmware ever starts reporting ids.
-    auto it = overrides_.find(slot_index);
-    if (it == overrides_.end())
-        return;
-    helix::ams::MergeOptions opts;
-    opts.printer_reports_spool_ids = printer_reports_spool_ids();
-    opts.keep_spool_info_on_eject =
-        helix::SettingsManager::instance().get_ams_keep_spool_info_on_eject();
-    // Own-write echo suppression (SlotFingerprintTracker::expect()
-    // semantics): Rule 1 must not read an in-flight stale firmware id as an
-    // external re-bind. IFS never writes firmware ids, so this is always
-    // {0, 0} today — the call keeps one shape across backends.
-    const auto [own_old_id, own_new_id] = own_write_expectation(slot_index, slot.spoolman_id);
-    opts.suppress_rebind_firmware_old_id = own_old_id;
-    opts.suppress_rebind_firmware_new_id = own_new_id;
-    const auto result = helix::ams::merge_override(slot, it->second, opts);
-    if (result.cleared_rebind || result.cleared_eject) {
-        overrides_.erase(it);
-        if (override_store_) {
-            const std::string tag = backend_log_tag();
-            override_store_->clear_async(slot_index, [tag, slot_index](bool ok, std::string err) {
-                if (!ok) {
-                    spdlog::warn("{} clear_async failed for slot {}: {}", tag, slot_index, err);
-                }
-            });
-        }
-    }
-}
-
 bool AmsBackendAd5xIfs::check_external_color_change(int slot_index,
                                                     std::optional<uint32_t> observed_color,
                                                     bool slot_has_filament) {
@@ -2781,9 +2736,9 @@ AmsError AmsBackendAd5xIfs::set_slot_info(int slot_index, const SlotInfo& info, 
             return AmsErrorHelper::invalid_slot(lane_noun(), slot_index, NUM_PORTS - 1);
         }
 
-        // The port as it stood before this edit. user_override_from_slot_info needs
-        // it to tell what the user moved from what the editor merely carried
-        // back, so it has to be taken before the writes below.
+        // The port as it stood before this edit. stage_user_override needs it to
+        // tell what the user moved from what the editor merely carried back, so
+        // it has to be taken before the writes below.
         const SlotInfo prior_slot = entry->info;
 
         // Mark slot dirty to prevent parse_save_variables from overwriting our edit
@@ -2853,8 +2808,8 @@ AmsError AmsBackendAd5xIfs::set_slot_info(int slot_index, const SlotInfo& info, 
             // normalize_material() was already applied to the cached materials_
             // copy; record that instead of the raw user-typed string so the
             // on-disk record carries a firmware-valid value.
-            overrides_[slot_index] =
-                helix::ams::user_override_from_slot_info(prior_slot, info, normalized_material);
+            helix::ams::stage_user_override(overrides_, slot_index, prior_slot, info,
+                                            normalized_material);
         }
 
         // Treat the user's chosen color as the new "firmware truth" baseline

@@ -239,6 +239,16 @@ bool file_catalog_pick(const FilamentSlotOverride& record, Observation& user) {
     return !record.catalog_id.empty() || !record.product_name.empty();
 }
 
+/// The merge rule, for one field, and the only place it is spelled out.
+///
+/// What this edit declares is the user's word outright. What the record
+/// already declared stays theirs only while the value that declaration stood
+/// over is still the one the record holds: a value that moved with no
+/// declaration behind the move belongs to whoever moved it.
+constexpr bool amended_declaration(bool declares_now, bool declared_before, bool value_unchanged) {
+    return declares_now || (declared_before && value_unchanged);
+}
+
 } // namespace
 
 Observation user_edit_observation(const SlotInfo& original, const SlotInfo& edited) {
@@ -470,21 +480,43 @@ LaneSources sources_from_record(const FilamentSlotOverride& record, const nlohma
     return sources;
 }
 
-DeclaredFields declared_fields_supplied(const Observation& observed) {
-    DeclaredFields declared;
-    // No per-kind rule for what counts as a declaration: the observation was
-    // built by comparing the edit against what it opened on, so a field it
-    // carries is one a person moved, whatever value they moved it to. Clearing
-    // a field is a declaration the same as typing into one.
+RecordAuthorship amend_authorship(const Observation& observed, const FilamentSlotOverride& prior,
+                                  const FilamentSlotOverride& amended) {
+    RecordAuthorship authorship;
+
+    // A lock stands over a value, so the amended record has to carry one for
+    // either half of the rule to reach the flag: every mirror policy reads a
+    // lock and its value together, and a lock over nothing would stop firmware
+    // from ever filling that lane. An observation only ever carries a
+    // declarable colour, so the colour gets that guard for free; a material
+    // arrives empty from a clear and from a backend whose normalized spelling
+    // came back empty.
+    const bool colour_carried = amended.color_set && is_declarable_color(amended.color_rgb);
+    authorship.user_locked_color =
+        colour_carried &&
+        amended_declaration(observed.color_rgb.has_value(), prior.user_locked_color,
+                            prior.color_set && prior.color_rgb == amended.color_rgb);
+    authorship.user_locked_material =
+        !amended.material.empty() &&
+        amended_declaration(observed.material.has_value(), prior.user_locked_material,
+                            prior.material == amended.material);
+
+    // The same rule for the roster rows that keep their authorship in the
+    // declared set. No per-kind rule for what this edit declares: the
+    // observation was built by comparing the edit against what it opened on,
+    // so a field it carries is one a person moved, whatever value they moved
+    // it to. Clearing a field is a declaration the same as typing into one,
+    // and the set is the one home that can say so.
     for_each_field_indexed([&](const auto& f, size_t index) {
         using Row = std::decay_t<decltype(f)>;
         if constexpr (Row::authorship == Authorship::DeclaredSet) {
-            if ((observed.*(f.obs)).has_value()) {
-                declared.set(index);
+            if (amended_declaration((observed.*(f.obs)).has_value(), prior.declared.test(index),
+                                    prior.*(f.record) == amended.*(f.record))) {
+                authorship.declared.set(index);
             }
         }
     });
-    return declared;
+    return authorship;
 }
 
 nlohmann::json declared_field_names(const DeclaredFields& declared) {

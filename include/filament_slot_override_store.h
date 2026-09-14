@@ -392,52 +392,6 @@ bool publish_external_lane(FilamentSlotOverrideStore* store, int lane_index, con
                            const std::string& log_tag);
 
 // =============================================================================
-// Shared override-wins merge (filament_slots.md §5)
-// =============================================================================
-//
-// Every AMS backend merges a loaded FilamentSlotOverride onto firmware-reported
-// SlotInfo values before the UI paints a lane. This is the ONE implementation
-// of that policy plus the two cross-field rules (external re-bind, eject) that
-// previously lived as hand-rolled if-chains per backend.
-
-struct MergeOptions {
-    /// From SettingsManager::get_ams_keep_spool_info_on_eject().
-    /// Default true = today's designed retention across eject.
-    bool keep_spool_info_on_eject = true;
-    /// True only on backends whose firmware reports a spool id while a spool
-    /// is loaded (AFC, Happy Hare). There — and only there — a firmware id of
-    /// 0/null means "ejected". Elsewhere 0 is the everyday reading and MUST
-    /// NOT be treated as eject — flat-schema CFS does parse a per-slot spool
-    /// id (arming Rule 1's re-bind) but gives 0 no eject meaning.
-    bool printer_reports_spool_ids = false;
-    /// Own-write echo suppression for Rule 1, mirroring
-    /// SlotFingerprintTracker::expect() semantics. When HelixScreen itself
-    /// just (re)linked a spool id on this slot, in-flight status frames keep
-    /// reporting the OLD firmware id for a poll or two; Rule 1 must not read
-    /// such a stale frame as an external re-bind and destroy the just-saved
-    /// override. Non-zero values are the ids firmware may legitimately
-    /// report while the write is in flight: the id it last reported before
-    /// the write and the id we just wrote. Suppression affects ONLY the
-    /// re-bind clear — the §5 field merge paints the override normally
-    /// either way. 0 = none.
-    int suppress_rebind_firmware_old_id = 0;
-    /// The just-written id (see suppress_rebind_firmware_old_id). 0 = none.
-    int suppress_rebind_firmware_new_id = 0;
-};
-
-struct MergeResult {
-    bool cleared_rebind = false; ///< firmware re-bound to a different spool; record dropped
-    bool cleared_eject = false;  ///< eject signal + setting OFF; record dropped
-};
-
-/// Single implementation of filament_slots.md §5 plus the two cross-field
-/// rules. `slot` carries FIRMWARE-reported values on entry; on return it
-/// carries the values the UI should paint. When either cleared_* is true the
-/// caller must drop its in-memory override and persist the clear.
-MergeResult merge_override(SlotInfo& slot, const FilamentSlotOverride& o,
-                           const MergeOptions& options);
-
-// =============================================================================
 // Shared per-slot firmware-observation baseline tracker
 // =============================================================================
 
@@ -466,13 +420,14 @@ enum class FingerprintEvent {
 /// bookkeeping — deciding what a given event *means* (clear the override, sync
 /// lane_data, log) stays in each backend, so their policies can differ.
 ///
-/// Beyond the plain baseline compare it carries an `expect()` slot: backends
-/// that write a value back to firmware (CFS's BOX_MODIFY_TN_DATA identity
-/// push) record the value they expect to see echoed. Because the write is
-/// asynchronous, firmware keeps reporting the OLD value for an unknown number
-/// of polls before the echo lands — so the expectation must SURVIVE those
-/// polls rather than overwrite the baseline immediately. Those intervening
-/// polls classify as Unchanged; the echo itself classifies as OwnWriteEcho.
+/// Beyond the plain baseline compare it carries an expectation set: a backend
+/// that writes a value back to firmware (CFS's BOX_MODIFY_TN_DATA identity
+/// push) registers the values it expects to see echoed, via expect_any_of().
+/// Because the write is asynchronous, firmware keeps reporting the OLD value
+/// for an unknown number of polls before the echo lands, so the expectation
+/// must SURVIVE those polls rather than overwrite the baseline immediately.
+/// Those intervening polls classify as Unchanged; the echo itself classifies
+/// as OwnWriteEcho.
 ///
 /// Each expectation is single-shot and is consumed by the first change of any
 /// kind, so a genuine physical swap that lands while a write is in flight is
@@ -496,15 +451,11 @@ class SlotFingerprintTracker {
     FingerprintEvent observe(int slot_index, const std::string& observed,
                              std::string* previous = nullptr);
 
-    /// Record the value this slot is expected to report once a write we just
-    /// issued reaches firmware. Replaces any prior unconsumed expectation.
-    void expect(int slot_index, std::string expected_value);
-
-    /// Multi-write variant of expect(): registers every value the slot may
-    /// report between the first and last echo of a multi-field write (the
-    /// intermediate composites and the final one). Each is consumed only by an
-    /// exact match; any other change clears them all. Empty strings are
-    /// dropped; an all-empty input is equivalent to forget_expected().
+    /// Register every value the slot may report between the first and last
+    /// echo of a multi-field write (the intermediate composites and the final
+    /// one). Each is consumed only by an exact match; any other change clears
+    /// them all. Empty strings are dropped; an all-empty input is equivalent
+    /// to forget_expected().
     void expect_any_of(int slot_index, std::vector<std::string> expected_values);
 
     /// Drop a pending expectation (e.g. the write failed to dispatch, so no
@@ -521,8 +472,8 @@ class SlotFingerprintTracker {
 
   private:
     std::unordered_map<int, std::string> baseline_;
-    /// Pending expected values per slot. Single-element for expect(); the
-    /// intermediate+final composites for expect_any_of().
+    /// Pending expected values per slot: the intermediate and final
+    /// composites expect_any_of() registered.
     std::unordered_map<int, std::vector<std::string>> expected_;
 };
 

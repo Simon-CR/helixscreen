@@ -246,8 +246,8 @@ is `explicit Observation(ObservationSource)`, so a reading cannot exist without 
 it came from. It carries no field for "this is the echo of a write HelixScreen itself
 issued": that question is answered per backend family, by
 `AmsBackend::own_write_expectation` (`include/ams_backend.h#own_write_expectation`),
-`SlotFingerprintTracker::expect`
-(`include/filament_slot_override_store.h#SlotFingerprintTracker/expect`) and
+`SlotFingerprintTracker::expect_any_of`
+(`include/filament_slot_override_store.h#SlotFingerprintTracker/expect_any_of`) and
 `helix::ams::OwnWriteEchoes` (`include/lane_echo.h#OwnWriteEchoes`).
 
 `ObservationSource` ([`include/lane_observation.h#ObservationSource`](../../../include/lane_observation.h))
@@ -353,12 +353,11 @@ firmware reports, so filing it would buy a window between two frames rather than
 lane keeps. The tool changer is the only backend that answers false, and therefore the only one
 whose resync files anything.
 
-**Nothing reads any of this.** No surface consumes a `ResolvedLane`, `resolve()` has no
-production caller, and nothing outside the funnels calls `lane_sources()`. Every lane a user
-sees is still firmware-reported `SlotInfo` merged with a persisted `FilamentSlotOverride` by
-`merge_override()` (`src/printer/filament_slot_override_store.cpp#merge_override`), each field's
-origin inferred from its shape, exactly as [`15-known-debt.md`](15-known-debt.md) § "Provenance
-debt" describes. [`tests/unit/test_lane_resolver.cpp`](../../../tests/unit/test_lane_resolver.cpp)
+**This is the read path.** Every backend's parse ends by laying the lane's resolved identity,
+presence and weights onto the `SlotInfo` it just built
+(`include/ams_backend.h#AmsBackend/apply_resolved_lane`), so what a user sees is what `resolve()`
+ranked rather than a merge that inferred each field's origin from its shape.
+[`tests/unit/test_lane_resolver.cpp`](../../../tests/unit/test_lane_resolver.cpp)
 pins every rung of both ladders, the colour exception and the empty-versus-unobserved
 distinction the model rests on, and
 [`tests/unit/test_lane_backend_observations.cpp`](../../../tests/unit/test_lane_backend_observations.cpp)

@@ -563,7 +563,6 @@ class AmsBackendAfc : public AmsSubscriptionBackend {
     std::unique_ptr<helix::ams::FilamentSlotOverrideStore> lane_publish_store_;
     std::unordered_map<int, helix::ams::FilamentSlotOverride> overrides_;
     /// Layer the user override over firmware values. Callers hold mutex_.
-    void apply_overrides(SlotInfo& slot, int slot_index);
     /// Build + persist an override from a user edit. Callers hold mutex_ and
     /// pass the lane as it stood before the edit, which is what says which
     /// fields the user actually moved.
@@ -904,8 +903,8 @@ class AmsBackendAfc : public AmsSubscriptionBackend {
      * identity — re-inserting the spool would paint the retained id here
      * while AFC/Mainsail show an unknown spool. Sends the same
      * SET_SPOOL_ID write the editor re-link uses, wrapped in
-     * record_own_spool_write() so the echo cannot trip the merge's re-bind
-     * clear.
+     * record_own_spool_write() so the echo cannot classify as a re-bind and
+     * drop the records that declared the binding.
      *
      * Gates: retention setting on, override holds a spool id for the lane,
      * and firmware's freshest spool_id reading is 0/null (a
