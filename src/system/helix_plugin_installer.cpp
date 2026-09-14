@@ -139,8 +139,7 @@ bool HelixPluginInstaller::is_local_moonraker() const {
     return is_moonraker_on_same_host(host);
 }
 
-HelixPluginInstaller::SyncInstallResult
-HelixPluginInstaller::install_local_sync(bool enable_phase_tracking) {
+HelixPluginInstaller::SyncInstallResult HelixPluginInstaller::install_local_sync() {
     // NOTE: This method is designed to be called from a background thread.
     // It does NOT use std::function to avoid ARM/glibc static linking issues.
 
@@ -156,8 +155,7 @@ HelixPluginInstaller::install_local_sync(bool enable_phase_tracking) {
     }
 
     state_.store(PluginInstallState::INSTALLING);
-    spdlog::info("[PluginInstaller] Starting local installation: {} --auto (phase_tracking={})",
-                 script_path, enable_phase_tracking);
+    spdlog::info("[PluginInstaller] Starting local installation: {} --auto", script_path);
 
     pid_t pid = fork();
 
@@ -169,12 +167,7 @@ HelixPluginInstaller::install_local_sync(bool enable_phase_tracking) {
     }
 
     if (pid == 0) {
-        if (enable_phase_tracking) {
-            execl(script_path.c_str(), script_path.c_str(), "--auto", "--with-phase-tracking",
-                  nullptr);
-        } else {
-            execl(script_path.c_str(), script_path.c_str(), "--auto", nullptr);
-        }
+        execl(script_path.c_str(), script_path.c_str(), "--auto", nullptr);
         _exit(127);
     }
 
@@ -202,7 +195,7 @@ HelixPluginInstaller::install_local_sync(bool enable_phase_tracking) {
     return {false, lv_tr("Installation failed. Check logs for details.")};
 }
 
-void HelixPluginInstaller::install_local(InstallCallback callback, bool enable_phase_tracking) {
+void HelixPluginInstaller::install_local(InstallCallback callback) {
     // NOTE: Thread safety - this method must be called from the main thread only.
     // The state_ member is not protected by a mutex for performance reasons.
 
@@ -225,8 +218,7 @@ void HelixPluginInstaller::install_local(InstallCallback callback, bool enable_p
     }
 
     state_.store(PluginInstallState::INSTALLING);
-    spdlog::info("[PluginInstaller] Starting local installation: {} --auto (phase_tracking={})",
-                 script_path, enable_phase_tracking);
+    spdlog::info("[PluginInstaller] Starting local installation: {} --auto", script_path);
 
     // Use fork/exec instead of popen() to avoid shell command injection.
     // The script path is passed directly to execl() without shell interpretation.
@@ -248,12 +240,7 @@ void HelixPluginInstaller::install_local(InstallCallback callback, bool enable_p
     if (pid == 0) {
         // Child process - execute the script
         // Note: execl() does NOT go through shell, preventing command injection
-        if (enable_phase_tracking) {
-            execl(script_path.c_str(), script_path.c_str(), "--auto", "--with-phase-tracking",
-                  nullptr);
-        } else {
-            execl(script_path.c_str(), script_path.c_str(), "--auto", nullptr);
-        }
+        execl(script_path.c_str(), script_path.c_str(), "--auto", nullptr);
 
         // If execl returns, it failed
         _exit(127);

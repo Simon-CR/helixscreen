@@ -850,7 +850,6 @@ translations:
   Enable assisted retraction at hub: '在集线器启用辅助回抽'
   Enable audio feedback: 启用声音反馈
   Enable brush wipe after purging: '排料后启用刷子擦拭'
-  Enable detailed print preparation tracking (Recommended): 启用详细打印准备跟踪（推荐）
   Enable feed assist for active slot during printing: '打印时为当前槽位启用送料辅助'
   Enable or disable the hub cutter: '启用或停用集线器切刀'
   Enable purging during tool changes: '在换工具时启用排料'
@@ -1052,7 +1051,6 @@ translations:
   Failed to update moonraker.conf.: 更新 moonraker.conf 失败。
   ? "Failed to update moonraker.conf.\nCheck printer connection."
   : "更新 moonraker.conf 失败。\n请检查打印机连接。"
-  Failed to update phase tracking: 更新相位跟踪失败
   'Failed to upload modified G-code: {}': '上传修改后的 G-code 失败: {}'
   'Failed to upload remapped G-code: {}': 上传重新映射的 G-code 失败：{}
   Fan: 风扇
@@ -1952,10 +1950,6 @@ translations:
   Peak Freq: 峰值频率
   'Peak:': 峰值：
   Performance: 性能
-  Phase Tracking: 相位跟踪
-  Phase tracking disabled: 相位跟踪已禁用
-  Phase tracking enabled: 相位跟踪已启用
-  Phase tracking update failed: 相位跟踪更新失败
   Phomemo (Bluetooth): Phomemo（蓝牙）
   Phomemo M110: Phomemo M110
   Pick: 选取
@@ -2538,7 +2532,6 @@ translations:
   Show Sections: 显示区段
   Show Touch Points: 显示触摸点
   Show a confirmation dialog when tapping a macro: 点击宏时显示确认对话框
-  Show detailed print preparation status: 显示详细的打印准备状态
   Show instead of dimming: 显示而非变暗
   Show printer icon in navigation bar: 在导航栏中显示打印机图标
   Show sliced colors: 显示切片颜色

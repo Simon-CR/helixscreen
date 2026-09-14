@@ -115,10 +115,9 @@ class HelixPluginInstaller {
      * Returns a result struct instead of using callbacks, which avoids
      * std::function-related crashes on ARM/glibc static builds.
      *
-     * @param enable_phase_tracking If true, also installs phase tracking macros
      * @return Result with success flag and message
      */
-    [[nodiscard]] SyncInstallResult install_local_sync(bool enable_phase_tracking = false);
+    [[nodiscard]] SyncInstallResult install_local_sync();
 
     /**
      * @brief Attempt local auto-installation
@@ -127,9 +126,8 @@ class HelixPluginInstaller {
      * Only works when connected to local Moonraker.
      *
      * @param callback Called when installation completes or fails
-     * @param enable_phase_tracking If true, also installs phase tracking macros
      */
-    void install_local(InstallCallback callback, bool enable_phase_tracking = false);
+    void install_local(InstallCallback callback);
 
     /**
      * @brief Attempt local auto-uninstallation

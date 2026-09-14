@@ -18,11 +18,7 @@ set -e
 # Get script directory (POSIX-compatible)
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PLUGIN_FILE="$SCRIPT_DIR/helix_print.py"
-# Legacy name, kept only so --uninstall can clean up installs that predate
-# 0d5bc370d (which merged helix_phase_tracking.cfg into helix_macros.cfg)
-LEGACY_PHASE_TRACKING_CFG="helix_phase_tracking.cfg"
 AUTO_MODE=false
-ENABLE_PHASE_TRACKING=false
 
 # Colors for output (works with printf)
 RED='\033[0;31m'
@@ -201,123 +197,6 @@ wait_for_moonraker() {
     return 1
 }
 
-# Locate the shipped helix_macros.cfg
-#
-# It defines the HELIX_PHASE_* and HELIX_READY macros that the plugin injects
-# into PRINT_START. The sibling layout holds in both a git checkout and a
-# deployed HelixScreen - mk/cross.mk ships assets/ and moonraker-plugin/ side by
-# side (DEPLOY_ASSET_DIRS).
-find_helix_macros_cfg() {
-    for candidate in \
-        "$SCRIPT_DIR/../assets/config/helix_macros.cfg" \
-        "$SCRIPT_DIR/../config/helix_macros.cfg" \
-        "/opt/helixscreen/config/helix_macros.cfg"
-    do
-        if [ -f "$candidate" ]; then
-            printf '%s\n' "$candidate"
-            return 0
-        fi
-    done
-    return 1
-}
-
-# Install phase tracking macros and optionally instrument PRINT_START
-install_phase_tracking() {
-    config_dir="$1"
-    moonraker_url="${MOONRAKER_URL:-http://localhost:7125}"
-
-    if [ -z "$config_dir" ]; then
-        warn "Config directory not found - skipping phase tracking setup"
-        return 1
-    fi
-
-    info "Setting up detailed print preparation tracking..."
-
-    # Install helix_macros.cfg BEFORE instrumenting. Instrumenting first would
-    # leave PRINT_START calling macros that do not exist, which Klipper does not
-    # catch at config load - it fails at print start with "Unknown command".
-    if ! macros_cfg=$(find_helix_macros_cfg); then
-        warn "helix_macros.cfg not found alongside the plugin"
-        warn "Skipping phase tracking - PRINT_START will be left untouched"
-        return 1
-    fi
-
-    cp "$macros_cfg" "$config_dir/helix_macros.cfg"
-    info "Installed helix_macros.cfg"
-
-    # Add include to printer.cfg if not already present
-    printer_cfg="$config_dir/printer.cfg"
-    if [ -f "$printer_cfg" ]; then
-        if ! grep -q '\[include helix_macros.cfg\]' "$printer_cfg"; then
-            # Create backup
-            backup_file="${printer_cfg}.bak.$(date +%Y%m%d_%H%M%S)"
-            cp "$printer_cfg" "$backup_file"
-            info "Created backup: $backup_file"
-
-            # Append include at end of file (safe, simple approach)
-            printf '\n' >> "$printer_cfg"
-            printf '%s\n' "[include helix_macros.cfg]" >> "$printer_cfg"
-
-            info "Added [include helix_macros.cfg] to printer.cfg"
-        else
-            info "Helix macros include already present in printer.cfg"
-        fi
-    else
-        warn "printer.cfg not found - please add [include helix_macros.cfg] manually"
-        return 1
-    fi
-
-    # Call plugin API to instrument PRINT_START macro
-    info "Instrumenting PRINT_START macro..."
-    response=$(curl -s -X POST "$moonraker_url/server/helix/phase_tracking/enable" 2>/dev/null || printf '%s' '{"error": "API call failed"}')
-
-    if printf '%s' "$response" | grep -q '"success".*true'; then
-        info "PRINT_START macro instrumented successfully"
-    else
-        warn "Could not auto-instrument PRINT_START macro"
-        warn "You can enable this later from HelixScreen Settings"
-        warn "Or manually add HELIX_PRINT_COMPLETE to the end of your PRINT_START macro"
-    fi
-
-    return 0
-}
-
-# Remove phase tracking from printer config
-remove_phase_tracking() {
-    config_dir="$1"
-    moonraker_url="${MOONRAKER_URL:-http://localhost:7125}"
-
-    if [ -z "$config_dir" ]; then
-        return 0
-    fi
-
-    info "Removing phase tracking..."
-
-    # Call plugin API to strip instrumentation first (while Moonraker is still running)
-    curl -s -X POST "$moonraker_url/server/helix/phase_tracking/disable" 2>/dev/null || true
-
-    # helix_macros.cfg and its include are deliberately left in place: it is the
-    # shared HelixScreen helper macro file (HELIX_START_PRINT, HELIX_CLEAN_NOZZLE
-    # and friends), not a phase-tracking artifact. Removing it here would break
-    # features the user never uninstalled. Stripping the instrumentation above is
-    # what actually disables phase tracking.
-
-    # Clean up the legacy pre-0d5bc370d file, which nothing uses any more
-    printer_cfg="$config_dir/printer.cfg"
-    if [ -f "$printer_cfg" ] && grep -q "\[include $LEGACY_PHASE_TRACKING_CFG\]" "$printer_cfg"; then
-        backup_file="${printer_cfg}.bak.$(date +%Y%m%d_%H%M%S)"
-        cp "$printer_cfg" "$backup_file"
-        grep -v "\[include $LEGACY_PHASE_TRACKING_CFG\]" "$printer_cfg" > "$printer_cfg.tmp"
-        mv "$printer_cfg.tmp" "$printer_cfg"
-        info "Removed legacy phase tracking include from printer.cfg"
-    fi
-
-    if [ -f "$config_dir/$LEGACY_PHASE_TRACKING_CFG" ]; then
-        rm "$config_dir/$LEGACY_PHASE_TRACKING_CFG"
-        info "Removed legacy $LEGACY_PHASE_TRACKING_CFG"
-    fi
-}
-
 # Restart Moonraker service
 restart_moonraker() {
     info "Restarting Moonraker..."
@@ -347,8 +226,10 @@ auto_uninstall() {
     # Find config directory
     config_dir=$(find_config_dir)
 
-    # Remove phase tracking BEFORE removing plugin (need API access)
-    remove_phase_tracking "$config_dir"
+    # helix_macros.cfg and its printer.cfg include are left in place: the macros
+    # are shared HelixScreen helpers (HELIX_START_PRINT, HELIX_CLEAN_NOZZLE and
+    # friends) that keep working without this plugin, and printer.cfg is
+    # Klipper's config - this uninstall only manages the Moonraker side.
 
     # Remove symlink
     if [ -L "$target" ]; then
@@ -391,6 +272,40 @@ auto_uninstall() {
     info "Auto-uninstall complete!"
 }
 
+# Retire a legacy helix_phase_tracking.cfg: nothing loads that file, and
+# Klipper refuses config load on an include whose target is missing, so the
+# printer.cfg include must leave with the file. Both are backed up to the same
+# timestamped convention as every other config edit here. Guarded on the
+# legacy file existing: with no legacy file, a plain --auto run touches
+# moonraker.conf only.
+cleanup_legacy_phase_cfg() {
+    config_dir="$1"
+    legacy_cfg="$config_dir/helix_phase_tracking.cfg"
+
+    if [ ! -f "$legacy_cfg" ]; then
+        return 0
+    fi
+
+    warn "Found legacy helix_phase_tracking.cfg - the macros live in helix_macros.cfg"
+
+    printer_cfg="$config_dir/printer.cfg"
+    if [ -f "$printer_cfg" ] && grep -q '\[include helix_phase_tracking.cfg\]' "$printer_cfg"; then
+        backup_file="${printer_cfg}.bak.$(date +%Y%m%d_%H%M%S)"
+        cp "$printer_cfg" "$backup_file"
+        info "Created backup: $backup_file"
+
+        grep -v '\[include helix_phase_tracking.cfg\]' "$printer_cfg" > "$printer_cfg.tmp" && mv "$printer_cfg.tmp" "$printer_cfg"
+        info "Removed [include helix_phase_tracking.cfg] from printer.cfg"
+    fi
+
+    legacy_backup="${legacy_cfg}.bak.$(date +%Y%m%d_%H%M%S)"
+    cp "$legacy_cfg" "$legacy_backup"
+    info "Created backup: $legacy_backup"
+
+    rm "$legacy_cfg"
+    info "Removed legacy $legacy_cfg"
+}
+
 # Auto-install function (non-interactive, for HelixScreen integration)
 auto_install() {
     info "HelixPrint Auto-Install Mode"
@@ -417,9 +332,6 @@ auto_install() {
 
     info "Moonraker: $moonraker_path"
     info "Config: ${config_dir:-not found}"
-    if [ "$ENABLE_PHASE_TRACKING" = "true" ]; then
-        info "Phase tracking: ENABLED"
-    fi
     printf '\n'
 
     # Pre-flight permission checks
@@ -443,6 +355,12 @@ auto_install() {
     # Use ln -sf for atomic replacement (removes existing symlink first)
     ln -sf "$PLUGIN_FILE" "$target"
     info "Created symlink: $target"
+
+    # First config-touching step: retire any legacy phase-tracking config
+    # before the moonraker.conf edit below.
+    if [ -n "$config_dir" ]; then
+        cleanup_legacy_phase_cfg "$config_dir"
+    fi
 
     # Auto-configure moonraker.conf if possible
     if [ -n "$config_dir" ] && [ -f "$config_dir/moonraker.conf" ]; then
@@ -472,19 +390,6 @@ auto_install() {
     # Wait for Moonraker to come back up
     wait_for_moonraker
 
-    # Install phase tracking if requested
-    if [ "$ENABLE_PHASE_TRACKING" = "true" ]; then
-        install_phase_tracking "$config_dir"
-
-        # Need to restart Klipper to load the new macros
-        info "Restarting Klipper to load phase tracking macros..."
-        moonraker_url="${MOONRAKER_URL:-http://localhost:7125}"
-        curl -s -X POST "$moonraker_url/printer/restart" 2>/dev/null || warn "Could not restart Klipper via API"
-
-        # Give Klipper time to restart
-        sleep 5
-    fi
-
     printf '\n'
     info "Auto-install complete!"
 }
@@ -494,7 +399,6 @@ show_help() {
     printf '\n'
     printf '%s\n' "Options:"
     printf '%s\n' "  --auto, -a              Full auto-install (updates config, restarts Moonraker)"
-    printf '%s\n' "  --with-phase-tracking   Enable detailed print preparation tracking"
     printf '%s\n' "  --uninstall, -u         Remove the plugin symlink (interactive)"
     printf '%s\n' "  --uninstall-auto        Full auto-uninstall (removes config, restarts Moonraker)"
     printf '%s\n' "  --help, -h              Show this help message"
@@ -508,8 +412,7 @@ show_help() {
     printf '%s\n' "                     Example: MOONRAKER_URL=http://192.168.1.100:7125 ./install.sh --auto"
     printf '\n'
     printf '%s\n' "Examples:"
-    printf '%s\n' "  ./install.sh --auto                         # Auto-install without phase tracking"
-    printf '%s\n' "  ./install.sh --auto --with-phase-tracking   # Auto-install with phase tracking"
+    printf '%s\n' "  ./install.sh --auto      # Auto-install (updates moonraker.conf, restarts Moonraker)"
 }
 
 # Parse arguments
@@ -517,10 +420,6 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --auto|-a)
             AUTO_MODE=true
-            shift
-            ;;
-        --with-phase-tracking)
-            ENABLE_PHASE_TRACKING=true
             shift
             ;;
         --uninstall|-u)

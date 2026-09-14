@@ -932,8 +932,6 @@ translations:
   Enable assisted retraction at hub: 'Habilitar a retração assistida no hub'
   Enable audio feedback: Habilitar feedback de áudio
   Enable brush wipe after purging: 'Habilitar limpeza com escova após a purga'
-  Enable detailed print preparation tracking (Recommended): Habilitar rastreamento
-    detalhado de preparação de impressão (Recomendado)
   Enable feed assist for active slot during printing: 'Habilitar a assistência de alimentação para o slot ativo durante a impressão'
   Enable or disable the hub cutter: 'Habilitar ou desabilitar o cortador do hub'
   Enable purging during tool changes: 'Habilitar a purga durante trocas de ferramenta'
@@ -1148,7 +1146,6 @@ translations:
   Failed to update moonraker.conf.: Falha ao atualizar moonraker.conf.
   ? "Failed to update moonraker.conf.\nCheck printer connection."
   : "Falha ao atualizar moonraker.conf.\nVerifique a conexão da impressora."
-  Failed to update phase tracking: Falha ao atualizar rastreamento de fase
   'Failed to upload modified G-code: {}': 'Falha ao enviar G-code modificado: {}'
   'Failed to upload remapped G-code: {}': 'Falha ao enviar G-code remapeado: {}'
   Fan: Ventoinha
@@ -2112,10 +2109,6 @@ translations:
   Peak Freq: Freq Pico
   'Peak:': 'Pico:'
   Performance: Desempenho
-  Phase Tracking: Rastreamento de Fase
-  Phase tracking disabled: Rastreamento de fase desabilitado
-  Phase tracking enabled: Rastreamento de fase habilitado
-  Phase tracking update failed: Falha ao atualizar rastreamento de fase
   Phomemo (Bluetooth): Phomemo (Bluetooth)
   Phomemo M110: Phomemo M110
   Pick: Escolher
@@ -2754,8 +2747,6 @@ translations:
   Show Touch Points: Mostrar pontos de toque
   Show a confirmation dialog when tapping a macro: Mostrar diálogo de confirmação
     ao tocar em uma macro
-  Show detailed print preparation status: Mostrar status detalhado de preparação de
-    impressão
   Show instead of dimming: Exibir em vez de escurecer
   Show printer icon in navigation bar: Mostrar ícone da impressora na barra de navegação
   Show sliced colors: Mostrar cores fatiadas

@@ -129,7 +129,6 @@ class AdvancedPanel : public PanelBase {
     /// The confirmed half of the uninstall row: runs the uninstaller and
     /// reports the outcome. Blocks this thread while the script runs.
     void run_helix_plugin_uninstall();
-    void handle_phase_tracking_changed(bool enabled);
 
     /// The confirmed half of both macro rows: stages the files, then either
     /// restarts Klipper right away (no active print) or marks the restart
@@ -171,7 +170,6 @@ class AdvancedPanel : public PanelBase {
     static void on_helix_plugin_uninstall_clicked(lv_event_t* e);
     static void on_helix_macros_install_clicked(lv_event_t* e);
     static void on_helix_macros_update_clicked(lv_event_t* e);
-    static void on_phase_tracking_changed(lv_event_t* e);
     static void on_advanced_power_clicked(lv_event_t* e);
 
     //

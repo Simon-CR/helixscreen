@@ -838,7 +838,6 @@
   <translation tag="Enable assisted retraction at hub" en="Enable assisted retraction at hub"/>
   <translation tag="Enable audio feedback" en="Enable audio feedback"/>
   <translation tag="Enable brush wipe after purging" en="Enable brush wipe after purging"/>
-  <translation tag="Enable detailed print preparation tracking (Recommended)" en="Enable detailed print preparation tracking (Recommended)"/>
   <translation tag="Enable feed assist for active slot during printing" en="Enable feed assist for active slot during printing"/>
   <translation tag="Enable or disable the hub cutter" en="Enable or disable the hub cutter"/>
   <translation tag="Enable purging during tool changes" en="Enable purging during tool changes"/>
@@ -1036,7 +1035,6 @@
   <translation tag="Failed to update configuration.&#10;Check printer connection." en="Failed to update configuration.&#10;Check printer connection."/>
   <translation tag="Failed to update moonraker.conf." en="Failed to update moonraker.conf."/>
   <translation tag="Failed to update moonraker.conf.&#10;Check printer connection." en="Failed to update moonraker.conf.&#10;Check printer connection."/>
-  <translation tag="Failed to update phase tracking" en="Failed to update phase tracking"/>
   <translation tag="Failed to upload modified G-code: {}" en="Failed to upload modified G-code: {}"/>
   <translation tag="Failed to upload remapped G-code: {}" en="Failed to upload remapped G-code: {}"/>
   <translation tag="Fan" en="Fan"/>
@@ -1906,10 +1904,6 @@
   <translation tag="Peak Freq" en="Peak Freq"/>
   <translation tag="Peak:" en="Peak:"/>
   <translation tag="Performance" en="Performance"/>
-  <translation tag="Phase Tracking" en="Phase Tracking"/>
-  <translation tag="Phase tracking disabled" en="Phase tracking disabled"/>
-  <translation tag="Phase tracking enabled" en="Phase tracking enabled"/>
-  <translation tag="Phase tracking update failed" en="Phase tracking update failed"/>
   <translation tag="Phomemo (Bluetooth)" en="Phomemo (Bluetooth)"/>
   <translation tag="Phomemo M110" en="Phomemo M110"/>
   <translation tag="Pick" en="Pick"/>
@@ -2474,7 +2468,6 @@
   <translation tag="Show Sections" en="Show Sections"/>
   <translation tag="Show Touch Points" en="Show Touch Points"/>
   <translation tag="Show a confirmation dialog when tapping a macro" en="Show a confirmation dialog when tapping a macro"/>
-  <translation tag="Show detailed print preparation status" en="Show detailed print preparation status"/>
   <translation tag="Show instead of dimming" en="Show instead of dimming"/>
   <translation tag="Show printer icon in navigation bar" en="Show printer icon in navigation bar"/>
   <translation tag="Show sliced colors" en="Show sliced colors"/>

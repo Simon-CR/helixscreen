@@ -933,8 +933,6 @@ translations:
   Enable assisted retraction at hub: 'Activar la retracción asistida en el hub'
   Enable audio feedback: Activar retroalimentación de audio
   Enable brush wipe after purging: 'Activar la limpieza con cepillo tras la purga'
-  Enable detailed print preparation tracking (Recommended): Activar seguimiento detallado
-    de preparación de impresión (Recomendado)
   Enable feed assist for active slot during printing: 'Activar la asistencia de alimentación para la ranura activa durante la impresión'
   Enable or disable the hub cutter: 'Activar o desactivar el cortador del hub'
   Enable purging during tool changes: 'Activar la purga durante los cambios de herramienta'
@@ -1150,7 +1148,6 @@ translations:
   Failed to update moonraker.conf.: Error al actualizar moonraker.conf.
   ? "Failed to update moonraker.conf.\nCheck printer connection."
   : "Error al actualizar moonraker.conf.\nCompruebe la conexión."
-  Failed to update phase tracking: Error al actualizar seguimiento de fase
   'Failed to upload modified G-code: {}': 'Error al subir G-code modificado: {}'
   'Failed to upload remapped G-code: {}': 'Error al subir G-code reasignado: {}'
   Fan: Ventilador
@@ -2110,10 +2107,6 @@ translations:
   Peak Freq: Frec Pico
   'Peak:': 'Pico:'
   Performance: Rendimiento
-  Phase Tracking: Seguimiento de Fase
-  Phase tracking disabled: Seguimiento de fase desactivado
-  Phase tracking enabled: Seguimiento de fase activado
-  Phase tracking update failed: Error en actualización de seguimiento de fase
   Phomemo (Bluetooth): Phomemo (Bluetooth)
   Phomemo M110: Phomemo M110
   Pick: Elegir
@@ -2749,8 +2742,6 @@ translations:
   Show Touch Points: Mostrar puntos de toque
   Show a confirmation dialog when tapping a macro: Mostrar un diálogo de confirmación
     al tocar una macro
-  Show detailed print preparation status: Mostrar estado detallado de preparación
-    de impresión
   Show instead of dimming: Mostrar en lugar de atenuar
   Show printer icon in navigation bar: Mostrar icono de impresora en la barra de navegación
   Show sliced colors: Mostrar colores laminados
