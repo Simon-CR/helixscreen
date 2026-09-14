@@ -233,14 +233,33 @@ class TestMarkerMatching:
         assert strip.main([str(tmp_path)]) == 0
         assert read(cfg) == expected
 
-    def test_a_file_with_no_trailing_newline_keeps_it_that_way(self, tmp_path):
+    def test_removing_the_files_final_line_does_not_invent_a_trailing_newline(self, tmp_path):
+        # The block sits at absolute EOF with no trailing newline of its own
+        # (how the real writer always left one there); removing it must not
+        # leave the newline separating it from G28 dangling as a new
+        # trailing newline G28 never had.
         cfg = tmp_path / "printer.cfg"
         original = "[gcode_macro PRINT_START]\ngcode:\n    G28\n" + VALID_BLOCK.rstrip("\n")
         write(cfg, original)
 
         assert strip.main([str(tmp_path)]) == 0
         result = read(cfg)
-        assert result == "[gcode_macro PRINT_START]\ngcode:\n    G28\n"
+        assert result == "[gcode_macro PRINT_START]\ngcode:\n    G28"
+
+    def test_a_middle_of_file_no_trailing_newline_file_is_unaffected(self, tmp_path):
+        # The removed block is NOT at the file's end, so the true final line
+        # (already carrying no trailing newline) must stay exactly as it was.
+        cfg = tmp_path / "printer.cfg"
+        original = (
+            "[gcode_macro PRINT_START]\ngcode:\n    G28\n"
+            + VALID_BLOCK
+            + "    M109 S{EXTRUDER_TEMP}"
+        )
+        write(cfg, original)
+
+        assert strip.main([str(tmp_path)]) == 0
+        result = read(cfg)
+        assert result == "[gcode_macro PRINT_START]\ngcode:\n    G28\n    M109 S{EXTRUDER_TEMP}"
 
     def test_running_the_strip_twice_is_harmless(self, tmp_path):
         cfg = tmp_path / "printer.cfg"
@@ -312,6 +331,57 @@ class TestFileDiscovery:
 
         assert strip.main([str(config_dir)]) == 0
         assert len(list(real_dir.glob("*.bak.*"))) == 1
+
+    def test_find_cfg_files_dedupes_by_realpath(self, tmp_path):
+        # Direct proof of the dedupe, immune to the two-symlinks test above
+        # also passing for the wrong reason: once the first link's target is
+        # stripped, the second link would find no markers left and be
+        # silently skipped regardless of whether dedupe ran at all.
+        real_dir = tmp_path / "elsewhere"
+        real_dir.mkdir()
+        real_file = real_dir / "printer.cfg"
+        write(real_file, "content")
+
+        config_dir = tmp_path / "config"
+        config_dir.mkdir()
+        (config_dir / "a.cfg").symlink_to(real_file)
+        (config_dir / "b.cfg").symlink_to(real_file)
+
+        found = strip.find_cfg_files(str(config_dir))
+        assert found == [str(real_file.resolve())]
+
+    def test_a_symlinked_directory_is_not_descended(self, tmp_path):
+        real_dir = tmp_path / "elsewhere"
+        real_dir.mkdir()
+        write(real_dir / "printer.cfg", "[gcode_macro PRINT_START]\ngcode:\n    G28\n" + VALID_BLOCK)
+
+        config_dir = tmp_path / "config"
+        config_dir.mkdir()
+        (config_dir / "linked").symlink_to(real_dir)
+
+        assert strip.find_cfg_files(str(config_dir)) == []
+        assert strip.main([str(config_dir)]) == 0
+        assert BEGIN in (real_dir / "printer.cfg").read_text()
+
+    def test_a_directory_symlink_loop_terminates(self, tmp_path):
+        config_dir = tmp_path / "config"
+        config_dir.mkdir()
+        (config_dir / "loop").symlink_to(config_dir)
+        write(config_dir / "printer.cfg", "content")
+
+        found = strip.find_cfg_files(str(config_dir))
+        assert found == [str((config_dir / "printer.cfg").resolve())]
+
+    def test_a_file_in_config_backups_is_skipped_regardless_of_its_name(self, tmp_path):
+        backups_dir = tmp_path / "config_backups"
+        backups_dir.mkdir()
+        cfg = backups_dir / "macros.cfg"
+        write(cfg, "[gcode_macro PRINT_START]\ngcode:\n    G28\n" + VALID_BLOCK)
+        original = read(cfg)
+
+        assert strip.main([str(tmp_path)]) == 0
+        assert read(cfg) == original
+        assert not list(backups_dir.glob("*.bak.*"))
 
 
 # ============================================================================
@@ -392,10 +462,13 @@ class TestSafeWrites:
         def corrupting_replace(src, dst):
             # Simulate the replace landing, but the destination's bytes not
             # matching what was verified in the temp file (e.g. another
-            # process wrote in between).
+            # process wrote in between). Only the strip's own write - not
+            # its later restore-from-backup, also an os.replace - should be
+            # corrupted, or the restore could never succeed either.
             calls.append((src, dst))
-            with open(src, "ab") as f:
-                f.write(b"CORRUPT")
+            if ".helix-tracking-strip-" in str(src):
+                with open(src, "ab") as f:
+                    f.write(b"CORRUPT")
             real_replace(src, dst)
 
         monkeypatch.setattr(os, "replace", corrupting_replace)
@@ -405,8 +478,119 @@ class TestSafeWrites:
             monkeypatch.setattr(os, "replace", real_replace)
 
         assert result == 1
-        assert calls  # the replace path was actually exercised
+        assert len(calls) == 2  # the write, then the restore
         assert read(cfg) == original  # restored from the verified backup
+
+    def test_a_corrupted_backup_is_refused_and_removed(self, tmp_path, monkeypatch):
+        cfg = tmp_path / "printer.cfg"
+        original = "[gcode_macro PRINT_START]\ngcode:\n    G28\n" + VALID_BLOCK
+        write(cfg, original)
+
+        real_copy2 = shutil.copy2
+
+        def truncating_copy2(src, dst):
+            real_copy2(src, dst)
+            with open(dst, "wb") as f:
+                f.write(b"short")
+
+        monkeypatch.setattr(shutil, "copy2", truncating_copy2)
+        result = strip.main([str(tmp_path)])
+
+        assert result == 1
+        assert read(cfg) == original  # the edit never happened
+        assert not list(tmp_path.glob("*.bak.*"))  # the bad backup was removed
+
+    def test_a_corrupted_temp_write_is_caught_before_touching_the_real_file(self, tmp_path, monkeypatch):
+        cfg = tmp_path / "printer.cfg"
+        original = "[gcode_macro PRINT_START]\ngcode:\n    G28\n" + VALID_BLOCK
+        write(cfg, original)
+
+        real_fdopen = os.fdopen
+
+        class CorruptingFile:
+            def __init__(self, fd):
+                self._f = real_fdopen(fd, "wb")
+
+            def write(self, data):
+                return self._f.write(data + b"\x00")
+
+            def flush(self):
+                return self._f.flush()
+
+            def fileno(self):
+                return self._f.fileno()
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc_info):
+                self._f.close()
+
+        def fake_fdopen(fd, mode="r", *args, **kwargs):
+            if mode == "wb":
+                return CorruptingFile(fd)
+            return real_fdopen(fd, mode, *args, **kwargs)
+
+        monkeypatch.setattr(os, "fdopen", fake_fdopen)
+        result = strip.main([str(tmp_path)])
+
+        assert result == 1
+        assert read(cfg) == original
+        assert not list(tmp_path.glob(".helix-tracking-strip-*"))
+
+    def test_safe_replace_file_resolves_a_symlink_path_to_its_real_target(self, tmp_path):
+        # Called directly, bypassing find_cfg_files' own realpath resolution -
+        # this is what actually proves safe_replace_file replaces onto the
+        # real path itself rather than trusting an already-resolved caller.
+        real_dir = tmp_path / "elsewhere"
+        real_dir.mkdir()
+        real_file = real_dir / "printer.cfg"
+        write(real_file, "original content\n")
+
+        link = tmp_path / "link.cfg"
+        link.symlink_to(real_file)
+
+        strip.safe_replace_file(str(link), b"new content\n", b"original content\n")
+
+        assert link.is_symlink()
+        assert real_file.read_bytes() == b"new content\n"
+
+    def test_a_file_changed_between_read_and_write_is_skipped_not_overwritten(self, tmp_path):
+        cfg = tmp_path / "printer.cfg"
+        original_text = "[gcode_macro PRINT_START]\ngcode:\n    G28\n" + VALID_BLOCK
+        write(cfg, original_text)
+        original_bytes = cfg.read_bytes()
+
+        # Simulate a concurrent save (a Mainsail edit, or Klipper's own
+        # SAVE_CONFIG) landing after the strip decision was computed.
+        edited_bytes = original_bytes + b"\n; a concurrent edit\n"
+        cfg.write_bytes(edited_bytes)
+
+        with pytest.raises(strip.StripConcurrentChangeError):
+            strip.safe_replace_file(str(cfg), b"whatever the stale decision computed", original_bytes)
+
+        assert cfg.read_bytes() == edited_bytes  # the concurrent edit survives
+        assert not list(tmp_path.glob("*.bak.*"))
+
+    def test_process_file_reports_a_concurrent_change_as_skipped_not_failed(
+        self, tmp_path, monkeypatch
+    ):
+        # A race narrow enough to land between process_file's own read and
+        # safe_replace_file's re-read is exercised directly, at the
+        # safe_replace_file level, by the test above; this proves the
+        # exception it raises is classified as "skipped", not "failed".
+        cfg = tmp_path / "printer.cfg"
+        write(cfg, "[gcode_macro PRINT_START]\ngcode:\n    G28\n" + VALID_BLOCK)
+
+        def always_raises(path, new_bytes, original):
+            raise strip.StripConcurrentChangeError(f"{path} changed on disk since it was read")
+
+        monkeypatch.setattr(strip, "safe_replace_file", always_raises)
+
+        result = strip.process_file(str(cfg))
+
+        assert result["status"] == "skipped"
+        assert "changed" in result["reason"]
 
 
 # ============================================================================

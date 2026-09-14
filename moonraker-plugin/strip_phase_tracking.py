@@ -24,8 +24,10 @@ import argparse
 import os
 import re
 import shutil
+import stat
 import sys
 import tempfile
+import time
 
 TRACKING_MARKER_BEGIN = b"# <<< HELIX_TRACKING v2 >>>"
 TRACKING_MARKER_END = b"# <<< /HELIX_TRACKING >>>"
@@ -47,6 +49,10 @@ class StripAnomaly(Exception):
 
 class StripWriteError(Exception):
     """A backup or write step failed; the original is left untouched."""
+
+
+class StripConcurrentChangeError(Exception):
+    """The file changed on disk after the strip decision was computed."""
 
 
 class StripResult:
@@ -165,31 +171,47 @@ def compute_stripped_content(raw_bytes):
     for begin_idx, end_idx in pairs:
         remove.update(range(begin_idx, end_idx + 1))
     new_bytes = b"".join(line for i, line in enumerate(lines) if i not in remove)
+
+    # A line carries its OWN terminator. When the removed content sat at the
+    # very end of a file with no trailing newline, the line that is now the
+    # new final line still carries the terminator that only separated it
+    # from what got removed, and that terminator is no longer needed.
+    original_had_no_trailing_newline = bool(lines) and not lines[-1].endswith(b"\n")
+    if original_had_no_trailing_newline and (len(lines) - 1) in remove and new_bytes.endswith(b"\n"):
+        new_bytes = new_bytes[:-2] if new_bytes.endswith(b"\r\n") else new_bytes[:-1]
+
     return StripResult("stripped", new_bytes=new_bytes, blocks=len(pairs))
 
 
 def _timestamped_backup_path(real_path):
-    import time
-
     return f"{real_path}.bak.{time.strftime('%Y%m%d_%H%M%S')}"
 
 
-def safe_replace_file(path, new_bytes):
+def safe_replace_file(path, new_bytes, original):
     """Back up `path`'s real target, verify it, write `new_bytes` through a
     verified temp file, then replace the target's content - never the
     symlink itself, its mode, or (where permitted) its owner.
 
-    Raises StripWriteError on any failure; the original is left untouched
-    and any temp file is removed.
+    `original` is the exact bytes the strip decision (`new_bytes`) was
+    computed from. It is checked against the file on disk both up front and
+    again immediately before the replace; a mismatch at either point means
+    something else wrote to the file in between, and raises
+    StripConcurrentChangeError instead of overwriting that change - the
+    live file and the backup (if one was already made) are both left alone.
+
+    Raises StripWriteError on any other failure; the original is left
+    untouched and any temp file is removed.
     """
     real_path = os.path.realpath(path)
 
     try:
         orig_stat = os.stat(real_path)
         with open(real_path, "rb") as f:
-            original_on_disk = f.read()
+            current = f.read()
     except OSError as exc:
         raise StripWriteError(f"could not read {path}: {exc}") from exc
+    if current != original:
+        raise StripConcurrentChangeError(f"{path} changed on disk since it was read")
 
     backup_path = _timestamped_backup_path(real_path)
     try:
@@ -201,7 +223,7 @@ def safe_replace_file(path, new_bytes):
         # leaving a partial file at backup_path - never leave that behind.
         _remove_quiet(backup_path)
         raise StripWriteError(f"could not back up {path}: {exc}") from exc
-    if backup_bytes != original_on_disk:
+    if backup_bytes != original:
         _remove_quiet(backup_path)
         raise StripWriteError(f"backup of {path} did not verify")
 
@@ -217,13 +239,21 @@ def safe_replace_file(path, new_bytes):
         if written != new_bytes:
             raise StripWriteError(f"write to a temp file for {path} did not verify")
 
-        import stat as stat_module
-
-        os.chmod(tmp_path, stat_module.S_IMODE(orig_stat.st_mode))
+        os.chmod(tmp_path, stat.S_IMODE(orig_stat.st_mode))
         try:
             os.chown(tmp_path, orig_stat.st_uid, orig_stat.st_gid)
         except (OSError, AttributeError):
             pass  # not permitted (non-root), or chown unavailable on this platform
+
+        # The narrowest this window can be made without a lock, which a
+        # Klipper config directory offers no convention for.
+        with open(real_path, "rb") as f:
+            just_before_replace = f.read()
+        if just_before_replace != original:
+            raise StripConcurrentChangeError(
+                f"{path} changed on disk while stripping; the edit was not applied "
+                f"(the content read is backed up at {backup_path})"
+            )
 
         os.replace(tmp_path, real_path)
         tmp_path = None  # replaced; nothing left to clean up
@@ -231,8 +261,19 @@ def safe_replace_file(path, new_bytes):
         with open(real_path, "rb") as f:
             final_bytes = f.read()
         if final_bytes != new_bytes:
-            shutil.copy2(backup_path, real_path)
-            raise StripWriteError(f"{path} did not verify after writing; restored from backup")
+            # A rename needs no free space, unlike a copy, so this restore
+            # cannot itself be truncated by a full disk.
+            try:
+                os.replace(backup_path, real_path)
+            except OSError as exc:
+                raise StripWriteError(
+                    f"{path} did not verify after writing, AND restoring it from "
+                    f"{backup_path} failed ({exc}) - {path} is left in a damaged state; "
+                    f"restore it from {backup_path} by hand"
+                ) from exc
+            raise StripWriteError(
+                f"{path} did not verify after writing - restored from {backup_path}"
+            )
     finally:
         if tmp_path is not None:
             _remove_quiet(tmp_path)
@@ -253,18 +294,19 @@ def _is_snapshot_name(name):
 
 def find_cfg_files(scan_dir):
     """Every .cfg file under scan_dir, recursively, deduplicated by realpath
-    and sorted for a deterministic processing order. Skips SAVE_CONFIG
-    snapshot files and anything under a config_backups directory, and never
-    re-descends into a directory it has already visited by realpath (a
-    symlink cycle guard)."""
+    and sorted for a deterministic processing order.
+
+    Never descends a directory symlink: the writer that ever instrumented a
+    macro located it with pathlib's `**` glob, which does not either, so a
+    symlinked directory holds nothing this strip needs to undo - and without
+    the guard, one pointing at a large or self-referential tree turns a
+    config scan into a walk of that tree. A `.cfg` that is itself a symlink
+    is still resolved to its real target, same as any other file. Skips
+    SAVE_CONFIG snapshot files and anything under a config_backups
+    directory.
+    """
     real_paths = set()
-    visited_dirs = set()
-    for root, dirs, files in os.walk(scan_dir, followlinks=True):
-        real_root = os.path.realpath(root)
-        if real_root in visited_dirs:
-            dirs[:] = []
-            continue
-        visited_dirs.add(real_root)
+    for root, dirs, files in os.walk(scan_dir, followlinks=False):
         dirs[:] = [d for d in dirs if d != "config_backups"]
         for name in files:
             if not name.endswith(".cfg") or _is_snapshot_name(name):
@@ -287,7 +329,12 @@ def process_file(path):
         return {"path": path, "status": "skipped", "reason": result.reason}
 
     try:
-        backup_path = safe_replace_file(path, result.new_bytes)
+        backup_path = safe_replace_file(path, result.new_bytes, original)
+    except StripConcurrentChangeError as exc:
+        # Something else wrote to the file after this decision was made; the
+        # safe response is to leave it for the next run, not to overwrite
+        # whatever that write was.
+        return {"path": path, "status": "skipped", "reason": str(exc)}
     except (StripWriteError, OSError) as exc:
         # Any unhandled OS-level failure (a disk-full mid rename, for
         # example) is one file's failure, never a reason to stop processing
@@ -300,6 +347,20 @@ def process_file(path):
         "backup": backup_path,
         "blocks": result.blocks,
     }
+
+
+def _next_step_hint(path):
+    """What to tell a user about a file this script would not touch: the
+    marker block(s) can be removed by hand, or restored from a backup a
+    pre-1.1 HelixScreen's own instrumentation left beside the file the
+    first time it wrote to it - `<name>.bak.<epoch-seconds>` (the file
+    extension is dropped, not kept, e.g. printer.cfg -> printer.bak.<n>)."""
+    stem = os.path.splitext(path)[0]
+    return (
+        f"remove the '{TRACKING_MARKER_BEGIN.decode()}' ... "
+        f"'{TRACKING_MARKER_END.decode()}' block(s) in {path} by hand and restart "
+        f"Klipper, or restore it from a backup named {stem}.bak.<a number>, if one exists"
+    )
 
 
 def main(argv):
@@ -326,6 +387,7 @@ def main(argv):
               f"(backup: {r['backup']})")
     for r in skipped:
         print(f"WARN: left {r['path']} untouched: {r['reason']}")
+        print(f"WARN: next step: {_next_step_hint(r['path'])}")
     for r in failed:
         print(f"ERROR: failed to strip {r['path']}: {r['reason']}", file=sys.stderr)
 
