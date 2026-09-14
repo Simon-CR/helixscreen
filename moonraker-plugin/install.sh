@@ -170,6 +170,11 @@ uninstall() {
         info "Plugin symlink not found (already uninstalled?)"
     fi
 
+    config_dir=$(find_config_dir)
+    if [ -n "$config_dir" ]; then
+        strip_phase_tracking_instrumentation "$config_dir"
+    fi
+
     printf '\n'
     printf '%s\n' "Don't forget to:"
     printf '%s\n' "  1. Remove [helix_print] section from moonraker.conf"
@@ -209,6 +214,68 @@ restart_moonraker() {
     fi
 }
 
+# Markers a pre-1.1 HelixScreen wrote around each HELIX_PHASE_* / HELIX_READY
+# call it injected into PRINT_START. A block runs from BEGIN through END,
+# inclusive.
+TRACKING_MARKER_BEGIN='# <<< HELIX_TRACKING v2 >>>'
+TRACKING_MARKER_END='# <<< /HELIX_TRACKING >>>'
+
+# Strip HELIX_TRACKING marker blocks from one file, backing it up first.
+# A file with no BEGIN marker is left byte-identical and gets no backup, so
+# running this twice is harmless. An unpaired BEGIN is left untouched with a
+# warning rather than guessing where the block was meant to end.
+#
+# Returns 0 if the file was edited, 1 if it had an unpaired marker, 2 if it
+# had no markers at all.
+strip_tracking_markers_from_file() {
+    target_file="$1"
+
+    if ! grep -qF "$TRACKING_MARKER_BEGIN" "$target_file"; then
+        return 2
+    fi
+
+    begin_count=$(grep -cF "$TRACKING_MARKER_BEGIN" "$target_file" || true)
+    end_count=$(grep -cF "$TRACKING_MARKER_END" "$target_file" || true)
+    if [ "$begin_count" != "$end_count" ]; then
+        warn "Unmatched HELIX_TRACKING marker in $target_file - leaving it untouched"
+        return 1
+    fi
+
+    backup_file="${target_file}.bak.$(date +%Y%m%d_%H%M%S)"
+    cp "$target_file" "$backup_file"
+    info "Created backup: $backup_file"
+
+    awk -v begin="$TRACKING_MARKER_BEGIN" -v end="$TRACKING_MARKER_END" '
+        index($0, begin) { skip = 1; next }
+        index($0, end) { skip = 0; next }
+        !skip { print }
+    ' "$target_file" > "$target_file.tmp" && mv "$target_file.tmp" "$target_file"
+
+    info "Removed phase-tracking instrumentation from $target_file"
+}
+
+# Strip phase-tracking instrumentation from every .cfg file in the config
+# directory. The markers are self-delimiting, so this does not need to
+# relocate PRINT_START the way the instrumentation that wrote them did.
+# Never restarts Klipper: the edit only takes effect on its next restart, and
+# any instrumented macro call keeps working (as console noise) until then.
+strip_phase_tracking_instrumentation() {
+    scan_dir="$1"
+    stripped_any=false
+
+    for cfg_file in "$scan_dir"/*.cfg; do
+        [ -f "$cfg_file" ] || continue
+        if strip_tracking_markers_from_file "$cfg_file"; then
+            stripped_any=true
+        fi
+    done
+
+    if [ "$stripped_any" = "true" ]; then
+        info "Phase-tracking instrumentation removed from PRINT_START."
+        info "This takes effect at the next Klipper restart - loaded macros keep working until then."
+    fi
+}
+
 # Auto-uninstall function (non-interactive, for HelixScreen integration)
 auto_uninstall() {
     info "HelixPrint Auto-Uninstall Mode"
@@ -230,6 +297,9 @@ auto_uninstall() {
     # are shared HelixScreen helpers (HELIX_START_PRINT, HELIX_CLEAN_NOZZLE and
     # friends) that keep working without this plugin, and printer.cfg is
     # Klipper's config - this uninstall only manages the Moonraker side.
+    if [ -n "$config_dir" ]; then
+        strip_phase_tracking_instrumentation "$config_dir"
+    fi
 
     # Remove symlink
     if [ -L "$target" ]; then
