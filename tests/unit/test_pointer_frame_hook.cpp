@@ -286,30 +286,41 @@ TEST_CASE_METHOD(PointerFrameHookFixture,
 
 TEST_CASE_METHOD(PointerFrameHookFixture,
                  "A backend's own pointer to a deleted device is cleared, not left dangling",
-                 "[display][indev][rotation][calibration]") {
+                 "[display][indev][calibration]") {
     // Stands in for a backend's touch_/pointer_ member: the calibration wrapper
     // sits beneath the frame hook, exactly as DisplayBackendDRM and
     // DisplayBackendFbdev install both on create_input_pointer().
     lv_indev_t* touch = make_pointer(touch_driver_read);
     lv_indev_t* owner = touch;
+    // A second device with its own slot, standing in for a backend's mouse_
+    // member: proves forget() matches the deleted device, not every slot it
+    // knows about.
+    lv_indev_t* mouse = make_pointer(mouse_driver_read);
+    lv_indev_t* mouse_owner = mouse;
 
     helix::CalibrationContext ctx;
     helix::TouchCalibration cal;
     helix::install_calibration_wrapper(touch, ctx, cal, PANEL_W, PANEL_H);
     REQUIRE(hook.install(touch, PointerKind::PanelAbsolute, {}, &owner));
+    REQUIRE(hook.install(mouse, PointerKind::Relative, {}, &mouse_owner));
     REQUIRE(owner == touch);
+    REQUIRE(mouse_owner == mouse);
 
     // lv_evdev deletes its own device when a read fails, as it does on unplug.
     delete_pointer(touch);
 
     // The owner's own pointer is cleared the moment LVGL deletes the device,
-    // not left pointing at freed memory until a destructor runs later.
-    CHECK(owner == nullptr);
+    // not left pointing at freed memory until a destructor runs later. A
+    // REQUIRE here, not a CHECK: a regression must stop before the next line
+    // reads through a dangling owner instead of merely reporting one.
+    REQUIRE(owner == nullptr);
+    // The other device's slot is untouched - forget() matched the device that
+    // was actually deleted, not every slot the hook knows about.
+    REQUIRE(mouse_owner == mouse);
 
     // A backend destructor reaches its member through uninstall_calibration_wrapper()
-    // before calibration_context_ is destroyed. With owner cleared this call never
-    // touches the freed indev; had owner still held it, this is the exact call that
-    // reads and writes freed memory (valgrind: invalid read/write inside lv_indev_t).
+    // before calibration_context_ is destroyed. With owner cleared this call
+    // never touches the freed indev.
     helix::uninstall_calibration_wrapper(owner, ctx);
 }
 

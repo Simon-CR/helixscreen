@@ -196,11 +196,13 @@ class PointerFrameHook {
     }
 
     /// Drop @p indev from the hook without reading or writing it, and null out
-    /// the caller's own pointer to it, if install() was given one.
+    /// the caller's own pointer to it, if install() was given one and it
+    /// still names @p indev.
     void forget(const lv_indev_t* indev) {
         hook_.forget(indev);
         for (Device& device : devices_) {
-            if (device.indev == indev && device.owner_slot != nullptr) {
+            if (device.indev == indev && device.owner_slot != nullptr &&
+                *device.owner_slot == indev) {
                 *device.owner_slot = nullptr;
             }
         }
