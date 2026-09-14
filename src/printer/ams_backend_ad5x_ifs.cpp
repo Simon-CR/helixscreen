@@ -2977,15 +2977,11 @@ void AmsBackendAd5xIfs::update_slot_weight_impl(int slot_index, float remaining_
             if (total_weight_g >= 0.0f)
                 entry->info.total_weight_g = total_weight_g;
         }
-        // overrides_[slot] default-constructs a weight-only record when the slot
-        // had no prior override (material empty, color_set=false, locks false —
-        // apply_overrides then layers only the weight). An existing override
-        // (e.g. a user-locked material edit) keeps every other field intact.
-        auto& ovr = overrides_[slot_index];
-        ovr.remaining_weight_g = remaining_weight_g;
-        if (total_weight_g >= 0.0f)
-            ovr.total_weight_g = total_weight_g;
-        ovr_to_save = ovr;
+        // A slot with no prior override gets a weight-only record (material
+        // empty, color_set=false, locks false), so apply_overrides layers only
+        // the weight. An existing override keeps every other field intact.
+        ovr_to_save = helix::ams::stage_weight_override(overrides_, slot_index, remaining_weight_g,
+                                                        total_weight_g);
     }
 
     if (persist && override_store_) {
