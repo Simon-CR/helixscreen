@@ -1012,19 +1012,9 @@ bool PrinterState::service_has_helix_plugin() const {
     return plugin_status_state_.service_has_helix_plugin();
 }
 
-void PrinterState::set_phase_tracking_enabled(bool enabled) {
-    // Delegate to plugin_status_state_ component (handles async dispatch internally)
-    plugin_status_state_.set_phase_tracking_enabled(enabled);
-}
-
 void PrinterState::set_helix_macros_restart_pending(bool pending) {
     // Main thread only; the install flow reaches this from deferred callbacks
     plugin_status_state_.set_helix_macros_restart_pending(pending);
-}
-
-bool PrinterState::is_phase_tracking_enabled() const {
-    // Delegate to plugin_status_state_ component
-    return plugin_status_state_.is_phase_tracking_enabled();
 }
 
 void PrinterState::update_gcode_modification_visibility() {

@@ -941,8 +941,6 @@ translations:
   Enable assisted retraction at hub: 'Activer la rétraction assistée au hub'
   Enable audio feedback: Activer le retour audio
   Enable brush wipe after purging: 'Activer l''essuyage par brosse après la purge'
-  Enable detailed print preparation tracking (Recommended): Activer le suivi détaillé
-    de la préparation d'impression (Recommandé)
   Enable feed assist for active slot during printing: 'Activer l''assistance d''alimentation pour le slot actif pendant l''impression'
   Enable or disable the hub cutter: 'Activer ou désactiver le coupeur du hub'
   Enable purging during tool changes: 'Activer la purge lors des changements d''outil'
@@ -1165,7 +1163,6 @@ translations:
   Failed to update moonraker.conf.: Échec de la mise à jour de moonraker.conf.
   ? "Failed to update moonraker.conf.\nCheck printer connection."
   : "Échec de la mise à jour de moonraker.conf.\nVérifiez la connexion."
-  Failed to update phase tracking: Échec de la mise à jour du suivi de phase
   'Failed to upload modified G-code: {}': 'Échec de l''envoi du G-Code modifié : {}'
   'Failed to upload remapped G-code: {}': 'Échec de l''envoi du G-Code remappé : {}'
   Fan: Ventilateur
@@ -2126,10 +2123,6 @@ translations:
   Peak Freq: Fréq. pic
   'Peak:': 'Pic :'
   Performance: Performance
-  Phase Tracking: Suivi de phase
-  Phase tracking disabled: Suivi de phase désactivé
-  Phase tracking enabled: Suivi de phase activé
-  Phase tracking update failed: Échec de la mise à jour du suivi de phase
   Phomemo (Bluetooth): Phomemo (Bluetooth)
   Phomemo M110: Phomemo M110
   Pick: Choisir
@@ -2772,8 +2765,6 @@ translations:
   Show Touch Points: Afficher les points de contact
   Show a confirmation dialog when tapping a macro: Afficher une boîte de dialogue
     de confirmation lors de l'appui sur une macro
-  Show detailed print preparation status: Afficher l'état détaillé de la préparation
-    d'impression
   Show instead of dimming: Afficher au lieu d'atténuer
   Show printer icon in navigation bar: Afficher l'icône de l'imprimante dans la barre
     de navigation

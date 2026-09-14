@@ -161,17 +161,6 @@
             <event_cb trigger="clicked" callback="on_configure_print_start"/>
           </setting_action_row>
         </beta_feature>
-        <!-- Phase Tracking Toggle (beta, visible when plugin installed) -->
-        <!-- Shows ONLY when value == 1 (installed), hidden otherwise (-1 or 0) -->
-        <beta_feature name="container_phase_tracking">
-          <setting_toggle_row name="row_phase_tracking"
-                              label="Phase Tracking" label_tag="Phase Tracking" icon="progress_clock"
-                              description="Show detailed print preparation status"
-                              description_tag="Show detailed print preparation status" subject="phase_tracking_enabled"
-                              callback="on_phase_tracking_changed">
-            <bind_flag_if_not_eq subject="helix_plugin_installed" flag="hidden" ref_value="1"/>
-          </setting_toggle_row>
-        </beta_feature>
         <!-- Helix Helper Macros (helix_macros.cfg): back the Clean Nozzle and
              Bed Mesh slots on printers with no macros of their own. One row
              visible per helix_macros_status value (bind_flag_if_not_eq hides

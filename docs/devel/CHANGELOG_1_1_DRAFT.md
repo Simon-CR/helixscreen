@@ -139,6 +139,13 @@ what gets saved.
 - **Clog-meter wording is translated** - Clog, Auto, Manual, buffer, TANGLE and CLOG are
   words and are translated; FlowGuard and AFC are product names and stay put. English filled,
   the other eight locales carry placeholders pending the next sweep.
+- **Print preparation progress no longer needs PRINT_START instrumentation (#1234)** - the
+  phase-tracking toggle in settings, the installer's `--with-phase-tracking` flag and the
+  plugin's macro-rewriting service are removed. The screen infers the current phase from
+  toolhead movement and temperature cues on the status stream, which works on any printer
+  without editing its config. A PRINT_START that carries instrumentation keeps emitting
+  `HELIX:PHASE` markers - harmless, and still parsed. The only way to strip them is by
+  hand: delete the injected lines from the macro.
 
 ### Fixed
 

@@ -920,8 +920,6 @@ translations:
   Enable assisted retraction at hub: 'Включить ретракцию с поддержкой на хабе'
   Enable audio feedback: Включить звуковую обратную связь
   Enable brush wipe after purging: 'Включить очистку щёткой после продувки'
-  Enable detailed print preparation tracking (Recommended): Включить детальное отслеживание
-    подготовки к печати (рекомендуется)
   Enable feed assist for active slot during printing: 'Включить помощь подачи для активного слота во время печати'
   Enable or disable the hub cutter: 'Включить или выключить резак хаба'
   Enable purging during tool changes: 'Включить продувку при смене инструмента'
@@ -1133,7 +1131,6 @@ translations:
   Failed to update moonraker.conf.: Не удалось обновить moonraker.conf.
   ? "Failed to update moonraker.conf.\nCheck printer connection."
   : "Не удалось обновить moonraker.conf.\nПроверьте подключение принтера."
-  Failed to update phase tracking: Не удалось обновить отслеживание фазы
   'Failed to upload modified G-code: {}': 'Не удалось загрузить изменённый G-code:
     {}'
   'Failed to upload remapped G-code: {}': 'Не удалось загрузить переназначенный G-code:
@@ -2087,10 +2084,6 @@ translations:
   Peak Freq: Пиковая частота
   'Peak:': 'Пик:'
   Performance: Производительность
-  Phase Tracking: Отслеживание фазы
-  Phase tracking disabled: Отслеживание фазы отключено
-  Phase tracking enabled: Отслеживание фазы включено
-  Phase tracking update failed: Не удалось обновить отслеживание фазы
   Phomemo (Bluetooth): Phomemo (Bluetooth)
   Phomemo M110: Phomemo M110
   Pick: Выбрать
@@ -2721,8 +2714,6 @@ translations:
   Show Touch Points: Показывать точки касания
   Show a confirmation dialog when tapping a macro: Показывать диалог подтверждения
     при нажатии на макрос
-  Show detailed print preparation status: Показывать детальный статус подготовки к
-    печати
   Show instead of dimming: Показывать вместо затемнения
   Show printer icon in navigation bar: Показывать значок принтера в панели навигации
   Show sliced colors: Показать цвета из слайсера

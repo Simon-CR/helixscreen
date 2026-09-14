@@ -292,7 +292,6 @@ The following methods have been removed from `MoonrakerClient` and are now in `M
 | Connection state | `is_connected()`, `get_connection_state()` | Internal state |
 | Subscriptions | `subscribe_notifications()`, `register_method_callback()` | Direct registration |
 | Database | `database_get_item()`, `database_post_item()` | Raw `send_jsonrpc()` |
-| Plugin RPCs | `get_phase_tracking_status()`, `set_phase_tracking_enabled()` | Raw `send_jsonrpc()` |
 | Thread safety | Delegates to client | Internal mutexes |
 | UI coupling | None | None (events only) |
 

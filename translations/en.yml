@@ -906,8 +906,6 @@ translations:
   Enable assisted retraction at hub: Enable assisted retraction at hub
   Enable audio feedback: Enable audio feedback
   Enable brush wipe after purging: Enable brush wipe after purging
-  Enable detailed print preparation tracking (Recommended): Enable detailed print
-    preparation tracking (Recommended)
   Enable feed assist for active slot during printing: Enable feed assist for active slot during printing
   Enable or disable the hub cutter: Enable or disable the hub cutter
   Enable purging during tool changes: Enable purging during tool changes
@@ -1118,7 +1116,6 @@ translations:
   Failed to update moonraker.conf.: Failed to update moonraker.conf.
   ? "Failed to update moonraker.conf.\nCheck printer connection."
   : "Failed to update moonraker.conf.\nCheck printer connection."
-  Failed to update phase tracking: Failed to update phase tracking
   'Failed to upload modified G-code: {}': 'Failed to upload modified G-code: {}'
   'Failed to upload remapped G-code: {}': 'Failed to upload remapped G-code: {}'
   Fan: Fan
@@ -2066,10 +2063,6 @@ translations:
   Peak Freq: Peak Freq
   'Peak:': 'Peak:'
   Performance: Performance
-  Phase Tracking: Phase Tracking
-  Phase tracking disabled: Phase tracking disabled
-  Phase tracking enabled: Phase tracking enabled
-  Phase tracking update failed: Phase tracking update failed
   Phomemo (Bluetooth): Phomemo (Bluetooth)
   Phomemo M110: Phomemo M110
   Pick: Pick
@@ -2692,7 +2685,6 @@ translations:
   Show Touch Points: Show Touch Points
   Show a confirmation dialog when tapping a macro: Show a confirmation dialog when
     tapping a macro
-  Show detailed print preparation status: Show detailed print preparation status
   Show instead of dimming: Show instead of dimming
   Show printer icon in navigation bar: Show printer icon in navigation bar
   Show sliced colors: Show sliced colors

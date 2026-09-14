@@ -86,7 +86,7 @@ Welcome to the HelixScreen documentation. Choose your path:
 | [**Printer Manager**](devel/PRINTER_MANAGER.md) | Printer overlay, custom images, inline editing |
 | [**Timelapse**](devel/TIMELAPSE.md) | Moonraker timelapse plugin integration |
 | [**Crash Reporter**](devel/CRASH_REPORTER.md) | Crash detection, delivery pipeline, CF Worker |
-| [**HelixPrint Plugin**](../moonraker-plugin/README.md) | Phase tracking Moonraker plugin |
+| [**HelixPrint Plugin**](../moonraker-plugin/README.md) | Print attribution Moonraker plugin (server/helix/print_modified + server/helix/status) |
 
 ### Platform Support
 

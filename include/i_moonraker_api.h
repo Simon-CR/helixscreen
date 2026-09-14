@@ -137,19 +137,6 @@ class IMoonrakerAPI {
                     std::function<void(const MoonrakerError&)> on_error) = 0;
 
     // ========================================================================
-    // Helix Plugin
-    // ========================================================================
-
-    /// @brief Get phase tracking plugin status
-    virtual void get_phase_tracking_status(std::function<void(bool enabled)> on_success,
-                                           ErrorCallback on_error = nullptr) = 0;
-
-    /// @brief Enable or disable phase tracking plugin
-    virtual void set_phase_tracking_enabled(bool enabled,
-                                            std::function<void(bool success)> on_success,
-                                            ErrorCallback on_error = nullptr) = 0;
-
-    // ========================================================================
     // Moonraker Database
     // ========================================================================
 

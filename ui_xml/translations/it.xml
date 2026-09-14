@@ -838,7 +838,6 @@
   <translation tag="Enable assisted retraction at hub" it="Abilita la retrazione assistita all&apos;hub"/>
   <translation tag="Enable audio feedback" it="Abilita feedback audio"/>
   <translation tag="Enable brush wipe after purging" it="Abilita la pulizia con spazzola dopo lo spurgo"/>
-  <translation tag="Enable detailed print preparation tracking (Recommended)" it="Abilita tracciamento dettagliato preparazione stampa (consigliato)"/>
   <translation tag="Enable feed assist for active slot during printing" it="Abilita l&apos;assistenza all&apos;alimentazione per lo slot attivo durante la stampa"/>
   <translation tag="Enable or disable the hub cutter" it="Abilita o disabilita la taglierina dell&apos;hub"/>
   <translation tag="Enable purging during tool changes" it="Abilita lo spurgo durante i cambi utensile"/>
@@ -1036,7 +1035,6 @@
   <translation tag="Failed to update configuration.&#10;Check printer connection." it="Aggiornamento configurazione fallito.&#10;Controllare la connessione della stampante."/>
   <translation tag="Failed to update moonraker.conf." it="Aggiornamento moonraker.conf fallito."/>
   <translation tag="Failed to update moonraker.conf.&#10;Check printer connection." it="Aggiornamento moonraker.conf fallito.&#10;Controllare la connessione della stampante."/>
-  <translation tag="Failed to update phase tracking" it="Aggiornamento tracciamento fase fallito"/>
   <translation tag="Failed to upload modified G-code: {}" it="Impossibile caricare G-code modificato: {}"/>
   <translation tag="Failed to upload remapped G-code: {}" it="Caricamento G-code rimappato fallito: {}"/>
   <translation tag="Fan" it="Ventola"/>
@@ -1906,10 +1904,6 @@
   <translation tag="Peak Freq" it="Freq. picco"/>
   <translation tag="Peak:" it="Picco:"/>
   <translation tag="Performance" it="Prestazioni"/>
-  <translation tag="Phase Tracking" it="Tracciamento fase"/>
-  <translation tag="Phase tracking disabled" it="Tracciamento fase disabilitato"/>
-  <translation tag="Phase tracking enabled" it="Tracciamento fase abilitato"/>
-  <translation tag="Phase tracking update failed" it="Aggiornamento tracciamento fase fallito"/>
   <translation tag="Phomemo (Bluetooth)" it="Phomemo (Bluetooth)"/>
   <translation tag="Phomemo M110" it="Phomemo M110"/>
   <translation tag="Pick" it="Scegli"/>
@@ -2474,7 +2468,6 @@
   <translation tag="Show Sections" it="Mostra sezioni"/>
   <translation tag="Show Touch Points" it="Mostra punti di tocco"/>
   <translation tag="Show a confirmation dialog when tapping a macro" it="Mostra una finestra di conferma quando si tocca una macro"/>
-  <translation tag="Show detailed print preparation status" it="Mostra stato dettagliato preparazione stampa"/>
   <translation tag="Show instead of dimming" it="Mostra invece di attenuare"/>
   <translation tag="Show printer icon in navigation bar" it="Mostra icona stampante nella barra di navigazione"/>
   <translation tag="Show sliced colors" it="Mostra colori sezionati"/>

@@ -838,7 +838,6 @@
   <translation tag="Enable assisted retraction at hub" ru="Включить ретракцию с поддержкой на хабе"/>
   <translation tag="Enable audio feedback" ru="Включить звуковую обратную связь"/>
   <translation tag="Enable brush wipe after purging" ru="Включить очистку щёткой после продувки"/>
-  <translation tag="Enable detailed print preparation tracking (Recommended)" ru="Включить детальное отслеживание подготовки к печати (рекомендуется)"/>
   <translation tag="Enable feed assist for active slot during printing" ru="Включить помощь подачи для активного слота во время печати"/>
   <translation tag="Enable or disable the hub cutter" ru="Включить или выключить резак хаба"/>
   <translation tag="Enable purging during tool changes" ru="Включить продувку при смене инструмента"/>
@@ -1036,7 +1035,6 @@
   <translation tag="Failed to update configuration.&#10;Check printer connection." ru="Не удалось обновить конфигурацию.&#10;Проверьте подключение принтера."/>
   <translation tag="Failed to update moonraker.conf." ru="Не удалось обновить moonraker.conf."/>
   <translation tag="Failed to update moonraker.conf.&#10;Check printer connection." ru="Не удалось обновить moonraker.conf.&#10;Проверьте подключение принтера."/>
-  <translation tag="Failed to update phase tracking" ru="Не удалось обновить отслеживание фазы"/>
   <translation tag="Failed to upload modified G-code: {}" ru="Не удалось загрузить изменённый G-code: {}"/>
   <translation tag="Failed to upload remapped G-code: {}" ru="Не удалось загрузить переназначенный G-code: {}"/>
   <translation tag="Fan" ru="Вентилятор"/>
@@ -1906,10 +1904,6 @@
   <translation tag="Peak Freq" ru="Пиковая частота"/>
   <translation tag="Peak:" ru="Пик:"/>
   <translation tag="Performance" ru="Производительность"/>
-  <translation tag="Phase Tracking" ru="Отслеживание фазы"/>
-  <translation tag="Phase tracking disabled" ru="Отслеживание фазы отключено"/>
-  <translation tag="Phase tracking enabled" ru="Отслеживание фазы включено"/>
-  <translation tag="Phase tracking update failed" ru="Не удалось обновить отслеживание фазы"/>
   <translation tag="Phomemo (Bluetooth)" ru="Phomemo (Bluetooth)"/>
   <translation tag="Phomemo M110" ru="Phomemo M110"/>
   <translation tag="Pick" ru="Выбрать"/>
@@ -2474,7 +2468,6 @@
   <translation tag="Show Sections" ru="Показать разделы"/>
   <translation tag="Show Touch Points" ru="Показывать точки касания"/>
   <translation tag="Show a confirmation dialog when tapping a macro" ru="Показывать диалог подтверждения при нажатии на макрос"/>
-  <translation tag="Show detailed print preparation status" ru="Показывать детальный статус подготовки к печати"/>
   <translation tag="Show instead of dimming" ru="Показывать вместо затемнения"/>
   <translation tag="Show printer icon in navigation bar" ru="Показывать значок принтера в панели навигации"/>
   <translation tag="Show sliced colors" ru="Показать цвета из слайсера"/>

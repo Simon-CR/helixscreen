@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 
-#include "async_lifetime_guard.h"
 #include "subject_managed_panel.h"
 
 #include <lvgl.h>
@@ -27,10 +26,9 @@ enum class HelixMacrosStatus {
 /**
  * @brief Manages HelixPrint plugin status subjects for UI feature gating
  *
- * Tracks whether the HelixPrint Klipper plugin is installed, whether phase
- * tracking is enabled, and the install status of the HelixScreen helper
- * macro pack. The plugin subjects use tri-state semantics:
- * -1=unknown, 0=disabled/not installed, 1=enabled/installed.
+ * Tracks whether the HelixPrint Klipper plugin is installed and the install
+ * status of the HelixScreen helper macro pack. The plugin subjects use
+ * tri-state semantics: -1=unknown, 0=not installed, 1=installed.
  *
  * The macro status subject composes a discovery-derived base value with a
  * restart-pending flag set by the install flow (see HelixMacrosStatus).
@@ -78,15 +76,6 @@ class PrinterPluginStatusState {
     void set_installed(bool installed);
 
     /**
-     * @brief Set phase tracking enabled status (async update)
-     *
-     * Thread-safe: Uses helix::ui::queue_update() for main-thread execution.
-     *
-     * @param enabled True if phase tracking is enabled
-     */
-    void set_phase_tracking_enabled(bool enabled);
-
-    /**
      * @brief Set the discovery-derived helper-macro install status
      *
      * Called from PrinterState::set_hardware() on the main thread once a
@@ -120,11 +109,6 @@ class PrinterPluginStatusState {
         return &helix_plugin_installed_;
     }
 
-    /// Tri-state: -1=unknown, 0=disabled, 1=enabled
-    lv_subject_t* get_phase_tracking_enabled_subject() {
-        return &phase_tracking_enabled_;
-    }
-
     /// HelixMacrosStatus value the XML rows bind against
     lv_subject_t* get_helix_macros_status_subject() {
         return &helix_macros_status_;
@@ -143,29 +127,12 @@ class PrinterPluginStatusState {
         return lv_subject_get_int(const_cast<lv_subject_t*>(&helix_plugin_installed_)) == 1;
     }
 
-    /**
-     * @brief Check if phase tracking is enabled
-     *
-     * @return true only when value is 1 (enabled), false for -1 (unknown) or 0 (disabled)
-     */
-    bool is_phase_tracking_enabled() const {
-        return lv_subject_get_int(const_cast<lv_subject_t*>(&phase_tracking_enabled_)) == 1;
-    }
-
   private:
-    friend class PrinterPluginStatusStateTestAccess;
-
     SubjectManager subjects_;
     bool subjects_initialized_ = false;
 
-    /// Expires the deferred setter below when the subjects go away. Declared
-    /// after `subjects_` so reverse-order member destruction invalidates it
-    /// before the subjects it protects (#1165, #1146).
-    AsyncLifetimeGuard async_lifetime_;
-
     // Plugin status subjects (tri-state: -1=unknown, 0=no, 1=yes)
     lv_subject_t helix_plugin_installed_{}; // HelixPrint Klipper plugin
-    lv_subject_t phase_tracking_enabled_{}; // Phase tracking toggle in plugin
 
     /// Composed HelixMacrosStatus; see publish_helix_macros_status()
     lv_subject_t helix_macros_status_{};

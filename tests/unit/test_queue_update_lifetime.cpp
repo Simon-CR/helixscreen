@@ -28,7 +28,6 @@
 #include "moonraker_api_mock.h"
 #include "moonraker_client_mock.h"
 #include "printer_capabilities_state.h"
-#include "printer_plugin_status_state.h"
 #include "printer_print_state.h"
 #include "printer_state.h"
 #include "static_subject_registry.h"
@@ -490,51 +489,6 @@ TEST_CASE_METHOD(LVGLTestFixture,
     panel.on_activate();
     UpdateQueue::instance().drain();
     CHECK(lv_subject_get_int(configured) == 0);
-}
-
-// ============================================================================
-// PrinterPluginStatusState — a sub-component with its own guard
-// ============================================================================
-
-TEST_CASE_METHOD(LVGLTestFixture,
-                 "PrinterPluginStatusState drops the phase-tracking setter after deinit",
-                 "[plugin_status][lifetime][queue_update]") {
-    UpdateQueue::instance().drain();
-
-    PrinterPluginStatusState plugin_status;
-    plugin_status.init_subjects(false);
-
-    REQUIRE_FALSE(plugin_status.is_phase_tracking_enabled());
-
-    plugin_status.set_phase_tracking_enabled(true);
-    REQUIRE(UpdateQueue::instance().pending_count() > 0);
-    REQUIRE_FALSE(plugin_status.is_phase_tracking_enabled());
-
-    // The #1146 shape: subjects torn down and re-inited on a LIVE object, so the
-    // destructor is never the hook that saves us. The generation must advance in
-    // deinit_subjects() or the queued body writes the re-inited subject.
-    plugin_status.deinit_subjects();
-    plugin_status.init_subjects(false);
-
-    UpdateQueue::instance().drain();
-
-    CHECK_FALSE(plugin_status.is_phase_tracking_enabled());
-    CHECK(UpdateQueue::instance().pending_count() == 0);
-}
-
-TEST_CASE_METHOD(LVGLTestFixture,
-                 "PrinterPluginStatusState applies the phase-tracking setter while live",
-                 "[plugin_status][lifetime][queue_update]") {
-    UpdateQueue::instance().drain();
-
-    PrinterPluginStatusState plugin_status;
-    plugin_status.init_subjects(false);
-
-    plugin_status.set_phase_tracking_enabled(true);
-    UpdateQueue::instance().drain();
-
-    // The guard must not swallow a setter issued against the live generation.
-    CHECK(plugin_status.is_phase_tracking_enabled());
 }
 
 // ============================================================================

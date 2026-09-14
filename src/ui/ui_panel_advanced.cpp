@@ -75,7 +75,6 @@ void AdvancedPanel::init_subjects() {
         {"on_helix_plugin_uninstall_clicked", on_helix_plugin_uninstall_clicked},
         {"on_helix_macros_install_clicked", on_helix_macros_install_clicked},
         {"on_helix_macros_update_clicked", on_helix_macros_update_clicked},
-        {"on_phase_tracking_changed", on_phase_tracking_changed},
         {"on_pid_tuning_clicked", on_pid_tuning_clicked},
         {"on_timelapse_videos_clicked", on_timelapse_videos_clicked},
         {"on_timelapse_setup_clicked", on_timelapse_setup_clicked},
@@ -126,19 +125,6 @@ void AdvancedPanel::setup(lv_obj_t* panel, lv_obj_t* parent_screen) {
 void AdvancedPanel::on_activate() {
     spdlog::debug("[{}] Activated", get_name());
     // Note: Plugin detection now happens automatically in discovery flow (application.cpp)
-
-    // Query phase tracking status if plugin is installed
-    if (printer_state_.service_has_helix_plugin() && api_) {
-        api_->get_phase_tracking_status(
-            [this](bool enabled) {
-                printer_state_.set_phase_tracking_enabled(enabled);
-                spdlog::debug("[{}] Phase tracking status: {}", get_name(), enabled);
-            },
-            [this](const MoonrakerError& err) {
-                spdlog::debug("[{}] Phase tracking status query failed: {}", get_name(),
-                              err.message);
-            });
-    }
 }
 
 // ============================================================================
@@ -248,13 +234,6 @@ void AdvancedPanel::on_helix_macros_install_clicked(lv_event_t* /*e*/) {
 
 void AdvancedPanel::on_helix_macros_update_clicked(lv_event_t* /*e*/) {
     get_global_advanced_panel().handle_helix_macros_update_clicked();
-}
-
-void AdvancedPanel::on_phase_tracking_changed(lv_event_t* e) {
-    // Toggle switch callback - get the new state
-    lv_obj_t* toggle = static_cast<lv_obj_t*>(lv_event_get_target(e));
-    bool enabled = lv_obj_has_state(toggle, LV_STATE_CHECKED);
-    get_global_advanced_panel().handle_phase_tracking_changed(enabled);
 }
 
 void AdvancedPanel::on_pid_tuning_clicked(lv_event_t* /*e*/) {
@@ -573,40 +552,4 @@ void AdvancedPanel::run_helix_plugin_uninstall() {
     } else {
         plugin_installer_.uninstall_local(on_done);
     }
-}
-
-void AdvancedPanel::handle_phase_tracking_changed(bool enabled) {
-    spdlog::info("[{}] Phase tracking toggle: {}", get_name(), enabled);
-
-    if (!api_) {
-        ToastManager::instance().show(ToastSeverity::ERROR, lv_tr("Not connected to printer"),
-                                      2000);
-        return;
-    }
-
-    // Call the plugin API to enable/disable phase tracking
-    api_->set_phase_tracking_enabled(
-        enabled,
-        [this, enabled](bool success) {
-            if (success) {
-                printer_state_.set_phase_tracking_enabled(enabled);
-                ToastManager::instance().show(ToastSeverity::SUCCESS,
-                                              enabled ? lv_tr("Phase tracking enabled")
-                                                      : lv_tr("Phase tracking disabled"),
-                                              2000);
-            } else {
-                spdlog::warn("[{}] Phase tracking API returned success=false", get_name());
-                ToastManager::instance().show(ToastSeverity::WARNING,
-                                              lv_tr("Phase tracking update failed"), 3000);
-                // Revert the toggle state
-                printer_state_.set_phase_tracking_enabled(!enabled);
-            }
-        },
-        [this, enabled](const MoonrakerError& err) {
-            spdlog::error("[{}] Phase tracking API call failed: {}", get_name(), err.message);
-            ToastManager::instance().show(ToastSeverity::ERROR,
-                                          lv_tr("Failed to update phase tracking"), 2000);
-            // Revert the toggle state
-            printer_state_.set_phase_tracking_enabled(!enabled);
-        });
 }

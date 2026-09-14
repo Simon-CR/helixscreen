@@ -856,7 +856,6 @@ translations:
   Enable assisted retraction at hub: 'ハブでのアシスト付き引き戻しを有効化'
   Enable audio feedback: 音声フィードバックを有効化
   Enable brush wipe after purging: 'パージ後のブラシワイプを有効化'
-  Enable detailed print preparation tracking (Recommended): 詳細な印刷準備トラッキングを有効化（推奨）
   Enable feed assist for active slot during printing: '印刷中、アクティブなスロットの送りアシストを有効化'
   Enable or disable the hub cutter: 'ハブカッターの有効／無効'
   Enable purging during tool changes: 'ツール交換時のパージを有効化'
@@ -1058,7 +1057,6 @@ translations:
   Failed to update moonraker.conf.: moonraker.confの更新に失敗しました。
   ? "Failed to update moonraker.conf.\nCheck printer connection."
   : "moonraker.confの更新に失敗しました。\nプリンター接続を確認してください。"
-  Failed to update phase tracking: フェーズトラッキングの更新に失敗しました
   'Failed to upload modified G-code: {}': '変更済み G-code のアップロードに失敗しました: {}'
   'Failed to upload remapped G-code: {}': 'リマップしたG-codeのアップロードに失敗しました: {}'
   Fan: ファン
@@ -1960,10 +1958,6 @@ translations:
   Peak Freq: ピーク周波数
   'Peak:': 'ピーク:'
   Performance: パフォーマンス
-  Phase Tracking: フェーズトラッキング
-  Phase tracking disabled: フェーズトラッキング無効
-  Phase tracking enabled: フェーズトラッキング有効
-  Phase tracking update failed: フェーズトラッキングの更新に失敗
   Phomemo (Bluetooth): Phomemo (Bluetooth)
   Phomemo M110: Phomemo M110
   Pick: 選択
@@ -2547,7 +2541,6 @@ translations:
   Show Sections: セクションを表示
   Show Touch Points: タッチポイントを表示
   Show a confirmation dialog when tapping a macro: マクロをタップした際に確認ダイアログを表示
-  Show detailed print preparation status: 詳細な印刷準備ステータスを表示
   Show instead of dimming: 暗くする代わりに表示
   Show printer icon in navigation bar: ナビゲーションバーにプリンターアイコンを表示
   Show sliced colors: スライスした色を表示

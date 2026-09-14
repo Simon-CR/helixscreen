@@ -838,7 +838,6 @@
   <translation tag="Enable assisted retraction at hub" zh="在集线器启用辅助回抽"/>
   <translation tag="Enable audio feedback" zh="启用声音反馈"/>
   <translation tag="Enable brush wipe after purging" zh="排料后启用刷子擦拭"/>
-  <translation tag="Enable detailed print preparation tracking (Recommended)" zh="启用详细打印准备跟踪（推荐）"/>
   <translation tag="Enable feed assist for active slot during printing" zh="打印时为当前槽位启用送料辅助"/>
   <translation tag="Enable or disable the hub cutter" zh="启用或停用集线器切刀"/>
   <translation tag="Enable purging during tool changes" zh="在换工具时启用排料"/>
@@ -1036,7 +1035,6 @@
   <translation tag="Failed to update configuration.&#10;Check printer connection." zh="更新配置失败。&#10;请检查打印机连接。"/>
   <translation tag="Failed to update moonraker.conf." zh="更新 moonraker.conf 失败。"/>
   <translation tag="Failed to update moonraker.conf.&#10;Check printer connection." zh="更新 moonraker.conf 失败。&#10;请检查打印机连接。"/>
-  <translation tag="Failed to update phase tracking" zh="更新相位跟踪失败"/>
   <translation tag="Failed to upload modified G-code: {}" zh="上传修改后的 G-code 失败: {}"/>
   <translation tag="Failed to upload remapped G-code: {}" zh="上传重新映射的 G-code 失败：{}"/>
   <translation tag="Fan" zh="风扇"/>
@@ -1906,10 +1904,6 @@
   <translation tag="Peak Freq" zh="峰值频率"/>
   <translation tag="Peak:" zh="峰值："/>
   <translation tag="Performance" zh="性能"/>
-  <translation tag="Phase Tracking" zh="相位跟踪"/>
-  <translation tag="Phase tracking disabled" zh="相位跟踪已禁用"/>
-  <translation tag="Phase tracking enabled" zh="相位跟踪已启用"/>
-  <translation tag="Phase tracking update failed" zh="相位跟踪更新失败"/>
   <translation tag="Phomemo (Bluetooth)" zh="Phomemo（蓝牙）"/>
   <translation tag="Phomemo M110" zh="Phomemo M110"/>
   <translation tag="Pick" zh="选取"/>
@@ -2474,7 +2468,6 @@
   <translation tag="Show Sections" zh="显示区段"/>
   <translation tag="Show Touch Points" zh="显示触摸点"/>
   <translation tag="Show a confirmation dialog when tapping a macro" zh="点击宏时显示确认对话框"/>
-  <translation tag="Show detailed print preparation status" zh="显示详细的打印准备状态"/>
   <translation tag="Show instead of dimming" zh="显示而非变暗"/>
   <translation tag="Show printer icon in navigation bar" zh="在导航栏中显示打印机图标"/>
   <translation tag="Show sliced colors" zh="显示切片颜色"/>

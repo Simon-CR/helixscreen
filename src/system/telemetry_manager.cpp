@@ -1635,9 +1635,6 @@ nlohmann::json TelemetryManager::build_session_event() const {
         if (spoolman_subj && lv_subject_get_int(spoolman_subj) > 0) {
             features.push_back("spoolman");
         }
-        if (ps.is_phase_tracking_enabled()) {
-            features.push_back("phase_tracking");
-        }
         if (ps.service_has_helix_plugin()) {
             features.push_back("helix_plugin");
         }
@@ -2136,7 +2133,6 @@ nlohmann::json TelemetryManager::build_hardware_profile_event() const {
         // ---- plugins section ----
         json plugins;
         plugins["helix_plugin_installed"] = get_printer_state().service_has_helix_plugin();
-        plugins["phase_tracking_enabled"] = get_printer_state().is_phase_tracking_enabled();
         event["plugins"] = plugins;
 
         // ---- display_backend ----

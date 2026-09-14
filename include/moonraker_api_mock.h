@@ -675,15 +675,6 @@ class MoonrakerAPIMock : public MoonrakerAPI {
                               ErrorCallback on_error = nullptr) override;
 
     // ========================================================================
-    // Overridden Helix Plugin Methods (return mock data)
-    // ========================================================================
-
-    void get_phase_tracking_status(std::function<void(bool enabled)> on_success,
-                                   ErrorCallback on_error = nullptr) override;
-    void set_phase_tracking_enabled(bool enabled, std::function<void(bool success)> on_success,
-                                    ErrorCallback on_error = nullptr) override;
-
-    // ========================================================================
     // Overridden Power Device Methods (return mock data)
     // ========================================================================
 

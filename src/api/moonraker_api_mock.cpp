@@ -453,26 +453,6 @@ void MoonrakerAPIMock::database_delete_item(const std::string& namespace_name,
     }
 }
 
-// ============================================================================
-// Helix Plugin Method Overrides (mock)
-// ============================================================================
-
-void MoonrakerAPIMock::get_phase_tracking_status(std::function<void(bool)> on_success,
-                                                 ErrorCallback /*on_error*/) {
-    if (on_success) {
-        on_success(false);
-    }
-}
-
-void MoonrakerAPIMock::set_phase_tracking_enabled(bool enabled,
-                                                  std::function<void(bool)> on_success,
-                                                  ErrorCallback /*on_error*/) {
-    spdlog::debug("[MoonrakerAPIMock] set_phase_tracking_enabled({})", enabled);
-    if (on_success) {
-        on_success(enabled);
-    }
-}
-
 std::string MoonrakerFileTransferAPIMock::find_test_file(const std::string& filename) const {
     namespace fs = std::filesystem;
 

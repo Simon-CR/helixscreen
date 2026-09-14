@@ -937,8 +937,6 @@ translations:
   Enable assisted retraction at hub: 'Unterstützten Einzug am Hub aktivieren'
   Enable audio feedback: Akustisches Feedback aktivieren
   Enable brush wipe after purging: 'Bürstenreinigung nach dem Entlüften aktivieren'
-  Enable detailed print preparation tracking (Recommended): Detaillierte Druckvorbereitungsverfolgung
-    aktivieren (Empfohlen)
   Enable feed assist for active slot during printing: 'Vorschubunterstützung für den aktiven Slot während des Drucks aktivieren'
   Enable or disable the hub cutter: 'Den Hub-Schneider aktivieren oder deaktivieren'
   Enable purging during tool changes: 'Entlüften bei Werkzeugwechseln aktivieren'
@@ -1160,7 +1158,6 @@ translations:
   Failed to update moonraker.conf.: moonraker.conf konnte nicht aktualisiert werden.
   ? "Failed to update moonraker.conf.\nCheck printer connection."
   : "moonraker.conf konnte nicht aktualisiert werden.\nDruckerverbindung prüfen."
-  Failed to update phase tracking: Phasenverfolgung konnte nicht aktualisiert werden
   'Failed to upload modified G-code: {}': 'Geänderten G-Code hochladen fehlgeschlagen:
     {}'
   'Failed to upload remapped G-code: {}': 'Neu zugeordneter G-code konnte nicht hochgeladen
@@ -2119,10 +2116,6 @@ translations:
   Peak Freq: Spitzenfreq.
   'Peak:': 'Spitze:'
   Performance: Leistung
-  Phase Tracking: Phasenverfolgung
-  Phase tracking disabled: Phasenverfolgung deaktiviert
-  Phase tracking enabled: Phasenverfolgung aktiviert
-  Phase tracking update failed: Phasenverfolgung-Update fehlgeschlagen
   Phomemo (Bluetooth): Phomemo (Bluetooth)
   Phomemo M110: Phomemo M110
   Pick: Auswählen
@@ -2758,7 +2751,6 @@ translations:
   Show Touch Points: Berührungspunkte anzeigen
   Show a confirmation dialog when tapping a macro: Bestätigungsdialog beim Antippen
     eines Makros anzeigen
-  Show detailed print preparation status: Detaillierten Druckvorbereitungsstatus anzeigen
   Show instead of dimming: Anzeigen statt Abdunkeln
   Show printer icon in navigation bar: Druckersymbol in Navigationsleiste anzeigen
   Show sliced colors: Slice-Farben anzeigen

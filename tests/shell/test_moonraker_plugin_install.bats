@@ -1,104 +1,91 @@
 #!/usr/bin/env bats
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
-# Tests for moonraker-plugin/install.sh phase-tracking setup.
-#
-# Guards the regression from 0d5bc370d: helix_phase_tracking.cfg was merged into
-# helix_macros.cfg, but install.sh kept pointing at the old path. Because the
-# only symptom was a warn() on a path nobody read, phase tracking silently
-# stopped installing the macros it instruments PRINT_START to call
-# (prestonbrown/helixscreen#1268).
+# Guards for moonraker-plugin/install.sh and helix_print.py: the installer
+# and plugin stay phase-tracking-free, the shared helix_macros.cfg survives
+# every uninstall path, and a legacy helix_phase_tracking.cfg left by an old
+# install is retired on the next --auto run.
 
 load helpers
 
-# Overridable so the guard itself can be checked against a known-bad copy of the
-# installer (see the issue: the pre-fix script pointed at a deleted file).
-SCRIPT="${HELIX_PLUGIN_INSTALL_SH:-moonraker-plugin/install.sh}"
+REPO_ROOT="$(cd "${BATS_TEST_DIRNAME}/../.." && pwd)"
 
-setup() {
-    CONFIG_DIR="$(mktemp -d)"
-}
+# Overridable so each guard can be proven to FIRE against a hand-broken copy
+# of the script instead of the shipped one.
+SCRIPT="${HELIX_PLUGIN_INSTALL_SH:-$REPO_ROOT/moonraker-plugin/install.sh}"
+PLUGIN_PY="${HELIX_PLUGIN_PRINT_PY:-$REPO_ROOT/moonraker-plugin/helix_print.py}"
 
-teardown() {
-    rm -rf "$CONFIG_DIR"
-}
+# Extract the REAL cleanup_legacy_phase_cfg out of install.sh and run it
+# against a config dir. Sourcing the whole script would run the installer;
+# re-typing the body here would let the test pass against a cleanup that no
+# longer matches what ships.
+run_cleanup_legacy_phase_cfg() {
+    local cfg_dir="$1" fn
+    fn="$(sed -n '/^cleanup_legacy_phase_cfg()/,/^}/p' "$SCRIPT")"
+    [ -n "$fn" ] || { echo "cleanup_legacy_phase_cfg not found in $SCRIPT"; return 2; }
 
-# Extract the REAL find_helix_macros_cfg out of install.sh and run it with
-# SCRIPT_DIR pointed where the test needs it. Sourcing the whole script would
-# run main(); re-typing the candidate list here would mean the test passes
-# against a lookup list that no longer matches the installer's.
-run_find_helix_macros_cfg() {
-    local script="${2:-$SCRIPT}"
-    local fn
-    fn="$(sed -n '/^find_helix_macros_cfg()/,/^}/p' "$script")"
-    [ -n "$fn" ] || { echo "find_helix_macros_cfg not found in $script"; return 2; }
-
-    sh -c "SCRIPT_DIR=\"\$1\"
+    sh -c "info() { :; }
+warn() { :; }
 $fn
-find_helix_macros_cfg" _ "$1"
+cleanup_legacy_phase_cfg \"\$1\"" _ "$cfg_dir"
 }
 
-@test "install.sh exists and has valid POSIX sh syntax" {
+@test "install.sh passes POSIX syntax check" {
     [ -f "$SCRIPT" ]
-    sh -n "$SCRIPT"
-}
-
-@test "install.sh installs the include for helix_macros.cfg" {
-    grep -q '\[include helix_macros.cfg\]' "$SCRIPT"
-}
-
-@test "the cfg install.sh looks for is actually shipped in the repo" {
-    # The whole regression: a lookup path that resolves to nothing.
-    run run_find_helix_macros_cfg "$(pwd)/moonraker-plugin"
+    run sh -n "$SCRIPT"
     [ "$status" -eq 0 ]
-    [ -f "$output" ]
 }
 
-@test "the shipped cfg defines every macro the plugin injects" {
-    run run_find_helix_macros_cfg "$(pwd)/moonraker-plugin"
+@test "uninstall preserves the shared helper macros" {
+    # helix_macros.cfg carries HELIX_START_PRINT / HELIX_CLEAN_NOZZLE and
+    # other helpers that keep working without the plugin; deleting it on
+    # uninstall would break features the user never uninstalled.
+    local region="$BATS_TEST_TMPDIR/auto_uninstall.sh"
+    sed -n '/^auto_uninstall()/,/^}/p' "$SCRIPT" > "$region"
+    [ -s "$region" ] || fail "auto_uninstall not found in $SCRIPT"
+    refute_grep 'rm.*helix_macros' "$region"
+}
+
+@test "installer carries no phase-tracking flag" {
+    [ -f "$SCRIPT" ]
+    refute_grep 'with-phase-tracking' "$SCRIPT"
+    refute_grep 'ENABLE_PHASE_TRACKING' "$SCRIPT"
+}
+
+@test "plugin exposes no phase-tracking endpoints" {
+    [ -f "$PLUGIN_PY" ]
+    refute_grep 'phase_tracking' "$PLUGIN_PY"
+}
+
+@test "auto-install retires a legacy helix_phase_tracking.cfg and its include" {
+    # Invariant first: with no legacy file, the cleanup touches nothing (a
+    # plain --auto run edits moonraker.conf only).
+    local clean_cfg="$BATS_TEST_TMPDIR/clean"
+    mkdir -p "$clean_cfg"
+    printf '%s\n' '[include helix_macros.cfg]' > "$clean_cfg/printer.cfg"
+
+    run run_cleanup_legacy_phase_cfg "$clean_cfg"
     [ "$status" -eq 0 ]
-    cfg="$output"
+    [ "$(ls -A "$clean_cfg")" = "printer.cfg" ]
 
-    # Names come from PHASE_PATTERNS + the HELIX_READY terminator in
-    # moonraker-plugin/helix_print.py. Instrumenting against a macro that is not
-    # defined here aborts print start with "Unknown command".
-    for macro in HELIX_READY \
-                 HELIX_PHASE_HOMING \
-                 HELIX_PHASE_QGL \
-                 HELIX_PHASE_Z_TILT \
-                 HELIX_PHASE_BED_MESH \
-                 HELIX_PHASE_CLEANING \
-                 HELIX_PHASE_PURGING \
-                 HELIX_PHASE_HEATING_NOZZLE \
-                 HELIX_PHASE_HEATING_BED
-    do
-        grep -q "^\[gcode_macro $macro\]" "$cfg" || {
-            echo "missing [gcode_macro $macro] in $cfg"
-            return 1
-        }
-    done
-}
+    # With the legacy file present: include line out, both files backed up,
+    # legacy file gone.
+    local cfg="$BATS_TEST_TMPDIR/legacy" printer_backup legacy_backup
+    mkdir -p "$cfg"
+    {
+        printf '%s\n' '[include helix_macros.cfg]'
+        printf '%s\n' '[include helix_phase_tracking.cfg]'
+    } > "$cfg/printer.cfg"
+    printf '%s\n' '# legacy phase macros' > "$cfg/helix_phase_tracking.cfg"
 
-@test "every macro name in PHASE_PATTERNS is covered by the shipped cfg" {
-    # Catches a new pattern added to helix_print.py without a matching macro.
-    run run_find_helix_macros_cfg "$(pwd)/moonraker-plugin"
+    run run_cleanup_legacy_phase_cfg "$cfg"
     [ "$status" -eq 0 ]
-    cfg="$output"
 
-    injected=$(grep -oE '"HELIX_PHASE_[A-Z_]+"' moonraker-plugin/helix_print.py | tr -d '"' | sort -u)
-    [ -n "$injected" ]
+    refute_grep 'include helix_phase_tracking' "$cfg/printer.cfg"
+    grep -q '\[include helix_macros.cfg\]' "$cfg/printer.cfg"
 
-    for macro in $injected; do
-        grep -q "^\[gcode_macro $macro\]" "$cfg" || {
-            echo "helix_print.py injects $macro but $cfg does not define it"
-            return 1
-        }
-    done
-}
-
-@test "uninstall does not delete the shared helix_macros.cfg" {
-    # helix_macros.cfg carries HELIX_START_PRINT / HELIX_CLEAN_NOZZLE and other
-    # non-phase-tracking helpers. Removing it on plugin uninstall would break
-    # features the user never uninstalled.
-    ! grep -qE 'rm .*"?\$?\{?config_dir\}?/helix_macros\.cfg' "$SCRIPT"
+    [ ! -e "$cfg/helix_phase_tracking.cfg" ]
+    printer_backup="$(ls "$cfg"/printer.cfg.bak.* 2>/dev/null)" || fail "no printer.cfg backup"
+    legacy_backup="$(ls "$cfg"/helix_phase_tracking.cfg.bak.* 2>/dev/null)" || fail "no legacy cfg backup"
+    grep -q 'legacy phase macros' "$legacy_backup"
 }

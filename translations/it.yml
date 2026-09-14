@@ -929,8 +929,6 @@ translations:
   Enable assisted retraction at hub: 'Abilita la retrazione assistita all''hub'
   Enable audio feedback: Abilita feedback audio
   Enable brush wipe after purging: 'Abilita la pulizia con spazzola dopo lo spurgo'
-  Enable detailed print preparation tracking (Recommended): Abilita tracciamento dettagliato
-    preparazione stampa (consigliato)
   Enable feed assist for active slot during printing: 'Abilita l''assistenza all''alimentazione per lo slot attivo durante la stampa'
   Enable or disable the hub cutter: 'Abilita o disabilita la taglierina dell''hub'
   Enable purging during tool changes: 'Abilita lo spurgo durante i cambi utensile'
@@ -1146,7 +1144,6 @@ translations:
   Failed to update moonraker.conf.: Aggiornamento moonraker.conf fallito.
   ? "Failed to update moonraker.conf.\nCheck printer connection."
   : "Aggiornamento moonraker.conf fallito.\nControllare la connessione della stampante."
-  Failed to update phase tracking: Aggiornamento tracciamento fase fallito
   'Failed to upload modified G-code: {}': 'Impossibile caricare G-code modificato:
     {}'
   'Failed to upload remapped G-code: {}': 'Caricamento G-code rimappato fallito: {}'
@@ -2109,10 +2106,6 @@ translations:
   Peak Freq: Freq. picco
   'Peak:': 'Picco:'
   Performance: Prestazioni
-  Phase Tracking: Tracciamento fase
-  Phase tracking disabled: Tracciamento fase disabilitato
-  Phase tracking enabled: Tracciamento fase abilitato
-  Phase tracking update failed: Aggiornamento tracciamento fase fallito
   Phomemo (Bluetooth): Phomemo (Bluetooth)
   Phomemo M110: Phomemo M110
   Pick: Scegli
@@ -2747,7 +2740,6 @@ translations:
   Show Touch Points: Mostra punti di tocco
   Show a confirmation dialog when tapping a macro: Mostra una finestra di conferma
     quando si tocca una macro
-  Show detailed print preparation status: Mostra stato dettagliato preparazione stampa
   Show instead of dimming: Mostra invece di attenuare
   Show printer icon in navigation bar: Mostra icona stampante nella barra di navigazione
   Show sliced colors: Mostra colori sezionati

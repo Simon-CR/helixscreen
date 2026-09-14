@@ -379,7 +379,7 @@ For printers that don't emit G-code layer markers, HelixScreen has additional fa
 | `src/print/print_start_collector.cpp` | Detection engine and fallback implementation |
 | `src/print/print_start_profile.cpp` | Profile loading and signal/pattern matching |
 | `assets/config/print_start_profiles/*.json` | Printer-specific profile definitions |
-| `assets/config/helix_macros.cfg` | Klipper macros for detection and phase tracking |
+| `assets/config/helix_macros.cfg` | Klipper macros for detection and phase signals |
 | `src/printer/macro_manager.cpp` | Macro installation management |
 | `src/api/moonraker_client.cpp` | Object subscription setup |
 | `docs/devel/PRINT_START_PROFILES.md` | Developer guide for creating new profiles |
