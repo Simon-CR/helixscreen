@@ -22,6 +22,18 @@ namespace helix {
 void register_xml_components();
 
 /**
+ * @brief Register the filament_catalog_selector family of XML components
+ *
+ * filament_catalog_row / filament_catalog_add_row / filament_catalog_empty_row
+ * are never named in any XML markup: FilamentCatalogSelector::rebuild_product_list()
+ * creates them by name at runtime, so a caller that never invokes this leaves
+ * lv_xml_create() silently returning nullptr for those names. Shared between
+ * register_xml_components() and XMLTestFixture::setup_global_xml_registrations_once()
+ * so a component added to the set cannot be forgotten in one of the two.
+ */
+void register_filament_catalog_components();
+
+/**
  * @brief Deinitialize XML-related subjects
  *
  * Must be called during shutdown before lv_deinit().
