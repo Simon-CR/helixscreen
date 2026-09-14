@@ -8132,6 +8132,50 @@ TEST_CASE("AD5X IFS external CHANGE_ZCOLOR retracts the user's colour, not their
     CHECK(sources.local_user->brand == "Sunlu");
 }
 
+TEST_CASE("AD5X IFS external CHANGE_ZCOLOR drops the catalog pick with the material it names",
+          "[ams][ad5x_ifs][981]") {
+    // A catalog product is scoped to a material, so a release that accepts
+    // firmware's new material has to take the pick with it. Nothing else on
+    // this path distinguishes releasing the locks from releasing the values:
+    // the auto-mirror refreshes colour and material either way, and the
+    // catalog pick is the one field it cannot refresh.
+    helix::test::RegisteredBackend<TestableAd5xIfsBackend> backend_reg;
+    auto& backend = *backend_reg;
+    Ad5xIfsTestAccess::set_running(backend, true);
+    Ad5xIfsTestAccess::set_zcolor_supported(backend, false);
+
+    Ad5xIfsTestAccess::set_port_presence(backend, 0, true);
+    Ad5xIfsTestAccess::set_color(backend, 0, "898989");
+    Ad5xIfsTestAccess::set_material(backend, 0, "PETG");
+
+    // A brand as well, so the release keeps the identity rather than falling
+    // back to the full erase: the catalog pick has to go on the path that
+    // KEEPS things.
+    SlotInfo edit = backend.get_slot_info(0);
+    edit.material = "SILK";
+    edit.brand = "Sunlu";
+    edit.catalog_id = "sunlu-silk-pla-1-0";
+    edit.product_name = "Silk PLA";
+    helix::test::edit_slot_as_user(backend, 0, edit);
+    REQUIRE(Ad5xIfsTestAccess::get_override(backend, 0).has_value());
+    REQUIRE(Ad5xIfsTestAccess::get_override(backend, 0)->catalog_id == "sunlu-silk-pla-1-0");
+
+    REQUIRE_FALSE(Ad5xIfsTestAccess::on_gcode_response_line(
+        backend, "CHANGE_ZCOLOR SLOT=1 HEX=FEF043 TYPE=PLA"));
+
+    const auto staged = Ad5xIfsTestAccess::get_override(backend, 0);
+    REQUIRE(staged.has_value());
+    CHECK(staged->catalog_id.empty());
+    CHECK(staged->product_name.empty());
+    CHECK(staged->brand == "Sunlu");
+
+    const helix::ams::LaneSources sources = helix::ams::lane_sources(backend_reg.lane(0));
+    REQUIRE(sources.local_user.has_value());
+    CHECK_FALSE(sources.local_user->catalog_id.has_value());
+    CHECK_FALSE(sources.local_user->product_name.has_value());
+    CHECK(sources.local_user->brand == "Sunlu");
+}
+
 TEST_CASE("AD5X IFS external CHANGE_ZCOLOR with no identity to keep clears both stores (#981)",
           "[ams][ad5x_ifs][981]") {
     helix::test::RegisteredBackend<TestableAd5xIfsBackend> backend_reg;

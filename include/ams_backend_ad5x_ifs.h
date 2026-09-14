@@ -790,6 +790,20 @@ class AmsBackendAd5xIfs : public AmsSubscriptionBackend {
     // is what resolve() paints from and it outranks the vendor cache: a release
     // that reached only overrides_ would go on showing the colour and material
     // the user has stopped declaring (#1646).
+    /// What a lock release does with the firmware-carryable values themselves.
+    enum class ReleasedValues {
+        Strip, ///< Clear them, so firmware truth shows through on this frame.
+        Keep,  ///< Leave them for the OverwriteAlways auto-mirror to refresh.
+    };
+    // Release the user's colour and material locks on one slot, in BOTH stores
+    // that hold the lane. overrides_ decides what a reload carries; the lane's
+    // LocalUser record is what resolve() paints from and it outranks the vendor
+    // cache, so a release reaching only one of them goes on showing the colour
+    // and material the user has stopped declaring (#1646). The rest of that
+    // declaration - brand, spool name, ids, weights - is left standing, which
+    // is what makes this a retraction rather than a clear. Caller holds mutex_.
+    void release_color_material_locks_locked(int slot_index, helix::ams::FilamentSlotOverride& ovr,
+                                             ReleasedValues disposition);
     void release_locked_override_keep_identity_locked(int slot_index, SlotInfo& slot);
     // Called on the empty->present (physical insert) edge for a lane. Drops the
     // color/material user-lock flags on an AUTO-TRACKED override (one with no
@@ -799,7 +813,9 @@ class AmsBackendAd5xIfs : public AmsSubscriptionBackend {
     // insert itself is the "this lane's contents changed" signal. A lane with a
     // deliberate Spoolman binding (spoolman_id > 0) is left untouched: #1071
     // retains it across an eject/insert cycle. brand/spool_name/spoolman_id/
-    // weights are never modified — only the two lock flags. Caller holds mutex_.
+    // weights are never modified: the override keeps its colour and material
+    // values for the mirror to refresh, and only the locks and the lane's
+    // matching LocalUser declaration go. Caller holds mutex_.
     // See docs/devel/FILAMENT_MANAGEMENT.md § "AD5X IFS material/color reconcile".
     void unlock_auto_tracked_override_on_insert_locked(int slot_index);
     void parse_adventurer_json(const std::string& content);

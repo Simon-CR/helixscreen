@@ -1531,6 +1531,71 @@ void AmsBackendAd5xIfs::clear_override_locked(int slot_index, SlotInfo& slot) {
     }
 }
 
+void AmsBackendAd5xIfs::release_color_material_locks_locked(int slot_index,
+                                                            helix::ams::FilamentSlotOverride& ovr,
+                                                            ReleasedValues disposition) {
+    // Caller holds mutex_. Both stores, always: see the header for why one of
+    // them on its own leaves the released values still painting.
+    ovr.user_locked_color = false;
+    ovr.user_locked_material = false;
+    if (disposition == ReleasedValues::Strip) {
+        // apply_overrides only masks a field the override still carries a real
+        // value for, so clearing these is what lets the firmware-truth
+        // color_rgb/material show through on this frame.
+        ovr.color_set = false;
+        ovr.color_rgb = 0;
+        ovr.color_name.clear();
+        ovr.material.clear();
+        // The catalog pick is scoped to a MATERIAL: "sunlu-pla-plus-2-0" only
+        // makes sense while the lane is PLA, and a Strip release is firmware
+        // re-authoring the material. setup_details_selector() seeds the type
+        // dropdown from catalog_id first, so a stale id drags the editor back
+        // to the old material family and contradicts the firmware truth just
+        // accepted.
+        ovr.catalog_id.clear();
+        ovr.product_name.clear();
+    }
+
+    // The lane's own record is trimmed to match, whatever the disposition: the
+    // values kept above are the mirror's to refresh, and a LocalUser record
+    // outranks the vendor cache the mirror feeds. The store has no partial
+    // retraction, so this composes one from what it does have. Reading the
+    // user's record, dropping it and re-filing it through the funnel an edit
+    // uses leaves the remaining declaration exactly as strong as it was: an
+    // amendment onto a record that is gone is that record, and a retraction
+    // with nothing left to declare files nothing at all.
+    const helix::ams::LaneId lane = lane_id(slot_index);
+    const helix::ams::LaneSources sources = helix::ams::lane_sources(lane);
+    if (sources.local_user.has_value()) {
+        helix::ams::Observation kept = *sources.local_user;
+        kept.color_rgb.reset();
+        kept.color_name.reset();
+        kept.material.reset();
+        if (disposition == ReleasedValues::Strip) {
+            // The catalog pick goes with the material it is scoped to, for the
+            // same reason it goes from the override above.
+            kept.catalog_id.reset();
+            kept.product_name.reset();
+        }
+        helix::ams::drop_lane_source(lane, helix::ams::ObservationSource::LocalUser);
+        helix::ams::commit_slot_edit(lane, kept);
+    }
+
+    // Persist so a restart reloads the released record rather than the locked
+    // one. Capture by value: the callback can fire long after this returns.
+    if (override_store_) {
+        helix::ams::FilamentSlotOverride snapshot = ovr;
+        const std::string tag = backend_log_tag();
+        override_store_->save_async(
+            slot_index, snapshot, [tag, slot_index](bool success, std::string err) {
+                if (!success) {
+                    spdlog::warn("{} lock release persist failed for slot {}: {}", tag, slot_index,
+                                 err);
+                }
+            });
+    }
+}
+
 void AmsBackendAd5xIfs::release_locked_override_keep_identity_locked(int slot_index,
                                                                      SlotInfo& slot) {
     // Caller must hold mutex_. See the header for the full rationale. Short
@@ -1565,69 +1630,13 @@ void AmsBackendAd5xIfs::release_locked_override_keep_identity_locked(int slot_in
                  "can't carry (#1071-style retention, Bug B)",
                  backend_log_tag(), slot_index);
 
-    // Release the user-locks and strip the firmware-carryable override fields.
-    // apply_overrides only masks a field when the override still carries a real
-    // value (non-empty string / color_set / >0 id), so clearing these lets the
-    // firmware-truth color_rgb/material (refreshed by update_slot_from_state)
-    // show through. The identity fields (brand, spool_name, spoolman_id,
-    // spoolman_vendor_id, weights) stay put.
-    ovr.user_locked_color = false;
-    ovr.user_locked_material = false;
-    ovr.color_set = false;
-    ovr.color_rgb = 0;
-    ovr.color_name.clear();
-    ovr.material.clear();
-    // The catalog pick is scoped to a MATERIAL — "sunlu-pla-plus-2-0" only makes
-    // sense while the lane is PLA. This path exists because firmware just
-    // re-authored the material, so the pick goes with it. Keeping it would be
-    // worse than losing it: setup_details_selector() seeds the type dropdown
-    // from catalog_id first, so a stale id would drag the editor back to the old
-    // material family and contradict the firmware truth we just accepted.
-    // Deliberately NOT counted in has_identity above for the same reason — it is
-    // not firmware-uncarryable metadata like brand/spool_name, it is material-
-    // derived.
-    ovr.catalog_id.clear();
-    ovr.product_name.clear();
-
-    // The lane's own record is trimmed to match: this and the strip above are
-    // one release in two stores, and a release that reached only one would
-    // leave resolve() still painting the colour and material the user has
-    // stopped declaring. The store has no partial retraction, so this composes
-    // one from what it does have. Reading the user's record, dropping it and
-    // re-filing it through the funnel an edit uses leaves the remaining
-    // declaration exactly as strong as it was: an amendment onto a record that
-    // is gone is that record, and a retraction with nothing left to declare
-    // files nothing at all.
-    const helix::ams::LaneId lane = lane_id(slot_index);
-    const helix::ams::LaneSources sources = helix::ams::lane_sources(lane);
-    if (sources.local_user.has_value()) {
-        helix::ams::Observation kept = *sources.local_user;
-        kept.color_rgb.reset();
-        kept.color_name.reset();
-        kept.material.reset();
-        // The catalog pick goes with the material it is scoped to, for the same
-        // reason it goes from the override above.
-        kept.catalog_id.reset();
-        kept.product_name.reset();
-        helix::ams::drop_lane_source(lane, helix::ams::ObservationSource::LocalUser);
-        helix::ams::commit_slot_edit(lane, kept);
-    }
-
-    // Persist the trimmed override so a restart reloads the retained identity
-    // (and the released locks) instead of the pre-edit locked record. Capture
-    // by value — the callback can fire long after this returns.
-    if (override_store_) {
-        helix::ams::FilamentSlotOverride snapshot = ovr;
-        const std::string tag = backend_log_tag();
-        override_store_->save_async(slot_index, snapshot,
-                                    [tag, slot_index](bool ok, std::string err) {
-                                        if (!ok) {
-                                            spdlog::warn("{} identity-retain persist failed for "
-                                                         "slot {}: {}",
-                                                         tag, slot_index, err);
-                                        }
-                                    });
-    }
+    // Strip the firmware-carryable values along with the locks: firmware has
+    // just re-authored colour and material, so this frame's truth paints
+    // immediately rather than waiting for a mirror pass. The identity fields
+    // (brand, spool_name, spoolman_id, spoolman_vendor_id, weights) stay put.
+    // catalog_id is material-derived rather than firmware-uncarryable metadata,
+    // which is why has_identity above does not count it.
+    release_color_material_locks_locked(slot_index, ovr, ReleasedValues::Strip);
 }
 
 void AmsBackendAd5xIfs::unlock_auto_tracked_override_on_insert_locked(int slot_index) {
@@ -1655,23 +1664,11 @@ void AmsBackendAd5xIfs::unlock_auto_tracked_override_on_insert_locked(int slot_i
                  "unlocking auto-tracked material/color so the new spool's firmware "
                  "type/color refresh (#1065)",
                  backend_log_tag(), slot_index);
-    ovr.user_locked_material = false;
-    ovr.user_locked_color = false;
-    // Persist the unlock so a restart doesn't reload the pessimistic
-    // !material.empty() lock default and re-stick the old type. The subsequent
-    // update_slot_from_state -> auto-mirror will save again once firmware truth
-    // refreshes the material/color; this first save just makes the unlock
-    // durable even if the same spool goes back in and no material delta follows.
-    if (override_store_) {
-        helix::ams::FilamentSlotOverride snapshot = ovr;
-        const std::string tag = backend_log_tag();
-        override_store_->save_async(
-            slot_index, snapshot, [tag, slot_index](bool success, const std::string& err) {
-                if (!success) {
-                    spdlog::warn("{} unlock persist failed for slot {}: {}", tag, slot_index, err);
-                }
-            });
-    }
+    // Keep the values: the OverwriteAlways mirror refreshes them to the new
+    // spool's firmware truth on the next parse, and the released record is
+    // persisted so a restart cannot reload the pessimistic !material.empty()
+    // lock default and re-stick the old type.
+    release_color_material_locks_locked(slot_index, ovr, ReleasedValues::Keep);
 }
 
 void AmsBackendAd5xIfs::clear_slot_override(int slot_index) {
