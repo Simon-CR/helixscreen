@@ -258,6 +258,85 @@ TEST_CASE_METHOD(XMLTestFixture,
     check_two_by_two_reflow("A:ui_xml/micro_portrait/material_temps_overlay.xml", *this);
 }
 
+// TINY (480x320) and TINY_PORTRAIT (320x480) have no ui_xml/tiny*/ override, so
+// LayoutManager::variant_chain() falls through to this base file's own
+// four-across row. Each column fills its own share of the row instead of
+// carrying a fixed input width, so the row has to shrink with the screen
+// rather than overflow it (prestonbrown/helixscreen#1263).
+namespace {
+
+/// Absolute screen bounds, matching what `helix-screen ctl geom` reports
+/// (remote_control_server.cpp#geom_walk): lv_obj_get_coords() for the origin,
+/// not the parent-relative value lv_obj_get_x() would give under a scrolled
+/// ancestor.
+struct Bounds {
+    int32_t x1;
+    int32_t x2;
+};
+
+Bounds bounds_of(lv_obj_t* obj) {
+    lv_area_t area;
+    lv_obj_get_coords(obj, &area);
+    return {area.x1, area.x1 + lv_obj_get_width(obj)};
+}
+
+void check_row_fits_at(int32_t screen_w, int32_t screen_h) {
+    lv_display_t* disp = lv_display_get_default();
+    REQUIRE(disp != nullptr);
+
+    {
+        ScopedResolution res(disp, screen_w, screen_h);
+        theme_manager_refresh_layout_constants(disp);
+
+        reset_material_temps_singleton();
+        MaterialSettingsManager::instance().clear_override("ABS");
+        set_capability("printer_has_chamber_heater", 1);
+        REQUIRE(lv_xml_register_component_from_file("A:ui_xml/material_temps_overlay.xml") ==
+                LV_RESULT_OK);
+
+        auto& overlay = helix::settings::get_material_temps_overlay();
+        overlay.show(lv_screen_active());
+        helix::ui::UpdateQueue::instance().drain();
+        overlay.handle_material_row_clicked("ABS");
+        lv_obj_update_layout(lv_screen_active());
+
+        lv_obj_t* chamber_input = find_widget("edit_chamber_temp");
+        REQUIRE(chamber_input != nullptr);
+        CHECK_FALSE(hidden(lv_obj_get_parent(chamber_input)));
+
+        // Checked per column, not just against the row's trailing edge: flex_grow
+        // divides the row evenly regardless of a child's own declared width, so a
+        // middle column can overhang while the row's own right edge still lines up.
+        for (const char* name :
+             {"edit_nozzle_min", "edit_nozzle_max", "edit_bed_temp", "edit_chamber_temp"}) {
+            lv_obj_t* input = find_widget(name);
+            REQUIRE(input != nullptr);
+            lv_obj_t* column = lv_obj_get_parent(input);
+            REQUIRE(column != nullptr);
+            INFO("input " << name);
+            CHECK(bounds_of(input).x2 <= bounds_of(column).x2);
+        }
+
+        MaterialSettingsManager::instance().clear_override("ABS");
+        reset_material_temps_singleton();
+    }
+    // Put the token table and breakpoint subject back where the rest of the
+    // suite expects them now that the display is restored.
+    theme_manager_refresh_layout_constants(disp);
+}
+
+} // namespace
+
+TEST_CASE_METHOD(XMLTestFixture, "Base layout row fits at TINY with a chamber heater",
+                 "[material_temps][chamber]") {
+    check_row_fits_at(480, 320);
+}
+
+TEST_CASE_METHOD(XMLTestFixture, "Base layout row fits at TINY_PORTRAIT with a chamber heater",
+                 "[material_temps][chamber]") {
+    check_row_fits_at(320, 480);
+}
+
 // The printer's cap is a send-time authority, not a database bound: a value
 // above the cap stores as entered, and TemperatureController clamps it where
 // a target is actually sent (prestonbrown/helixscreen#1615).
