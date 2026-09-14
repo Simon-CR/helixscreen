@@ -237,6 +237,49 @@ struct ChannelStateInfo {
     return info;
 }
 
+/// Retract from @p lane's declaring records each field the OverwriteAlways
+/// mirror has just restated into @p ovr, where a record names a different value.
+///
+/// The mirror hands every unlocked colour and material to firmware, and a
+/// LocalUser or Spoolman record naming another value for one of them outranks
+/// the reading this frame filed, so the screen would paint what the override no
+/// longer holds. A record that agrees with the override keeps its declaration:
+/// the mirror runs on every frame, and trimming on agreement would strip a
+/// linked spool's colour whenever firmware matches it. A disagreement is
+/// retracted whenever it is found, not only on a frame that moved the override,
+/// because the Spoolman poll re-files a spool's colour and material while the
+/// override already holds firmware's.
+void retract_declarations_the_mirror_restated(helix::ams::LaneId lane,
+                                              const helix::ams::FilamentSlotOverride& ovr) {
+    const helix::ams::LaneSources sources = helix::ams::lane_sources(lane);
+    const auto declares_other = [&sources](auto field, const auto& value) {
+        for (const auto* record : {&sources.local_user, &sources.spoolman}) {
+            if (record->has_value() && ((**record).*field).has_value() &&
+                *((**record).*field) != value) {
+                return true;
+            }
+        }
+        return false;
+    };
+    const bool color = !ovr.user_locked_color && ovr.color_set &&
+                       declares_other(&helix::ams::Observation::color_rgb, ovr.color_rgb);
+    const bool material = !ovr.user_locked_material &&
+                          declares_other(&helix::ams::Observation::material, ovr.material);
+    if (!color && !material) {
+        return;
+    }
+    helix::ams::retract_lane_declarations(lane, [color, material](helix::ams::Observation& kept) {
+        if (color) {
+            kept.color_rgb.reset();
+            // The name travels with the colour it names.
+            kept.color_name.reset();
+        }
+        if (material) {
+            kept.material.reset();
+        }
+    });
+}
+
 } // namespace
 
 // ============================================================================
@@ -1885,10 +1928,17 @@ void AmsBackendSnapmaker::handle_status_update(const nlohmann::json& notificatio
             // de-sync — accept that tradeoff in exchange for picking up external
             // edits on extension-enabled firmware. See mirror_firmware_to_lane_data
             // docs and AD5X IFS for the same pattern.
+            const bool slot_has_filament = slot->status == SlotStatus::AVAILABLE;
             helix::ams::mirror_firmware_to_lane_data(
                 override_store_.get(), overrides_, i, slot->color_rgb, slot->material,
-                slot->status == SlotStatus::AVAILABLE, helix::ams::MirrorPolicy::OverwriteAlways,
-                backend_log_tag());
+                slot_has_filament, helix::ams::MirrorPolicy::OverwriteAlways, backend_log_tag());
+            // The lane's declarations of what the mirror just rewrote go with it,
+            // or the paint below shows a value the override has stopped holding.
+            if (slot_has_filament) {
+                if (auto it = overrides_.find(i); it != overrides_.end()) {
+                    retract_declarations_the_mirror_restated(lane_id(i), it->second);
+                }
+            }
             apply_resolved_lane(*slot, i);
         }
 
