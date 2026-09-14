@@ -2348,14 +2348,14 @@ void FilamentPanel::handle_cooldown() {
         std::string default_gcode = "SET_HEATER_TEMPERATURE HEATER=extruder TARGET=0\n"
                                     "SET_HEATER_TEMPERATURE HEATER=heater_bed TARGET=0";
 
-        const auto& discovery = printer_state_.get_discovery();
-        if (discovery.has_chamber_heater()) {
-            char chamber_gcode[128];
-            if (helix::ui::temperature::build_heater_off_gcode(
-                    discovery.chamber_heater_name(), chamber_gcode, sizeof(chamber_gcode))) {
-                default_gcode += "\n";
-                default_gcode += chamber_gcode;
-            }
+        // The resolved chamber heater name is empty when the printer has none, and
+        // then no off command is built.
+        char chamber_gcode[128];
+        if (helix::ui::temperature::build_heater_off_gcode(
+                printer_state_.temperature_state().chamber_heater_name(), chamber_gcode,
+                sizeof(chamber_gcode))) {
+            default_gcode += "\n";
+            default_gcode += chamber_gcode;
         }
 
         // Use configured cooldown macro (user-overridable in settings.json)
@@ -2421,7 +2421,7 @@ void FilamentPanel::set_material(int material_id) {
     bed_target_ = mat->bed_temp;
 
     // Set chamber target from material preset (clear if material has no chamber requirement)
-    if (printer_state_.get_discovery().has_chamber_heater()) {
+    if (!printer_state_.temperature_state().chamber_heater_name().empty()) {
         chamber_target_ = mat->chamber_temp_c > 0
                               ? helix::ui::temperature::degrees_to_deci(mat->chamber_temp_c)
                               : 0;

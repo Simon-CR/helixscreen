@@ -6,6 +6,7 @@
 #include "../../include/heater_limits.h"
 #include "../../include/moonraker_client_mock.h"
 #include "../lvgl_test_fixture.h"
+#include "chamber_heater_assignment.h"
 #include "lvgl.h"
 #include "macro_param_cache.h"
 #include "moonraker_api.h"
@@ -473,18 +474,15 @@ TEST_CASE("Chamber assignment full round trip", "[chamber][integration]") {
     settings.set_chamber_sensor_assignment("temperature_sensor external_bme");
     settings.set_chamber_heater_assignment("heater_generic custom_heater");
 
-    // Resolve (same logic as PrinterState::set_hardware)
+    // Resolve as PrinterState::set_hardware does
     std::string sensor = settings.get_chamber_sensor_assignment();
     if (sensor == "auto")
         sensor = discovery.chamber_sensor_name();
     else if (sensor == "none")
         sensor = "";
 
-    std::string heater = settings.get_chamber_heater_assignment();
-    if (heater == "auto")
-        heater = discovery.chamber_heater_name();
-    else if (heater == "none")
-        heater = "";
+    const std::string heater =
+        helix::chamber::resolve_heater(settings.get_chamber_heater_assignment(), discovery);
 
     temp_state.set_chamber_sensor_name(sensor);
     temp_state.set_chamber_heater_name(heater);

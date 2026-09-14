@@ -55,6 +55,7 @@ The invariant: **vendor JSON schemas are translated to the generic `ChamberHeate
 | `src/printer/chamber_heater_backend_generic.cpp` | Generic keyword backend + the registry itself (`registry()`, `match()`, `backend_by_id()`) and the keyword-confidence tiers |
 | `src/printer/chamber_heater_backend_dragonbreath.cpp` | DragonBreath appliance backend: 24-field `dragonbreath` status parse, `DRAGONBREATH_RESET`, filter pin, 60°C conservative cap. Schema verified live on the U1 rig 2026-08 |
 | `src/printer/chamber_heater_backend_panda_breath.cpp` | Panda Breath backend: heater + 60°C ceiling only (schema not yet hardware-verified), documents stock Auto mode via `device_autonomous_control()` |
+| `include/chamber_heater_assignment.h` | `chamber::resolve_heater()`: the one rule for which chamber heater the printer has, given the "auto" / "none" / named-object assignment |
 | `include/printer_discovery.h` | `try_set_chamber_heater` lambda in `parse_objects()` — first registry consult, records backend id + diagnostics object + filter pin on discovery |
 | `src/api/moonraker_discovery_sequence.cpp` | Subscription-builder block adding the backend's diagnostics object + filter pin (`chamber::required_status_objects`) |
 | `src/printer/printer_temperature_state.cpp` | Diagnostics parse block: translates backend output to subjects; also owns all `chamber_heater_*` / `chamber_filter_fan_*` subject registration and display-string formatters |
@@ -98,6 +99,34 @@ The backend translates that schema to the generic struct. Vendor names appear **
 - Appliance backends claim their own names at **95** — they always beat the generic keyword tiers on the object that is actually theirs.
 - The generic backend carries the keyword tiers: `CHAMBER` 100 > `ENCLOSURE` 90 > `CAVITY` 85 > standalone `BOX` 60; -1 for compound names, -40 for air-quality tokens (`TVOC`, `CO2`, `HUMIDITY`, ...), floored at 1.
 - `try_set_chamber_heater` additionally breaks ties by object type: a settable `heater_generic` (weight 2) beats a `temperature_fan` (weight 1) at equal keyword confidence. The losing `temperature_fan` is still recorded as the **chamber cooling fan** so the integrated-style Maintaining readout works.
+
+### Which heater the printer has
+
+The chamber-heater assignment (`heaters/chamber` in the printer's settings, edited from Sensor
+settings and seeded by model presets before the wizard runs) is `"auto"`, `"none"`, or a Klipper
+object name. `chamber::resolve_heater()` (`include/chamber_heater_assignment.h`) is the only code
+that turns it into a heater:
+
+- `"auto"` takes the discovery pick; `"none"` means no chamber heater.
+- A named object counts only while Klipper reports it in its object list. A preset seeds its model
+  family's heater name, so a family member without that heater carries a name for hardware it
+  lacks; that name falls back to the discovery pick, whatever type it is, including a
+  chamber-named `temperature_fan`. A base K2 that reports `temperature_fan chamber_fan` and no
+  heater therefore gets a fan-driven chamber control, exactly as a K1C does; a printer with
+  neither a chamber heater nor a chamber fan resolves to no chamber heater.
+
+`PrinterState::set_hardware` publishes the result once per discovery as
+`temperature_state().chamber_heater_name()` and the `printer_has_chamber_heater` capability.
+Before discovery lands the capability is 0, and each later discovery re-resolves it, so it
+follows Klipper in both directions. Consumers read what was published and never discovery's pick:
+`TemperatureController::resolved_name()` refuses a chamber target when it is empty, the filament
+panel builds Cool Down and material chamber targets from it, and the material temps hint reads the
+same capability its chamber column binds.
+
+There is no macro-only chamber heater. `M141` is a transport for the resolved heater
+(`chamber_uses_m141()`), and chamber temperature and target are read from that heater's own status
+object, so every working chamber heater is a `heater_generic` or `temperature_fan` object Klipper
+reports.
 
 The matched backend id survives on `PrinterDiscovery` (`chamber_heater_backend_id()`) and is re-consulted in `PrinterState::set_hardware`: the diagnostics source and the action surface apply **only while the resolved chamber heater is the discovery pick** — a manual override to another heater (or "none") detaches both, and the actions revert to no-ops.
 

@@ -236,7 +236,8 @@ TEST_CASE("set_hardware wires diagnostics only when the resolved heater is the d
     auto& caps = helix::PrinterStateTestAccess::get_capabilities_state(state);
 
     helix::PrinterDiscovery hw;
-    nlohmann::json objects = {"heater_generic dragonbreath", "extruder", "heater_bed"};
+    nlohmann::json objects = {"heater_generic dragonbreath", "heater_generic ptc_heater",
+                              "extruder", "heater_bed"};
     hw.parse_objects(objects);
     REQUIRE(hw.chamber_heater_name() == "heater_generic dragonbreath");
     REQUIRE(hw.chamber_heater_backend_id() == "dragonbreath");
@@ -263,10 +264,10 @@ TEST_CASE("set_hardware wires diagnostics only when the resolved heater is the d
     }
 
     SECTION("manual override to a different heater detaches diagnostics") {
-        settings.set_chamber_heater_assignment("heater_generic chamber");
+        settings.set_chamber_heater_assignment("heater_generic ptc_heater");
         state.set_hardware(hw);
 
-        CHECK(ts.chamber_heater_name() == "heater_generic chamber");
+        CHECK(ts.chamber_heater_name() == "heater_generic ptc_heater");
         CHECK(ts.chamber_diagnostics_object().empty());
         CHECK(lv_subject_get_int(caps.get_printer_has_chamber_heater_diagnostics_subject()) == 0);
         CHECK(lv_subject_get_int(caps.get_printer_has_chamber_filter_fan_subject()) == 0);
