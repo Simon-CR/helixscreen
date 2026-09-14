@@ -197,11 +197,19 @@ HelixPluginInstaller::SyncInstallResult HelixPluginInstaller::install_local_sync
     return {false, lv_tr("Installation failed. Check logs for details.")};
 }
 
-void HelixPluginInstaller::uninstall_local(InstallCallback callback) {
+namespace {
+// install.sh's --uninstall / --uninstall-auto exit code for "the plugin was
+// removed, but a config file was skipped or failed during the phase-tracking
+// strip" (moonraker-plugin/install.sh, moonraker-plugin/strip_phase_tracking.py).
+constexpr int UNINSTALL_EXIT_NEEDS_ATTENTION = 2;
+} // namespace
+
+void HelixPluginInstaller::uninstall_local(UninstallCallback callback) {
     if (!is_local_moonraker()) {
         spdlog::warn("[PluginInstaller] Cannot auto-uninstall on remote Moonraker");
         if (callback) {
-            callback(false, lv_tr("Auto-uninstall only works on local Moonraker"));
+            callback(UninstallOutcome::FAILED,
+                     lv_tr("Auto-uninstall only works on local Moonraker"));
         }
         return;
     }
@@ -210,7 +218,7 @@ void HelixPluginInstaller::uninstall_local(InstallCallback callback) {
     if (script_path.empty()) {
         spdlog::warn("[PluginInstaller] Install script not found for uninstall");
         if (callback) {
-            callback(false, lv_tr("Uninstall script not found."));
+            callback(UninstallOutcome::FAILED, lv_tr("Uninstall script not found."));
         }
         return;
     }
@@ -228,7 +236,7 @@ void HelixPluginInstaller::uninstall_local(InstallCallback callback) {
         std::string err_msg = strerror(errno);
         spdlog::error("[PluginInstaller] Fork failed: {}", err_msg);
         if (callback) {
-            callback(false, lv_tr("Failed to start uninstaller: ") + err_msg);
+            callback(UninstallOutcome::FAILED, lv_tr("Failed to start uninstaller: ") + err_msg);
         }
         return;
     }
@@ -246,7 +254,8 @@ void HelixPluginInstaller::uninstall_local(InstallCallback callback) {
     if (result.timed_out) {
         state_.store(PluginInstallState::FAILED);
         if (callback) {
-            callback(false, lv_tr("Uninstallation timed out. The script may be stuck."));
+            callback(UninstallOutcome::FAILED,
+                     lv_tr("Uninstallation timed out. The script may be stuck."));
         }
         return;
     }
@@ -254,7 +263,8 @@ void HelixPluginInstaller::uninstall_local(InstallCallback callback) {
     if (result.error) {
         state_.store(PluginInstallState::FAILED);
         if (callback) {
-            callback(false, lv_tr("Uninstallation failed: ") + result.error_message);
+            callback(UninstallOutcome::FAILED,
+                     lv_tr("Uninstallation failed: ") + result.error_message);
         }
         return;
     }
@@ -263,13 +273,24 @@ void HelixPluginInstaller::uninstall_local(InstallCallback callback) {
         state_.store(PluginInstallState::SUCCESS);
         spdlog::info("[PluginInstaller] Uninstallation completed successfully");
         if (callback) {
-            callback(true, lv_tr("Plugin uninstalled successfully."));
+            callback(UninstallOutcome::SUCCESS, lv_tr("Plugin uninstalled successfully."));
+        }
+    } else if (result.exit_code == UNINSTALL_EXIT_NEEDS_ATTENTION) {
+        state_.store(PluginInstallState::NEEDS_ATTENTION);
+        spdlog::warn("[PluginInstaller] Uninstallation removed the plugin but left a config "
+                     "file needing attention (exit code {})",
+                     result.exit_code);
+        if (callback) {
+            callback(UninstallOutcome::NEEDS_ATTENTION,
+                     lv_tr("Plugin removed. A config file needs attention - check the "
+                           "HelixScreen log for details."));
         }
     } else {
         state_.store(PluginInstallState::FAILED);
         spdlog::error("[PluginInstaller] Uninstallation failed (exit code {})", result.exit_code);
         if (callback) {
-            callback(false, lv_tr("Uninstallation failed. Check logs for details."));
+            callback(UninstallOutcome::FAILED,
+                     lv_tr("Uninstallation failed. Check logs for details."));
         }
     }
 }

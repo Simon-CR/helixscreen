@@ -182,7 +182,7 @@ class AdvancedPanel : public PanelBase {
     /// What run_helix_plugin_uninstall() calls once the user has confirmed.
     /// Empty means the bundled installer's uninstall_local(); a test installs
     /// a recorder here so the confirm flow can be driven without forking.
-    using UninstallRunner = std::function<void(helix::HelixPluginInstaller::InstallCallback)>;
+    using UninstallRunner = std::function<void(helix::HelixPluginInstaller::UninstallCallback)>;
     UninstallRunner uninstall_runner_;
 
     //

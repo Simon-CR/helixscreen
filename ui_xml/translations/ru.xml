@@ -1935,6 +1935,7 @@
   <translation tag="Plugin installed successfully." ru="Плагин успешно установлен."/>
   <translation tag="Plugin installed successfully. Moonraker is restarting..." ru="Плагин успешно установлен. Moonraker перезапускается..."/>
   <translation tag="Plugin not responding after restart.&#10;It may need more time to load." ru="Плагин не отвечает после перезапуска.&#10;Возможно, ему нужно больше времени для загрузки."/>
+  <translation tag="Plugin removed. A config file needs attention - check the HelixScreen log for details."/>
   <translation tag="Plugin uninstalled successfully." ru="Плагин успешно удалён."/>
   <translation tag="Plugins" ru="Плагины"/>
   <translation tag="Plugins are discovered on application startup" ru="Плагины обнаруживаются при запуске приложения"/>
@@ -2758,6 +2759,7 @@
   <translation tag="This plugin lets HelixScreen control print start options like bed mesh and QGL. Once installed, use Configure PRINT_START below to enable optional steps." ru="Этот плагин позволяет HelixScreen управлять опциями начала печати, такими как сетка стола и QGL. После установки используйте «Настроить PRINT_START» ниже для включения опциональных шагов."/>
   <translation tag="This print needs about %.0fg but the spool has about %.0fg remaining. Start anyway?" ru="Для этой печати нужно около %.0fг, но на катушке осталось около %.0fг. Всё равно начать?"/>
   <translation tag="This printer looks like a {} ({}% confidence), but it is set up as a {}. A wrong type applies incorrect pre-print options and presets." ru="Этот принтер похож на {} (уверенность {}%), но настроен как {}. Неверный тип применяет неправильные параметры перед печатью и пресеты."/>
+  <translation tag="This removes the plugin&apos;s Moonraker component. If old phase-tracking lines are still in PRINT_START, they are removed too, with backups kept. A Klipper restart applies that."/>
   <translation tag="This removes the plugin&apos;s macros and its Moonraker component from the printer and restarts Klipper." ru="Удаляет макросы плагина и его компонент Moonraker с принтера и перезапускает Klipper."/>
   <translation tag="This replaces the printer&apos;s helper macros with the current version and restarts Klipper." ru="Это заменит вспомогательные макросы принтера текущей версией и перезапустит Klipper."/>
   <translation tag="This replaces the printer&apos;s helper macros with the current version. A print is running, so Klipper restarts after it finishes." ru="Это заменит вспомогательные макросы принтера текущей версией. Идёт печать, поэтому Klipper перезапустится после её завершения."/>

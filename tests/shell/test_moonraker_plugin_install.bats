@@ -227,11 +227,83 @@ setup_instrumented_home() {
     done
 
     run env HOME="$home" PATH="$no_py3" sh "$SCRIPT" --uninstall-auto
-    [ "$status" -eq 0 ]
+    # PRINT_START could not be checked at all, so this is "needs attention"
+    # (2), not full success - the plugin itself is still gone.
+    [ "$status" -eq 2 ]
     contains "python3 not found" "$output"
 
     # Nothing about PRINT_START was touched; only the symlink and
     # moonraker.conf section, which do not need python3, were removed.
     cmp -s "$before" "$home/printer_data/config/printer.cfg" \
         || fail "printer.cfg changed with no python3 available"
+}
+
+@test "auto_uninstall reports needs-attention when PRINT_START has an anomaly" {
+    local home="$BATS_TEST_TMPDIR/home"
+    setup_instrumented_home "$home"
+    local c="$home/printer_data/config"
+    # An unmatched BEGIN marker: strip_phase_tracking.py skips the file
+    # rather than failing, but it is not clean either.
+    printf '[gcode_macro PRINT_START]\ngcode:\n    G28\n    # <<< HELIX_TRACKING v2 >>>\n    HELIX_PHASE_HOMING\n' \
+        > "$c/printer.cfg"
+    local before="$BATS_TEST_TMPDIR/before_printer.cfg"
+    cp "$c/printer.cfg" "$before"
+
+    run env HOME="$home" sh "$SCRIPT" --uninstall-auto
+    [ "$status" -eq 2 ]
+    contains "next step" "$output"
+
+    [ ! -e "$home/moonraker/moonraker/components/helix_print.py" ]
+    cmp -s "$before" "$c/printer.cfg" || fail "the anomalous file was modified"
+}
+
+@test "interactive uninstall reports needs-attention when PRINT_START has an anomaly" {
+    local home="$BATS_TEST_TMPDIR/home"
+    setup_instrumented_home "$home"
+    local c="$home/printer_data/config"
+    printf '[gcode_macro PRINT_START]\ngcode:\n    G28\n    # <<< HELIX_TRACKING v2 >>>\n    HELIX_PHASE_HOMING\n' \
+        > "$c/printer.cfg"
+
+    run env HOME="$home" sh "$SCRIPT" --uninstall
+    [ "$status" -eq 2 ]
+    contains "next step" "$output"
+    [ ! -e "$home/moonraker/moonraker/components/helix_print.py" ]
+}
+
+@test "auto_uninstall reports needs-attention when the strip cannot write a file" {
+    [ "$(id -u)" -ne 0 ] || skip "running as root ignores the read-only mode"
+    local home="$BATS_TEST_TMPDIR/home"
+    setup_instrumented_home "$home"
+    local c="$home/printer_data/config"
+    # A second instrumented macro in a directory the strip cannot write to.
+    # Chmod is scoped to this subdirectory, not the whole config tree, so the
+    # top-level printer.cfg and moonraker.conf stay editable - only this
+    # file's backup step fails.
+    mkdir -p "$c/macros"
+    write_instrumented_printer_cfg "$c/macros/print_start.cfg"
+    chmod 0555 "$c/macros"
+
+    run env HOME="$home" sh "$SCRIPT" --uninstall-auto
+    chmod 0755 "$c/macros"  # restore so bats can clean up the tmpdir
+
+    [ "$status" -eq 2 ]
+    contains "failed to strip" "$output"
+    [ ! -e "$home/moonraker/moonraker/components/helix_print.py" ]
+}
+
+@test "interactive uninstall reports needs-attention when the strip cannot write a file" {
+    [ "$(id -u)" -ne 0 ] || skip "running as root ignores the read-only mode"
+    local home="$BATS_TEST_TMPDIR/home"
+    setup_instrumented_home "$home"
+    local c="$home/printer_data/config"
+    mkdir -p "$c/macros"
+    write_instrumented_printer_cfg "$c/macros/print_start.cfg"
+    chmod 0555 "$c/macros"
+
+    run env HOME="$home" sh "$SCRIPT" --uninstall
+    chmod 0755 "$c/macros"
+
+    [ "$status" -eq 2 ]
+    contains "failed to strip" "$output"
+    [ ! -e "$home/moonraker/moonraker/components/helix_print.py" ]
 }

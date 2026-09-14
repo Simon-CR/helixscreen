@@ -2147,6 +2147,7 @@ translations:
     sucesso. O Moonraker está reiniciando...
   ? "Plugin not responding after restart.\nIt may need more time to load."
   : "Plugin não responde após reinício.\nPode precisar de mais tempo para carregar."
+  Plugin removed. A config file needs attention - check the HelixScreen log for details.: ''
   Plugin uninstalled successfully.: Plugin desinstalado com sucesso.
   Plugins: Plugins
   Plugins are discovered on application startup: Plugins são descobertos na inicialização
@@ -3102,6 +3103,8 @@ translations:
     Iniciar mesmo assim?
   ? This printer looks like a {} ({}% confidence), but it is set up as a {}. A wrong type applies incorrect pre-print options and presets.
   : Esta impressora parece ser uma {} ({}% de confiança), mas está configurada como {}. Um tipo errado aplica opções de pré-impressão e predefinições incorretas.
+  ? This removes the plugin's Moonraker component. If old phase-tracking lines are still in PRINT_START, they are removed too, with backups kept. A Klipper restart applies that.
+  : ''
   This removes the plugin's macros and its Moonraker component from the printer and restarts Klipper.: Remove as macros do plugin e seu componente do Moonraker da impressora e reinicia o Klipper.
   This replaces the printer's helper macros with the current version and restarts Klipper.: 'Isto substitui as macros de ajuda da impressora pela versão atual e reinicia o Klipper.'
   ? This replaces the printer's helper macros with the current version. A print is running, so Klipper restarts after it finishes.

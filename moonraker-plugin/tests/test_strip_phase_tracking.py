@@ -93,7 +93,7 @@ class TestMarkerMatching:
         original = f"[gcode_macro PRINT_START]\ngcode:\n    G28\n    {BEGIN}\n    HELIX_PHASE_HOMING\n"
         write(cfg, original)
 
-        assert strip.main([str(tmp_path)]) == 0
+        assert strip.main([str(tmp_path)]) == strip.EXIT_NEEDS_ATTENTION
         assert read(cfg) == original
         assert list(tmp_path.iterdir()) == [cfg]
 
@@ -102,7 +102,7 @@ class TestMarkerMatching:
         original = f"[gcode_macro PRINT_START]\ngcode:\n    G28\n    HELIX_PHASE_HOMING\n    {END}\n"
         write(cfg, original)
 
-        assert strip.main([str(tmp_path)]) == 0
+        assert strip.main([str(tmp_path)]) == strip.EXIT_NEEDS_ATTENTION
         assert read(cfg) == original
 
     def test_nested_begin_is_left_untouched(self, tmp_path):
@@ -113,7 +113,7 @@ class TestMarkerMatching:
         )
         write(cfg, original)
 
-        assert strip.main([str(tmp_path)]) == 0
+        assert strip.main([str(tmp_path)]) == strip.EXIT_NEEDS_ATTENTION
         assert read(cfg) == original
 
     def test_a_count_balanced_hand_edit_is_caught_by_shape_not_just_counts(self, tmp_path):
@@ -134,7 +134,7 @@ class TestMarkerMatching:
         )
         write(cfg, original)
 
-        assert strip.main([str(tmp_path)]) == 0
+        assert strip.main([str(tmp_path)]) == strip.EXIT_NEEDS_ATTENTION
         assert read(cfg) == original
         assert not list(tmp_path.glob("*.bak.*"))
 
@@ -144,7 +144,7 @@ class TestMarkerMatching:
         original = "[printer]\nkinematics: corexy\n\n" + VALID_BLOCK + "\n[extruder]\nstep_pin: PA1\n"
         write(cfg, original)
 
-        assert strip.main([str(tmp_path)]) == 0
+        assert strip.main([str(tmp_path)]) == strip.EXIT_NEEDS_ATTENTION
         assert read(cfg) == original
 
     def test_a_block_of_the_wrong_length_is_left_untouched(self, tmp_path):
@@ -156,7 +156,7 @@ class TestMarkerMatching:
         )
         write(cfg, original)
 
-        assert strip.main([str(tmp_path)]) == 0
+        assert strip.main([str(tmp_path)]) == strip.EXIT_NEEDS_ATTENTION
         assert read(cfg) == original
 
     def test_a_block_calling_something_other_than_a_phase_macro_is_left_untouched(self, tmp_path):
@@ -164,7 +164,7 @@ class TestMarkerMatching:
         original = f"[gcode_macro PRINT_START]\ngcode:\n    {BEGIN}\n    G28\n    {END}\n"
         write(cfg, original)
 
-        assert strip.main([str(tmp_path)]) == 0
+        assert strip.main([str(tmp_path)]) == strip.EXIT_NEEDS_ATTENTION
         assert read(cfg) == original
 
     def test_crlf_markers_are_recognized_and_crlf_is_preserved(self, tmp_path):
@@ -732,7 +732,7 @@ class TestOutputContract:
         result = strip.main([str(tmp_path)])
         out = capsys.readouterr().out
 
-        assert result == 0
+        assert result == strip.EXIT_NEEDS_ATTENTION
         assert "edited 1, skipped 1, failed 0" in out
         assert str(edited) in out
         assert str(anomaly) in out

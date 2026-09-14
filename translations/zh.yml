@@ -1984,6 +1984,7 @@ translations:
   Plugin installed successfully. Moonraker is restarting...: 插件安装成功。Moonraker 正在重启...
   ? "Plugin not responding after restart.\nIt may need more time to load."
   : "重启后插件无响应。\n可能需要更多时间加载。"
+  Plugin removed. A config file needs attention - check the HelixScreen log for details.: ''
   Plugin uninstalled successfully.: 插件卸载成功。
   Plugins: 插件
   Plugins are discovered on application startup: 插件在应用程序启动时被发现
@@ -2844,6 +2845,8 @@ translations:
     %.0fg，但料盘仅剩约 %.0fg。仍要开始吗？
   ? This printer looks like a {} ({}% confidence), but it is set up as a {}. A wrong type applies incorrect pre-print options and presets.
   : 此打印机看起来是 {}（置信度 {}%），但当前设置为 {}。错误的类型会应用不正确的打印前选项和预设。
+  ? This removes the plugin's Moonraker component. If old phase-tracking lines are still in PRINT_START, they are removed too, with backups kept. A Klipper restart applies that.
+  : ''
   This removes the plugin's macros and its Moonraker component from the printer and restarts Klipper.: 从打印机移除插件的宏及其 Moonraker 组件，并重启 Klipper。
   This replaces the printer's helper macros with the current version and restarts Klipper.: '这会将打印机的帮助宏替换为当前版本并重启 Klipper。'
   ? This replaces the printer's helper macros with the current version. A print is running, so Klipper restarts after it finishes.

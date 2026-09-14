@@ -1935,6 +1935,7 @@
   <translation tag="Plugin installed successfully." ja="プラグインが正常にインストールされました。"/>
   <translation tag="Plugin installed successfully. Moonraker is restarting..." ja="プラグインが正常にインストールされました。Moonraker を再起動中..."/>
   <translation tag="Plugin not responding after restart.&#10;It may need more time to load." ja="再起動後にプラグインが応答しません。&#10;読み込みに時間がかかる場合があります。"/>
+  <translation tag="Plugin removed. A config file needs attention - check the HelixScreen log for details."/>
   <translation tag="Plugin uninstalled successfully." ja="プラグインが正常にアンインストールされました。"/>
   <translation tag="Plugins" ja="プラグイン"/>
   <translation tag="Plugins are discovered on application startup" ja="プラグインはアプリケーション起動時に検出されます"/>
@@ -2758,6 +2759,7 @@
   <translation tag="This plugin lets HelixScreen control print start options like bed mesh and QGL. Once installed, use Configure PRINT_START below to enable optional steps." ja="このプラグインにより、HelixScreen がベッドメッシュや QGL などの印刷開始オプションを制御できます。インストール後、以下の「PRINT_START を設定」を使用してオプションの手順を有効にしてください。"/>
   <translation tag="This print needs about %.0fg but the spool has about %.0fg remaining. Start anyway?" ja="この印刷には約 %.0fg 必要ですが、スプールの残量は約 %.0fg です。それでも開始しますか？"/>
   <translation tag="This printer looks like a {} ({}% confidence), but it is set up as a {}. A wrong type applies incorrect pre-print options and presets." ja="このプリンターは {} のようです（信頼度 {}%）が、{} として設定されています。誤ったタイプでは不正確な印刷前オプションとプリセットが適用されます。"/>
+  <translation tag="This removes the plugin&apos;s Moonraker component. If old phase-tracking lines are still in PRINT_START, they are removed too, with backups kept. A Klipper restart applies that."/>
   <translation tag="This removes the plugin&apos;s macros and its Moonraker component from the printer and restarts Klipper." ja="プラグインのマクロと Moonraker コンポーネントをプリンターから削除し、Klipper を再起動します。"/>
   <translation tag="This replaces the printer&apos;s helper macros with the current version and restarts Klipper." ja="プリンターのヘルパーマクロを現在のバージョンに置き換え、Klipper を再起動します。"/>
   <translation tag="This replaces the printer&apos;s helper macros with the current version. A print is running, so Klipper restarts after it finishes." ja="プリンターのヘルパーマクロを現在のバージョンに置き換えます。印刷中のため、Klipper は印刷完了後に再起動されます。"/>

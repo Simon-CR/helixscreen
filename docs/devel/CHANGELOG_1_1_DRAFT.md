@@ -168,7 +168,10 @@ what gets saved.
   `<file>.bak.<YYYYMMDD_HHMMSS>` first; the edit takes effect at the next Klipper restart.
   A printer instrumented by v0.99.111 or earlier may still carry a duplicated PRINT_START
   tail from that older writer; restoring its own `<stem>.bak.<epoch>` backup undoes that
-  part, but discards every config change made after that backup was written.
+  part, but discards every config change made after that backup was written. The app's
+  Uninstall row now tells the three outcomes apart instead of always reporting success: a
+  clean removal, a removal that left a config file needing a manual look, and an outright
+  failure.
 
 ### Fixed
 

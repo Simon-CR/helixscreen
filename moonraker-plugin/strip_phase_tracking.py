@@ -16,8 +16,10 @@ and the reason are reported. Nothing here restarts Klipper - the caller is
 told the edit takes effect at the next restart.
 
 Usage: strip_phase_tracking.py CONFIG_DIR
-Exit status: 0 if no file's edit failed (files may still have been skipped
-as anomalous - that is not a failure), 1 if any file's edit failed.
+Exit status: 0 if every file was clean or fully stripped; 2 if nothing
+failed but at least one file was skipped (an anomaly, or a concurrent
+change) and needs a human to look at it; 1 if any file's edit failed
+outright.
 """
 
 import argparse
@@ -31,6 +33,14 @@ import time
 
 TRACKING_MARKER_BEGIN = b"# <<< HELIX_TRACKING v2 >>>"
 TRACKING_MARKER_END = b"# <<< /HELIX_TRACKING >>>"
+
+# main()'s exit status: install.sh's uninstall paths wire this straight
+# through into their own exit code, so a caller two layers up (the
+# HelixScreen app) can tell "nothing left to clean" from "something here
+# needs a human" without re-deriving it from the printed summary.
+EXIT_OK = 0
+EXIT_FAILED = 1
+EXIT_NEEDS_ATTENTION = 2
 
 # The only line _instrument_gcode ever wrote between the markers: a bare
 # HELIX_PHASE_* or HELIX_READY call, no arguments.
@@ -457,7 +467,11 @@ def main(argv):
     print(f"INFO: phase-tracking strip summary: edited {len(edited)}, "
           f"skipped {len(skipped)}, failed {len(failed)}")
 
-    return 1 if failed else 0
+    if failed:
+        return EXIT_FAILED
+    if skipped:
+        return EXIT_NEEDS_ATTENTION
+    return EXIT_OK
 
 
 if __name__ == "__main__":
