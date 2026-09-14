@@ -790,6 +790,24 @@ class AmsBackendAd5xIfs : public AmsSubscriptionBackend {
     // is what resolve() paints from and it outranks the vendor cache: a release
     // that reached only overrides_ would go on showing the colour and material
     // the user has stopped declaring (#1646).
+    /// Which of the firmware-owned fields a lane has stopped declaring.
+    struct RetractedFields {
+        bool color = false; ///< color_rgb, and the colour name that travels with it.
+        bool material = false;
+        bool catalog = false; ///< The catalog pick, which is scoped to a material.
+    };
+    // Retract a lane's stored declaration of the fields named in @p fields,
+    // leaving every other field of those records standing. Both sources that
+    // can declare are amended, because either can hold a value outranking the
+    // vendor cache this frame filed, so a change reaching overrides_ alone
+    // leaves resolve() painting what the record no longer says (#1646, #1654).
+    // The store has no partial retraction, so this composes one: reading a
+    // record, dropping it and re-filing it through that source's own funnel
+    // leaves the remaining declaration exactly as strong as it was, and a
+    // retraction with nothing left to declare files nothing at all.
+    // Caller holds mutex_.
+    void retract_lane_declaration_locked(int slot_index, RetractedFields fields);
+
     /// What a lock release does with the firmware-carryable values themselves.
     enum class ReleasedValues {
         Strip, ///< Clear them, so firmware truth shows through on this frame.

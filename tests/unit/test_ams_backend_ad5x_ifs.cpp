@@ -8207,6 +8207,51 @@ TEST_CASE("AD5X IFS external CHANGE_ZCOLOR with no identity to keep clears both 
     CHECK(after.material == "PLA");
 }
 
+TEST_CASE("AD5X IFS a bare CHANGE_ZCOLOR retracts the lane with no firmware mirror behind it",
+          "[ams][ad5x_ifs][981]") {
+    // A CHANGE_ZCOLOR carrying no TYPE= and no HEX= writes nothing into the
+    // firmware arrays, so no baseline moves and no firmware-truth mirror runs
+    // after the release. The release's own retraction is the only thing that
+    // reaches the lane on this path, which is what makes this the case that
+    // measures it.
+    helix::test::RegisteredBackend<TestableAd5xIfsBackend> backend_reg;
+    auto& backend = *backend_reg;
+    Ad5xIfsTestAccess::set_running(backend, true);
+    Ad5xIfsTestAccess::set_zcolor_supported(backend, false);
+
+    Ad5xIfsTestAccess::set_port_presence(backend, 0, true);
+    Ad5xIfsTestAccess::set_color(backend, 0, "898989");
+    Ad5xIfsTestAccess::set_material(backend, 0, "PETG");
+
+    // A brand, so the release retains the identity rather than erasing the
+    // record: the erase resets the whole lane and would prove nothing about a
+    // retraction.
+    SlotInfo edit = backend.get_slot_info(0);
+    edit.color_rgb = 0xFFFFFF;
+    edit.material = "SILK";
+    edit.brand = "Sunlu";
+    helix::test::edit_slot_as_user(backend, 0, edit);
+    REQUIRE(backend.get_slot_info(0).color_rgb == 0xFFFFFFu);
+
+    REQUIRE_FALSE(Ad5xIfsTestAccess::on_gcode_response_line(backend, "CHANGE_ZCOLOR SLOT=1"));
+
+    const helix::ams::LaneSources sources = helix::ams::lane_sources(backend_reg.lane(0));
+    REQUIRE(sources.local_user.has_value());
+    CHECK_FALSE(sources.local_user->color_rgb.has_value());
+    CHECK_FALSE(sources.local_user->material.has_value());
+    CHECK(sources.local_user->brand == "Sunlu");
+
+    // The override loses the same two fields, so the two stores agree on what
+    // is no longer declared. What the lane PAINTS is not asserted here: a bare
+    // CHANGE_ZCOLOR writes nothing into colors_/materials_, so the refresh
+    // arrives with the GET_ZCOLOR poll this line schedules, not with the edit.
+    const auto staged = Ad5xIfsTestAccess::get_override(backend, 0);
+    REQUIRE(staged.has_value());
+    CHECK_FALSE(staged->color_set);
+    CHECK(staged->material.empty());
+    CHECK(staged->brand == "Sunlu");
+}
+
 TEST_CASE("AD5X IFS a firmware frame that releases nothing leaves the user's colour winning",
           "[ams][ad5x_ifs][981]") {
     // The counterweight to the two above. Only a deliberate CHANGE_ZCOLOR

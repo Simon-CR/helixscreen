@@ -1482,6 +1482,22 @@ bool AmsBackendAd5xIfs::sync_override_to_firmware_locked(int slot_index, uint32_
     bool changed = helix::ams::mirror_firmware_to_lane_data(
         override_store_.get(), overrides_, slot_index, firmware_color, firmware_material,
         /*slot_has_filament=*/true, helix::ams::MirrorPolicy::OverwriteAlways, backend_log_tag());
+
+    // The lane's stored declaration of what the mirror just rewrote goes with
+    // it, or the two stores disagree and the stronger record paints a value the
+    // override has stopped holding. Exactly the fields the OverwriteAlways
+    // mirror rewrites: a locked field is the user still standing behind their
+    // choice, the mirror skips it, and firmware does not get to retract it.
+    //
+    // Not gated on `changed`, which says the override needed moving. The lane
+    // is a separate store and can be stale on its own, and this path runs only
+    // where firmware has deliberately restated the field.
+    auto it = overrides_.find(slot_index);
+    RetractedFields restated;
+    restated.color = it == overrides_.end() || !it->second.user_locked_color;
+    restated.material = it == overrides_.end() || !it->second.user_locked_material;
+    retract_lane_declaration_locked(slot_index, restated);
+
     if (!changed)
         return false;
 
@@ -1534,6 +1550,48 @@ void AmsBackendAd5xIfs::clear_override_locked(int slot_index, SlotInfo& slot) {
     }
 }
 
+void AmsBackendAd5xIfs::retract_lane_declaration_locked(int slot_index, RetractedFields fields) {
+    // Caller holds mutex_. See the header for why both stores have to move
+    // together and why this composes a retraction rather than dropping one.
+    if (!fields.color && !fields.material && !fields.catalog) {
+        return;
+    }
+    const helix::ams::LaneId lane = lane_id(slot_index);
+    const helix::ams::LaneSources sources = helix::ams::lane_sources(lane);
+
+    const auto trim = [&fields](helix::ams::Observation& kept) {
+        if (fields.color) {
+            kept.color_rgb.reset();
+            // The name travels with the colour it names: a swatch labelled
+            // with a different colour's name contradicts itself.
+            kept.color_name.reset();
+        }
+        if (fields.material) {
+            kept.material.reset();
+        }
+        if (fields.catalog) {
+            kept.catalog_id.reset();
+            kept.product_name.reset();
+        }
+    };
+
+    if (sources.local_user.has_value()) {
+        helix::ams::Observation kept = *sources.local_user;
+        trim(kept);
+        // Dropped and re-filed, because commit_slot_edit amends: filing the
+        // trimmed record onto the standing one would restore what it just
+        // removed.
+        helix::ams::drop_lane_source(lane, helix::ams::ObservationSource::LocalUser);
+        helix::ams::commit_slot_edit(lane, kept);
+    }
+    if (sources.spoolman.has_value()) {
+        helix::ams::Observation kept = *sources.spoolman;
+        trim(kept);
+        // ingest replaces a source's record whole, so no drop is needed here.
+        helix::ams::ingest(lane, kept);
+    }
+}
+
 void AmsBackendAd5xIfs::release_color_material_locks_locked(int slot_index,
                                                             helix::ams::FilamentSlotOverride& ovr,
                                                             ReleasedValues disposition) {
@@ -1559,30 +1617,16 @@ void AmsBackendAd5xIfs::release_color_material_locks_locked(int slot_index,
         ovr.product_name.clear();
     }
 
-    // The lane's own record is trimmed to match, whatever the disposition: the
-    // values kept above are the mirror's to refresh, and a LocalUser record
-    // outranks the vendor cache the mirror feeds. The store has no partial
-    // retraction, so this composes one from what it does have. Reading the
-    // user's record, dropping it and re-filing it through the funnel an edit
-    // uses leaves the remaining declaration exactly as strong as it was: an
-    // amendment onto a record that is gone is that record, and a retraction
-    // with nothing left to declare files nothing at all.
-    const helix::ams::LaneId lane = lane_id(slot_index);
-    const helix::ams::LaneSources sources = helix::ams::lane_sources(lane);
-    if (sources.local_user.has_value()) {
-        helix::ams::Observation kept = *sources.local_user;
-        kept.color_rgb.reset();
-        kept.color_name.reset();
-        kept.material.reset();
-        if (disposition == ReleasedValues::Strip) {
-            // The catalog pick goes with the material it is scoped to, for the
-            // same reason it goes from the override above.
-            kept.catalog_id.reset();
-            kept.product_name.reset();
-        }
-        helix::ams::drop_lane_source(lane, helix::ams::ObservationSource::LocalUser);
-        helix::ams::commit_slot_edit(lane, kept);
-    }
+    // The lane's own records are trimmed to match, whatever the disposition:
+    // the values Keep leaves standing are the mirror's to refresh, and a
+    // declaring record outranks the vendor cache the mirror feeds.
+    RetractedFields released;
+    released.color = true;
+    released.material = true;
+    // The catalog pick goes with the material it is scoped to, for the same
+    // reason it goes from the override above.
+    released.catalog = disposition == ReleasedValues::Strip;
+    retract_lane_declaration_locked(slot_index, released);
 
     // Persist so a restart reloads the released record rather than the locked
     // one. Capture by value: the callback can fire long after this returns.
