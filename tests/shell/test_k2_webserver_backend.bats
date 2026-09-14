@@ -3,9 +3,9 @@
 #
 # The K2 web-server carve-out (prestonbrown/helixscreen#1617). hooks-k2.sh
 # spares web-server from its kill list but also runs `/etc/init.d/app
-# disable` — and on this Tina/procd box that stop+disable takes a RUNNING
-# web-server down with it, while procd's boot iterator never dispatches a
-# sibling S99 script. Liveness is therefore the hook's job:
+# stop` — and on this Tina/procd box that stop takes a RUNNING web-server
+# down with it (killall -9 in the stock app's stop_service; `disable` only
+# removes rc.d links). Liveness is therefore the hook's job:
 # platform_stop_competing_uis restores web-server at its end, via the
 # /etc/init.d/helix-k2-webserver rc.common script we install (manual and
 # service semantics, plus a belt-and-braces boot entry).
@@ -18,6 +18,7 @@ UNINSTALL_MODULE="$WORKTREE_ROOT/scripts/lib/installer/uninstall.sh"
 UNINSTALL_BUNDLE="$WORKTREE_ROOT/scripts/uninstall.sh"
 CROSSMK="$WORKTREE_ROOT/mk/cross.mk"
 INIT_SRC="$WORKTREE_ROOT/config/k2-webserver.init"
+SHIM_SRC="$WORKTREE_ROOT/config/helixscreen-k2-procd-shim.sh"
 BACKEND_INIT="/etc/init.d/helix-k2-webserver"
 
 setup() {
@@ -62,8 +63,11 @@ setup() {
 
 # Minimal stand-in for OpenWrt's rc.common: source the service script and
 # dispatch the action, plus the enable/disable symlink handling the boot
-# iterator depends on. START is hardcoded to 99 the way the real one reads
-# it from the script's START= line.
+# iterator depends on. enable makes S${START}name + K${STOP}name with both
+# slots read from the target script's own directives (the convention
+# measured on the device), disable rm's the S??/K?? entries in any slot,
+# and enable exits 0 when at least one link was made — the partial-enable
+# trap the installer verifies against.
 #
 # stop and disable also kill the service's tracked instances, modeling
 # Tina/procd, where /etc/init.d/app stop+disable take a running web-server
@@ -90,12 +94,13 @@ kill_instances() {
 case "\$action" in
     enable)
         mkdir -p "$MOCK_ROOT/etc/rc.d"
-        ln -sfn "../init.d/\$name" "$MOCK_ROOT/etc/rc.d/S99\$name"
-        ln -sfn "../init.d/\$name" "$MOCK_ROOT/etc/rc.d/K01\$name"
+        [ -n "\$START" ] && ln -sfn "../init.d/\$name" "$MOCK_ROOT/etc/rc.d/S\$START\$name"
+        [ -n "\$STOP" ] && ln -sfn "../init.d/\$name" "$MOCK_ROOT/etc/rc.d/K\$STOP\$name"
+        exit 0
         ;;
     disable)
         kill_instances
-        rm -f "$MOCK_ROOT/etc/rc.d/S99\$name" "$MOCK_ROOT/etc/rc.d/K01\$name"
+        rm -f "$MOCK_ROOT"/etc/rc.d/S??"\$name" "$MOCK_ROOT"/etc/rc.d/K??"\$name"
         ;;
     *)
         [ "\$action" = "stop" ] && kill_instances
@@ -112,15 +117,24 @@ extract_k2_kill_list() {
     tr '\n' ' ' < "$1" | sed 's/.*for proc in //; s/; do.*//; s/\\//g; s/  */ /g; s/ $//'
 }
 
+# Repoint an rc.common script's shebang at the fake rc.common, so a file
+# written with the device spelling executes on the test host (which has no
+# /etc/rc.common).
+repoint_rc_common_shebang() {
+    sed -i "s|#!/bin/sh /etc/rc.common|#!/bin/sh $MOCK_ROOT/etc/rc.common|" "$1"
+}
+
 # A redirected copy of the shipped init script: the shebang points at the
 # fake rc.common, every absolute path it touches lands under MOCK_ROOT, and
 # the PATH hardening is dropped so mocked pidof on the test PATH wins.
 redirected_init_script() {
-    sed -e "s|#!/bin/sh /etc/rc.common|#!/bin/sh $MOCK_ROOT/etc/rc.common|" \
-        -e "s|/usr/sbin:/usr/bin:/sbin:/bin:||" \
+    local out="$BATS_TEST_TMPDIR/k2-webserver.init.redirected"
+    sed -e "s|/usr/sbin:/usr/bin:/sbin:/bin:||" \
         -e "s|/usr/bin/web-server|$MOCK_ROOT/usr/bin/web-server|g" \
         -e "s|/var/run/helix-k2-webserver.pid|$MOCK_ROOT/var/run/helix-k2-webserver.pid|g" \
-        "$INIT_SRC"
+        "$INIT_SRC" > "$out"
+    repoint_rc_common_shebang "$out"
+    cat "$out"
 }
 
 # A fake web-server that records its launch, notes its pid, and stays alive
@@ -195,11 +209,21 @@ run_hook_stop_competing_uis() {
     platform_stop_competing_uis
 }
 
-# An executable stock app service in the mock root.
+# An executable stock app service in the mock root. START/STOP mirror the
+# stock script's own directives: enabling it on the device produces both
+# S99app and K01app.
 write_stock_app_service() {
-    printf '#!/bin/sh /etc/rc.common\nSTART=99\nDEPEND=done\n' > "$MOCK_ROOT/etc/init.d/app"
+    printf '#!/bin/sh /etc/rc.common\nSTART=99\nSTOP=01\nDEPEND=done\n' > "$MOCK_ROOT/etc/init.d/app"
     chmod +x "$MOCK_ROOT/etc/init.d/app"
-    sed -i "s|#!/bin/sh /etc/rc.common|#!/bin/sh $MOCK_ROOT/etc/rc.common|" "$MOCK_ROOT/etc/init.d/app"
+    repoint_rc_common_shebang "$MOCK_ROOT/etc/init.d/app"
+}
+
+# The shim asset staged where install_procd_shim_k2 looks for it, its
+# shebang repointed at the fake rc.common the way a deployed /etc/init.d
+# script resolves on the device.
+write_shim_source() {
+    cp "$SHIM_SRC" "$INSTALL_DIR/config/helixscreen-k2-procd-shim.sh"
+    repoint_rc_common_shebang "$INSTALL_DIR/config/helixscreen-k2-procd-shim.sh"
 }
 
 # --- the runtime hook: what stays killed and what is spared ---
@@ -352,8 +376,10 @@ write_stock_app_service() {
     local dest="$MOCK_ROOT/etc/init.d/helix-k2-webserver"
     [ -x "$dest" ]
     grep -qF "sysv-created:$dest" "$DISABLED_SERVICES_FILE"
-    # Enabled: the boot symlink the procd iterator needs, verified by link.
+    # Enabled: both boot links verified by target — the S link boots it,
+    # the K link is the shutdown half of the pair rc.common makes.
     [ "$(readlink "$MOCK_ROOT/etc/rc.d/S99helix-k2-webserver")" = "../init.d/helix-k2-webserver" ]
+    [ "$(readlink "$MOCK_ROOT/etc/rc.d/K01helix-k2-webserver")" = "../init.d/helix-k2-webserver" ]
     # Started within the install: the fake binary recorded its launch.
     grep -q "launched web-server" "$BATS_TEST_TMPDIR/servers.log"
 }
@@ -403,6 +429,129 @@ write_stock_app_service() {
             if ($0 ~ /\|\|/) ok=1
             else if ((getline nxt) > 0 && nxt ~ /log_warn/) ok=1
          } END { exit !ok }' "$MAIN_MODULE"
+}
+
+@test "k2 install: a partial enable without the K01 link fails the carve-out" {
+    write_fake_webserver
+    write_stock_app_service
+    redirected_init_script > "$INSTALL_DIR/config/k2-webserver.init"
+    mock_command_script "pidof" "exit 1"
+
+    # rc.common's enable exits 0 when at least ONE link was made; with the
+    # K-link line gone it makes only the S link and still reports success.
+    sed -i '\|ln -sfn.*rc\.d/K|d' "$MOCK_ROOT/etc/rc.common"
+
+    run install_k2_webserver_backend k2
+    [ "$status" -eq 1 ]
+    # Precondition reached: the S half of the pair exists, so the failure
+    # below is specifically the missing K half.
+    [ "$(readlink "$MOCK_ROOT/etc/rc.d/S99helix-k2-webserver")" = "../init.d/helix-k2-webserver" ]
+    grep -q "ERROR.*K01helix-k2-webserver" "$BATS_TEST_TMPDIR/log"
+    grep -q "Manual fix:.*helix-k2-webserver enable" "$BATS_TEST_TMPDIR/log"
+    # The ledger entry precedes the enable, and the explicit start is
+    # never reached once verification failed.
+    grep -qF "sysv-created:$MOCK_ROOT/etc/init.d/helix-k2-webserver" "$DISABLED_SERVICES_FILE"
+    [ ! -f "$BATS_TEST_TMPDIR/servers.log" ]
+}
+
+@test "k2 install: quoted or commented START/STOP directives still verify" {
+    write_fake_webserver
+    write_stock_app_service
+    local src="$INSTALL_DIR/config/k2-webserver.init"
+    {
+        printf '#!/bin/sh /etc/rc.common\n'
+        printf 'START="99" # boot slot\n'
+        printf 'STOP="01" # shutdown half\n'
+        printf 'start() { :; }\n'
+    } > "$src"
+    repoint_rc_common_shebang "$src"
+
+    run install_k2_webserver_backend k2
+    [ "$status" -eq 0 ]
+    [ "$(readlink "$MOCK_ROOT/etc/rc.d/S99helix-k2-webserver")" = "../init.d/helix-k2-webserver" ]
+    [ "$(readlink "$MOCK_ROOT/etc/rc.d/K01helix-k2-webserver")" = "../init.d/helix-k2-webserver" ]
+}
+
+@test "k2 install: a carve-out copy failure warns and skips without touching the ledger" {
+    write_stock_app_service
+    redirected_init_script > "$INSTALL_DIR/config/k2-webserver.init"
+    # No write permission into init.d: the copy cannot land.
+    chmod 555 "$MOCK_ROOT/etc/init.d"
+
+    run install_k2_webserver_backend k2
+    [ "$status" -eq 0 ]
+    grep -q "WARN.*Could not install" "$BATS_TEST_TMPDIR/log"
+    # No ledger entry for a file that was never written, and no boot links.
+    [ ! -f "$DISABLED_SERVICES_FILE" ]
+    [ ! -e "$MOCK_ROOT/etc/rc.d/S99helix-k2-webserver" ]
+    # Restore the mode so bats can reap this test's tmpdir.
+    chmod 755 "$MOCK_ROOT/etc/init.d"
+}
+
+# --- install_procd_shim_k2 ---
+
+@test "k2 shim install: enables and verifies both rc.d boot links" {
+    write_shim_source
+    # A stale link in a different S-slot from an older install must be
+    # dropped, not left beside the fresh entry.
+    ln -s ../init.d/helixscreen "$MOCK_ROOT/etc/rc.d/S50helixscreen"
+
+    run install_procd_shim_k2
+    [ "$status" -eq 0 ]
+    [ -x "$MOCK_ROOT/etc/init.d/helixscreen" ]
+    [ "$(readlink "$MOCK_ROOT/etc/rc.d/S99helixscreen")" = "../init.d/helixscreen" ]
+    [ "$(readlink "$MOCK_ROOT/etc/rc.d/K01helixscreen")" = "../init.d/helixscreen" ]
+    [ ! -e "$MOCK_ROOT/etc/rc.d/S50helixscreen" ]
+}
+
+@test "k2 shim install: a partial enable without the S99 link fails loudly" {
+    write_shim_source
+
+    # enable exits 0 having made only the K link — the trap the link
+    # verification closes.
+    sed -i '\|ln -sfn.*rc\.d/S|d' "$MOCK_ROOT/etc/rc.common"
+
+    run install_procd_shim_k2
+    [ "$status" -ne 0 ]
+    grep -q "ERROR.*S99helixscreen" "$BATS_TEST_TMPDIR/log"
+    grep -q "Manual fix:.*init\.d/helixscreen enable" "$BATS_TEST_TMPDIR/log"
+}
+
+@test "k2 shim install: a verification failure warns instead of aborting the install" {
+    # install_service calls the shim installer after the stock UI is
+    # stopped and before anything of ours starts, so an unguarded failure
+    # under set -eu would leave the device with no UI at all — worse than
+    # the incomplete boot entry it detected.
+    awk '$0 ~ /install_procd_shim_k2 \|\|/ { ok = 1 } END { exit !ok }' "$MODULE"
+}
+
+# --- the shared rc.d helpers ---
+
+@test "k2 rc.d helper: is_rc_common_script accepts an rc.common shebang" {
+    # The setup patches the module's /etc/rc.common references onto the
+    # mock root, so the probe carries the repointed shebang like every
+    # other rc.common fixture here.
+    printf '#!/bin/sh /etc/rc.common\nSTART=99\n' > "$MOCK_ROOT/etc/init.d/rcd-probe"
+    repoint_rc_common_shebang "$MOCK_ROOT/etc/init.d/rcd-probe"
+    is_rc_common_script "$MOCK_ROOT/etc/init.d/rcd-probe"
+}
+
+@test "k2 rc.d helper: is_rc_common_script rejects a plain sh script" {
+    # The rc.common mention sits below the shebang: only a first-line check
+    # may reject this file.
+    printf '#!/bin/sh\n# dispatched via /etc/rc.common at boot\n' > "$MOCK_ROOT/etc/init.d/rcd-probe"
+    refute is_rc_common_script "$MOCK_ROOT/etc/init.d/rcd-probe"
+}
+
+@test "k2 rc.d helper: is_rc_common_script rejects a missing file" {
+    refute is_rc_common_script "$MOCK_ROOT/etc/init.d/absent-probe"
+}
+
+@test "k2 rc.d helper: is_rc_common_script rejects an empty file" {
+    # An empty first line is not a shebang; treating one as rc.common
+    # would route a plain script into rc.common's disable path.
+    : > "$MOCK_ROOT/etc/init.d/rcd-probe"
+    refute is_rc_common_script "$MOCK_ROOT/etc/init.d/rcd-probe"
 }
 
 # --- the dev deploy path ---
@@ -500,12 +649,12 @@ write_stock_app_service() {
 
 # --- liveness is the hook's job ---
 #
-# On Tina/procd, /etc/init.d/app stop+disable inside
-# platform_stop_competing_uis take a running web-server down, and procd's
-# boot iterator never dispatches S99helix-k2-webserver while it dispatches
-# S99helixscreen fine. So the carve-out's liveness must be restored at the
-# END of the hook path — the one path that runs at every boot and every
-# service restart.
+# On Tina/procd, /etc/init.d/app stop inside platform_stop_competing_uis
+# takes a running web-server down (killall -9 in the stock stop_service;
+# `disable` only removes rc.d links). Boot dispatch of the carve-out's own
+# rc.d entry is neither asserted nor relied on, so the carve-out's liveness
+# must be restored at the END of the hook path — the one path that runs at
+# every boot and every service restart.
 
 @test "k2 hook: a service start with web-server running leaves the carve-out serving" {
     write_fake_webserver

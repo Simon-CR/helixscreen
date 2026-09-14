@@ -180,8 +180,7 @@ reenable_disabled_services() {
                 # boot symlinks outlive the script they point at.
                 if [ -f "$target" ]; then
                     log_info "Removing HelixScreen init script: $target"
-                    if [ -x /etc/rc.common ] && \
-                       awk 'NR==1 {exit !/\/etc\/rc\.common/}' "$target" 2>/dev/null; then
+                    if [ -x /etc/rc.common ] && is_rc_common_script "$target"; then
                         $SUDO "$target" disable 2>/dev/null || true
                     fi
                     $SUDO "$target" stop 2>/dev/null || true
@@ -670,16 +669,14 @@ uninstall() {
             if [ -f "$init_script" ]; then
                 log_info "Stopping and removing $init_script..."
                 $SUDO "$init_script" stop 2>/dev/null || true
-                # K2 procd shim: only call disable if this is actually a
-                # rc.common-style script. CC1 installs a plain SysV script
-                # at the same /etc/init.d/helixscreen path, and CC1's BusyBox
-                # rejects `head -1` (only supports `head -n 1`), so we use
-                # awk for the shebang check (portable across all BusyBox
-                # variants we ship to). Also CC1 has no /etc/rc.common, so
-                # the first guard short-circuits anyway.
+                # K2 procd shim: only call disable if this is actually an
+                # rc.common script. CC1 installs a plain SysV script at
+                # the same /etc/init.d/helixscreen path and has no
+                # /etc/rc.common, so the first guard short-circuits there
+                # anyway.
                 if [ "$init_script" = "/etc/init.d/helixscreen" ] && \
                    [ -x /etc/rc.common ] && \
-                   awk 'NR==1 {exit !/\/etc\/rc\.common/}' "$init_script" 2>/dev/null; then
+                   is_rc_common_script "$init_script"; then
                     $SUDO "$init_script" disable 2>/dev/null || true
                     removed_procd_shim=true
                 fi
@@ -688,9 +685,10 @@ uninstall() {
         done
         # Belt-and-suspenders cleanup of rc.d symlinks, but only if we actually
         # removed a procd shim (avoid touching /etc/rc.d on platforms that
-        # don't use the procd boot iterator).
+        # don't use the procd boot iterator). Globbed across slots so a stale
+        # link in a different slot does not dangle beside the sweep.
         if [ "$removed_procd_shim" = "true" ]; then
-            $SUDO rm -f /etc/rc.d/S99helixscreen /etc/rc.d/K01helixscreen 2>/dev/null || true
+            $SUDO rm -f /etc/rc.d/S??helixscreen /etc/rc.d/K??helixscreen 2>/dev/null || true
         fi
     fi
 
