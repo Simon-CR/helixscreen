@@ -1915,15 +1915,21 @@ TEST_CASE("Retargeting an ACE dryer keeps the time already served", "[ams][ace][
     CHECK_FALSE(backend.sent("ACE_START_DRYING TEMP=50 DURATION=240"));
 }
 
-// A persisted edit is the user's own, and the mirror policies skip only the
-// fields flagged as such (#965, #1649).
-TEST_CASE("ACE signs a persisted edit so the auto-mirror cannot overwrite it",
+// ACE persists into the SHARED lane_data namespace, which Mainsail, OrcaSlicer
+// and AFC's plugin also read. Publishing the lock flags false beside a user's
+// edit tells every one of them the value is not the user's (#965, #1649).
+TEST_CASE("ACE publishes a persisted edit to lane_data as the user's own",
           "[ams][ace][filament_slot_override]") {
+    AceTmpCacheDir tmp("issue1649_user_locks");
     MoonrakerClientMock client(MoonrakerClientMock::PrinterType::VORON_24);
     helix::PrinterState state;
     state.init_subjects(false);
     MoonrakerAPIMock api(client, state);
+
     AmsBackendAce backend(&api, nullptr);
+    auto store = std::make_unique<helix::ams::FilamentSlotOverrideStore>(&api, "ace");
+    FilamentSlotOverrideStoreTestAccess::set_cache_directory(*store, tmp.path);
+    AceTestAccess::inject_override_store(backend, std::move(store));
 
     AceTestAccess::parse_ace(backend, json{{"model", "ACE Pro"},
                                            {"slots", json::array({
@@ -1946,24 +1952,11 @@ TEST_CASE("ACE signs a persisted edit so the auto-mirror cannot overwrite it",
     CHECK(staged->user_locked_color);
     CHECK(staged->user_locked_material);
 
-    const auto firmware_says_otherwise =
-        [](std::unordered_map<int, helix::ams::FilamentSlotOverride>& m) {
-            return helix::ams::mirror_firmware_to_lane_data(
-                nullptr, m, 0, 0xFF0000, "ABS", /*slot_has_filament=*/true,
-                helix::ams::MirrorPolicy::OverwriteAlways, "test");
-        };
-
-    // Control: the same report against an unsigned copy DOES overwrite, so the
-    // survival below is the locks doing it rather than an inert mirror call.
-    std::unordered_map<int, helix::ams::FilamentSlotOverride> unsigned_copy{{0, *staged}};
-    unsigned_copy.at(0).user_locked_color = false;
-    unsigned_copy.at(0).user_locked_material = false;
-    REQUIRE(firmware_says_otherwise(unsigned_copy));
-    REQUIRE(unsigned_copy.at(0).material == "ABS");
-    REQUIRE(unsigned_copy.at(0).color_rgb == 0xFF0000u);
-
-    std::unordered_map<int, helix::ams::FilamentSlotOverride> signed_edit{{0, *staged}};
-    CHECK_FALSE(firmware_says_otherwise(signed_edit));
-    CHECK(signed_edit.at(0).material == "PETG");
-    CHECK(signed_edit.at(0).color_rgb == 0x1188FFu);
+    // The record every other reader of the namespace actually sees.
+    auto stored = api.mock_get_db_value("lane_data", "lane1");
+    REQUIRE(!stored.is_null());
+    REQUIRE(stored["color"] == "#1188FF");
+    REQUIRE(stored["material"] == "PETG");
+    CHECK(stored["helix_locked_color"] == true);
+    CHECK(stored["helix_locked_material"] == true);
 }

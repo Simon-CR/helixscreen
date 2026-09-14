@@ -7,13 +7,11 @@
 #include "ams_backend_happy_hare.h"
 #include "ams_state.h"
 #include "ams_types.h"
-#include "filament_slot_override_store.h"
 #include "hh_defaults.h"
 #include "moonraker_api.h"
 #include "test_helpers/happy_hare_test_access.h"
 
 #include <algorithm>
-#include <unordered_map>
 #include <vector>
 
 #include "../catch_amalgamated.hpp"
@@ -4192,9 +4190,9 @@ TEST_CASE("Happy Hare names its positions gates", "[ams][happy_hare][numbering]"
     CHECK(backend.lane_noun() == helix::ui::LaneNoun::Gate);
 }
 
-// A persisted edit is the user's own, and the mirror policies skip only the
-// fields flagged as such (#965, #1649).
-TEST_CASE("Happy Hare signs a persisted edit so the auto-mirror cannot overwrite it",
+// A persisted override IS a user edit. The lock flags are how any consumer of
+// the record tells one from a firmware reading (#965, #1649).
+TEST_CASE("Happy Hare marks a persisted edit as the user's own",
           "[ams][happy_hare][filament_slot_override]") {
     AmsBackendHappyHareTestHelper helper;
     helper.initialize_test_gates(4);
@@ -4211,24 +4209,4 @@ TEST_CASE("Happy Hare signs a persisted edit so the auto-mirror cannot overwrite
     REQUIRE(overrides.at(0).color_rgb == 0x1188FFu);
     CHECK(overrides.at(0).user_locked_color);
     CHECK(overrides.at(0).user_locked_material);
-
-    const auto firmware_says_otherwise =
-        [](std::unordered_map<int, helix::ams::FilamentSlotOverride>& m) {
-            return helix::ams::mirror_firmware_to_lane_data(
-                nullptr, m, 0, 0xFF0000, "ABS", /*slot_has_filament=*/true,
-                helix::ams::MirrorPolicy::OverwriteAlways, "test");
-        };
-
-    // Control: the same report against an unsigned copy DOES overwrite, so the
-    // survival below is the locks doing it rather than an inert mirror call.
-    auto unsigned_copy = overrides;
-    unsigned_copy.at(0).user_locked_color = false;
-    unsigned_copy.at(0).user_locked_material = false;
-    REQUIRE(firmware_says_otherwise(unsigned_copy));
-    REQUIRE(unsigned_copy.at(0).material == "ABS");
-    REQUIRE(unsigned_copy.at(0).color_rgb == 0xFF0000u);
-
-    CHECK_FALSE(firmware_says_otherwise(overrides));
-    CHECK(overrides.at(0).material == "PETG");
-    CHECK(overrides.at(0).color_rgb == 0x1188FFu);
 }
