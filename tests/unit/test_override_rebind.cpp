@@ -203,7 +203,7 @@ TEST_CASE_METHOD(LVGLTestFixture, "AFC own re-link survives the echo race (own-w
     // SET_SPOOL_ID); in-flight status frames still report the old firmware
     // id 42, and Rule 1 must not read that stale frame as an external
     // re-bind and destroy the just-saved override. Mirrors
-    // SlotFingerprintTracker::expect() semantics.
+    // SlotFingerprintTracker's expectation-set semantics.
     SettingsManager::instance().init_subjects();
 
     helix::test::RegisteredBackend<AfcRebindHelper> afc_reg;
