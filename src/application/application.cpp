@@ -1050,6 +1050,16 @@ int Application::run(int argc, char** argv) {
                               target);
             }
         }
+#else
+        // Nothing in src/remote/ is compiled in, so there is no server to name and
+        // no `ctl` to warn about it before the request even reaches here (m_args.
+        // remote_control can never be true either, since the flag parsing that
+        // sets it is gated on the same define).
+        if (m_args.remote_control || get_runtime_config()->test_mode) {
+            spdlog::error("[Application] Remote control was requested, but this build has no "
+                          "remote-control server (rebuild with ENABLE_REMOTE_CONTROL=yes); "
+                          "`ctl` will report that no instance is running");
+        }
 #endif
 
         // Phase 15: Start memory monitoring (logs at TRACE level, -vvv)
