@@ -2175,16 +2175,20 @@ bool PrinterDetector::auto_detect_and_save(const helix::PrinterDiscovery& discov
         // nobody is ever asked, the type stays empty for good, and a known
         // printer wears the generic image.
         //
-        // The package named the machine family at install time, so an ambiguous
-        // field inside that family is still an answer: the winner is the variant
+        // The package named the machine family at install time, so a weak win
+        // inside that family is still an answer: the winner is the variant
         // carrying the most corroboration, and the family's own name is the
-        // floor under it.
+        // floor under it. A tie between entries picturing the same machine (a
+        // mod variant) is that case too. A tie between machines that look
+        // different is not: the family's name is itself one of them, picked by
+        // database order, so nothing is saved and the Printer Manager's model
+        // row is where the choice is made (prestonbrown/helixscreen#1606).
         const std::string installed_preset = config->get_preset();
+        const bool in_family =
+            result.detected() && preset_in_family(result.preset, installed_preset);
         std::string resolved;
-        if (!installed_preset.empty()) {
-            resolved = (result.detected() && preset_in_family(result.preset, installed_preset))
-                           ? result.type_name
-                           : get_name_for_preset(installed_preset);
+        if (!installed_preset.empty() && !(in_family && result.ambiguous())) {
+            resolved = in_family ? result.type_name : get_name_for_preset(installed_preset);
         }
 
         if (resolved.empty()) {

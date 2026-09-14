@@ -6698,3 +6698,81 @@ TEST_CASE_METHOD(helix::VariantPresetFixture,
     get_printer_state().set_printer_type_sync("");
     TearDown();
 }
+
+// On a preset install nobody is asked, and when the family's entries tie
+// between machines that look different there is no honest answer: the
+// family's name would itself be one of those machines, picked by database
+// order. The type stays unset for the Printer Manager's model row
+// (prestonbrown/helixscreen#1606).
+TEST_CASE_METHOD(helix::VariantPresetFixture,
+                 "auto_detect_and_save leaves a K2 preset install unset when Plus and Pro tie",
+                 "[printer_detector][preset][1606]") {
+    SetUp();
+    get_printer_state().set_printer_type_sync("");
+
+    // A K2 with a plain hostname and no declared bed.
+    const std::vector<std::string> objects = {"extruder",
+                                              "heater_bed",
+                                              "box",
+                                              "motor_control",
+                                              "fan_feedback",
+                                              "load_ai",
+                                              "filament_rack",
+                                              "heater_generic chamber_heater",
+                                              "temperature_sensor chamber_temp"};
+    helix::PrinterDiscovery discovery;
+    discovery.parse_objects(nlohmann::json(objects));
+    discovery.set_printer_objects(objects);
+    discovery.set_hostname("creality-k2");
+    discovery.parse_config_keys(nlohmann::json{{"printer", {{"kinematics", "corexy"}}}});
+
+    auto probe = PrinterDetector::auto_detect(discovery);
+    CAPTURE(probe.type_name, probe.runner_up_type_name, probe.margin(), probe.preset);
+    REQUIRE(probe.ambiguous());
+    REQUIRE(probe.preset == "k2");
+    REQUIRE(probe.contenders == std::vector<std::string>{"Creality K2 Plus", "Creality K2 Pro"});
+
+    config.set_preset("k2");
+    CHECK_FALSE(PrinterDetector::auto_detect_and_save(discovery, &config));
+    CHECK(config.get<std::string>(config.df() + helix::wizard::PRINTER_TYPE, "").empty());
+    CHECK(get_printer_state().get_printer_type().empty());
+
+    get_printer_state().set_printer_type_sync("");
+    TearDown();
+}
+
+// A tie between entries picturing the same machine is not a choice between
+// machines: the preset install still names it, taking the variant that
+// carries the most corroboration.
+TEST_CASE_METHOD(
+    helix::VariantPresetFixture,
+    "auto_detect_and_save names a K1 preset install when only same-machine variants tie",
+    "[printer_detector][preset][1606]") {
+    SetUp();
+    get_printer_state().set_printer_type_sync("");
+
+    // A renamed K1 with a CFS: its chamber fan separates it from the K1 Max
+    // and K1C, but not from its own CFS variant, and it stays below the
+    // autosave bar.
+    const std::vector<std::string> objects = {"temperature_fan chamber_fan", "box"};
+    helix::PrinterDiscovery discovery;
+    discovery.parse_objects(nlohmann::json(objects));
+    discovery.set_printer_objects(objects);
+    discovery.set_hostname("mainsailos");
+
+    auto probe = PrinterDetector::auto_detect(discovery);
+    CAPTURE(probe.type_name, probe.confidence, probe.runner_up_type_name,
+            probe.runner_up_confidence, probe.margin(), probe.tied_count, probe.preset);
+    REQUIRE(probe.preset == "k1");
+    REQUIRE(probe.tied_count >= 2);   // the same-machine variants tie
+    REQUIRE_FALSE(probe.ambiguous()); // nothing picturing another machine does
+    REQUIRE_FALSE(PrinterDetector::meets_autosave_threshold(probe));
+
+    config.set_preset("k1");
+    REQUIRE(PrinterDetector::auto_detect_and_save(discovery, &config));
+    CHECK(config.get<std::string>(config.df() + helix::wizard::PRINTER_TYPE, "") ==
+          probe.type_name);
+
+    get_printer_state().set_printer_type_sync("");
+    TearDown();
+}
