@@ -5,6 +5,8 @@
 // asserting on lane records needs.
 #pragma once
 
+#include "ui_update_queue.h"
+
 #include "ams_backend.h"
 #include "ams_state.h"
 #include "lane_source_store.h"
@@ -38,6 +40,15 @@ template <typename BackendT> class RegisteredBackend {
     }
 
     ~RegisteredBackend() {
+        // Drain ahead of clear_backends(), not after. Driving the backend leaves
+        // AmsState::on_backend_event callbacks queued, and each one resolves its
+        // work through get_backend(0); once the backends are gone that answers
+        // nullptr, so every callback returns early and still bumps
+        // ams_data_revision_, announcing a sync that did not happen. Draining
+        // first runs them against the backend they were queued for and leaves
+        // nothing for the next test to inherit. clear_backends() writes its own
+        // subjects directly, so it queues nothing behind us.
+        helix::ui::UpdateQueue::instance().drain();
         helix::AmsState::instance().clear_backends();
     }
 
