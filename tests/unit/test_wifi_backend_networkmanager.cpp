@@ -295,7 +295,8 @@ TEST_CASE("NM backend: connect_argv", "[network][nm][hidden]") {
 // The argv above only proves the helper; this drives the whole fork/exec path
 // through connect_network() against a fake nmcli, so what NetworkManager would
 // actually receive is on the wire.
-TEST_CASE("NM backend: hidden connect execs nmcli with 'hidden yes'", "[network][nm][hidden]") {
+TEST_CASE("NM backend: hidden connect execs nmcli with 'hidden yes'",
+          "[network][nm][hidden][slow]") {
     FakeNmcliDir fake;
     ScopedPathPrepend path_prepend(fake.dir);
 
