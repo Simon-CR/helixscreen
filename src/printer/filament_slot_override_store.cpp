@@ -1897,10 +1897,6 @@ FingerprintEvent SlotFingerprintTracker::observe(int slot_index, const std::stri
     return FingerprintEvent::Changed;
 }
 
-void SlotFingerprintTracker::expect(int slot_index, std::string expected_value) {
-    expected_[slot_index] = {std::move(expected_value)};
-}
-
 void SlotFingerprintTracker::expect_any_of(int slot_index,
                                            std::vector<std::string> expected_values) {
     std::vector<std::string> kept;

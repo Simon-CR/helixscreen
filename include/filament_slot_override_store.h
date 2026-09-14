@@ -466,13 +466,14 @@ enum class FingerprintEvent {
 /// bookkeeping — deciding what a given event *means* (clear the override, sync
 /// lane_data, log) stays in each backend, so their policies can differ.
 ///
-/// Beyond the plain baseline compare it carries an `expect()` slot: backends
-/// that write a value back to firmware (CFS's BOX_MODIFY_TN_DATA identity
-/// push) record the value they expect to see echoed. Because the write is
-/// asynchronous, firmware keeps reporting the OLD value for an unknown number
-/// of polls before the echo lands — so the expectation must SURVIVE those
-/// polls rather than overwrite the baseline immediately. Those intervening
-/// polls classify as Unchanged; the echo itself classifies as OwnWriteEcho.
+/// Beyond the plain baseline compare it carries an expectation set: a backend
+/// that writes a value back to firmware (CFS's BOX_MODIFY_TN_DATA identity
+/// push) registers the values it expects to see echoed, via expect_any_of().
+/// Because the write is asynchronous, firmware keeps reporting the OLD value
+/// for an unknown number of polls before the echo lands, so the expectation
+/// must SURVIVE those polls rather than overwrite the baseline immediately.
+/// Those intervening polls classify as Unchanged; the echo itself classifies
+/// as OwnWriteEcho.
 ///
 /// Each expectation is single-shot and is consumed by the first change of any
 /// kind, so a genuine physical swap that lands while a write is in flight is
@@ -496,15 +497,11 @@ class SlotFingerprintTracker {
     FingerprintEvent observe(int slot_index, const std::string& observed,
                              std::string* previous = nullptr);
 
-    /// Record the value this slot is expected to report once a write we just
-    /// issued reaches firmware. Replaces any prior unconsumed expectation.
-    void expect(int slot_index, std::string expected_value);
-
-    /// Multi-write variant of expect(): registers every value the slot may
-    /// report between the first and last echo of a multi-field write (the
-    /// intermediate composites and the final one). Each is consumed only by an
-    /// exact match; any other change clears them all. Empty strings are
-    /// dropped; an all-empty input is equivalent to forget_expected().
+    /// Register every value the slot may report between the first and last
+    /// echo of a multi-field write (the intermediate composites and the final
+    /// one). Each is consumed only by an exact match; any other change clears
+    /// them all. Empty strings are dropped; an all-empty input is equivalent
+    /// to forget_expected().
     void expect_any_of(int slot_index, std::vector<std::string> expected_values);
 
     /// Drop a pending expectation (e.g. the write failed to dispatch, so no
@@ -521,8 +518,8 @@ class SlotFingerprintTracker {
 
   private:
     std::unordered_map<int, std::string> baseline_;
-    /// Pending expected values per slot. Single-element for expect(); the
-    /// intermediate+final composites for expect_any_of().
+    /// Pending expected values per slot: the intermediate and final
+    /// composites expect_any_of() registered.
     std::unordered_map<int, std::vector<std::string>> expected_;
 };
 
