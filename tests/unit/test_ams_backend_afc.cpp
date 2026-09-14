@@ -8,6 +8,7 @@
 #include "config.h"
 #include "error_event.h"
 #include "filament_op_router.h"
+#include "filament_slot_override_store.h"
 #include "moonraker_api.h"
 #include "settings_manager.h"
 #include "test_helpers/afc_test_access.h"
@@ -17,6 +18,7 @@
 #include <chrono>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "../catch_amalgamated.hpp"
@@ -7912,4 +7914,45 @@ TEST_CASE("AFC unresolvable extruder makes no lane attribution claim",
 TEST_CASE("AFC names its positions lanes", "[ams][afc][numbering]") {
     AmsBackendAfc backend(nullptr, nullptr);
     CHECK(backend.lane_noun() == helix::ui::LaneNoun::Lane);
+}
+
+// A persisted edit is the user's own, and the mirror policies skip only the
+// fields flagged as such (#965, #1649).
+TEST_CASE("AFC signs a persisted edit so the auto-mirror cannot overwrite it",
+          "[ams][afc][filament_slot_override]") {
+    AmsBackendAfcTestHelper helper;
+    helper.initialize_test_lanes_with_slots(4);
+
+    SlotInfo info;
+    info.material = "PETG";
+    info.color_rgb = 0x1188FF;
+    info.color_name = "Blue";
+    helper.set_slot_info(0, info, /*persist=*/true);
+
+    auto& overrides = AfcTestAccess::overrides(helper);
+    REQUIRE(overrides.count(0) == 1);
+    REQUIRE(overrides.at(0).material == "PETG");
+    REQUIRE(overrides.at(0).color_rgb == 0x1188FFu);
+    CHECK(overrides.at(0).user_locked_color);
+    CHECK(overrides.at(0).user_locked_material);
+
+    const auto firmware_says_otherwise =
+        [](std::unordered_map<int, helix::ams::FilamentSlotOverride>& m) {
+            return helix::ams::mirror_firmware_to_lane_data(
+                nullptr, m, 0, 0xFF0000, "ABS", /*slot_has_filament=*/true,
+                helix::ams::MirrorPolicy::OverwriteAlways, "test");
+        };
+
+    // Control: the same report against an unsigned copy DOES overwrite, so the
+    // survival below is the locks doing it rather than an inert mirror call.
+    auto unsigned_copy = overrides;
+    unsigned_copy.at(0).user_locked_color = false;
+    unsigned_copy.at(0).user_locked_material = false;
+    REQUIRE(firmware_says_otherwise(unsigned_copy));
+    REQUIRE(unsigned_copy.at(0).material == "ABS");
+    REQUIRE(unsigned_copy.at(0).color_rgb == 0xFF0000u);
+
+    CHECK_FALSE(firmware_says_otherwise(overrides));
+    CHECK(overrides.at(0).material == "PETG");
+    CHECK(overrides.at(0).color_rgb == 0x1188FFu);
 }

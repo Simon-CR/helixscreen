@@ -127,6 +127,27 @@ ResolvedTemps resolved_temps(const FilamentSlotOverride& o);
 // 0 (which signals to resolved_temps that the material-DB default should win).
 void populate_temps_from_slot_info(FilamentSlotOverride& ovr, const SlotInfo& info);
 
+// Build the override a backend persists for a user's slot edit. Every AMS
+// backend stages the same fields out of the SlotInfo the edit carried, so the
+// shape lives here instead of once per backend.
+//
+// `material` is separate from the rest of `info` because a backend may persist
+// a normalized form rather than the string the user typed: AD5X stores the
+// firmware-valid value its own normalize_material() produced, so the raw
+// SlotInfo string is the wrong thing to record and the wrong thing to lock on.
+//
+// The user-lock flags are part of this shape, not a decoration. A persisted
+// override IS a user edit, and a mirror policy with no way to tell one from a
+// firmware reading will overwrite it (#965). A field locks only where the user
+// actually supplied it: an unrecorded colour and an empty material stay
+// fillable from a later firmware report, and every mirror policy assumes a
+// lock and its value are set together. Colour follows is_declarable_color, so
+// the "no colour reading" sentinel is never recorded as the user's pick.
+//
+// updated_at is left default; save_async stamps a fresh value.
+FilamentSlotOverride user_override_from_slot_info(const SlotInfo& info,
+                                                  const std::string& material);
+
 nlohmann::json to_json(const FilamentSlotOverride& o);
 FilamentSlotOverride from_json(const nlohmann::json& j);
 

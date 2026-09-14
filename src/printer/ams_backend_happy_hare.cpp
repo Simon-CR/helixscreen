@@ -2625,30 +2625,8 @@ void AmsBackendHappyHare::apply_overrides(SlotInfo& slot, int slot_index) {
 
 void AmsBackendHappyHare::persist_override(int slot_index, const SlotInfo& info) {
     // Callers hold mutex_.
-    helix::ams::FilamentSlotOverride o;
-    o.brand = info.brand;
-    o.spool_name = info.spool_name;
-    o.spoolman_id = info.spoolman_id;
-    o.spoolman_vendor_id = info.spoolman_vendor_id;
-    o.remaining_weight_g = info.remaining_weight_g;
-    o.total_weight_g = info.total_weight_g;
-    o.color_name = info.color_name;
-    o.material = info.material;
-    // Catalog product identity — see apply_overrides(). Never auto-mirrored;
-    // a non-empty value is always a user pick.
-    o.catalog_id = info.catalog_id;
-    o.product_name = info.product_name;
-    // A deliberate pure black (#000000) records; the "no color reading"
-    // sentinel does not.
-    if (ams::is_declarable_color(info.color_rgb)) {
-        o.color_rgb = info.color_rgb;
-        o.color_set = true;
-    }
-    // SlotInfo carries the user's edit OR the bound Spoolman spool's
-    // filament profile; the material-DB fallback for fields left at 0
-    // is applied at emit time inside resolved_temps(). Centralized in
-    // the helper so the AMS backends stay in sync.
-    helix::ams::populate_temps_from_slot_info(o, info);
+    const helix::ams::FilamentSlotOverride o =
+        helix::ams::user_override_from_slot_info(info, info.material);
     overrides_[slot_index] = o;
 
     if (override_store_) {

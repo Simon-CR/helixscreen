@@ -1914,3 +1914,56 @@ TEST_CASE("Retargeting an ACE dryer keeps the time already served", "[ams][ace][
     CHECK(backend.sent("ACE_START_DRYING TEMP=50 DURATION=60"));
     CHECK_FALSE(backend.sent("ACE_START_DRYING TEMP=50 DURATION=240"));
 }
+
+// A persisted edit is the user's own, and the mirror policies skip only the
+// fields flagged as such (#965, #1649).
+TEST_CASE("ACE signs a persisted edit so the auto-mirror cannot overwrite it",
+          "[ams][ace][filament_slot_override]") {
+    MoonrakerClientMock client(MoonrakerClientMock::PrinterType::VORON_24);
+    helix::PrinterState state;
+    state.init_subjects(false);
+    MoonrakerAPIMock api(client, state);
+    AmsBackendAce backend(&api, nullptr);
+
+    AceTestAccess::parse_ace(backend, json{{"model", "ACE Pro"},
+                                           {"slots", json::array({
+                                                         json{{"status", "empty"}},
+                                                         json{{"status", "empty"}},
+                                                         json{{"status", "empty"}},
+                                                         json{{"status", "empty"}},
+                                                     })}});
+
+    SlotInfo edit;
+    edit.material = "PETG";
+    edit.color_rgb = 0x1188FF;
+    edit.color_name = "Blue";
+    REQUIRE(backend.set_slot_info(0, edit, /*persist=*/true).success());
+
+    auto staged = AceTestAccess::get_override(backend, 0);
+    REQUIRE(staged.has_value());
+    REQUIRE(staged->material == "PETG");
+    REQUIRE(staged->color_rgb == 0x1188FFu);
+    CHECK(staged->user_locked_color);
+    CHECK(staged->user_locked_material);
+
+    const auto firmware_says_otherwise =
+        [](std::unordered_map<int, helix::ams::FilamentSlotOverride>& m) {
+            return helix::ams::mirror_firmware_to_lane_data(
+                nullptr, m, 0, 0xFF0000, "ABS", /*slot_has_filament=*/true,
+                helix::ams::MirrorPolicy::OverwriteAlways, "test");
+        };
+
+    // Control: the same report against an unsigned copy DOES overwrite, so the
+    // survival below is the locks doing it rather than an inert mirror call.
+    std::unordered_map<int, helix::ams::FilamentSlotOverride> unsigned_copy{{0, *staged}};
+    unsigned_copy.at(0).user_locked_color = false;
+    unsigned_copy.at(0).user_locked_material = false;
+    REQUIRE(firmware_says_otherwise(unsigned_copy));
+    REQUIRE(unsigned_copy.at(0).material == "ABS");
+    REQUIRE(unsigned_copy.at(0).color_rgb == 0xFF0000u);
+
+    std::unordered_map<int, helix::ams::FilamentSlotOverride> signed_edit{{0, *staged}};
+    CHECK_FALSE(firmware_says_otherwise(signed_edit));
+    CHECK(signed_edit.at(0).material == "PETG");
+    CHECK(signed_edit.at(0).color_rgb == 0x1188FFu);
+}

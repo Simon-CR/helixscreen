@@ -627,6 +627,43 @@ void populate_temps_from_slot_info(FilamentSlotOverride& ovr, const SlotInfo& in
     }
 }
 
+FilamentSlotOverride user_override_from_slot_info(const SlotInfo& info,
+                                                  const std::string& material) {
+    FilamentSlotOverride ovr;
+    ovr.brand = info.brand;
+    ovr.spool_name = info.spool_name;
+    ovr.spoolman_id = info.spoolman_id;
+    ovr.spoolman_vendor_id = info.spoolman_vendor_id;
+    ovr.remaining_weight_g = info.remaining_weight_g;
+    ovr.total_weight_g = info.total_weight_g;
+    ovr.color_name = info.color_name;
+    ovr.material = material;
+    // Catalog product identity. Persisted so a reopen restores the EXACT
+    // product rather than the alphabetically-first variant of the same
+    // vendor+material. No firmware has a notion of a catalog product, so
+    // auto-mirror never writes these and a non-empty value is always a user
+    // pick; that is why they need no lock of their own.
+    ovr.catalog_id = info.catalog_id;
+    ovr.product_name = info.product_name;
+    // A deliberate pure black (#000000) records; the "no colour reading"
+    // sentinel does not.
+    if (is_declarable_color(info.color_rgb)) {
+        ovr.color_rgb = info.color_rgb;
+        ovr.color_set = true;
+    }
+    // Sign the edit as the user's so a mirror policy cannot overwrite it
+    // (#965). Locking a field the user did not supply would be worse than
+    // leaving it open: a lock on an unrecorded colour blocks both policies
+    // from ever filling that lane from firmware.
+    ovr.user_locked_color = ovr.color_set;
+    ovr.user_locked_material = !material.empty();
+    // SlotInfo carries the user's edit OR the bound Spoolman spool's filament
+    // profile; the material-DB fallback for fields left at 0 is applied at
+    // emit time inside resolved_temps().
+    populate_temps_from_slot_info(ovr, info);
+    return ovr;
+}
+
 // ============================================================================
 // FilamentSlotOverrideStore skeleton (Task 2). Real load/save wiring lands
 // in Tasks 3-5; this skeleton exists so other components can depend on the
