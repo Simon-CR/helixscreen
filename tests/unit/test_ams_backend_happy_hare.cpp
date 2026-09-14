@@ -822,6 +822,21 @@ TEST_CASE("Happy Hare eject_lane validates slot index", "[ams][happy_hare][eject
     REQUIRE(result.result == AmsResult::INVALID_SLOT);
 }
 
+TEST_CASE("Happy Hare eject_lane on a backend with no gates offers no span",
+          "[ams][happy_hare][eject]") {
+    // mmu has reported zero gates (slot_count() == 0). The suggestion must not
+    // claim a gate 1 exists.
+    AmsBackendHappyHareTestHelper helper;
+    helper.initialize_test_gates(0);
+    helper.set_running(true);
+
+    auto result = helper.eject_lane(0);
+
+    REQUIRE_FALSE(result.success());
+    REQUIRE(result.result == AmsResult::INVALID_SLOT);
+    REQUIRE(result.suggestion == "Select a valid number");
+}
+
 TEST_CASE("Happy Hare eject_lane fails when not running", "[ams][happy_hare][eject]") {
     AmsBackendHappyHareTestHelper helper;
     helper.initialize_test_gates(4);
