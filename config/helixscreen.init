@@ -126,8 +126,14 @@ start() {
 
     echo "Starting $DESC..."
 
-    # Platform-specific pre-start (e.g., flag files for firmware coordination)
-    platform_pre_start
+    # Platform-specific pre-start (e.g., flag files for firmware
+    # coordination). Runs for its SIDE EFFECTS only, in a subshell: the
+    # launcher inherits this script's environment, and a hook default exported
+    # here arrives as "already set" when the launcher reads helixscreen.env,
+    # silently outranking the operator's value. The launcher runs this hook
+    # again itself, after applying the env file — that is where platform
+    # defaults are supplied.
+    ( platform_pre_start )
 
     # Stop any competing UIs first
     platform_stop_competing_uis

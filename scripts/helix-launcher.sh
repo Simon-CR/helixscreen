@@ -493,12 +493,21 @@ if [ -z "${HELIX_SPLASH_STATUS_FILE:-}" ]; then
 fi
 
 # Source platform hooks if present and run platform_pre_start. The init
-# script (S90helixscreen) also runs this on production boot, but dev deploys
-# (`make deploy-*` → restart launcher directly) bypass init.d, so the
-# launcher needs to fire it too — otherwise platform-specific setup like
-# stopping the stock UI or loading the WiFi driver never happens during
-# iterative testing. Calls are idempotent (active flag is just a touch,
-# load functions check before acting), so production boot stays correct.
+# script (S90helixscreen) also runs this on production boot — as a subshell,
+# for side effects only — but dev deploys (`make deploy-*` → restart
+# launcher directly) bypass init.d, so the launcher needs to fire it too —
+# otherwise platform-specific setup like stopping the stock UI or loading
+# the WiFi driver never happens during iterative testing. Calls are
+# idempotent (active flag is just a touch, load functions check before
+# acting), so production boot stays correct.
+#
+# Firing the hook HERE is what holds the precedence rule: the env file above
+# and the parent shell's own variables are already in place, so a hook's
+# guarded default fills only what nothing else set —
+#   shell environment > helixscreen.env > platform hook > built-in.
+# Any caller that runs platform_pre_start before exec'ing this script must
+# confine its exports the way the init script does, or its hook defaults
+# arrive as "already set" and outrank the operator's env file.
 PLATFORM_HOOKS="${INSTALL_DIR}/platform/hooks.sh"
 if [ -f "${PLATFORM_HOOKS}" ]; then
     # shellcheck disable=SC1090  # path depends on INSTALL_DIR

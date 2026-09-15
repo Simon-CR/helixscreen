@@ -33,14 +33,6 @@
 # PID of the background keepalive process
 DRM_KEEPALIVE_PID=""
 
-# Opt into the launcher's boot-time respawn self-heal. The U1 ships no
-# helix-watchdog and busybox init does not respawn S99 children, so a single
-# boot-time SIGTERM to helix-screen (handled as _exit(0)) would otherwise be
-# permanent. The launcher (helix-launcher.sh) reads HELIX_BOOT_RESPAWN_MAX and
-# respawns a fast-exiting helix-screen up to this many times. Respect any value
-# the user pinned in helixscreen.env.
-export HELIX_BOOT_RESPAWN_MAX="${HELIX_BOOT_RESPAWN_MAX:-3}"
-
 # WiFi restore configuration. The stock Snapmaker app saves the user's network
 # to HELIX_SAVED_WPA and loads it into wpa_supplicant at runtime; since we
 # replaced the stock app, we do it ourselves (see ensure_wifi_associated).
@@ -379,6 +371,12 @@ platform_pre_start() {
     # Serve the live UI to Mainsail/Fluidd via the firmware's fb-http tool when
     # the PAXX `web remote_screen` toggle is on (no-op otherwise).
     start_remote_screen
+
+    # Opt into the launcher's boot-time respawn self-heal (busybox init does
+    # not respawn S99 children). Supplied here, not at file scope: the init
+    # script sources this file, and a file-scope export would outrank
+    # helixscreen.env when the launcher inherits it.
+    export HELIX_BOOT_RESPAWN_MAX="${HELIX_BOOT_RESPAWN_MAX:-3}"
 
     return 0
 }
