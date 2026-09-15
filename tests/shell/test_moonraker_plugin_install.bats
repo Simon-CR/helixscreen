@@ -217,6 +217,9 @@ setup_instrumented_home() {
 
     # A PATH with no python3 on it at all - every external command install.sh
     # itself calls, minus python3, plus the sudo/service/curl shims above.
+    # The sandbox shim directory goes first so the host sandbox's PATH layer
+    # still covers this callee, which is sh and so carries none of its
+    # exported-function layer.
     local no_py3="$BATS_TEST_TMPDIR/no-python3-path"
     mkdir -p "$no_py3"
     for tool in sh dirname cp mv rm ln grep awk date sleep; do
@@ -226,7 +229,7 @@ setup_instrumented_home() {
         ln -sf "$BATS_TEST_TMPDIR/bin/$cmd" "$no_py3/$cmd"
     done
 
-    run env HOME="$home" PATH="$no_py3" sh "$SCRIPT" --uninstall-auto
+    run env HOME="$home" PATH="$HELIX_TEST_SANDBOX_BIN:$no_py3" sh "$SCRIPT" --uninstall-auto
     # PRINT_START could not be checked at all, so this is "needs attention"
     # (2), not full success - the plugin itself is still gone.
     [ "$status" -eq 2 ]
