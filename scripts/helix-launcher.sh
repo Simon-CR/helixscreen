@@ -525,10 +525,10 @@ fi
 # partition that is persistent AND captured by that firmware's log archiver.
 # Resolved any earlier, those variables are unset: --log-dest/--log-file never
 # reach the binary and the app log falls back to auto-detection (syslog on
-# Linux). A normal boot hides that, because helixscreen.init calls
-# platform_pre_start before exec'ing us — `make deploy-*` restarts,
-# hand-started launchers, and third-party init scripts that leave the hook to
-# us do not.
+# Linux). That binds every launch path the same way: the init script runs
+# platform_pre_start in a subshell for side effects only, so the exports
+# these lines see come from the hook call above, whether we were started by
+# init, a `make deploy-*` restart, or by hand.
 DEBUG_MODE="${CLI_DEBUG:-${HELIX_DEBUG:-0}}"
 LOG_DEST="${CLI_LOG_DEST:-${HELIX_LOG_DEST:-auto}}"
 LOG_FILE="${CLI_LOG_FILE:-${HELIX_LOG_FILE:-}}"

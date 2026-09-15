@@ -31,12 +31,15 @@ pre_start_exports() {
         | grep -E '^\s*export [A-Z_][A-Z0-9_]*=' || true
 }
 
-# export statements at file scope (outside every function body).
+# export statements at file scope (outside every function body). The
+# function-entry rule and the reset rule each `next` on their own line, so a
+# closing brace always resets the scan: an export below the last function is
+# as visible as one above the first.
 file_scope_exports() {
     awk '
-        /^[a-zA-Z_][a-zA-Z0-9_]*\(\) ?\{/ { infn = 1 }
+        /^[a-zA-Z_][a-zA-Z0-9_]*\(\) ?\{/ { infn = 1; next }
+        infn && /^}/ { infn = 0; next }
         infn { next }
-        /^}/ { infn = 0 }
         /^ *export / { print }
     ' "$1"
 }
@@ -67,33 +70,50 @@ file_scope_exports() {
     [ "$n" -ge 20 ]
 }
 
-@test "no hook exports a HELIX default at file scope" {
+@test "no hook exports anything at file scope" {
     # A file-scope export runs when the INIT SCRIPT sources the hooks file, so
-    # the default reaches the launcher ahead of helixscreen.env and outranks
-    # the operator's value. Hook defaults belong in platform_pre_start(),
-    # which the init script runs in a subshell and the launcher runs after the
-    # env file. Allowed by name: HELIX_NO_SPLASH on Forge-X, which the init
-    # script itself consumes for the early-splash decision.
+    # it reaches the launcher ahead of helixscreen.env and outranks the
+    # operator's value. Hook defaults belong in platform_pre_start(), which
+    # the init script runs in a subshell and the launcher runs after the env
+    # file. A value the init script itself must read before any hook function
+    # runs (Forge-X's splash gate) is assigned at file scope WITHOUT
+    # exporting: every consumer reads it in the shell that sourced the hooks.
     local offenders=""
     for f in "$HOOKS_DIR"/hooks-*.sh; do
         while IFS= read -r line; do
             [ -n "$line" ] || continue
-            echo "$line" | grep -q 'HELIX_NO_SPLASH' && continue
             offenders="$offenders
   $(basename "$f"): $(echo "$line" | sed 's/^\s*//')"
         done <<< "$(file_scope_exports "$f")"
     done
     [ -z "$offenders" ] || {
         echo "These file-scope exports outrank helixscreen.env on the init path:$offenders"
-        echo "Move them into platform_pre_start()."
+        echo "Move them into platform_pre_start(), or assign without exporting"
+        echo "if the init script itself must read the value."
         false
     }
 }
 
-@test "the file-scope scan actually sees exports (not vacuous)" {
-    # The Forge-X splash gate is a real file-scope export the gate above lets
-    # through by name - which proves the scan reaches file scope at all.
-    grep -q '^ *export HELIX_NO_SPLASH$' "$HOOKS_DIR/hooks-ad5m-forgex.sh"
+@test "the file-scope scan sees exports above and below functions (not vacuous)" {
+    # The gate above is only as good as this scan. A scan that goes blind
+    # below the first function body would pass the gate while missing real
+    # offenders, so feed a fixture with exports above, inside, and below a
+    # function and assert exactly the two file-scope ones come back.
+    local fixture="$BATS_TEST_TMPDIR/scan-fixture.sh"
+    cat > "$fixture" << 'EOF'
+export ABOVE=1
+helper_fn() {
+    export INSIDE=1
+}
+export BELOW=1
+EOF
+    run file_scope_exports "$fixture"
+    [ "$status" -eq 0 ]
+    echo "$output" | grep -qx 'export ABOVE=1'
+    echo "$output" | grep -qx 'export BELOW=1'
+    if echo "$output" | grep -q 'INSIDE'; then
+        fail "scan reports an export from inside a function body"
+    fi
 }
 
 @test "the defaulting form keeps a preset value and supplies one otherwise" {
