@@ -2831,9 +2831,13 @@
       "calibration": {
         "bed_mesh_gcode": "MOVE_TO_TRAY\nM140 S60\nM104 S220\nM109 S220\nM190 S60\nM729\nG28\nM400\nLOAD_CELL_SAVE_TARE\nG4 P2000\nBED_MESH_CALIBRATE_WITH_WIPE\nBED_MESH_PROFILE SAVE={profile}"
       },
-      "_print_start_default_phases_comment": "CC1's slicer start-gcode only heats + G28 + loads a stored BED_MESH_PROFILE (<1s). No QGL/Z_TILT/mesh-calibrate/wipe. Loadcell homing is slower than endstop homing, so 30s covers G28 alone.",
+      "print_start_profile": "cosmos_cc1",
+      "_print_start_default_phases_comment": "COSMOS PRINT_START, measured on a CC1 running 26.08 (2026-09-14, cold start, 105C bed / 260C nozzle): both heaters set without waiting, G28 through homing_override ~23s, M190, a heat soak of cosmos.conf heatsoak minutes (60s by default; cosmos_cc1.json holds the pre-print open for the minutes it announces), the stored default mesh loaded in under a second (adaptive_mesh probes a new mesh instead, which the history learns), SMART_PARK, M109, then a KAMP line purge ~13s. Heating is omitted: the thermal model owns it.",
       "print_start_default_phases": {
-        "HOMING": 30
+        "HOMING": 25,
+        "SOAKING": 60,
+        "BED_MESH": 2,
+        "PURGING": 15
       },
       "heuristics": [
         {

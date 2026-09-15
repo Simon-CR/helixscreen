@@ -5520,13 +5520,22 @@ TEST_CASE("PrinterDetector: preset_default survives database array order, not ju
 
 TEST_CASE("PrinterDetector: print_start_default_phases returns CC1 override",
           "[printer][preprint]") {
+    // Measured COSMOS PRINT_START: G28 ~23s, the default 1-minute heat soak,
+    // stored mesh load under 1s, KAMP purge ~13s. No QGL, Z tilt or wipe;
+    // heating belongs to the thermal model.
     auto phases = PrinterDetector::get_print_start_default_phases("Elegoo Centauri Carbon");
-    REQUIRE(phases.size() == 1);
-    REQUIRE(phases[static_cast<int>(helix::PrintStartPhase::HOMING)] == 30);
-    // Not in map (CC1 doesn't run these in its slicer start-gcode):
-    REQUIRE(phases.count(static_cast<int>(helix::PrintStartPhase::BED_MESH)) == 0);
+    REQUIRE(phases.size() == 4);
+    REQUIRE(phases[static_cast<int>(helix::PrintStartPhase::HOMING)] == 25);
+    REQUIRE(phases[static_cast<int>(helix::PrintStartPhase::SOAKING)] == 60);
+    REQUIRE(phases[static_cast<int>(helix::PrintStartPhase::BED_MESH)] == 2);
+    REQUIRE(phases[static_cast<int>(helix::PrintStartPhase::PURGING)] == 15);
     REQUIRE(phases.count(static_cast<int>(helix::PrintStartPhase::QGL)) == 0);
     REQUIRE(phases.count(static_cast<int>(helix::PrintStartPhase::Z_TILT)) == 0);
+}
+
+TEST_CASE("PrinterDetector: Centauri Carbon uses the COSMOS pre-print profile",
+          "[printer][preprint]") {
+    REQUIRE(PrinterDetector::get_print_start_profile("Elegoo Centauri Carbon") == "cosmos_cc1");
 }
 
 TEST_CASE("PrinterDetector: print_start_default_phases empty for unknown printer",

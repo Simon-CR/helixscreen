@@ -328,9 +328,11 @@ class PrintStartCollector : public std::enable_shared_from_this<PrintStartCollec
 
     /// Record that the printer said something about its pre-print: a matched
     /// pattern or phase-object state, or a probe line. Feeds the quiet gate of
-    /// every timeout, the ceiling included. Takes state_mutex_ itself, so do
-    /// not call it while already holding the lock.
-    void note_signal();
+    /// every timeout, the ceiling included. `hold` is silent time the text
+    /// announces (a heat soak's G4): the printer counts as talking until it
+    /// ends. Takes state_mutex_ itself, so do not call it while already holding
+    /// the lock.
+    void note_signal(std::chrono::seconds hold = std::chrono::seconds::zero());
 
     /// Record pre-print work read from status frames rather than said: a heater
     /// climbing past its highest reading, or a status-signal rule firing. Feeds
@@ -468,6 +470,16 @@ class PrintStartCollector : public std::enable_shared_from_this<PrintStartCollec
     /// or M109. The ceiling ignores it: a heater that never settles must not
     /// hold Preparing open.
     helix::sim::SimulatedClock::time_point last_inferred_activity_time_;
+
+    /// End of the silent time a matched line announced, time_point::min() when
+    /// none: the simulated timeline starts at its epoch, so a stamp wound back
+    /// from it reads earlier than {}. Until then the printer counts as talking.
+    /// held_for_ is the time holds have covered: the ceiling leaves all of it
+    /// out of the elapsed time it measures, the backstop at most one ceiling of
+    /// it, so a macro that keeps announcing holds still ends at the backstop.
+    helix::sim::SimulatedClock::time_point hold_until_ =
+        helix::sim::SimulatedClock::time_point::min();
+    helix::sim::SimulatedClock::duration held_for_{};
 
     // Profile for signal/pattern matching (set via set_profile() or loaded by start())
     std::shared_ptr<PrintStartProfile> profile_;

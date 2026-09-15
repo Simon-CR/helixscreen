@@ -376,6 +376,8 @@ For printers that don't emit G-code layer markers, HelixScreen has additional fa
 | **Ceiling** | Elapsed > 1800s, or 2.5x the predicted total when that is longer, **and** 90s without a matched line or probe line. Ignores temperatures, climbing heaters and status-signal rules. |
 | **Backstop** | Elapsed > twice the ceiling. Ignores temperatures and all activity. |
 
+A profile pattern can declare a hold (`hold_minutes_group`, see PRINT_START_PROFILES.md): the minutes a line such as `Heatsoak: 10.0m` announces count as the printer talking until they end, and the ceiling leaves the held time out of the elapsed time it measures. The backstop leaves out at most one ceiling of held time, so a macro that keeps announcing holds still leaves Preparing.
+
 ### Files
 
 | File | Purpose |
