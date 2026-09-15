@@ -186,3 +186,16 @@ EOF
     ungated=$(printf '%s\n' "$gated" | grep -vF '$(PATCH_MARKER_STAMP)' || true)
     [ -z "$ungated" ] || { printf 'ungated rules:\n%s\n' "$ungated"; return 1; }
 }
+
+@test "the drift stamp write is gated on the marker check" {
+    # A stanza that only warned must not have the tree it left behind recorded
+    # as the applied state: the marker check sits between the last apply stanza
+    # and the drift stamp write, so a tree missing a patch fails the recipe
+    # before any stamp blesses it.
+    last_stanza=$(grep -nF '$(APPLY_PATCH)' mk/patches.mk | tail -1 | cut -d: -f1)
+    gate_line=$(grep -nF '$(PATCH_MARKER_CHECK);' mk/patches.mk | tail -1 | cut -d: -f1)
+    stamp_line=$(grep -nF -- '--write-stamp' mk/patches.mk | tail -1 | cut -d: -f1)
+    [ -n "$last_stanza" ] && [ -n "$gate_line" ] && [ -n "$stamp_line" ]
+    [ "$gate_line" -gt "$last_stanza" ]
+    [ "$stamp_line" -gt "$gate_line" ]
+}

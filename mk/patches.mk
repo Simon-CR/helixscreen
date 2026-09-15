@@ -257,7 +257,17 @@ export HELIX_FROM_CLEAN_SENTINEL
 # loudly instead of silently checking a marker that no longer exists.
 PATCH_MARKERS_TSV := mk/patch-markers.tsv
 PATCH_MARKER_STAMP := $(BUILD_DIR)/.patch-markers-verified
-PATCH_MARKER_DEPS := $(shell awk -F'\t' 'NR>1 && !seen[$$4"/"$$5]++ {printf "%s/%s ", ($$4=="LVGL_DIR"?"$(LVGL_DIR)":"$(LIBHV_DIR)"), $$5}' $(PATCH_MARKERS_TSV) 2>/dev/null)
+PATCH_MARKER_CHECK := python3 scripts/check_patch_markers.py \
+	--mk mk/patches.mk --tsv $(PATCH_MARKERS_TSV) --patch-dir $(PATCH_DIR) \
+	--lvgl $(LVGL_DIR) --libhv $(LIBHV_DIR)
+# wildcard, not the bare list: a patch can CREATE the file a marker lives in
+# (libhv's dns_resolv.c), and on an unpatched tree - a fresh clone before its
+# first apply, or right after reset-patches - a plain prerequisite that does
+# not exist yet is a graph error, not a missing patch. The checker reads the
+# table directly, so a file the wildcard drops this parse is still verified;
+# it just becomes an mtime trigger one build later. Same shape as
+# LIBHV_PATCHED_SRCS below.
+PATCH_MARKER_DEPS := $(wildcard $(shell awk -F'\t' 'NR>1 && !seen[$$4"/"$$5]++ {printf "%s/%s ", ($$4=="LVGL_DIR"?"$(LVGL_DIR)":"$(LIBHV_DIR)"), $$5}' $(PATCH_MARKERS_TSV) 2>/dev/null))
 
 # Patches applied outside this file. Keep this list empty if you can; an entry
 # here means something applies the patch by hand, so nothing verifies it.
@@ -426,9 +436,7 @@ $(PATCH_MARKER_STAMP): $(PATCHES_STAMP) $(PATCH_MARKERS_TSV) $(PATCH_MARKER_DEPS
 		echo "$(YELLOW)⚠ python3 not found - patch marker check skipped$(RESET)"; \
 		exit 0; \
 	fi
-	$(Q)python3 scripts/check_patch_markers.py --mk mk/patches.mk \
-		--tsv $(PATCH_MARKERS_TSV) --patch-dir $(PATCH_DIR) \
-		--lvgl $(LVGL_DIR) --libhv $(LIBHV_DIR)
+	$(Q)$(PATCH_MARKER_CHECK)
 	$(Q)touch $@
 
 # Rederive the marker table. Reapplies patches first: derivation reads the
@@ -595,6 +603,17 @@ $(PATCHES_STAMP): $(PATCH_FILES) $(LVGL_HEAD) $(LIBHV_HEAD) $(APPLIED_STAMP_ID)
 				echo "$(GREEN)✓ Patched $$base synced$(RESET)"; \
 			fi; \
 		done; \
+	fi
+	@# Everything below records "this state is the applied one". A stanza above
+	@# that only warned must not get that recording: its patch's effect is
+	@# absent, and a stamp written over the gap would read as consistent on
+	@# every later build while the patch stays missing. The marker precondition
+	@# runs first and fails the recipe, so the tree is re-judged (and the warn
+	@# re-printed) on every build until it is repaired.
+	$(Q)if command -v python3 >/dev/null 2>&1; then \
+		$(PATCH_MARKER_CHECK); \
+	else \
+		echo "$(YELLOW)⚠ python3 not found - patch marker check skipped$(RESET)"; \
 	fi
 	@# Record what is now applied: the sha256 of every patch file, and of every
 	@# submodule file those patches touch. The first catches an edited patch on
