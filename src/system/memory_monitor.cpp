@@ -524,9 +524,11 @@ void MemoryMonitor::fire_warning(MemoryPressureLevel level, const std::string& r
     // the very pass the deletes fire. So the completion hops UpdateQueue
     // twice: process_pending() swaps the queue before running callbacks, so
     // work queued from inside a drain lands in the NEXT drain — one full
-    // handler pass after the period-0 delete timers fired. The inner
-    // callback only samples and logs (no LVGL calls), so nothing else can
-    // reorder it.
+    // handler pass after the delete timers of any responder that defers its
+    // delete within one hop. A responder that needed a second hop for its
+    // delete would queue that hop ahead of this sample, so its tree frees
+    // after it. The inner callback only samples and logs (no LVGL calls), so
+    // nothing else can reorder it.
     if (responders_fired > 0) {
 #ifdef __linux__
         const size_t before_rss_kb = before_stats.vm_rss_kb;
