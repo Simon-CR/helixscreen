@@ -1566,3 +1566,24 @@ TEST_CASE("an edit that moves nothing the spool owns is not a partial save",
     CHECK_FALSE(colour_only.partially_applied);
     CHECK(f.stored().spool_name == "PolyLite PLA");
 }
+
+TEST_CASE("a linked lane shows the user's colour after a restart and a fetch",
+          "[ams][commit][lane][spoolman][afc][1653]") {
+    RestartedAfcLinkFixture f;
+    f.edit([](SlotInfo& slot) { slot.color_rgb = 0xBCBCBC; });
+    f.check_lane_matches_reload();
+
+    // A restart has only the stored record to file...
+    helix::ams::reset_lane_sources();
+    REQUIRE(helix::ams::file_lane_sources(f.lane(), f.reloaded_sources()));
+
+    // ...and the first fetch of spool 42 states the spool's own colour.
+    SpoolInfo spool = make_spool(42, "Polymaker", "PolyLite PLA", "PLA");
+    spool.color_hex = "FF0000";
+    helix::test::spool_states(*f.afc, 0, spool);
+
+    const auto sources = helix::ams::lane_sources(f.lane());
+    REQUIRE(sources.local_user.has_value());
+    CHECK(sources.local_user->color_rgb == 0xBCBCBCu);
+    CHECK(helix::ams::resolve(sources).color_rgb == 0xBCBCBCu);
+}

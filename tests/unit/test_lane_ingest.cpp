@@ -945,3 +945,63 @@ TEST_CASE("a record whose declared set could not name colour keeps its lock-key 
         CHECK(sources.spoolman->material == "PETG");
     }
 }
+
+TEST_CASE("a linked record whose declared set names its colour files that colour as the user's",
+          "[lane][ingest][1653]") {
+    // The colour ladder puts a person above the server, and the declared set is
+    // what says the colour is a person's rather than the spool's.
+    const LockKey lock = GENERATE(LockKey::True, LockKey::False, LockKey::Absent);
+    INFO((lock == LockKey::True    ? "lock key true"
+          : lock == LockKey::False ? "lock key false"
+                                   : "lock key absent"));
+
+    nlohmann::json wire = {{"lane", "0"},
+                           {"spool_id", 7},
+                           {"color", "#3355FF"},
+                           {"color_name", "Cobalt"},
+                           {"helix_material", "PETG"},
+                           {"vendor", "Kingroon"},
+                           {"helix_declared", nlohmann::json::array({"color_rgb"})}};
+    if (lock != LockKey::Absent) {
+        wire["helix_locked_color"] = lock == LockKey::True;
+    }
+    const auto rec = record_from(wire);
+    REQUIRE(helix::ams::declares_color(rec));
+
+    const auto sources = sources_from_record(rec, wire);
+
+    REQUIRE(sources.local_user.has_value());
+    REQUIRE(sources.local_user->color_rgb.has_value());
+    CHECK(*sources.local_user->color_rgb == 0x3355FFu);
+    CHECK(sources.local_user->color_name == "Cobalt");
+
+    // The rest of the identity is still the server's, and the colour has left
+    // the server's rung rather than standing on both.
+    REQUIRE(sources.spoolman.has_value());
+    CHECK_FALSE(sources.spoolman->color_rgb.has_value());
+    CHECK_FALSE(sources.spoolman->color_name.has_value());
+    CHECK(sources.spoolman->brand == "Kingroon");
+    CHECK(sources.spoolman->material == "PETG");
+    CHECK(sources.spoolman->spoolman_id == 7);
+
+    CHECK(helix::ams::resolve(sources).color_rgb == 0x3355FFu);
+}
+
+TEST_CASE("a linked record names material in vain", "[lane][ingest][1653]") {
+    // The colour is the one field a linked record's set is read for. A spool
+    // owns its material and brand, so a set naming them changes nothing.
+    const nlohmann::json wire = {
+        {"lane", "0"},          {"spool_id", 7},
+        {"color", "#3355FF"},   {"helix_material", "PETG"},
+        {"vendor", "Kingroon"}, {"helix_declared", nlohmann::json::array({"material", "brand"})}};
+    const auto rec = record_from(wire);
+    REQUIRE(helix::ams::declares_material(rec));
+
+    const auto sources = sources_from_record(rec, wire);
+
+    CHECK_FALSE(sources.local_user.has_value());
+    REQUIRE(sources.spoolman.has_value());
+    CHECK(sources.spoolman->material == "PETG");
+    CHECK(sources.spoolman->brand == "Kingroon");
+    CHECK(sources.spoolman->color_rgb == 0x3355FFu);
+}

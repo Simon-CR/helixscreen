@@ -302,7 +302,8 @@ who put it there:
   reports for that lane. This is what keeps a deliberate choice
   from being erased by the next status poll.
 - A record naming a `spool_id` is read as the spool server's statement about
-  that lane's identity, and ranks above a firmware report.
+  that lane's identity, and ranks above a firmware report, except a colour its
+  `helix_declared` names, which is the user's.
 - A field the record merely carries, claiming no authorship for it, stands
   only where firmware says nothing about that field. A firmware report of the
   same field on the current frame wins.

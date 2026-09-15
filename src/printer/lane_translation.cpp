@@ -459,21 +459,37 @@ LaneSources sources_from_record(const FilamentSlotOverride& record, const nlohma
     }
 
     if (record.spoolman_id > 0) {
-        // A linked lane's identity is the server's, so what its record
-        // declares is not consulted here. declared_from_record walks every
-        // field, so two kinds are stripped back off the server's record: the
-        // weights, already filed above, and the catalog pick, which a spool
-        // record cannot state. A fetch replaces the server's record whole, so
-        // the pick is filed as the user's or it would not survive the first.
+        // A linked lane's identity is the server's, with one exception: a colour
+        // the record's declared set names is a person's pick, and the colour
+        // ladder puts a person above the server. Nothing else the set names is
+        // read here, because a linked spool owns the rest of what it states
+        // about itself.
+        //
+        // declared_from_record walks every field, so two kinds are stripped
+        // back off the server's record: the weights, already filed above, and
+        // the catalog pick, which a spool record cannot state. A fetch replaces
+        // the server's record whole, so the pick is filed as the user's or it
+        // would not survive the first.
         Observation server = declared_from_record(record);
         server.remaining_weight_g.reset();
         server.total_weight_g.reset();
         server.catalog_id.reset();
         server.product_name.reset();
-        sources.apply(server);
 
         Observation user(ObservationSource::LocalUser);
-        if (file_catalog_pick(record, user)) {
+        bool have_user = file_catalog_pick(record, user);
+        // The colour moves rather than standing on both rungs: one left on the
+        // server's would come back the moment the next fetch replaced that
+        // record with the spool's own.
+        if (declares_color(record) && server.color_rgb.has_value()) {
+            user.color_rgb = server.color_rgb;
+            user.color_name = server.color_name;
+            server.color_rgb.reset();
+            server.color_name.reset();
+            have_user = true;
+        }
+        sources.apply(server);
+        if (have_user) {
             sources.apply(user);
         }
         return sources;

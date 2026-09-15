@@ -3881,3 +3881,39 @@ TEST_CASE("a linked record declares no material", "[filament_slot_override][ams]
               spool_owned);
     }
 }
+
+TEST_CASE("a same-spool edit on a linked release 1.0 record declares only the colour it moves",
+          "[filament_slot_override][migration][1653]") {
+    // A release 1.0 record carries both lock keys on a linked lane, where they
+    // declare nothing. Only the colour this edit moves is the user's.
+    const json wire = {{"lane", "0"},
+                       {"spool_id", 42},
+                       {"color", "#3355FF"},
+                       {"helix_material", "PLA"},
+                       {"vendor", "Polymaker"},
+                       {"helix_locked_color", true},
+                       {"helix_locked_material", true}};
+    const auto parsed = helix::ams::from_lane_data_record(wire);
+    REQUIRE(parsed.has_value());
+    const FilamentSlotOverride loaded = parsed->second;
+    REQUIRE_FALSE(helix::ams::declares_color(loaded));
+
+    // The slot as the lane paints it for the editor to open on.
+    helix::SlotInfo lane;
+    lane.spoolman_id = 42;
+    lane.brand = "Polymaker";
+    lane.material = "PLA";
+    lane.color_rgb = 0x3355FF;
+
+    SECTION("an edit that moves the colour declares the colour alone") {
+        helix::SlotInfo edited = lane;
+        edited.color_rgb = 0x1E5AA8;
+        const auto amended = helix::ams::user_override_from_slot_info(lane, edited, &loaded);
+        CHECK(helix::ams::declared_field_names(amended.declared) == json::array({"color_rgb"}));
+    }
+
+    SECTION("an edit that moves nothing declares nothing") {
+        const auto amended = helix::ams::user_override_from_slot_info(lane, lane, &loaded);
+        CHECK(helix::ams::declared_field_names(amended.declared) == json::array());
+    }
+}
