@@ -236,6 +236,13 @@ struct FilamentOpSurface {
     /// skips the prompt when they fill every one. Unset offers nothing, and under
     /// ParamPolicy::Suppress the values are not used.
     std::function<std::map<std::string, std::string>(FilamentMacroOp op)> macro_prefill;
+
+    /// Runs just before the macro tier sends its macro, once any parameter prompt
+    /// has been answered: call `send` to go ahead, or `fail` to stop with that
+    /// error, which unwinds and reports the op the way a failed macro does and
+    /// sends nothing. Unset sends straight away.
+    std::function<void(std::function<void()> send, std::function<void(const MoonrakerError&)> fail)>
+        before_macro;
 };
 
 /// @note **`log_tag` must have static storage duration.** All three functions

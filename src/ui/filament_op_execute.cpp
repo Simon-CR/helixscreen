@@ -164,9 +164,8 @@ bool needs_home_confirmation(const FilamentOpPlan& plan, StandardMacroSlot slot,
             StandardMacros::instance().get(slot).get_macro());
 
     case FilamentTier::RawGcode:
-        // Bare extrude/retract moves E only, but the surfaces ask before the
-        // whole op, and a caller may still synthesize a home around it.
-        return true;
+        // The fallback extrudes and retracts E only, which Klipper runs unhomed.
+        return false;
 
     case FilamentTier::Refused:
         return false;
@@ -254,6 +253,23 @@ void report_op_error(const MoonrakerError& error, const char* what) {
     }
 }
 
+/// Run @p send through the surface's before_macro hook when it has one. A hook
+/// failure unwinds and reports the op like a failed macro, and nothing is sent.
+/// @p what has static storage duration, like log_tag.
+void send_after_before_macro(const FilamentOpSurface& surface, const FilamentOpPlan& plan,
+                             const char* what, std::function<void()> send) {
+    if (!surface.before_macro) {
+        send();
+        return;
+    }
+    const FilamentOpSurface s = surface;
+    surface.before_macro(std::move(send), [s, plan, what](const MoonrakerError& err) {
+        spdlog::error("{} Not sending the {} macro: {}", s.log_tag, what, err.message);
+        unwind_async(s, plan);
+        report_op_error(err, what);
+    });
+}
+
 } // namespace
 
 // ============================================================================
@@ -330,26 +346,29 @@ void execute_filament_load(AmsBackend* backend, int slot, const FilamentOpSurfac
                 // Run, which can be after the asking surface is gone.
                 guarded(s, [api, s, plan, params = result.params]() {
                     begin(s, plan);
-                    // execute_macro()'s reply lands when the script has RUN, so
-                    // these are completion callbacks, not "started" ones.
-                    const bool dispatched = StandardMacros::instance().execute(
-                        StandardMacroSlot::LoadFilament, api, params,
-                        [s]() {
-                            spdlog::info("{} Load filament finished", s.log_tag);
-                            finished(s, s.on_async_success);
-                        },
-                        [s, plan](const MoonrakerError& err) {
-                            spdlog::error("{} Failed to load filament: {}", s.log_tag, err.message);
+                    send_after_before_macro(s, plan, "load", [api, s, plan, params]() {
+                        // execute_macro()'s reply lands when the script has RUN, so
+                        // these are completion callbacks, not "started" ones.
+                        const bool dispatched = StandardMacros::instance().execute(
+                            StandardMacroSlot::LoadFilament, api, params,
+                            [s]() {
+                                spdlog::info("{} Load filament finished", s.log_tag);
+                                finished(s, s.on_async_success);
+                            },
+                            [s, plan](const MoonrakerError& err) {
+                                spdlog::error("{} Failed to load filament: {}", s.log_tag,
+                                              err.message);
+                                unwind_async(s, plan);
+                                report_op_error(err, "load");
+                            },
+                            IMoonrakerAPI::EXTRUSION_TIMEOUT_MS);
+                        if (!dispatched) {
+                            // Empty slot or no API: neither callback will ever fire,
+                            // so nothing else would release what begin() armed.
+                            spdlog::warn("{} Load macro did not dispatch", s.log_tag);
                             unwind_async(s, plan);
-                            report_op_error(err, "load");
-                        },
-                        IMoonrakerAPI::EXTRUSION_TIMEOUT_MS);
-                    if (!dispatched) {
-                        // Empty slot or no API: neither callback will ever fire,
-                        // so nothing else would release what begin() armed.
-                        spdlog::warn("{} Load macro did not dispatch", s.log_tag);
-                        unwind_async(s, plan);
-                    }
+                        }
+                    });
                 });
             },
             known_values(surface, FilamentMacroOp::Load));
@@ -451,23 +470,25 @@ void execute_filament_unload(AmsBackend* backend, int slot, bool target_is_loade
             [api, s, plan](const helix::MacroParamResult& result) {
                 guarded(s, [api, s, plan, params = result.params]() {
                     begin(s, plan);
-                    const bool dispatched = StandardMacros::instance().execute(
-                        StandardMacroSlot::UnloadFilament, api, params,
-                        [s]() {
-                            spdlog::info("{} Unload filament finished", s.log_tag);
-                            finished(s, s.on_async_success);
-                        },
-                        [s, plan](const MoonrakerError& err) {
-                            spdlog::error("{} Failed to unload filament: {}", s.log_tag,
-                                          err.message);
+                    send_after_before_macro(s, plan, "unload", [api, s, plan, params]() {
+                        const bool dispatched = StandardMacros::instance().execute(
+                            StandardMacroSlot::UnloadFilament, api, params,
+                            [s]() {
+                                spdlog::info("{} Unload filament finished", s.log_tag);
+                                finished(s, s.on_async_success);
+                            },
+                            [s, plan](const MoonrakerError& err) {
+                                spdlog::error("{} Failed to unload filament: {}", s.log_tag,
+                                              err.message);
+                                unwind_async(s, plan);
+                                report_op_error(err, "unload");
+                            },
+                            IMoonrakerAPI::EXTRUSION_TIMEOUT_MS);
+                        if (!dispatched) {
+                            spdlog::warn("{} Unload macro did not dispatch", s.log_tag);
                             unwind_async(s, plan);
-                            report_op_error(err, "unload");
-                        },
-                        IMoonrakerAPI::EXTRUSION_TIMEOUT_MS);
-                    if (!dispatched) {
-                        spdlog::warn("{} Unload macro did not dispatch", s.log_tag);
-                        unwind_async(s, plan);
-                    }
+                        }
+                    });
                 });
             },
             known_values(surface, FilamentMacroOp::Unload));

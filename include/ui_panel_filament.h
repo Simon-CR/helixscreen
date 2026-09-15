@@ -405,6 +405,10 @@ class FilamentPanel : public PanelBase {
     std::optional<FilamentOp> op_aborted_;
     uint32_t op_busy_started_tick_ = 0; ///< lv_tick when busy began (min-spinner floor)
     bool backend_op_active_ = false;    ///< true while an AMS-backend op awaits ams_action IDLE
+    /// The user agreed to home on this load's prompt and the load takes the macro
+    /// tier, so execute_load() homes right before the macro is sent. Cleared there
+    /// and wherever a confirmed load is abandoned.
+    bool home_before_load_macro_ = false;
 
     lv_subject_t* op_state_subject(FilamentOp op);
     void set_op_state(FilamentOp op, int state); ///< main-thread: set state subject

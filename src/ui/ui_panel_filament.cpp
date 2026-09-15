@@ -376,6 +376,7 @@ void FilamentPanel::deinit_subjects() {
         if (AmsBackend* backend = AmsState::instance().get_backend()) {
             backend->clear_home_preconfirmed();
         }
+        home_before_load_macro_ = false;
         // Don't schedule delayed cooldown during teardown — just cool down immediately
         if (prior_nozzle_target_ == 0) {
             if (auto* c = get_temperature_controller()) {
@@ -1330,16 +1331,21 @@ void FilamentPanel::handle_load_button() {
                                            helix::toolhead_is_homed(printer_state_))) {
         spdlog::info("[{}] Toolhead not homed -- asking before load", get_name());
         // Ask BEFORE the preheat, not after: the physical G28 still fires later,
-        // inside AmsSubscriptionBackend::ensure_homed_then() right before the
-        // tier-1 dispatch, so only the confirmation moves earlier and a decline
-        // never wastes a heat cycle.
+        // right before the dispatch (inside the backend's ensure_homed_then() on
+        // tier 1, ahead of the macro on tier 2), so only the confirmation moves
+        // earlier and a decline never wastes a heat cycle.
         //
         // FilamentPanel is an immortal singleton [L012] -- capturing [this]
         // directly is safe with no AsyncLifetimeGuard token.
         helix::ui::request_home_confirmation(
-            [this, preheat]() {
-                if (AmsBackend* b = AmsState::instance().get_backend()) {
-                    b->arm_home_preconfirmed();
+            [this, preheat, tier = plan.tier]() {
+                // The consent goes to whatever sends this tier's G28.
+                if (tier == helix::ui::FilamentTier::AmsBackend) {
+                    if (AmsBackend* b = AmsState::instance().get_backend()) {
+                        b->arm_home_preconfirmed();
+                    }
+                } else if (tier == helix::ui::FilamentTier::Macro) {
+                    home_before_load_macro_ = true;
                 }
                 if (preheat) {
                     start_preheat_for_op(PreheatOp::LOAD);
@@ -2662,6 +2668,7 @@ void FilamentPanel::cancel_pending_preheat() {
     if (AmsBackend* backend = AmsState::instance().get_backend()) {
         backend->clear_home_preconfirmed();
     }
+    home_before_load_macro_ = false;
 
     // Cancel any pending cooldown timer
     PostOpCooldownManager::instance().cancel();
@@ -2897,6 +2904,16 @@ void FilamentPanel::execute_load() {
             navigate_to_ams_panel();
         }
     };
+
+    if (home_before_load_macro_) {
+        home_before_load_macro_ = false;
+        // Homing waits until now so it follows any preheat; object-scoped so the
+        // macro still goes out if the user leaves the panel during the G28.
+        surface.before_macro = [this](std::function<void()> send,
+                                      std::function<void(const MoonrakerError&)> fail) {
+            helix::ensure_homed_then(api_, object_lifetime_, std::move(send), std::move(fail));
+        };
+    }
 
     helix::ui::execute_filament_load(backend, target_slot, surface);
 }
