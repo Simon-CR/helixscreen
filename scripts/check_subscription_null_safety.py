@@ -237,6 +237,19 @@ CONST_SUBSCRIPT_BASELINE: dict[str, int] = {
     # has already filtered on entry.contains("name").
     'src/ui/panel_widgets/temp_graph_widget.cpp::a["name"]': 1,
     'src/ui/panel_widgets/temp_graph_widget.cpp::b["name"]': 1,
+    # Chamber-mock frames: every read is on json MoonrakerClientMock built a
+    # few lines above, and the tests REQUIRE the enclosing frame key first -
+    # a missing key means the mock regressed, which should abort, not skip.
+    'tests/unit/test_chamber_mock_dragonbreath.cpp::notification["params"]': 5,
+    'tests/unit/test_chamber_mock_dragonbreath.cpp::notification["params"][0]': 5,
+    'tests/unit/test_chamber_mock_dragonbreath.cpp::diag["fault"]': 1,
+    'tests/unit/test_chamber_mock_dragonbreath.cpp::diag["fan_percent"]': 1,
+    'tests/unit/test_chamber_mock_dragonbreath.cpp::diag["ptc_temp"]': 1,
+    'tests/unit/test_chamber_mock_dragonbreath.cpp::diag["inhibited"]': 1,
+    'tests/unit/test_chamber_mock_dragonbreath.cpp::diag["connected"]': 1,
+    'tests/unit/test_chamber_mock_dragonbreath.cpp::diag["mode"]': 1,
+    'tests/unit/test_chamber_mock_dragonbreath.cpp::diag["fault_reason"]': 2,
+    'tests/unit/test_chamber_mock_dragonbreath.cpp::config.heater_generic dragonbreath["max_temp"]': 1,
 }
 
 _NEUTRALISE = set('{}[]()')
