@@ -102,6 +102,18 @@ class AmsSubscriptionBackend : public AmsBackend {
     /// the caller is responsible for hopping to the main thread. Use this when a
     /// macro's completion is the reliable terminal signal for an operation.
     virtual AmsError execute_gcode(const std::string& gcode, std::function<void()> on_complete);
+    /// Same as execute_gcode(gcode, on_complete), plus @p on_error for callers
+    /// that hold state the failure has to unwind — an optimistic AmsAction set
+    /// before the send stays set forever if nothing runs on the error path.
+    /// Both callbacks fire on a background thread; the caller hops to the main
+    /// thread itself.
+    ///
+    /// @p silent suppresses the advisory RPC timeout's toast. Leave it true for
+    /// a long macro whose completion is owned by a status signal rather than the
+    /// RPC return; pass false when the RPC return is the operation's own answer.
+    virtual AmsError execute_gcode(const std::string& gcode, std::function<void()> on_complete,
+                                   std::function<void(const MoonrakerError&)> on_error,
+                                   bool silent = true);
 
     /// Whether the toolhead is homed. Virtual purely as a test seam: fixtures
     /// override it to exercise the homed and unhomed branches of

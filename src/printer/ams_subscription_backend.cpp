@@ -676,4 +676,42 @@ AmsError AmsSubscriptionBackend::execute_gcode(const std::string& gcode,
     return AmsErrorHelper::success();
 }
 
+AmsError AmsSubscriptionBackend::execute_gcode(const std::string& gcode,
+                                               std::function<void()> on_complete,
+                                               std::function<void(const MoonrakerError&)> on_error,
+                                               bool silent) {
+    if (!api_) {
+        return AmsErrorHelper::not_connected("IMoonrakerAPI not available");
+    }
+    const char* tag = backend_log_tag();
+    spdlog::info("{} Executing G-code: {}", tag, gcode);
+    api_->execute_gcode(
+        gcode,
+        [tag, on_complete = std::move(on_complete)]() {
+            spdlog::debug("{} G-code executed successfully", tag);
+            if (on_complete) {
+                on_complete();
+            }
+        },
+        [tag, gcode, on_error = std::move(on_error)](const MoonrakerError& err) {
+            if (err.type == MoonrakerErrorType::TIMEOUT) {
+                spdlog::warn("{} G-code response timed out (may still be running): {}", tag, gcode);
+            } else if (err.type == MoonrakerErrorType::NOT_READY) {
+                spdlog::debug("{} G-code skipped (Klipper halted): {}", tag, gcode);
+            } else {
+                spdlog::error("{} G-code failed: {} - {}", tag, gcode, err.message);
+            }
+            if (on_error) {
+                on_error(err);
+            }
+        },
+        IMoonrakerAPI::AMS_OPERATION_TIMEOUT_MS, silent, /*on_queued=*/nullptr,
+        // caller_surfaces_errors=false: on_error unwinds caller state but does
+        // not put anything on screen, so declaring otherwise would silence
+        // GcodeErrorRouter and a real macro rejection would reach nobody.
+        // See include/rpc_error_policy.h.
+        /*caller_surfaces_errors=*/false);
+    return AmsErrorHelper::success();
+}
+
 } // namespace helix
