@@ -4,6 +4,7 @@
 #include "ui_update_queue.h"
 
 #include "ams_backend_ace.h"
+#include "ams_bypass_policy.h"
 #include "ams_types.h"
 #include "fake_moonraker_client.h"
 #include "filament_slot_override.h"
@@ -13,6 +14,7 @@
 #include "moonraker_api_mock.h"
 #include "moonraker_client_mock.h"
 #include "moonraker_types.h"
+#include "printer_discovery.h"
 #include "printer_state.h"
 #include "test_helpers/ace_test_access.h"
 #include "test_helpers/registered_backend.h"
@@ -289,6 +291,13 @@ class AmsBackendAceTestHelper : public AmsBackendAce {
     std::vector<std::string> captured_gcodes;
     std::function<void()> pending_ack;
 
+    // Fire-and-forget sends (bypass) take this form; the completion form below
+    // is for ops whose ack matters. Both capture, so a test reads one list.
+    helix::AmsError execute_gcode(const std::string& gcode) override {
+        captured_gcodes.push_back(gcode);
+        return helix::AmsErrorHelper::success();
+    }
+
     helix::AmsError execute_gcode(const std::string& gcode, std::function<void()> on_complete,
                                   std::function<void(const MoonrakerError&)> /*on_error*/,
                                   bool /*silent*/) override {
@@ -313,17 +322,140 @@ TEST_CASE("ACE uses hub topology", "[ams][ace][topology]") {
     REQUIRE(helper.get_topology() == PathTopology::HUB);
 }
 
-TEST_CASE("ACE bypass not supported", "[ams][ace][bypass]") {
+TEST_CASE("ACE without a master switch reports no bypass", "[ams][ace][bypass]") {
     AmsBackendAceTestHelper helper;
-    REQUIRE(helper.is_bypass_active() == false);
+    helper.set_running(true);
+
+    // A hub that never publishes ace_pro_enabled has no switch to throw.
+    AceTestAccess::parse_ace(helper, make_ace_slot_payload("ready", 0xFF5500, "PLA"));
+
+    REQUIRE_FALSE(helper.get_test_system_info().supports_bypass);
+    REQUIRE_FALSE(helper.is_bypass_active());
 
     auto err = helper.enable_bypass();
     REQUIRE(!err.success());
-    REQUIRE(err.result == helix::AmsResult::NOT_SUPPORTED);
+    REQUIRE(err.result == helix::AmsResult::WRONG_STATE);
+}
 
-    err = helper.disable_bypass();
-    REQUIRE(!err.success());
-    REQUIRE(err.result == helix::AmsResult::NOT_SUPPORTED);
+// ============================================================================
+// Bypass via the ACE master switch (prestonbrown/helixscreen#1677)
+//
+// `ace_pro_enabled` gates the whole ACE path. Rigs that run a fifth spool by
+// hand turn it off, which is what bypass means on this hardware.
+// ============================================================================
+
+TEST_CASE("ACE bypass follows the driver's master switch", "[ams][ace][bypass][1677]") {
+    AmsBackendAceTestHelper helper;
+    helper.set_running(true);
+    helper.set_bypass_macros(helix::BypassMacros{"ACE_BYPASS_ON", "ACE_BYPASS_OFF"});
+
+    AceTestAccess::parse_ace(helper, make_kobra_instance_object());
+
+    SECTION("switch on: the ACE feeds the toolhead, so bypass is not active") {
+        AceTestAccess::parse_ace(helper, make_kobra_manager_object(-1));
+
+        CHECK(helper.get_test_system_info().supports_bypass);
+        CHECK_FALSE(helper.is_bypass_active());
+    }
+
+    SECTION("switch off: the ACE path is disabled, so bypass is active") {
+        json mgr = make_kobra_manager_object(-1);
+        mgr["ace_pro_enabled"] = false;
+        AceTestAccess::parse_ace(helper, mgr);
+
+        CHECK(helper.get_test_system_info().supports_bypass);
+        CHECK(helper.is_bypass_active());
+    }
+
+    SECTION("engaging bypass sends the configured macro") {
+        AceTestAccess::parse_ace(helper, make_kobra_manager_object(-1));
+
+        REQUIRE(helper.enable_bypass().success());
+        REQUIRE(helper.captured_gcodes.size() == 1);
+        CHECK(helper.captured_gcodes[0] == "ACE_BYPASS_ON");
+
+        REQUIRE(helper.disable_bypass().success());
+        REQUIRE(helper.captured_gcodes.size() == 2);
+        CHECK(helper.captured_gcodes[1] == "ACE_BYPASS_OFF");
+    }
+
+    SECTION("a seated tool refuses, rather than reporting a success the macro will reject") {
+        AceTestAccess::parse_ace(helper, make_kobra_manager_object(2));
+        REQUIRE(helper.get_test_system_info().filament_loaded);
+
+        auto err = helper.enable_bypass();
+        CHECK(!err.success());
+        CHECK(err.result == helix::AmsResult::WRONG_STATE);
+        CHECK(helper.captured_gcodes.empty());
+    }
+}
+
+// ----------------------------------------------------------------------------
+// Resolving the macros from discovery. The pure overload, so no SettingsManager
+// is involved.
+// ----------------------------------------------------------------------------
+
+namespace {
+helix::PrinterDiscovery discovery_with(const std::vector<std::string>& objects) {
+    helix::PrinterDiscovery hw;
+    hw.parse_objects(nlohmann::json(objects));
+    return hw;
+}
+} // namespace
+
+TEST_CASE("Bypass macros resolve from discovery", "[ams][ace][bypass][1677]") {
+    SECTION("both conventional macros present: auto-detected") {
+        auto hw = discovery_with(
+            {"configfile", "ace", "gcode_macro ACE_BYPASS_ON", "gcode_macro ACE_BYPASS_OFF"});
+
+        const auto macros = helix::resolve_bypass_macros(hw, "auto", "auto");
+        CHECK(macros.on == "ACE_BYPASS_ON");
+        CHECK(macros.off == "ACE_BYPASS_OFF");
+    }
+
+    SECTION("neither present: no bypass offered") {
+        auto hw = discovery_with({"configfile", "ace"});
+
+        const auto macros = helix::resolve_bypass_macros(hw, "auto", "auto");
+        CHECK(macros.on.empty());
+        CHECK(macros.off.empty());
+    }
+
+    SECTION("only one half present: neither offered, since it cannot round-trip") {
+        auto hw = discovery_with({"configfile", "ace", "gcode_macro ACE_BYPASS_ON"});
+
+        const auto macros = helix::resolve_bypass_macros(hw, "auto", "auto");
+        CHECK(macros.on.empty());
+        CHECK(macros.off.empty());
+    }
+
+    SECTION("an explicit override is honoured even when discovery has not seen it") {
+        auto hw = discovery_with({"configfile", "ace"});
+
+        const auto macros = helix::resolve_bypass_macros(hw, "MY_BYPASS_ON", "MY_BYPASS_OFF");
+        CHECK(macros.on == "MY_BYPASS_ON");
+        CHECK(macros.off == "MY_BYPASS_OFF");
+    }
+
+    SECTION("an override on one half still needs the other to resolve") {
+        auto hw = discovery_with({"configfile", "ace"});
+
+        const auto macros = helix::resolve_bypass_macros(hw, "MY_BYPASS_ON", "auto");
+        CHECK(macros.on.empty());
+        CHECK(macros.off.empty());
+    }
+}
+
+TEST_CASE("ACE names no bypass macros, so it offers no bypass", "[ams][ace][bypass][1677]") {
+    AmsBackendAceTestHelper helper;
+    helper.set_running(true);
+
+    // The switch exists, but nothing safe is configured to throw it.
+    AceTestAccess::parse_ace(helper, make_kobra_instance_object());
+    AceTestAccess::parse_ace(helper, make_kobra_manager_object(-1));
+
+    CHECK_FALSE(helper.get_test_system_info().supports_bypass);
+    CHECK(helper.enable_bypass().result == helix::AmsResult::WRONG_STATE);
 }
 
 // ============================================================================

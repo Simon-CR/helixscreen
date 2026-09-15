@@ -16,6 +16,7 @@
 #include "ui_toast_manager.h"
 #include "ui_update_queue.h"
 
+#include "ams_bypass_policy.h"
 #include "i_moonraker_api.h"
 #include "i_moonraker_client.h"
 #include "lane_legacy_migration.h"
@@ -566,16 +567,78 @@ std::vector<int> AmsBackendAce::get_tool_mapping() const {
 // Bypass Mode (not supported)
 // ============================================================================
 
+void AmsBackendAce::set_bypass_macros(helix::BypassMacros macros) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    bypass_on_macro_ = std::move(macros.on);
+    bypass_off_macro_ = std::move(macros.off);
+    if (ace_pro_enabled_seen_) {
+        system_info_.supports_bypass = !bypass_on_macro_.empty() && !bypass_off_macro_.empty();
+    }
+}
+
 AmsError AmsBackendAce::enable_bypass() {
-    return AmsErrorHelper::not_supported("Bypass mode");
+    std::string gcode;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+
+        if (AmsError precondition = check_preconditions(); !precondition) {
+            return precondition;
+        }
+        // Checked before the availability predicate, which folds in a user
+        // override that can force the controls on. That override cannot supply
+        // a macro, and without one there is nothing to send.
+        if (bypass_on_macro_.empty()) {
+            return AmsError(AmsResult::WRONG_STATE, "Bypass not supported",
+                            lv_tr("This system does not support bypass mode"), "");
+        }
+        if (!helix::bypass_available_for(system_info_.supports_bypass)) {
+            return AmsError(AmsResult::WRONG_STATE, "Bypass not supported",
+                            lv_tr("This system does not support bypass mode"), "");
+        }
+        // The macro refuses a seated tool itself, but execute_gcode is
+        // fire-and-forget and reports success before Klipper answers, so a
+        // refusal there would reach the user as a toast contradicting a success
+        // already shown.
+        if (system_info_.filament_loaded) {
+            return AmsError(AmsResult::WRONG_STATE, "Unload filament first",
+                            lv_tr("Filament is still loaded. Unload it before enabling bypass."),
+                            "");
+        }
+        gcode = bypass_on_macro_;
+    }
+
+    spdlog::info("[ACE] Enabling bypass mode");
+    return execute_gcode(gcode);
 }
 
 AmsError AmsBackendAce::disable_bypass() {
-    return AmsErrorHelper::not_supported("Bypass mode");
+    std::string gcode;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+
+        if (AmsError precondition = check_preconditions(); !precondition) {
+            return precondition;
+        }
+        if (bypass_off_macro_.empty()) {
+            return AmsError(AmsResult::WRONG_STATE, "Bypass not supported",
+                            lv_tr("This system does not support bypass mode"), "");
+        }
+        if (!helix::bypass_available_for(system_info_.supports_bypass)) {
+            return AmsError(AmsResult::WRONG_STATE, "Bypass not supported",
+                            lv_tr("This system does not support bypass mode"), "");
+        }
+        gcode = bypass_off_macro_;
+    }
+
+    spdlog::info("[ACE] Disabling bypass mode");
+    return execute_gcode(gcode);
 }
 
 bool AmsBackendAce::is_bypass_active() const {
-    return false;
+    std::lock_guard<std::mutex> lock(mutex_);
+    // Only the ACE path being switched off means a hand-fed spool. A rig that
+    // never publishes the switch is not bypassing, it simply has no switch.
+    return ace_pro_enabled_seen_ && !ace_pro_enabled_;
 }
 
 // ============================================================================
@@ -1045,6 +1108,14 @@ void AmsBackendAce::parse_ace_object(const json& data) {
     if (data.contains("current_index") && data["current_index"].is_number_integer()) {
         manager_states_seat_ = true;
         seat_from_global_index_locked(data["current_index"].get<int>());
+    }
+
+    // The master switch. Presence is the capability, so a rig without one is
+    // left reporting no bypass rather than one that is permanently off.
+    if (data.contains("ace_pro_enabled") && data["ace_pro_enabled"].is_boolean()) {
+        ace_pro_enabled_seen_ = true;
+        ace_pro_enabled_ = data["ace_pro_enabled"].get<bool>();
+        system_info_.supports_bypass = !bypass_on_macro_.empty() && !bypass_off_macro_.empty();
     }
 
     // All four seated signals (the ValgACE "loaded" scan, loaded_slot, native
