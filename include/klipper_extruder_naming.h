@@ -94,11 +94,11 @@ namespace helix {
  * @brief How many of @p names are Klipper extruder object names.
  *
  * The one spelling of "how many tools does this printer have" that every
- * counting site (printer detection's tool_count heuristic, telemetry's
- * session and hardware-profile events) must share, so their counts cannot
- * drift apart. It is is_extruder_name() applied per element: a tool count
- * counts tools, so an `extruder`-prefixed name that is not a numbered
- * extruder (extruder_mixing, extruder_stepper) does not inflate it.
+ * counting site (printer detection's tool_count heuristic, discovery's
+ * synthesized tool names, telemetry's session and hardware-profile events)
+ * must share, so their counts cannot drift apart. It is is_extruder_name() applied per element: a
+ * tool count counts tools, so an `extruder`-prefixed name that is not a numbered extruder
+ * (extruder_mixing, extruder_stepper) does not inflate it.
  *
  * @param names Object names, e.g. a PrinterDiscovery heaters list
  * @return Number of elements that are extruder object names
