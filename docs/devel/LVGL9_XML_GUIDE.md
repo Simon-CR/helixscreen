@@ -1203,6 +1203,26 @@ Quick summary for reference:
 </styles>
 ```
 
+**A `<styles>` block is file-local; share a style through `ui_xml/styles.xml`.** A bare
+style name resolves in the file that declares it, then in `globals`. A component nested
+inside another file cannot see that file's `<styles>`. When two files need the same look,
+define it once in `ui_xml/styles.xml` and borrow it from anywhere by dotted name, where the
+prefix is the library's basename:
+
+```xml
+<!-- ui_xml/styles.xml -->
+<style name="press_wash" bg_color="#primary" bg_opa="30%" radius="#border_radius"/>
+
+<!-- any other file: applied directly, or through a binding -->
+<style name="styles.press_wash" selector="pressed"/>
+<bind_style name="styles.invisible" subject="preparing_visible" ref_value="1"/>
+```
+
+The library registers after theme init, so `#token` values resolve there, which a style in
+`globals.xml` cannot do. In-tree borrowers: `components/filament_catalog_row.xml`,
+`components/print_status_preview_card.xml`. Keep the library small; the borrowed-pointer
+lifetime rule is in `UI_CONTRIBUTOR_GUIDE.md` § "Shared styles".
+
 **`flex_flow` in a `<style>` is inert without `layout="flex"`.** Setting the flow
 alone is a no-op: `lv_obj_set_flex_flow()` sets *both* `LAYOUT` and `FLEX_FLOW`,
 but a `<style>` only applies the properties you name. A container with a flow and

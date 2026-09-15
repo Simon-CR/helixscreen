@@ -50,6 +50,25 @@ Reference: lesson **L040**.
 
 ---
 
+### My `<style name="...">` or `bind_style` has no effect inside a component, but works in the parent file.
+
+**Cause:** A `<styles>` block is file-local. A bare style name resolves in the file that declares it, then in `globals`, so a component in its own XML file cannot see the `<styles>` of the panel that embeds it. The log carries a `No style found with <name> name` warning.
+
+**Fix:** When more than one file needs the style, move it into `ui_xml/styles.xml` and reference it by dotted name everywhere, including the file that used to own it:
+
+```xml
+<!-- ui_xml/styles.xml -->
+<style name="press_wash" bg_color="#primary" bg_opa="30%" radius="#border_radius"/>
+
+<!-- ✓ any file -->
+<style name="styles.press_wash" selector="pressed"/>
+<bind_style name="styles.invisible" subject="preparing_visible" ref_value="1"/>
+```
+
+Do not move it into `globals.xml` instead: that file parses before theme init, so a style there that uses a `#token` registers empty. Details: `UI_CONTRIBUTOR_GUIDE.md` § "Shared styles".
+
+---
+
 ### My subject binding is stuck at the default value. Updates in C++ don't show up.
 
 **Cause:** The XML `<subjects>` block declared a subject with the same name as a C++-registered subject. XML component-scoped subjects shadow global subjects — your bindings resolve to the local XML subject (default-initialized), not the C++ one that's actually getting updates.

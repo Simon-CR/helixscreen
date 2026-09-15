@@ -38,8 +38,10 @@
          The same ordering applies to <style> elements: globals.xml is parsed
          BEFORE theme_manager_init() registers the base #space_*/#color consts,
          so a style here that references one registers EMPTY (property silently
-         skipped). Define such styles in the consuming component's own <styles>
-         block instead - components are parsed after theme init. -->
+         skipped). Define such styles in ui_xml/styles.xml when more than one
+         file uses them (borrowed by dotted name, styles.<name>), otherwise in
+         the consuming component's own <styles> block. Both parse after theme
+         init. -->
     <!-- space_xxs: Tiny spacing (keypad rows, compact icon gaps) -->
     <px name="space_xxs_tiny" value="1"/>
     <px name="space_xxs_small" value="2"/>

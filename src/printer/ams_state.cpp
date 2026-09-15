@@ -983,6 +983,7 @@ void AmsState::init_backends_from_hardware(const helix::PrinterDiscovery& hardwa
         backend->set_feeder(helix::toolchanger_addon::resolve_feeder(
             hardware, helix::SettingsManager::instance().get_feeder_open_macro(),
             helix::SettingsManager::instance().get_feeder_close_macro()));
+        backend->set_bypass_macros(helix::resolve_bypass_macros_for(hardware));
         backend->set_tool_sensor(helix::toolchanger_addon::resolve_tool_sensor(hardware));
         backend->set_tool_commands(helix::toolchanger_addon::resolve_tool_commands(hardware));
         backend->set_discovered_sensors(hardware.filament_sensor_names());

@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include "ams_bypass_policy.h"
 #include "ams_environment_zone.h"
 #include "ams_error.h"
 #include "ams_step_operation.h"
@@ -2765,6 +2766,22 @@ class AmsBackend {
      */
     virtual void set_feeder(helix::toolchanger_addon::Feeder feeder) {
         (void)feeder;
+    }
+
+    /**
+     * @brief Set the macros that throw this machine's filament-path bypass
+     *
+     * Called before start() with names resolved from discovery and the user's
+     * override. Only the ACE backend uses this: its hardware has no bypass
+     * command of its own, so the switch is thrown by macros, and a machine that
+     * names none reports no bypass rather than offering a control with nothing
+     * behind it. Other backends ignore it.
+     *
+     * @param on_macro  Engages bypass (disables the filament path); empty when none
+     * @param off_macro Releases it again; empty when none
+     */
+    virtual void set_bypass_macros(helix::BypassMacros macros) {
+        (void)macros;
     }
 
     /**

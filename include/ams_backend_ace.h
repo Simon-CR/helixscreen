@@ -4,6 +4,7 @@
 #pragma once
 #if HELIX_HAS_ACE
 
+#include "ams_bypass_policy.h"
 #include "ams_subscription_backend.h"
 #include "async_lifetime_guard.h"
 #include "filament_slot_override.h"
@@ -154,12 +155,29 @@ class AmsBackendAce : public AmsSubscriptionBackend {
     [[nodiscard]] std::vector<int> get_tool_mapping() const override;
 
     // ========================================================================
-    // Bypass Mode (not supported on ACE Pro)
+    // Bypass Mode
+    //
+    // The ACE Pro has no bypass selector of its own. What some rigs have is a
+    // master switch that disables the whole ACE path so a fifth spool can be
+    // fed to the toolhead by hand, published as `ace_pro_enabled`. Its
+    // PRESENCE is the capability; its VALUE is the state, inverted — the ACE
+    // path being off is what bypass means here
+    // (prestonbrown/helixscreen#1677).
+    //
+    // There is no native command for it, so the switch is thrown by macros.
+    // Driving the underlying pin directly would skip the unload-first and
+    // refuse-during-print guards those macros exist to enforce, so a rig that
+    // names no macros reports no bypass rather than offering a control with
+    // nothing safe behind it.
     // ========================================================================
 
     AmsError enable_bypass() override;
     AmsError disable_bypass() override;
     [[nodiscard]] bool is_bypass_active() const override;
+
+    /// The macros that throw the ACE master switch, resolved from discovery
+    /// with a user override. Empty names mean this rig cannot bypass.
+    void set_bypass_macros(helix::BypassMacros macros) override;
 
     // ========================================================================
     // Environment Sensors & Dryer Control (ACE Pro has built-in dryer + temp)
@@ -367,6 +385,13 @@ class AmsBackendAce : public AmsSubscriptionBackend {
     /// stated dryer current temp overrides. Caller holds mutex_.
     void apply_dryer_state_locked(const nlohmann::json& data);
 
+    /// Fold the manager's path sensors (`rdm_sensor` at the hub,
+    /// `toolhead_sensor` at the extruder) into the cached readings and onto the
+    /// unit. A frame stating neither leaves the last reading standing: notify
+    /// frames carry only changed fields, so silence is not a cleared sensor.
+    /// Caller holds mutex_.
+    void apply_path_sensors_locked(const nlohmann::json& data);
+
     /// Seat the loaded tool from the fork manager's `current_index` — the
     /// global tool index across every unit, -1 = nothing loaded. This backend
     /// displays one unit: below that unit's slot count the global index IS
@@ -484,6 +509,33 @@ class AmsBackendAce : public AmsSubscriptionBackend {
     /// is outstanding.
     int seated_stamp_slot_ = -1;
     SlotStatus seated_stamp_prev_ = SlotStatus::UNKNOWN;
+
+    /// Set once a manager object has stated `current_index` (object path or the
+    /// REST bridge's `ace_manager`). That driver owns the seat, so a G-code ack
+    /// must not stamp one: it answers a toolchange it will not perform with a
+    /// plain respond_info and no error, and `current_index` then stays at -1 —
+    /// unchanged, so Klipper sends no frame to contradict the stamp
+    /// (prestonbrown/helixscreen#1676).
+    bool manager_states_seat_ = false;
+
+    /// Whether the driver has published `ace_pro_enabled`, and its last value.
+    /// Absent means this rig has no master switch at all, which is a different
+    /// answer from "has one, currently on".
+    bool ace_pro_enabled_seen_ = false;
+    bool ace_pro_enabled_ = true;
+
+    /// Macros that turn the ACE path off (engaging bypass) and back on.
+    std::string bypass_on_macro_;
+    std::string bypass_off_macro_;
+
+    /// The two path sensors, when the driver publishes them. An unloaded strand
+    /// parks just short of the hub rather than back at the spool, so these are
+    /// what say where filament actually sits between slot and nozzle
+    /// (prestonbrown/helixscreen#1678). A hub reporting neither leaves the path
+    /// answering from the seat alone.
+    bool path_sensors_seen_ = false;
+    bool rdm_sensor_ = false;
+    bool toolhead_sensor_ = false;
 
     // Shared helper used by every override-clear path (hardware event and
     // explicit user request). Caller must hold mutex_. Erases
