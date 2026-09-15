@@ -821,11 +821,11 @@ meanings available.
 
 #### `wait_idle` — what it can and cannot see
 
-`wait_idle` polls three counters from the transport thread — `UpdateQueue` pending
+`wait_idle` polls three counters from the transport thread: `UpdateQueue` pending
 work (including anything buffered by a `ScopedFreeze` held internally),
 `HttpExecutor` in-flight items on both lanes, and `ThumbnailProcessor`
 pending tasks (its worker pool prescaling a card thumbnail, independent of
-either HTTP lane) — and returns once all three read zero on two consecutive
+either HTTP lane). It returns once all three read zero on two consecutive
 samples (a single zero reading can land in the gap between one callback
 finishing and the next being enqueued by the work it just completed). A
 timeout names the nonzero counter(s) rather than just saying time ran out.

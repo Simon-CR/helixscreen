@@ -226,7 +226,7 @@ _POST_NAV_WAIT_SUBJECT = {
 
 # freeze() pauses every LVGL timer it finds armed (remote_control_server.cpp's
 # handle_freeze walks lv_timer_get_next()), including a panel's own one-shot
-# debounce timer if it is still pending — e.g. PrintSelectPanel::refresh_timer_,
+# debounce timer if it is still pending, e.g. PrintSelectPanel::refresh_timer_,
 # armed from inside a queued thumbnail-fetch callback and not itself visible to
 # wait_idle() (neither UpdateQueue, HttpExecutor, nor ThumbnailProcessor work).
 # A timer paused before it fires never fires, so a capture can freeze on the

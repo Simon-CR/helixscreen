@@ -76,11 +76,9 @@ def test_wait_idle_reports_which_counter_was_busy_on_timeout(helix_app):
 
 def test_wait_idle_reports_thumbnail_counter_busy_on_timeout(helix_app):
     # Same property as the http counter above, for ThumbnailProcessor's own
-    # worker pool — the thumbnail-build race a stale golden capture on
-    # print-select traced back to (ThumbnailProcessor::pending_tasks() was
-    # not one of wait_idle's counters). "thumbnail_busy" submits a synthetic
-    # 2s task directly to the pool via submit_test_task(), sidestepping real
-    # PNG decode timing for the same load-insensitive window http_busy uses.
+    # worker pool. "thumbnail_busy" submits a synthetic 2s task directly to
+    # the pool via submit_test_task(), sidestepping real PNG decode timing
+    # for the same load-insensitive window http_busy uses.
     counter_pattern = re.compile(r"thumbnail=[1-9]\d*")
     try:
         helix_app.ctl("scenario", "thumbnail_busy")
@@ -89,7 +87,7 @@ def test_wait_idle_reports_thumbnail_counter_busy_on_timeout(helix_app):
         message = exc.value.message
         assert counter_pattern.search(message), (
             f"wait_idle did not report a genuinely nonzero thumbnail counter "
-            f"(message: {message!r}) — either the thumbnail_busy scenario didn't "
+            f"(message: {message!r}), either the thumbnail_busy scenario didn't "
             "submit its task, or counter reporting regressed to always "
             "showing zero"
         )

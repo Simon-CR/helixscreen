@@ -1410,7 +1410,7 @@ nlohmann::json RemoteControlServer::handle_wait_idle(const nlohmann::json& param
             // queue_update() is already sitting in pending_ by then. Reading
             // the producers first means "producer already dropped to 0"
             // implies "its queued follow-up work, if any, is already visible
-            // in queue" — reading queue first could catch it empty a moment
+            // in queue"; reading queue first could catch it empty a moment
             // before the worker's own queue_update() call lands, then see the
             // producer already decremented too, missing both signals in one
             // sample. ThumbnailProcessor::deliver_result() follows the same
@@ -1442,7 +1442,7 @@ nlohmann::json RemoteControlServer::handle_wait_idle(const nlohmann::json& param
             // fmt::format, not std::to_string(double) — the latter renders
             // "0.000000s", unreadable in the log someone reads at 2am.
             throw std::runtime_error(fmt::format(
-                "wait_idle timed out after {:.1f}s — update_queue={} http={} thumbnail={}",
+                "wait_idle timed out after {:.1f}s, update_queue={} http={} thumbnail={}",
                 timeout_s, now.queue, now.http, now.thumbnail));
         }
         last = now;

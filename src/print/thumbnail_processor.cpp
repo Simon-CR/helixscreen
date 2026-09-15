@@ -448,7 +448,7 @@ size_t ThumbnailProcessor::pending_tasks() const {
     if (!thread_pool_) {
         return 0;
     }
-    // taskNum() alone only counts tasks still sitting in the queue — a task a
+    // taskNum() alone only counts tasks still sitting in the queue: a task a
     // worker has already popped and is executing drops out of it before the
     // task itself finishes, so it must not be read as "nothing pending" on
     // its own. currentThreadNum() - idleThreadNum() adds back exactly what
@@ -476,16 +476,13 @@ void ThumbnailProcessor::wait_for_completion() {
 }
 
 void ThumbnailProcessor::submit_test_task(std::function<void()> task) {
-    // Same locked-then-released handoff as wait_for_completion(): commit()
-    // must not run with mutex_ held, and a strong reference keeps the pool
-    // alive against a concurrent shutdown() reset.
-    std::shared_ptr<HThreadPool> pool;
-    {
-        std::lock_guard<std::mutex> lock(mutex_);
-        pool = thread_pool_;
-    }
-    if (pool) {
-        pool->commit(std::move(task));
+    // commit() must run under mutex_, the same as process_async()/process_from_path()
+    // above (#1202): HThreadPool::commit() opens with `if (status == STOP) start();`,
+    // so releasing the lock first would let a concurrent shutdown() stop the pool and
+    // then have this commit() resurrect it.
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (!shutdown_ && thread_pool_) {
+        thread_pool_->commit(std::move(task));
     }
 }
 
