@@ -35,8 +35,6 @@ namespace {
 // Tick period matches the rest of the subsystem: 50 ms (~20 fps) where the
 // hardware has headroom, ~7 fps on BASIC/EMBEDDED so a screensaver the user
 // opted back on stays clear of Klipper's print loop.
-constexpr uint32_t TICK_PERIOD_STANDARD_MS = 50;
-constexpr uint32_t TICK_PERIOD_LOW_MS = 150;
 
 // Travel per second as a fraction of the screen's narrow axis, so a 480x272
 // panel and a 1024x600 one read at the same pace.
@@ -120,8 +118,9 @@ void BouncingPrinterScreensaver::start() {
     spdlog::info("[Screensaver] Starting bouncing printer");
 
     const auto caps = helix::PlatformCapabilities::detect();
-    tick_period_ms_ = caps.supports_animations ? TICK_PERIOD_STANDARD_MS : TICK_PERIOD_LOW_MS;
+    tick_period_ms_ = helix::ui::screensaver_timer_period_ms();
     elapsed_ms_ = 0;
+    clock_.reset(lv_tick_get());
 
     rng_.seed(static_cast<std::mt19937::result_type>(
         std::chrono::steady_clock::now().time_since_epoch().count()));
@@ -164,13 +163,6 @@ void BouncingPrinterScreensaver::stop() {
     spdlog::info("[Screensaver] Stopping bouncing printer");
 
     cancel_timer();
-
-    if (confetti_) {
-        // Drops the particle timer now rather than waiting on the deferred
-        // delete of the overlay it hangs from.
-        ui_confetti_clear(confetti_);
-        confetti_ = nullptr;
-    }
 
     // Async delete — stop() runs inside lv_timer_handler (via check_display_sleep),
     // so synchronous deletion corrupts LVGL's event linked list (#316).
@@ -345,7 +337,7 @@ void BouncingPrinterScreensaver::tick_cb(lv_timer_t* timer) {
 }
 
 void BouncingPrinterScreensaver::tick() {
-    elapsed_ms_ += tick_period_ms_;
+    elapsed_ms_ += clock_.advance(lv_tick_get());
 
     lv_display_t* disp = lv_display_get_default();
     if (disp) {
@@ -387,11 +379,11 @@ void BouncingPrinterScreensaver::tick() {
         // frame. That is the cost profile BASIC and EMBEDDED tiers had the
         // screensaver taken away over, so those get the flash alone.
         if (helix::PlatformCapabilities::detect().supports_animations) {
-            if (!confetti_) {
-                confetti_ = ui_confetti_create(overlay_);
-            }
-            if (confetti_) {
-                ui_confetti_burst(confetti_, CORNER_CONFETTI_PARTICLES);
+            // ui_confetti deletes its own container once the last particle dies, so a
+            // handle kept across bursts is dangling by the next corner. Each burst gets
+            // its own, and the overlay's deferred delete reaps whatever is still alive.
+            if (lv_obj_t* confetti = ui_confetti_create(overlay_)) {
+                ui_confetti_burst(confetti, CORNER_CONFETTI_PARTICLES);
             }
         }
     } else if (corner_flash_ticks_ > 0 && --corner_flash_ticks_ == 0) {

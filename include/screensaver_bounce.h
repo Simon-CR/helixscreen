@@ -6,6 +6,7 @@
 #ifdef HELIX_ENABLE_SCREENSAVER
 
 #include "screensaver.h"
+#include "screensaver_motion.h"
 
 #include <cmath>
 #include <cstdint>
@@ -184,12 +185,12 @@ class BouncingPrinterScreensaver : public Screensaver {
 
     lv_obj_t* overlay_ = nullptr;
     lv_obj_t* img_ = nullptr;
-    lv_obj_t* confetti_ = nullptr;
     lv_timer_t* timer_ = nullptr;
     lv_draw_buf_t* decoded_ = nullptr;
 
     uint32_t tick_period_ms_ = 50;
     uint32_t elapsed_ms_ = 0;
+    helix::ui::screensaver::MotionClock clock_;
 
     int screen_w_ = 0;
     int screen_h_ = 0;
