@@ -35,6 +35,9 @@ setup() {
     # Extract the env-handling portion of the launcher into a testable snippet.
     # We source just the variable setup logic without actually launching anything.
     # This avoids needing real binaries, display hardware, etc.
+    # The copy pins resolved VALUES only: note wording and log prefixes are
+    # deliberately exempt here, covered by the note tests that run the
+    # shipped launcher.
     cat > "$BATS_TEST_TMPDIR/env_setup.sh" << 'ENVEOF'
 #!/bin/sh
 # Minimal harness that runs just the env-handling parts of helix-launcher.sh
