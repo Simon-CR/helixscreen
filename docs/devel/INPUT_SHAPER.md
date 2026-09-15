@@ -228,20 +228,20 @@ The chart adapts to hardware capabilities detected at runtime via `PlatformCapab
 | Tier | RAM | Cores | Chart Mode | Max Points |
 |------|-----|-------|------------|------------|
 | **EMBEDDED** | <512 MB or 1 core | Any | Yes (simplified) | 50 |
-| **BASIC** | 512 MB - 2 GB or 2-3 cores | 2-3 | Yes (simplified) | 50 |
-| **STANDARD** | >=2 GB and 4+ cores | 4+ | Yes (full) | 200 |
+| **BASIC** | 512-767 MB or 2-3 cores | 2-3 | Yes (simplified) | 50 |
+| **STANDARD** | >=768 MB and 4+ cores | 4+ | Yes (full) | 200 |
 
 ### Platform Examples
 
 - **EMBEDDED**: AD5M printer (108 MB RAM) -- chart with 50 downsampled points
-- **BASIC**: Raspberry Pi 3 -- chart with 50 points
-- **STANDARD**: Raspberry Pi 4/5 (2 GB+), desktop -- full chart with 200 points
+- **BASIC**: 512 MB or 2-3 core boards -- chart with 50 points
+- **STANDARD**: Raspberry Pi 3B (1 GB), Pi 4/5, desktop -- full chart with 200 points
 
 ### Constants (from `platform_capabilities.h`)
 
 ```cpp
 static constexpr size_t EMBEDDED_RAM_THRESHOLD_MB = 512;
-static constexpr size_t STANDARD_RAM_THRESHOLD_MB = 2048;
+static constexpr size_t STANDARD_RAM_THRESHOLD_MB = 768;
 static constexpr int    STANDARD_CPU_CORES_MIN = 4;
 static constexpr size_t STANDARD_CHART_POINTS = 200;
 static constexpr size_t BASIC_CHART_POINTS = 50;

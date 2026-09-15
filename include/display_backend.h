@@ -435,6 +435,17 @@ class DisplayBackend {
     }
 
     /**
+     * @brief Make the next presented frame carry every pixel, not only the flushed areas.
+     *
+     * A backend that sends the GPU only the areas LVGL flushes keeps what it last
+     * received everywhere else. That goes stale when the image changes without passing
+     * through the backend's flush: frames rendered while a no-op flush callback stood in
+     * for it, or a color transform that rewrites pixels on their way to it. Backends that
+     * present whole frames have nothing to do.
+     */
+    virtual void request_full_upload() {}
+
+    /**
      * @brief Apply a rotation, and decide what LVGL is told about it
      *
      * The backend is the only writer of the display's rotation. This default

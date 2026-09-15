@@ -124,6 +124,9 @@ class DisplayBackendDRM : public DisplayBackend {
         return using_egl_;
     }
 
+    /// The EGL driver uploads the whole buffer on the next frame; dumb buffers need nothing
+    void request_full_upload() override;
+
     // Touch calibration
     bool set_calibration(const helix::TouchCalibration& cal) override;
     helix::TouchCalibration get_calibration() const override {

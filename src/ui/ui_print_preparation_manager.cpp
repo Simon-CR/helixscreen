@@ -461,50 +461,6 @@ void PrintPreparationManager::set_cached_scan_result(const gcode::ScanResult& sc
 // G-code Scanning
 // ============================================================================
 
-namespace {
-/// Look through @p content for a command this printer's macros make an emergency
-/// stop. A download cut at @p limit ends mid-line, so that last partial line is
-/// not read: a truncated word could spell a command the file never calls.
-helix::PrinterStopCheck check_printer_stop_commands(const std::string& content, size_t limit) {
-    helix::PrinterStopCheck check;
-    auto& macros = helix::MacroParamCache::instance();
-    // Read first, so a populate landing mid-scan can only stamp the answer older
-    // than the data it describes. That direction costs a rescan; the reverse
-    // would let a stale answer pass for a current one.
-    check.macro_generation = macros.generation();
-    if (!macros.is_populated()) {
-        check.not_run_reason = "the printer's macros have not been read";
-        return check;
-    }
-    const std::map<std::string, std::string> commands = macros.printer_stop_commands();
-    std::set<std::string> names;
-    for (const auto& [name, message] : commands) {
-        names.insert(name);
-    }
-    std::string_view scanned(content);
-    if (content.size() >= limit) {
-        const size_t last_newline = scanned.rfind('\n');
-        scanned = last_newline == std::string_view::npos ? std::string_view{}
-                                                         : scanned.substr(0, last_newline);
-    }
-    check.state = helix::PrinterStopCheck::State::Clean;
-    if (auto hit = gcode::GCodeOpsDetector::find_first_command(scanned, names)) {
-        check.state = helix::PrinterStopCheck::State::Stops;
-        check.command = hit->command;
-        check.line_number = hit->line_number;
-        check.stop_message = commands.at(helix::to_upper(hit->command));
-    }
-    return check;
-}
-
-helix::PrinterStopCheck printer_stop_not_run(std::string reason) {
-    helix::PrinterStopCheck check;
-    check.not_run_reason = std::move(reason);
-    check.macro_generation = helix::MacroParamCache::instance().generation();
-    return check;
-}
-} // namespace
-
 void PrintPreparationManager::scan_file_for_operations(const std::string& filename,
                                                        const std::string& current_path) {
     // The cached result is reusable only while its printer-stopping command
@@ -519,7 +475,7 @@ void PrintPreparationManager::scan_file_for_operations(const std::string& filena
 
     if (!api_) {
         spdlog::warn("[PrintPreparationManager] Cannot scan G-code - no API connection");
-        answer_printer_stop_check(filename, printer_stop_not_run("no printer connection"));
+        answer_printer_stop_check(filename, helix::printer_stop_not_run("no printer connection"));
         return;
     }
 
@@ -531,13 +487,11 @@ void PrintPreparationManager::scan_file_for_operations(const std::string& filena
 
     auto token = lifetime_.token();
 
-    // Use partial download - only first 200KB is needed for preamble scanning
-    // (thumbnails + slicer metadata + START_PRINT call + any early G-code ops)
-    // This avoids downloading multi-MB files just to scan the first few hundred lines
-    constexpr size_t SCAN_DOWNLOAD_LIMIT = 200 * 1024; // 200KB
-
+    // Only the file's head is needed for preamble scanning (thumbnails + slicer
+    // metadata + START_PRINT call + any early G-code ops), which avoids
+    // downloading multi-MB files just to scan the first few hundred lines.
     api_->transfers().download_file_partial(
-        "gcodes", file_path, SCAN_DOWNLOAD_LIMIT,
+        "gcodes", file_path, helix::PRINTER_STOP_SCAN_BYTES,
         // Success: parse content and cache result
         // NOTE: This callback runs on a background HTTP thread, so we must defer
         // shared state updates and LVGL calls to the main thread via token.defer (queue_update)
@@ -560,7 +514,7 @@ void PrintPreparationManager::scan_file_for_operations(const std::string& filena
             }
 
             helix::PrinterStopCheck stop_check =
-                check_printer_stop_commands(content, SCAN_DOWNLOAD_LIMIT);
+                helix::printer_stop_check_in(content, helix::PRINTER_STOP_SCAN_BYTES);
             if (stop_check.state == helix::PrinterStopCheck::State::Stops) {
                 spdlog::warn(
                     "[PrintPreparationManager] {} line {} calls {}, which stops this printer",
@@ -584,7 +538,7 @@ void PrintPreparationManager::scan_file_for_operations(const std::string& filena
             token.defer("PrintPreparationManager::scan_error", [this, filename, reason]() {
                 cached_scan_result_.reset();
                 cached_scan_filename_.clear();
-                answer_printer_stop_check(filename, printer_stop_not_run(reason));
+                answer_printer_stop_check(filename, helix::printer_stop_not_run(reason));
             });
         });
 }
@@ -602,7 +556,8 @@ PrintPreparationManager::printer_stop_check_for(const std::string& filename) con
     if (has_printer_stop_answer_for(filename)) {
         return printer_stop_check_;
     }
-    return printer_stop_not_run("the file scan has not answered for the printer's current macros");
+    return helix::printer_stop_not_run(
+        "the file scan has not answered for the printer's current macros");
 }
 
 bool PrintPreparationManager::has_printer_stop_answer_for(const std::string& filename) const {

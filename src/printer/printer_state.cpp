@@ -842,6 +842,7 @@ void PrinterState::set_hardware(helix::PrinterDiscovery hardware) {
 
     const std::string chamber_sensor =
         chamber::resolve_sensor(settings.get_chamber_sensor_assignment(), discovery_);
+
     const std::string chamber_heater =
         chamber::resolve_heater(settings.get_chamber_heater_assignment(), discovery_);
 
@@ -904,8 +905,8 @@ void PrinterState::set_hardware(helix::PrinterDiscovery hardware) {
     // the temp graph would add the sensor twice — once as "Chamber" (from
     // PrinterTemperatureState::chamber_sensor_name) and once under its raw
     // display name (because the AUXILIARY role isn't filtered out).
-    auto& temp_mgr = helix::sensors::TemperatureSensorManager::instance();
-    temp_mgr.apply_chamber_sensor_override(chamber_sensor);
+    helix::sensors::TemperatureSensorManager::instance().apply_chamber_sensor_override(
+        chamber_sensor);
 
     // Update composite subjects for G-code modification options
     // (visibility depends on both plugin status and capability)

@@ -410,6 +410,16 @@ void TemperatureSensorManager::set_sensor_role(const std::string& klipper_name,
 void TemperatureSensorManager::apply_chamber_sensor_override(const std::string& klipper_name) {
     std::lock_guard<std::recursive_mutex> lock(mutex_);
 
+    // A name this printer does not report would demote the incumbent CHAMBER
+    // below and promote nothing in its place, vacating the chamber role. Keep
+    // the auto-categorizer's classification standing instead.
+    if (!klipper_name.empty() && !find_config(klipper_name)) {
+        spdlog::debug("[TemperatureSensorManager] Chamber override '{}' not found in discovered "
+                      "sensors; keeping auto-categorized roles",
+                      klipper_name);
+        return;
+    }
+
     // Early-out when the named sensor is already the sole CHAMBER — avoids
     // demoting + repromoting the same sensor and the accompanying log line on
     // every reconnect for printers whose chamber sensor matches the
@@ -447,23 +457,11 @@ void TemperatureSensorManager::apply_chamber_sensor_override(const std::string& 
         }
     }
 
-    // Promote the specified sensor to CHAMBER role
-    if (!klipper_name.empty()) {
-        auto* sensor = find_config(klipper_name);
-        if (sensor) {
-            sensor->role = TemperatureSensorRole::CHAMBER;
-            sensor->priority = 0;
-            spdlog::info("[TemperatureSensorManager] Manual chamber sensor override: {}",
-                         klipper_name);
-        } else {
-            // A configured sensor with no live match is an expected state: presets
-            // seed objects a printer's own config may leave commented out, and this
-            // fires on every discovery pass when it does. Keep it at debug so it
-            // isn't noise; the sensor settings overlay surfaces the stale value.
-            spdlog::debug("[TemperatureSensorManager] Manual chamber override '{}' not found in "
-                          "discovered sensors",
-                          klipper_name);
-        }
+    // Promote the specified sensor to CHAMBER role.
+    if (auto* sensor = find_config(klipper_name)) {
+        sensor->role = TemperatureSensorRole::CHAMBER;
+        sensor->priority = 0;
+        spdlog::info("[TemperatureSensorManager] Manual chamber sensor override: {}", klipper_name);
     }
 
     update_subjects();

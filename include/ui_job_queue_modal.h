@@ -6,6 +6,8 @@
 #include "ui_modal.h"
 #include "ui_observer_guard.h"
 
+#include "print_start_checks.h"
+
 #include <string>
 
 struct JobQueueEntry;
@@ -51,6 +53,12 @@ class JobQueueModal : public Modal {
     void toggle_queue();
     void remove_job(const std::string& job_id);
     void start_job(const std::string& job_id, const std::string& filename);
+
+    /// Hand the queue entry to the printer, or refuse it. Split from start_job()
+    /// because the file's head has to be read first, and that read answers on a
+    /// background thread.
+    void start_checked_job(const std::string& job_id, const std::string& filename,
+                           const PrinterStopCheck& stop);
 
     // Observer for auto-refresh when queue data changes
     ObserverGuard count_observer_;

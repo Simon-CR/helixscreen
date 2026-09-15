@@ -368,10 +368,10 @@ void DisplaySettingsManager::init_subjects() {
 
 #ifdef HELIX_ENABLE_SCREENSAVER
     // Screensaver type — tier-aware default via supports_animations.
-    // Devices that can run smooth animations (STANDARD tier on Pi 4/5, desktop)
-    // default to Flying Toasters (1). BASIC (Pi 3B-class) and EMBEDDED (AD5M,
-    // AD5X) default to OFF (0) because animated screensavers starve Klipper's
-    // CPU budget and cause print failures.
+    // Devices that can run smooth animations (STANDARD tier: Pi 3B, Pi 4/5,
+    // desktop) default to Flying Toasters (1). BASIC and EMBEDDED (AD5M, AD5X)
+    // default to OFF (0) because animated screensavers starve Klipper's CPU
+    // budget and cause print failures.
     const int screensaver_default = PlatformCapabilities::detect().supports_animations ? 1 : 0;
 
     int screensaver_type = screensaver_default;
@@ -389,7 +389,7 @@ void DisplaySettingsManager::init_subjects() {
             "[DisplaySettingsManager] Migrated screensaver_enabled={} → screensaver_type={}",
             old_enabled, screensaver_type);
     }
-    screensaver_type = std::clamp(screensaver_type, 0, 3);
+    screensaver_type = std::clamp(screensaver_type, 0, 4);
     UI_MANAGED_SUBJECT_INT(screensaver_type_subject_, screensaver_type, "settings_screensaver_type",
                            subjects_);
 #endif
@@ -998,7 +998,7 @@ int DisplaySettingsManager::get_screensaver_type() const {
 }
 
 void DisplaySettingsManager::set_screensaver_type(int type) {
-    type = std::clamp(type, 0, 3);
+    type = std::clamp(type, 0, 4);
     spdlog::info("[DisplaySettingsManager] set_screensaver_type({})", type);
 
     lv_subject_set_int(&screensaver_type_subject_, type);

@@ -21,6 +21,7 @@
 
 #include "../helix_test_fixture.h"
 #include "../test_helpers/live_thread_count.h"
+#include "../test_helpers/scoped_env.h"
 #include "../test_helpers/update_checker_test_access.h"
 #include "../test_helpers/update_queue_test_access.h"
 #include "config.h"
@@ -1512,17 +1513,14 @@ TEST_CASE("extract_installer_from_tarball: works with empty PATH (systemd regres
     auto tmp = make_temp_dir("helix_path_test");
     REQUIRE(!tmp.empty());
 
-    // Save and clear PATH to simulate a minimal systemd environment
-    const char* original_path = std::getenv("PATH");
-    setenv("PATH", "", 1); // empty PATH — bare execvp("tar",...) would fail
-
-    auto result = UpdateChecker::extract_installer_from_tarball(tarball, tmp);
-
-    // Restore PATH before assertions (even if they fail)
-    if (original_path) {
-        setenv("PATH", original_path, 1);
-    } else {
-        unsetenv("PATH");
+    // Clear PATH to simulate a minimal systemd environment. The guard owns
+    // both the set and the restore, and keeps the original value in storage
+    // it owns (prestonbrown/helixscreen#1537). The tight scope restores PATH
+    // before remove_dir(), whose rm needs the real PATH back.
+    std::string result;
+    {
+        helix::ScopedEnv path_env("PATH", ""); // empty PATH — bare execvp("tar",...) would fail
+        result = UpdateChecker::extract_installer_from_tarball(tarball, tmp);
     }
 
     remove_dir(tmp);

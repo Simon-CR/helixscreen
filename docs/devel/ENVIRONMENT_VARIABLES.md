@@ -489,7 +489,7 @@ Force the screensaver to start immediately instead of waiting for the idle timeo
 
 | Property | Value |
 |----------|-------|
-| **Values** | `starfield`, `pipes`, or `1` / any other value (uses the configured type, falling back to flying toasters) |
+| **Values** | `toasters`, `starfield`, `pipes`, `bounce`, or `1` / any other value (uses the configured type, falling back to flying toasters) |
 | **Default** | Unset — normal idle-timeout behavior |
 | **File** | `src/application/display_manager.cpp` |
 
@@ -502,6 +502,108 @@ HELIX_SCREENSAVER_NOW=1 ./build/bin/helix-screen --test -vv
 ```
 
 Requires a build with `HELIX_ENABLE_SCREENSAVER` — the whole block is `#ifdef`-ed out otherwise, and the variable is then ignored.
+
+### `HELIX_REFR_PERIOD_MS`
+
+Display refresh and animation timer period, in milliseconds. LVGL's default is 33 ms (~30 fps); the panel on a Raspberry Pi is 60 Hz, so `16` asks for every refresh the panel can show. Read once when the display comes up. The refresh timer pauses itself while nothing is invalidated, so a shorter period costs nothing on an idle screen.
+
+When the period is longer than 33 ms, the main loop's awake sleep cap follows it instead of waking every 33 ms for nothing.
+
+| Property | Value |
+|----------|-------|
+| **Values** | Whole milliseconds, `8` to `100` |
+| **Default** | Unset: LVGL's 33 ms |
+| **Invalid** | Anything else (out of range, `16ms`, negative, empty) is ignored with a warning, and the default is kept |
+| **File** | `include/refresh_timing_env.h`, applied in `src/application/display_manager.cpp` |
+
+```bash
+HELIX_REFR_PERIOD_MS=16 ./build/bin/helix-screen --test -vv
+```
+
+### `HELIX_REFR_PERIOD_SCOPE`
+
+Which timers `HELIX_REFR_PERIOD_MS` sets. `display` sets the display refresh and animation timers. `all` also sets every input device's read timer and the UpdateQueue drain timer, and applies them again when the input devices are rebuilt after a backend swap. Has no effect without `HELIX_REFR_PERIOD_MS`. The synthetic pointer `helix-screen ctl` creates on its first pointer command appears after startup, so it keeps LVGL's default read period.
+
+| Property | Value |
+|----------|-------|
+| **Values** | `display`, `all` |
+| **Default** | `display` |
+| **Invalid** | Any other value is ignored with a warning |
+| **File** | `include/refresh_timing_env.h` |
+
+`all` wakes the main loop at the configured period even on an idle screen, because input and queue timers never pause. Measure CPU before keeping it.
+
+### `HELIX_SCREENSAVER_REFR_PERIOD_MS`
+
+Display refresh and animation period while a screensaver runs. Set before the saver starts, so the saver's own tick timer, which follows the refresh period, runs at it too. Switching between saver types keeps it, and so does an input rebuild after a backend swap, which makes the new global period the one stopping puts back. Stopping the saver, a saver that fails to start, and entering sleep all put back the period in force before (`HELIX_REFR_PERIOD_MS`, or LVGL's default). The static software sleep overlay does not use it.
+
+| Property | Value |
+|----------|-------|
+| **Values** | Whole milliseconds, `8` to `100`, or `0` to run savers at the global period |
+| **Default** | `16` |
+| **Invalid** | Ignored with a warning |
+| **File** | `include/refresh_period_hold.h`, `src/ui/screensaver_manager.cpp` |
+
+```bash
+# Savers at the global period instead of 16 ms
+HELIX_SCREENSAVER_REFR_PERIOD_MS=0 HELIX_SCREENSAVER_NOW=1 ./build/bin/helix-screen --test -vv
+```
+
+Requires a build with `HELIX_ENABLE_SCREENSAVER`.
+
+### `HELIX_LOOP_MIN_SLEEP_MS`
+
+Shortest sleep the main loop takes between `lv_timer_handler()` calls. The loop sleeps for LVGL's "next timer due" hint, but never less than this, so with a 16 ms refresh period the default floor of 5 ms can make a frame up to 4 ms late. A lower floor paces frames more closely at the cost of more wakeups. While a screensaver holds its refresh period the floor is 1 ms, so its 16 ms frames land on time; everywhere else it is 5 ms. Setting this variable sets the floor in both places.
+
+| Property | Value |
+|----------|-------|
+| **Values** | Whole milliseconds, `1` to `33` |
+| **Default** | `5`; `1` while a screensaver runs |
+| **Invalid** | Ignored with a warning |
+| **File** | `include/refresh_timing_env.h`; `main_loop_sleep_ms()` in `include/refresh_timing.h`, used in `src/application/application.cpp` |
+
+### `HELIX_EGL_VSYNC`
+
+EGL presentation mode on the DRM backend (`helix-screen-egl`). By default the flush waits for the in-flight flip, so every rendered frame reaches the screen; the cost is that the LVGL thread blocks for up to one refresh interval inside the flush. `0` turns the wait off: a frame finished while the previous page flip is still in flight then waits as pending, and the next frame replaces it before it is ever shown, so an animation can skip frames or leave its last frame unshown. Flips are latched to vblank either way, so neither mode tears.
+
+| Property | Value |
+|----------|-------|
+| **Values** | `1` (wait for each flip), `0` (do not wait) |
+| **Default** | `1` |
+| **Invalid** | Any other value is ignored with a warning, and the default is kept |
+| **File** | `src/api/display_backend_drm.cpp` (EGL builds only), `patches/lvgl-egl-vsync.patch` |
+
+The dumb-buffer DRM binary (`helix-screen`) already waits for every page flip; this variable does not affect it.
+
+### `HELIX_EGL_PARTIAL_UPLOAD`
+
+How much of each frame the EGL presentation path (`helix-screen-egl`) copies into the display texture. By default only the areas LVGL flushed are uploaded. `0` uploads the whole buffer every frame, however little of it changed. The first frame, a frame into a recreated or resized texture, and the frame after pixels changed outside the flush path still upload the whole buffer: the flush callback put back after the splash or a panel power-off, and a color transform change.
+
+Uploading a sub-rectangle needs `GL_UNPACK_ROW_LENGTH` (OpenGL ES 3, or `GL_EXT_unpack_subimage` on OpenGL ES 2). A GL driver without it keeps uploading whole frames and logs a warning. A driver may also make an upload wait while the previous frame still draws from the texture; `0` is the way out on such a driver.
+
+| Property | Value |
+|----------|-------|
+| **Values** | `1` (flushed areas only), `0` (whole frames) |
+| **Default** | `1` |
+| **Invalid** | Any other value is ignored with a warning, and the default is kept |
+| **File** | `src/api/display_backend_drm.cpp` (EGL builds only), `patches/lvgl-egl-partial-upload.patch`; the decision is `lv_linux_drm_egl_upload_plan()` in `lib/lvgl/src/drivers/display/drm/lv_linux_drm_egl_upload.h` |
+
+A stale region after waking the panel or leaving the splash is the failure to look for, and only the panel shows it: `ctl screenshot` re-renders the widget tree instead of reading the texture.
+
+### `HELIX_EGL_XRGB`
+
+Pixel format of the display on the EGL presentation path (`helix-screen-egl`). LVGL's 32 bpp format is XRGB8888, whose fourth byte LVGL leaves undefined, and this path would present that byte as alpha (`docs/devel/GPU_ACCELERATION.md` § "The alpha trap"). By default the display stays XRGB8888 and the display shader ignores the fourth byte, and LVGL then skips clearing each area before redrawing it. `0` switches the display to ARGB8888 so LVGL keeps the byte a real alpha instead.
+
+| Property | Value |
+|----------|-------|
+| **Values** | `1` (keep XRGB8888), `0` (switch to ARGB8888) |
+| **Default** | `1` |
+| **Invalid** | Any other value is ignored with a warning, and the default is kept |
+| **File** | `src/api/display_backend_drm.cpp` (EGL builds only), `patches/lvgl-egl-xrgb-shader.patch` |
+
+On aarch64, LVGL's NEON blends into an XRGB8888 destination write 0 into the fourth byte of every pixel they mix through a mask or partial opacity, fully covered pixels included (a plain full-opacity fill writes `0xFF`), so with the default that byte is 0 wherever anything was antialiased or masked and the shader has to ignore it outright. The C blends an x86 test build uses leave the byte alone, so only the device shows this. An ARGB8888 display (`0`) has the opposite trap: LVGL copies an XRGB8888 image or canvas into it byte for byte, so whatever the source's fourth byte holds, including the 0 those blends leave, arrives as alpha.
+
+A defect here is invisible to `ctl screenshot` for the same reason. Check the panel by eye: icons, borders and antialiased text must not turn black.
 
 ### `HELIX_HEADLESS`
 
@@ -2158,7 +2260,7 @@ Set these in `helixscreen.env`, which the launcher sources before it builds the 
 - Resolution is CLI flag > env var (including `helixscreen.env` and hook exports) > `/log_dest` and `/log_path` in `settings.json` > default.
 - `HELIX_LOG_LEVEL` takes priority over `HELIX_DEBUG`: a named level emits `--log-level=<level>` and the legacy `-vv` branch is never reached.
 - `HELIX_LOG_DEST=auto` is the only value that produces no launcher flag. `auto` resolves to the systemd journal when `/run/systemd/journal/socket` exists, otherwise syslog on Linux, console on macOS. It **never** resolves to a file on any platform — the file sink has to be asked for, which is what the embedded platform hooks do.
-- The launcher resolves these **after** sourcing platform/hooks.sh, so a value exported from `platform_pre_start` is picked up. Six of the seven hooks rely on that.
+- The launcher resolves these **after** sourcing platform/hooks.sh, so a value exported from `platform_pre_start` is picked up. Every AD5M, AD5X, K1/K2 and CC1 hook relies on that; the Pi, QIDI, M1 and Snapmaker U1 targets have no firmware log archiver to feed.
 - An unopenable `HELIX_LOG_FILE` is not fatal: the sink construction is caught and the platform's normal system sink takes over with a warning.
 
 **Example:**

@@ -13,6 +13,7 @@
 #include "drm_rotation_strategy.h"
 #include "helix_display_telemetry.h"
 #include "input_device_scanner.h"
+#include "refresh_timing_env.h"
 #include "touch_calibration.h"
 #include "touch_calibration_wrapper.h"
 
@@ -37,6 +38,12 @@
 #if !defined(HELIX_ENABLE_OPENGLES) && LV_LINUX_DRM_USE_EGL
 #error "LVGL resolved LV_LINUX_DRM_USE_EGL to 1 without HELIX_ENABLE_OPENGLES: \
 set ENABLE_OPENGLES in the build, do not edit LV_USE_OPENGLES in lv_conf.h"
+#endif
+
+// HELIX_EGL_XRGB leaves the X byte of an XRGB8888 display undefined, which is safe only
+// while the display shader ignores it. The LVGL patch that makes it do so defines this.
+#if LV_LINUX_DRM_USE_EGL && !defined(HELIX_LV_OPENGLES_XRGB_IGNORES_X)
+#error "lib/lvgl lacks lvgl-egl-xrgb-shader.patch: HELIX_EGL_XRGB would present the X byte as alpha"
 #endif
 
 // System includes for device access checks and DRM capability detection
@@ -448,15 +455,49 @@ lv_display_t* DisplayBackendDRM::create_display(int width, int height) {
     }
 
 #if LV_LINUX_DRM_USE_EGL
-    // LVGL's 32bpp native format is XRGB8888 and it leaves the X byte at 0x00.
-    // The EGL path uploads that buffer as GL_RGBA, so X arrives as alpha, and
-    // the fragment shader multiplies RGB by it -- every pixel LVGL did not make
-    // fully opaque loses its colour. ARGB8888 makes LVGL maintain the byte as a
-    // real alpha instead. Same defect the AD5M hit through its LCD controller
-    // (see DisplayBackendFbdev::init), reached here through a different consumer.
+    // LVGL's 32bpp native format is XRGB8888 and it leaves the X byte at 0x00. The EGL path
+    // uploads that buffer as GL_RGBA, so X arrives as alpha.
+    // By default (HELIX_EGL_XRGB) the display stays XRGB8888 and the display shader presents
+    // it with the X byte ignored, so nothing depends on LVGL maintaining it. It must ignore the
+    // byte outright: on aarch64 LVGL's NEON blends into XRGB8888 write 0 there.
+    // HELIX_EGL_XRGB=0 switches the display to ARGB8888. There the fragment shader multiplies
+    // RGB by the alpha byte, so LVGL must maintain it as a real alpha or every pixel it did not
+    // make fully opaque loses its colour. Same defect the AD5M hit through its LCD controller
+    // (see DisplayBackendFbdev::init), reached here through a different consumer. An XRGB8888
+    // image or canvas drawn into the ARGB8888 display is copied byte for byte, so its X byte
+    // arrives as alpha too.
     if (lv_display_get_color_format(display_) == LV_COLOR_FORMAT_XRGB8888) {
-        lv_display_set_color_format(display_, LV_COLOR_FORMAT_ARGB8888);
-        spdlog::info("[DRM Backend] Color format XRGB8888 -> ARGB8888 for the EGL path");
+        if (helix::egl_xrgb_from_env()) {
+            spdlog::info("[DRM Backend] Color format stays XRGB8888 on the EGL path, X byte "
+                         "ignored (HELIX_EGL_XRGB)");
+        } else {
+            lv_display_set_color_format(display_, LV_COLOR_FORMAT_ARGB8888);
+            spdlog::info("[DRM Backend] Color format XRGB8888 -> ARGB8888 for the EGL path "
+                         "(HELIX_EGL_XRGB=0)");
+        }
+    }
+
+    if (helix::apply_egl_vsync_from_env(
+            [this](bool vsync) { lv_linux_drm_egl_set_vsync(display_, vsync); })) {
+        spdlog::info("[DRM Backend] EGL presentation waits for each page flip (HELIX_EGL_VSYNC)");
+    } else {
+        spdlog::info(
+            "[DRM Backend] EGL presentation does not wait for page flips (HELIX_EGL_VSYNC=0)");
+    }
+
+    switch (helix::apply_egl_switch_from_env("HELIX_EGL_PARTIAL_UPLOAD", [this] {
+        return lv_linux_drm_egl_set_partial_upload(display_, true);
+    })) {
+    case helix::EglSwitch::On:
+        spdlog::info("[DRM Backend] EGL uploads only the flushed areas (HELIX_EGL_PARTIAL_UPLOAD)");
+        break;
+    case helix::EglSwitch::Declined:
+        spdlog::warn("[DRM Backend] The EGL driver refused HELIX_EGL_PARTIAL_UPLOAD (its own "
+                     "warning above says why); uploading whole frames");
+        break;
+    case helix::EglSwitch::Off:
+        spdlog::info("[DRM Backend] EGL uploads whole frames (HELIX_EGL_PARTIAL_UPLOAD=0)");
+        break;
     }
 #endif
 
@@ -492,6 +533,14 @@ lv_display_t* DisplayBackendDRM::create_display(int width, int height) {
     screen_height_ = lv_display_get_vertical_resolution(display_);
 
     return display_;
+}
+
+void DisplayBackendDRM::request_full_upload() {
+#if LV_LINUX_DRM_USE_EGL
+    if (display_ != nullptr) {
+        lv_linux_drm_egl_request_full_upload(display_);
+    }
+#endif
 }
 
 lv_indev_t* DisplayBackendDRM::create_input_pointer() {

@@ -310,6 +310,7 @@
   <translation tag="Both belts are overtightened." zh="两条皮带都过紧。"/>
   <translation tag="Both belts need tightening." zh="两条皮带都需要拉紧。"/>
   <translation tag="Both belts read the same to within what this measurement can resolve. Nothing to adjust." zh="两条皮带的读数在此测量的分辨能力范围内一致。无需调整。"/>
+  <translation tag="Bouncing Printer" zh="弹跳打印机"/>
   <translation tag="Bowden Length" zh="波顿管长度"/>
   <translation tag="Bowden tube length from hub to toolhead" zh="从集线器到工具头的波顿管长度"/>
   <translation tag="Brand" zh="品牌"/>

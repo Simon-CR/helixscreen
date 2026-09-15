@@ -210,9 +210,11 @@ src/ui/ipp_print_modal.cpp  # not in the v1 Core+AMS cut
 src/ui/modals/ui_spaghetti_detection_modal.cpp  # not in the v1 Core+AMS cut
 src/ui/pid_progress_tracker.cpp  # not in the v1 Core+AMS cut
 src/ui/recovery_modal_presenter.cpp  # not in the v1 Core+AMS cut
+src/ui/screensaver_bounce.cpp  # not in the v1 Core+AMS cut
 src/ui/screensaver_manager.cpp  # not in the v1 Core+AMS cut
 src/ui/screensaver_pipes.cpp  # not in the v1 Core+AMS cut
 src/ui/screensaver_starfield.cpp  # not in the v1 Core+AMS cut
+src/ui/screensaver_starfield_sim.cpp  # not in the v1 Core+AMS cut
 src/system/splash_asset_choice.cpp  # not in the v1 Core+AMS cut
 src/ui/splash_screen.cpp  # not in the v1 Core+AMS cut
 src/ui/ui_ams_tool_text.cpp  # not in the v1 Core+AMS cut

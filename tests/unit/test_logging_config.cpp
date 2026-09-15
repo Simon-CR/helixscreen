@@ -1,9 +1,9 @@
 // Copyright (C) 2025-2026 356C LLC
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+#include "../test_helpers/scoped_env.h"
 #include "logging_init.h"
 
-#include <cstdlib>
 #include <string>
 
 #include "../catch_amalgamated.hpp"
@@ -413,37 +413,6 @@ TEST_CASE("ring_capacity_for_ram scales with the machine", "[logging][config][ri
 // ============================================================================
 
 namespace {
-
-/// RAII setenv/unsetenv so a failing REQUIRE cannot leak a variable into the
-/// next test in the same process.
-class ScopedEnv {
-  public:
-    ScopedEnv(const char* name, const char* value) : name_(name) {
-        if (const char* prev = std::getenv(name)) {
-            had_previous_ = true;
-            previous_ = prev;
-        }
-        if (value != nullptr) {
-            ::setenv(name, value, 1);
-        } else {
-            ::unsetenv(name);
-        }
-    }
-    ~ScopedEnv() {
-        if (had_previous_) {
-            ::setenv(name_, previous_.c_str(), 1);
-        } else {
-            ::unsetenv(name_);
-        }
-    }
-    ScopedEnv(const ScopedEnv&) = delete;
-    ScopedEnv& operator=(const ScopedEnv&) = delete;
-
-  private:
-    const char* name_;
-    bool had_previous_ = false;
-    std::string previous_;
-};
 
 constexpr const char* ENV_DEST = "HELIX_LOG_DEST";
 constexpr const char* ENV_LEVEL = "HELIX_LOG_LEVEL";

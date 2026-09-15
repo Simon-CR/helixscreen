@@ -310,6 +310,7 @@
   <translation tag="Both belts are overtightened." ja="両方のベルトが張りすぎています。"/>
   <translation tag="Both belts need tightening." ja="両方のベルトを張る必要があります。"/>
   <translation tag="Both belts read the same to within what this measurement can resolve. Nothing to adjust." ja="両方のベルトは、この測定の分解能内で同じ値を示しています。調整の必要はありません。"/>
+  <translation tag="Bouncing Printer" ja="バウンドプリンター"/>
   <translation tag="Bowden Length" ja="ボーデン長"/>
   <translation tag="Bowden tube length from hub to toolhead" ja="ハブからツールヘッドまでのボーデンチューブ長"/>
   <translation tag="Brand" ja="ブランド"/>
