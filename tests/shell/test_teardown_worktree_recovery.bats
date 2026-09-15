@@ -48,6 +48,51 @@ make_worktree() {
     lacks ".worktrees/normal" "$output"
 }
 
+# A branch made by setup-worktree.sh tracks origin/<default>, and `git branch -d`
+# checks containment in that ref. It moves only on a fetch or on a push made by
+# remote NAME, so these two cases pin the difference between a ref that is merely
+# stale and work that is genuinely not on the remote.
+make_remote_worktree() {
+    local name="$1"
+    REMOTE_PATH="$BATS_TEST_TMPDIR/remote.git"
+    git init -q --bare -b master "$REMOTE_PATH"
+    git -C "$MAIN" remote add origin "$REMOTE_PATH"
+    git -C "$MAIN" push -q origin master
+    mkdir -p "$MAIN/.worktrees"
+    git -C "$MAIN" worktree add -q -b "feature/$name" "$MAIN/.worktrees/$name" origin/master
+    echo work > "$MAIN/.worktrees/$name/work.txt"
+    git -C "$MAIN/.worktrees/$name" add work.txt
+    git -C "$MAIN/.worktrees/$name" commit -qm work --no-verify
+    git -C "$MAIN" merge -q --no-ff -m merge "feature/$name"
+}
+
+@test "a stale tracking ref does not report pushed work as unpushed" {
+    make_remote_worktree pushed
+    # By URL, the way a push goes when the remote's SSH path is being avoided or
+    # the push came from another machine: the remote has it, origin/master does not.
+    git -C "$MAIN" push -q "$REMOTE_PATH" master:master
+    run git -C "$MAIN" merge-base --is-ancestor feature/pushed origin/master
+    [ "$status" -ne 0 ]
+
+    run "$SCRIPT" pushed --into master
+    [ "$status" -eq 0 ]
+    contains "was stale" "$output"
+    run git -C "$MAIN" branch --list feature/pushed
+    [ -z "$output" ]
+}
+
+@test "work the remote does not have keeps its branch" {
+    make_remote_worktree unpushed
+
+    run "$SCRIPT" unpushed --into master
+    [ "$status" -eq 0 ]
+    # The refusal has to be the reason, not a silent skip that happens to leave
+    # the branch behind.
+    contains "git refused -d" "$output"
+    run git -C "$MAIN" branch --list feature/unpushed
+    contains "feature/unpushed" "$output"
+}
+
 @test "a worktree missing its .git pointer is refused, not misattributed to the main tree" {
     make_worktree broken
     echo leftover > "$MAIN/.worktrees/broken/leftover.txt"

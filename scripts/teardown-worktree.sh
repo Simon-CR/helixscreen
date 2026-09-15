@@ -317,18 +317,37 @@ if (( DELETE_BRANCH )); then
     elif git -C "$MAIN_ABS" branch -d "$BRANCH" 2>/dev/null; then
         say "${GREEN}Deleted.${RESET}"
     else
-        # git -d also wants the branch merged into its UPSTREAM, which for a
-        # local-only merge it is not: the work is on local $INTO but not on
-        # origin/$INTO. Containment was verified above, so -D discards nothing.
+        # git -d also wants the branch merged into its UPSTREAM. setup-worktree.sh
+        # branches from the tracked upstream, so a branch made here tracks
+        # origin/<default> - a ref that moves only on a fetch, or on a push made
+        # by remote NAME. A push by URL, or one made from the other machine,
+        # leaves it behind while the remote already has the work, and the branch
+        # then reads as unpushed when it is not.
         UPSTREAM="$(git -C "$MAIN_ABS" rev-parse --abbrev-ref "$BRANCH@{u}" 2>/dev/null || echo '<none>')"
-        say "${YELLOW}git refused -d.${RESET} Its check includes the branch's upstream ($UPSTREAM),"
-        say "which is usually behind when $INTO has been merged locally but not pushed."
-        if (( FORCE_BRANCH )); then
-            say "Verified: tip is an ancestor of $INTO, so -D discards nothing."
-            run git -C "$MAIN_ABS" branch -D "$BRANCH"
-            say "${GREEN}Deleted.${RESET}"
-        else
-            say "Push $INTO, or re-run with ${CYAN}--force-branch${RESET}."
+        DELETED_AFTER_FETCH=0
+        if [[ "$UPSTREAM" == */* ]]; then
+            say "Refreshing $UPSTREAM before reporting the branch as unpushed..."
+            if git -C "$MAIN_ABS" fetch --quiet "${UPSTREAM%%/*}" "${UPSTREAM#*/}" 2>/dev/null &&
+               git -C "$MAIN_ABS" branch -d "$BRANCH" 2>/dev/null; then
+                # Retried rather than reasoned about: git re-applies its own
+                # check against the ref as it now stands, so nothing here has to
+                # decide the branch is safe to delete.
+                say "${GREEN}Deleted.${RESET} ($UPSTREAM was stale; ${UPSTREAM%%/*} already had the work.)"
+                DELETED_AFTER_FETCH=1
+            fi
+        fi
+        if (( ! DELETED_AFTER_FETCH )); then
+            say "${YELLOW}git refused -d.${RESET} Its check includes the branch's upstream ($UPSTREAM),"
+            say "which is behind when $INTO has been merged locally but not pushed."
+            say "  git said: $(git -C "$MAIN_ABS" branch -d "$BRANCH" 2>&1 | head -2 | tr '\n' ' ')"
+            if (( FORCE_BRANCH )); then
+                # Containment in $INTO was verified above, so -D discards nothing.
+                say "Verified: tip is an ancestor of $INTO, so -D discards nothing."
+                run git -C "$MAIN_ABS" branch -D "$BRANCH"
+                say "${GREEN}Deleted.${RESET}"
+            else
+                say "Push $INTO, or re-run with ${CYAN}--force-branch${RESET}."
+            fi
         fi
     fi
 fi
