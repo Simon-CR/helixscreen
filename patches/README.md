@@ -150,13 +150,15 @@ folded patch usually still applies on a clean tree, so the duplication only surf
 a conflict or a doubled hunk.
 
 **Apply verdicts:** each patch's block in `mk/patches.mk` calls
-`scripts/apply_submodule_patch.sh <submodule-dir> <patch> <label>`, which decides three ways:
+`scripts/apply_submodule_patch.sh <submodule-dir> <patch> <label> [note]`, which decides three ways:
 apply it, recognize it as already applied (reverse check), or refuse. A bare `apply --check`
 cannot tell "already applied" from "drifted and will never apply" — both exit non-zero — and a
 file-dirty test breaks when a patch stops touching X or when another patch dirties it first.
 Patches that share a file can fail both checks on a correctly patched tree, so in-place runs
 warn and `make reapply-patches` is the run that judges: from clean, a patch that will not take
-its apply branch is fatal.
+its apply branch is fatal. The optional note (libhv patches carry one) names the runtime
+consequence of building without the patch, appended to the two verdicts that mean "this
+patch may be missing".
 
 The flag is a claim about the tree — "this run started from pristine submodules" — and the
 claim is verified, not assumed. `mk/patches.mk` settles it once at recipe start (before any

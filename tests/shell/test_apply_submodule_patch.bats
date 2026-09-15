@@ -165,12 +165,15 @@ EOF
     ! grep -q $'\033' <<<"$output"
 }
 
-@test "mk/patches.mk routes every LVGL stanza through the helper" {
-    # The helper owns the apply verdict; an LVGL stanza that runs `git apply`
-    # directly restores the per-stanza else-branch the helper replaced. The
-    # libhv stanzas keep their own sentinel guards, which exit 1 on failure.
+@test "mk/patches.mk routes every submodule stanza through the helper" {
+    # The helper owns the apply verdict; a stanza that runs `git apply`
+    # directly restores the per-stanza else-branch the helper replaced, where
+    # an unchanged grep marker blesses hunks the patch gained since. Holds
+    # for both submodules. The pattern is $'...'-quoted: grep reads a bare
+    # \t as the letter t, which would make this assertion unable to fail.
     [ "$(grep -cE 'APPLY_PATCH\) \$\((LVGL|LIBHV)_DIR\)' mk/patches.mk)" -gt 50 ]
-    ! grep -qE '^\t+git -C \$\(LVGL_DIR\) apply' mk/patches.mk
+    ! grep -qE $'^\t+git -C \$\(LVGL_DIR\) apply' mk/patches.mk
+    ! grep -qE $'^\t+git -C \$\(LIBHV_DIR\) apply' mk/patches.mk
 }
 
 @test "reapply-patches judges from clean" {

@@ -24,13 +24,19 @@
 # settles the claim once at recipe start into HELIX_FROM_CLEAN_SENTINEL; a
 # standalone invocation judges the submodule directly.
 #
-# Usage: apply_submodule_patch.sh <submodule-dir> <patch-file> <label>
+# Usage: apply_submodule_patch.sh <submodule-dir> <patch-file> <label> [note]
+#
+# The optional note names the runtime consequence of building without the
+# patch. It is appended to the two verdicts that mean "this patch may be
+# missing" - the in-place warn and the from-clean fatal - never to the
+# success lines.
 
 set -u
 
 submodule=$1
 patch_file=$2
 label=$3
+note=${4:-}
 
 # A pre-commit hook exports GIT_DIR, GIT_WORK_TREE and GIT_INDEX_FILE for the
 # superproject, and anything spawning git under it inherits them: `git -C
@@ -74,9 +80,9 @@ if git_submodule apply --check "$patch_file" 2>/dev/null; then
 elif git_submodule apply --check --reverse "$patch_file" 2>/dev/null; then
   echo "${green}✓ ${label} already applied${reset}"
 elif [ "${HELIX_PATCHES_FROM_CLEAN:-0}" = "1" ] && from_clean_verified; then
-  echo "${red}✗ ${label} does not apply to a clean checkout — the patch and the submodule disagree." >&2
+  echo "${red}✗ ${label} does not apply to a clean checkout — the patch and the submodule disagree.${note:+ $note}" >&2
   echo "${red}  Regenerate it: patches/README.md § \"Regenerating a patch whose file is shared\"${reset}" >&2
   exit 1
 else
-  echo "${yellow}⚠ ${label} is not verifiable in place: neither applies nor reverses (later patches may share its files). Run 'make reapply-patches' to judge it from a clean checkout${reset}"
+  echo "${yellow}⚠ ${label} is not verifiable in place: neither applies nor reverses (later patches may share its files).${note:+ $note} Run 'make reapply-patches' to judge it from a clean checkout${reset}"
 fi

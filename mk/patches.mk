@@ -540,105 +540,17 @@ $(PATCHES_STAMP): $(PATCH_FILES) $(LVGL_HEAD) $(LIBHV_HEAD) $(APPLIED_STAMP_ID)
 			echo "$(GREEN)✓ Patched header synced$(RESET)"; \
 		fi \
 	fi
-	$(Q)if ! grep -q "dns_resolv_resolve" "$(LIBHV_DIR)/base/hsocket.c" 2>/dev/null; then \
-		echo "$(YELLOW)→ Applying libhv DNS resolver fallback patch...$(RESET)"; \
-		rm -f "$(LIBHV_DIR)/base/dns_resolv.c" "$(LIBHV_DIR)/base/dns_resolv.h"; \
-		git -C $(LIBHV_DIR) checkout -- base/hsocket.c 2>/dev/null || true; \
-		if git -C $(LIBHV_DIR) apply --check $(PATCH_DIR)/libhv-dns-resolver-fallback.patch 2>/dev/null; then \
-			git -C $(LIBHV_DIR) apply $(PATCH_DIR)/libhv-dns-resolver-fallback.patch && \
-			echo "$(GREEN)✓ DNS resolver fallback patch applied$(RESET)"; \
-		else \
-			echo "$(RED)✗ Cannot apply DNS resolver fallback patch (conflicts) — embedded DNS will be BROKEN$(RESET)"; \
-			exit 1; \
-		fi \
-	else \
-		echo "$(GREEN)✓ libhv DNS resolver fallback patch already applied$(RESET)"; \
-	fi
-	@# Sentinel is the NEWEST marker in this patch, not the oldest. A tree that
-	@# already carries an earlier revision of the patch must fail loudly here —
-	@# matching an old marker would report "already applied" and silently drop
-	@# the newer hunks, and libhv headers are -isystem so nothing rebuilds to
-	@# reveal it. The fix for that red line is `make reapply-patches`.
-	@#
-	@# A failed apply must `exit 1` rather than warn and carry on. The recipe
-	@# ends in `touch $@`, so a warning-only branch stamps the tree as fully
-	@# patched: the red line scrolls past once and every later build reports
-	@# "Nothing to be done for 'apply-patches'". That is how the #1212 null-hloop
-	@# guard sat missing from this tree for hours while `make test` — which skips
-	@# apply-patches entirely — kept building a binary that segfaulted on the
-	@# regression test written to catch exactly that.
-	$(Q)if ! grep -q "reconn_timer_id" "$(LIBHV_DIR)/evpp/TcpClient.h" 2>/dev/null; then \
-		echo "$(YELLOW)→ Applying libhv TcpClient reconnect resilience patch...$(RESET)"; \
-		if git -C $(LIBHV_DIR) apply --check $(PATCH_DIR)/libhv-tcpclient-reconnect-resilience.patch 2>/dev/null; then \
-			git -C $(LIBHV_DIR) apply $(PATCH_DIR)/libhv-tcpclient-reconnect-resilience.patch && \
-			echo "$(GREEN)✓ libhv TcpClient reconnect resilience patch applied$(RESET)"; \
-		else \
-			echo "$(RED)✗ Cannot apply TcpClient reconnect patch — run 'make reapply-patches'. Until then a pending auto-reconnect can fault in createsocket() during teardown (#1212)$(RESET)"; \
-			exit 1; \
-		fi \
-	else \
-		echo "$(GREEN)✓ libhv TcpClient reconnect resilience patch already applied$(RESET)"; \
-	fi
-	$(Q)if ! grep -q "saved_reconn_valid_" "$(LIBHV_DIR)/http/client/WebSocketClient.cpp" 2>/dev/null; then \
-		echo "$(YELLOW)→ Applying libhv WebSocket backoff patch...$(RESET)"; \
-		if git -C $(LIBHV_DIR) apply --check $(PATCH_DIR)/libhv-websocket-backoff-on-upgrade.patch 2>/dev/null; then \
-			git -C $(LIBHV_DIR) apply $(PATCH_DIR)/libhv-websocket-backoff-on-upgrade.patch && \
-			echo "$(GREEN)✓ libhv WebSocket backoff patch applied$(RESET)"; \
-		else \
-			echo "$(RED)✗ Cannot apply WebSocket backoff patch (conflicts) — a failed WS upgrade will reconnect at 5Hz$(RESET)"; \
-			exit 1; \
-		fi \
-	else \
-		echo "$(GREEN)✓ libhv WebSocket backoff patch already applied$(RESET)"; \
-	fi
-	$(Q)if ! grep -q "PATCH NOTE(helixscreen)" "$(LIBHV_DIR)/cpputil/hthreadpool.h" 2>/dev/null; then \
-		echo "$(YELLOW)→ Applying libhv HThreadPool wait() lock patch...$(RESET)"; \
-		if git -C $(LIBHV_DIR) apply --check $(PATCH_DIR)/libhv-hthreadpool-wait-lock.patch 2>/dev/null; then \
-			git -C $(LIBHV_DIR) apply $(PATCH_DIR)/libhv-hthreadpool-wait-lock.patch && \
-			echo "$(GREEN)✓ libhv HThreadPool wait() lock patch applied$(RESET)"; \
-		else \
-			echo "$(RED)✗ Cannot apply HThreadPool wait() patch — run 'make reapply-patches'. Until then wait() races a worker's pop_front() (nightly TSAN via ThumbnailProcessor::wait_for_completion)$(RESET)"; \
-			exit 1; \
-		fi \
-	else \
-		echo "$(GREEN)✓ libhv HThreadPool wait() lock patch already applied$(RESET)"; \
-	fi
-	$(Q)if ! grep -q "PATCH NOTE(helixscreen)" "$(LIBHV_DIR)/base/hlog.c" 2>/dev/null; then \
-		echo "$(YELLOW)→ Applying libhv hlog localtime_r patch...$(RESET)"; \
-		if git -C $(LIBHV_DIR) apply --check $(PATCH_DIR)/libhv-hlog-thread-safe-localtime.patch 2>/dev/null; then \
-			git -C $(LIBHV_DIR) apply $(PATCH_DIR)/libhv-hlog-thread-safe-localtime.patch && \
-			echo "$(GREEN)✓ libhv hlog localtime_r patch applied$(RESET)"; \
-		else \
-			echo "$(RED)✗ Cannot apply hlog localtime_r patch — run 'make reapply-patches'. Until then every logging thread races on localtime()'s shared struct tm and on tzset's TZ string (nightly TSAN, two reports in logger_print)$(RESET)"; \
-			exit 1; \
-		fi \
-	else \
-		echo "$(GREEN)✓ libhv hlog localtime_r patch already applied$(RESET)"; \
-	fi
-	$(Q)if ! grep -q "PATCH NOTE(helixscreen)" "$(LIBHV_DIR)/http/HttpMessage.h" 2>/dev/null; then \
-		echo "$(YELLOW)→ Applying libhv HttpRequest cancel atomic patch...$(RESET)"; \
-		if git -C $(LIBHV_DIR) apply --check $(PATCH_DIR)/libhv-http-request-cancel-atomic.patch 2>/dev/null; then \
-			git -C $(LIBHV_DIR) apply $(PATCH_DIR)/libhv-http-request-cancel-atomic.patch && \
-			echo "$(GREEN)✓ libhv HttpRequest cancel atomic patch applied$(RESET)"; \
-		else \
-			echo "$(RED)✗ Cannot apply HttpRequest cancel patch — run 'make reapply-patches'. Until then CameraStream::stop() races the stream thread's ParseUrl() (nightly TSAN in HttpRequest::Cancel)$(RESET)"; \
-			exit 1; \
-		fi \
-	else \
-		echo "$(GREEN)✓ libhv HttpRequest cancel atomic patch already applied$(RESET)"; \
-	fi
-	$(Q)if ! grep -q "install the TcpClient-level channel callbacks" "$(LIBHV_DIR)/http/client/WebSocketClient.cpp" 2>/dev/null; then \
-		echo "$(YELLOW)→ Applying libhv WebSocketClient install-once callbacks patch...$(RESET)"; \
-		if git -C $(LIBHV_DIR) apply --check $(PATCH_DIR)/libhv-websocket-open-install-once.patch 2>/dev/null; then \
-			git -C $(LIBHV_DIR) apply $(PATCH_DIR)/libhv-websocket-open-install-once.patch && \
-			echo "$(GREEN)✓ libhv WebSocketClient install-once patch applied$(RESET)"; \
-		else \
-			echo "$(RED)✗ Cannot apply WebSocketClient install-once patch — run 'make reapply-patches'. Until then concurrent connect() can corrupt the heap (SIGABRT free(): invalid next size)$(RESET)"; \
-			exit 1; \
-		fi \
-	else \
-		echo "$(GREEN)✓ libhv WebSocketClient install-once patch already applied$(RESET)"; \
-	fi
+	@# The libhv patches take the same verdict as the LVGL ones, with one
+	@# addition: the note names what breaks if the patch is missing, because
+	@# libhv headers are -isystem, so a silently missing patch changes nothing
+	@# the build itself notices.
+	$(Q)$(APPLY_PATCH) $(LIBHV_DIR) $(PATCH_DIR)/libhv-dns-resolver-fallback.patch "libhv DNS resolver fallback patch" "Without it embedded DNS resolution is broken."
+	$(Q)$(APPLY_PATCH) $(LIBHV_DIR) $(PATCH_DIR)/libhv-tcpclient-reconnect-resilience.patch "libhv TcpClient reconnect resilience patch" "Without it a pending auto-reconnect can fault in createsocket() during teardown (#1212)."
+	$(Q)$(APPLY_PATCH) $(LIBHV_DIR) $(PATCH_DIR)/libhv-websocket-backoff-on-upgrade.patch "libhv WebSocket backoff patch" "Without it a failed WS upgrade reconnects at 5Hz."
+	$(Q)$(APPLY_PATCH) $(LIBHV_DIR) $(PATCH_DIR)/libhv-hthreadpool-wait-lock.patch "libhv HThreadPool wait() lock patch" "Without it wait() races a worker's pop_front() (nightly TSAN via ThumbnailProcessor::wait_for_completion)."
+	$(Q)$(APPLY_PATCH) $(LIBHV_DIR) $(PATCH_DIR)/libhv-hlog-thread-safe-localtime.patch "libhv hlog localtime_r patch" "Without it every logging thread races on localtime()'s shared struct tm and tzset's TZ string (nightly TSAN, logger_print)."
+	$(Q)$(APPLY_PATCH) $(LIBHV_DIR) $(PATCH_DIR)/libhv-http-request-cancel-atomic.patch "libhv HttpRequest cancel atomic patch" "Without it CameraStream::stop() races the stream thread's ParseUrl() (nightly TSAN in HttpRequest::Cancel)."
+	$(Q)$(APPLY_PATCH) $(LIBHV_DIR) $(PATCH_DIR)/libhv-websocket-open-install-once.patch "libhv WebSocketClient install-once patch" "Without it concurrent connect() corrupts the heap (SIGABRT free(): invalid next size)."
 	$(Q)if [ -d "$(LIBHV_DIR)/include/hv" ]; then \
 		for h in evpp/TcpClient.h http/client/WebSocketClient.h cpputil/hthreadpool.h http/HttpMessage.h; do \
 			base=$$(basename $$h); \
