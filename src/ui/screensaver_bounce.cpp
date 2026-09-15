@@ -23,18 +23,15 @@
 #include <string>
 
 using helix::screensaver_bounce::fit_sprite;
-using helix::screensaver_bounce::fold;
-using helix::screensaver_bounce::fold_index;
-using helix::screensaver_bounce::is_corner_hit;
 using helix::screensaver_bounce::MIN_RANGE_PX;
-using helix::screensaver_bounce::near_rational;
 using helix::screensaver_bounce::sprite_size_for;
+using helix::ui::screensaver::fold;
+using helix::ui::screensaver::fold_index;
+using helix::ui::screensaver::is_corner_hit;
+using helix::ui::screensaver::near_rational;
+using helix::ui::screensaver::unit_random;
 
 namespace {
-
-// Tick period matches the rest of the subsystem: 50 ms (~20 fps) where the
-// hardware has headroom, ~7 fps on BASIC/EMBEDDED so a screensaver the user
-// opted back on stays clear of Klipper's print loop.
 
 // Travel per second as a fraction of the screen's narrow axis, so a 480x272
 // panel and a 1024x600 one read at the same pace.
@@ -122,7 +119,7 @@ void BouncingPrinterScreensaver::start() {
     elapsed_ms_ = 0;
     clock_.reset(lv_tick_get());
 
-    rng_.seed(static_cast<std::mt19937::result_type>(
+    rng_.seed(static_cast<std::minstd_rand::result_type>(
         std::chrono::steady_clock::now().time_since_epoch().count()));
 
     range_x_ = static_cast<float>(screen_w_ - sprite_w_);
@@ -242,20 +239,18 @@ void BouncingPrinterScreensaver::create_overlay() {
 }
 
 void BouncingPrinterScreensaver::seed_motion() {
-    std::uniform_real_distribution<float> unit(0.0f, 1.0f);
-
     const float narrow = static_cast<float>(std::min(screen_w_, screen_h_));
     const float speed = SPEED_FRACTION * narrow;
 
     // Start anywhere on the field so consecutive runs do not trace the same path.
-    const float start_x = unit(rng_) * range_x_;
-    const float start_y = unit(rng_) * range_y_;
+    const float start_x = unit_random(rng_) * range_x_;
+    const float start_y = unit_random(rng_) * range_y_;
 
     for (int attempt = 0; attempt < SEED_ATTEMPTS; ++attempt) {
-        const float deg = ANGLE_MIN_DEG + unit(rng_) * ANGLE_SPAN_DEG;
+        const float deg = ANGLE_MIN_DEG + unit_random(rng_) * ANGLE_SPAN_DEG;
         const float theta = deg * (static_cast<float>(M_PI) / 180.0f);
-        const float sx = (unit(rng_) < 0.5f) ? -1.0f : 1.0f;
-        const float sy = (unit(rng_) < 0.5f) ? -1.0f : 1.0f;
+        const float sx = (unit_random(rng_) < 0.5f) ? -1.0f : 1.0f;
+        const float sy = (unit_random(rng_) < 0.5f) ? -1.0f : 1.0f;
 
         vx_ = speed * std::cos(theta) * sx;
         vy_ = speed * std::sin(theta) * sy;

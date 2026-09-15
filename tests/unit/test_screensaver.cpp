@@ -1218,7 +1218,7 @@ TEST_CASE_METHOD(LVGLTestFixture, "BouncingPrinterScreensaver creates overlay on
 // the sprite is and whether it just hit something are testable without a display.
 
 TEST_CASE("Bouncing printer: fold keeps travel inside the wall", "[screensaver][bounce_math]") {
-    using helix::screensaver_bounce::fold;
+    using helix::ui::screensaver::fold;
 
     SECTION("every point of a long run stays in range") {
         for (float u = -5000.0f; u <= 5000.0f; u += 7.3f) {
@@ -1247,7 +1247,7 @@ TEST_CASE("Bouncing printer: fold keeps travel inside the wall", "[screensaver][
 }
 
 TEST_CASE("Bouncing printer: fold_index counts one per wall", "[screensaver][bounce_math]") {
-    using helix::screensaver_bounce::fold_index;
+    using helix::ui::screensaver::fold_index;
 
     REQUIRE(fold_index(0.0f, 400.0f) == 0);
     REQUIRE(fold_index(399.0f, 400.0f) == 0);
@@ -1259,7 +1259,7 @@ TEST_CASE("Bouncing printer: fold_index counts one per wall", "[screensaver][bou
 
 TEST_CASE("Bouncing printer: near_rational rejects short repeating paths",
           "[screensaver][bounce_math]") {
-    using helix::screensaver_bounce::near_rational;
+    using helix::ui::screensaver::near_rational;
 
     // Simple ratios close a loop the sprite would retrace forever.
     REQUIRE(near_rational(1.0f, 6, 0.02f));
@@ -1280,7 +1280,7 @@ TEST_CASE("Bouncing printer: near_rational rejects short repeating paths",
 
 TEST_CASE("Bouncing printer: a corner needs both walls and both edges",
           "[screensaver][bounce_math]") {
-    using helix::screensaver_bounce::is_corner_hit;
+    using helix::ui::screensaver::is_corner_hit;
 
     constexpr float RX = 400.0f;
     constexpr float RY = 300.0f;
