@@ -432,6 +432,10 @@ force-apply-patches:
 # hide a missing patch behind a current patch stamp: the restored file is newer
 # than this stamp, and the check runs before anything compiles against it.
 $(PATCH_MARKER_STAMP): $(PATCHES_STAMP) $(PATCH_MARKERS_TSV) $(PATCH_MARKER_DEPS)
+	$(Q)if [ "$${HELIX_MARKER_DERIVING:-0}" = 1 ]; then \
+		echo "$(CYAN)ℹ marker gate suspended - deriving a new table$(RESET)"; \
+		exit 0; \
+	fi
 	$(Q)if ! command -v python3 >/dev/null 2>&1; then \
 		echo "$(YELLOW)⚠ python3 not found - patch marker check skipped$(RESET)"; \
 		exit 0; \
@@ -441,9 +445,14 @@ $(PATCH_MARKER_STAMP): $(PATCHES_STAMP) $(PATCH_MARKERS_TSV) $(PATCH_MARKER_DEPS
 
 # Rederive the marker table. Reapplies patches first: derivation reads the
 # patched checkout, and a checkout missing a patch has no marker to find.
+# The reapply suspends the marker gates: the stale table that blocks an
+# ordinary apply is the table this target is about to rewrite, so enforcing
+# it here would deadlock the very remedy the gate prescribes. Derivation
+# rewrites the table with a newer mtime, so verification re-arms itself on
+# the next ordinary build.
 .PHONY: regen-patch-markers
 regen-patch-markers:
-	$(Q)$(MAKE) reapply-patches
+	$(Q)HELIX_MARKER_DERIVING=1 $(MAKE) reapply-patches
 	$(Q)python3 scripts/gen_patch_markers.py --write --mk mk/patches.mk \
 		--tsv $(PATCH_MARKERS_TSV) --patch-dir $(PATCH_DIR) \
 		--lvgl $(LVGL_DIR) --libhv $(LIBHV_DIR)
@@ -610,7 +619,9 @@ $(PATCHES_STAMP): $(PATCH_FILES) $(LVGL_HEAD) $(LIBHV_HEAD) $(APPLIED_STAMP_ID)
 	@# every later build while the patch stays missing. The marker precondition
 	@# runs first and fails the recipe, so the tree is re-judged (and the warn
 	@# re-printed) on every build until it is repaired.
-	$(Q)if command -v python3 >/dev/null 2>&1; then \
+	$(Q)if [ "$${HELIX_MARKER_DERIVING:-0}" = 1 ]; then \
+		echo "$(CYAN)ℹ marker gate suspended - deriving a new table$(RESET)"; \
+	elif command -v python3 >/dev/null 2>&1; then \
 		$(PATCH_MARKER_CHECK); \
 	else \
 		echo "$(YELLOW)⚠ python3 not found - patch marker check skipped$(RESET)"; \

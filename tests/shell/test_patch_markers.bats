@@ -221,6 +221,16 @@ EOF
     fi
 }
 
+@test "the regen remedy suspends the gate it would deadlock against" {
+    # A stale table blocks an ordinary apply, and the gate's own message
+    # prescribes regen-patch-markers as the remedy; that target rewrites
+    # the table, so its reapply must suspend the marker gates rather than
+    # enforce the stale one. Three sites carry the flag: the invocation
+    # and both enforcement points.
+    grep -q 'HELIX_MARKER_DERIVING=1 $(MAKE) reapply-patches' mk/patches.mk
+    [ "$(grep -c 'HELIX_MARKER_DERIVING' mk/patches.mk)" -ge 3 ]
+}
+
 @test "the drift stamp write is gated on the marker check" {
     # A stanza that only warned must not have the tree it left behind recorded
     # as the applied state: the marker check sits between the last apply stanza
