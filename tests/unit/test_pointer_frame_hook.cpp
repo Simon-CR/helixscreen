@@ -12,6 +12,7 @@
 
 #include "../lvgl_test_fixture.h"
 #include "../mock_input_tree.h"
+#include "indev_delete_watch.h"
 #include "pointer_frame_hook.h"
 #include "touch_calibration_wrapper.h"
 
@@ -322,6 +323,29 @@ TEST_CASE_METHOD(PointerFrameHookFixture,
     // before calibration_context_ is destroyed. With owner cleared this call
     // never touches the freed indev.
     helix::uninstall_calibration_wrapper(owner, ctx);
+}
+
+TEST_CASE_METHOD(
+    PointerFrameHookFixture,
+    "A slot repointed to a new device before the old one is deleted keeps the new device",
+    "[display][indev]") {
+    lv_indev_t* first = make_pointer(mouse_driver_read);
+    lv_indev_t* second = make_pointer(mouse_driver_read);
+
+    helix::IndevDeleteWatch watch;
+    lv_indev_t* slot = first;
+    watch.watch(first, &slot);
+
+    // A backend swap (rebuild_input_after_backend_swap()) points the slot at a
+    // freshly created device before the old one's own delete event arrives.
+    slot = second;
+
+    // lv_evdev deletes its own device when a read fails, as it does on unplug.
+    delete_pointer(first);
+
+    // The slot names a live device, not the one that was just deleted, so it
+    // is left alone rather than nulled out from under that live device.
+    CHECK(slot == second);
 }
 
 TEST_CASE_METHOD(PointerFrameHookFixture, "A hook that goes away stops listening to its devices",

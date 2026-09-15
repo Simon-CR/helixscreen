@@ -188,8 +188,9 @@ class PointerFrameHook {
         RawPosition raw_position;
     };
 
-    /// IndevDeleteWatch calls this after it clears the owner_slot install()
-    /// was given (if any) and only while that slot still named @p indev.
+    /// IndevDeleteWatch always calls this on delete; it first clears the
+    /// owner_slot install() was given, if any, but only while that slot
+    /// still named @p indev.
     static void on_device_deleted(void* ctx, const lv_indev_t* indev) {
         static_cast<PointerFrameHook*>(ctx)->forget_device(indev);
     }

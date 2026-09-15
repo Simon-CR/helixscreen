@@ -4,6 +4,7 @@
 #pragma once
 
 #include <lvgl.h>
+#include <utility>
 #include <vector>
 
 namespace helix {
@@ -77,6 +78,13 @@ class IndevDeleteWatch {
     static void on_deleted(lv_event_t* e) {
         auto* self = static_cast<IndevDeleteWatch*>(lv_event_get_user_data(e));
         const auto* target = static_cast<const lv_indev_t*>(lv_event_get_target(e));
+
+        // Take every matching entry out of watches_ (and clear its slot)
+        // before running any callback, so a callback that calls watch() or
+        // forget_all() on this same IndevDeleteWatch - re-adopting a
+        // replacement device is the natural next thing for one to do - never
+        // invalidates an iterator this loop is still holding.
+        std::vector<std::pair<DeleteCallback, void*>> to_notify;
         for (auto it = self->watches_.begin(); it != self->watches_.end();) {
             if (it->indev != target) {
                 ++it;
@@ -88,12 +96,13 @@ class IndevDeleteWatch {
             if (it->slot != nullptr && *it->slot == target) {
                 *it->slot = nullptr;
             }
-            const DeleteCallback on_delete = it->on_delete;
-            void* ctx = it->ctx;
-            it = self->watches_.erase(it);
-            if (on_delete != nullptr) {
-                on_delete(ctx, target);
+            if (it->on_delete != nullptr) {
+                to_notify.emplace_back(it->on_delete, it->ctx);
             }
+            it = self->watches_.erase(it);
+        }
+        for (const auto& [on_delete, ctx] : to_notify) {
+            on_delete(ctx, target);
         }
     }
 
