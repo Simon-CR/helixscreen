@@ -17,6 +17,10 @@
 #include <unordered_map>
 #include <unordered_set>
 
+namespace helix {
+class AmsBackend;
+} // namespace helix
+
 class IMoonrakerAPI;
 
 /**
@@ -150,6 +154,24 @@ class SpoolmanManager {
      */
     static bool file_spool_on_lane(helix::ams::LaneId lane, const SpoolInfo& spool,
                                    bool backend_tracks_weight_locally);
+
+    /**
+     * @brief File @p spool on a slot's lane and carry a changed lane onward.
+     *
+     * The poll's own step, so a caller holding a fresh spool does what a fetch
+     * does: the lane record, then the slot's stored record, the backend's
+     * cached slot and the slot's subjects. A filing that changes nothing stops
+     * at the lane.
+     *
+     * @param owner         The backend holding the slot
+     * @param backend_index Its index in AmsState
+     * @param slot_index    Slot the spool is linked on (0-based, global)
+     * @param spool         The record Spoolman returned
+     * @param local_weight  The owning backend's tracks_weight_locally()
+     * @return whether the lane's Spoolman record changed
+     */
+    static bool apply_fetched_spool(helix::AmsBackend& owner, int backend_index, int slot_index,
+                                    const SpoolInfo& spool, bool local_weight);
 
     /// Mark a spool id as unresolvable (Spoolman answered "no such spool").
     static void note_identity_unresolvable(int spool_id);

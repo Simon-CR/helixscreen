@@ -2881,6 +2881,13 @@ AmsError AmsBackendHappyHare::sync_external_identity(int slot_index, const SlotI
     return AmsErrorHelper::success();
 }
 
+void AmsBackendHappyHare::persist_external_identity_impl(int slot_index,
+                                                         const helix::ams::Observation& spoolman) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    helix::ams::persist_override_external_identity(override_store_.get(), overrides_, slot_index,
+                                                   spoolman, "[AMS HappyHare]");
+}
+
 void AmsBackendHappyHare::persist_slot_weight(int slot_index, float remaining_weight_g,
                                               float total_weight_g) {
     // The gate map holds no weight, so the stored record is its only durable home.

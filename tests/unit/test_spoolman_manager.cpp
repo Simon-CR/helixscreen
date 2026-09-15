@@ -24,8 +24,10 @@
 #include "ams_backend_toolchanger.h"
 #include "ams_state.h"
 #include "app_globals.h"
+#include "filament_slot_override_store.h"
 #include "lane_resolver.h"
 #include "lane_source_store.h"
+#include "lane_translation.h"
 #include "moonraker_api_mock.h"
 #include "moonraker_client_mock.h"
 #include "printer_discovery.h"
@@ -1040,4 +1042,43 @@ TEST_CASE_METHOD(SpoolmanLaneFixture,
     }
 
     CHECK(tool_api.mock_db_post_count() == saves_after_link);
+}
+
+TEST_CASE_METHOD(SpoolmanLaneFixture,
+                 "a changed Spoolman identity amends the linked lane's stored record",
+                 "[spoolman][lane][1653]") {
+    // Without the amend the lane shows the server's identity while the record a
+    // restart reloads still holds the old one.
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend(&api, nullptr);
+    helix::ams::FilamentSlotOverride stored;
+    stored.spoolman_id = 1;
+    stored.brand = "Polymaker";
+    stored.material = "PLA";
+    stored.color_rgb = 0xBCBCBC;
+    stored.color_set = true;
+    stored.declared = helix::ams::declared_fields_from_names(nlohmann::json::array({"color_rgb"}));
+    Ad5xIfsTestAccess::seed_override(*backend, 0, stored);
+    link(*backend, 0, 1);
+    state_polymaker_pla(server_spool(1));
+    poll();
+
+    // The spool is edited on the server.
+    server_spool(1).material = "PETG";
+    server_spool(1).vendor = "Sunlu";
+    poll();
+
+    const auto record = Ad5xIfsTestAccess::get_override(*backend, 0);
+    REQUIRE(record.has_value());
+    CHECK(record->material == "PETG");
+    CHECK(record->brand == "Sunlu");
+    // The colour is the user's, and the server does not get to move it.
+    CHECK(record->color_rgb == 0xBCBCBCu);
+    CHECK(helix::ams::declares_color(*record));
+
+    // What a restart would reload now resolves to what the lane shows.
+    const helix::ams::LaneSources reload = helix::ams::sources_from_record(
+        *record, helix::ams::to_lane_data_record(0, *record), helix::ams::LegacyLockKeys::LaneData);
+    CHECK(helix::ams::resolve(reload).material == std::string("PETG"));
+    CHECK(helix::ams::resolve(reload).brand == std::string("Sunlu"));
+    CHECK(helix::ams::resolve(reload).color_rgb == 0xBCBCBCu);
 }

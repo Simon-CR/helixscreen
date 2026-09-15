@@ -12,6 +12,7 @@
 #include "filament_op_dispatch.h"
 #include "filament_slot_override.h"
 #include "filament_slot_override_store.h"
+#include "lane_resolver.h"
 #include "lane_translation.h"
 #include "macro_param_cache.h"
 #include "moonraker_api_mock.h"
@@ -4719,4 +4720,42 @@ TEST_CASE("CFS: a failed payload still sends the envelope unwind", "[ams][cfs][h
 
     REQUIRE(api.contains("G28"));
     REQUIRE(api.contains("CR_BOX_LOAD"));
+}
+
+TEST_CASE("CFS: a mirror leaves the material the lane's Spoolman record states",
+          "[ams][cfs][filament_slot_override][1653]") {
+    // The override holds no material of its own, and firmware reads one off the
+    // tag. The lane's Spoolman record states the spool's, which never reaches
+    // firmware, so the mirror must leave the override's material unset rather
+    // than publishing firmware's over what the lane shows.
+    CfsOverrideRig rig("cfs_linked_material_from_lane");
+
+    const json box =
+        make_unit_box_explicit({"101001", "-1", "-1", "-1"}, {"0FFFFFF", "-1", "-1", "-1"},
+                               {"unknown", "none", "none", "none"}, {"100", "-1", "-1", "-1"});
+    rig.poll(box);
+    REQUIRE_FALSE(rig.backend->get_slot_info(0).material.empty());
+
+    helix::ams::FilamentSlotOverride linked;
+    linked.spoolman_id = 42;
+    CfsTestAccess::seed_override(*rig.backend, 0, linked);
+    SpoolInfo spool;
+    spool.id = 42;
+    spool.vendor = "Polymaker";
+    spool.filament_name = "PolyLite PETG";
+    spool.material = "PETG";
+    spool.color_hex = "1A1A2E";
+    helix::test::spool_states(*rig.backend, 0, spool);
+
+    rig.poll(box);
+
+    const auto ovr = CfsTestAccess::get_override(*rig.backend, 0);
+    REQUIRE(ovr.has_value());
+    CHECK(ovr->material.empty());
+    CHECK_FALSE(ovr->color_set);
+
+    const auto lane = helix::ams::lane_sources(rig.backend->lane_id(0));
+    REQUIRE(lane.spoolman.has_value());
+    CHECK(lane.spoolman->material == "PETG");
+    CHECK(helix::ams::resolve(lane).material == std::string("PETG"));
 }

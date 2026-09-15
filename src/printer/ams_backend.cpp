@@ -362,6 +362,15 @@ void AmsBackend::update_slot_weight(int slot_index, float remaining_weight_g, fl
     update_slot_weight_impl(slot_index, remaining_weight_g, total_weight_g, persist);
 }
 
+void AmsBackend::persist_external_identity(int slot_index) {
+    const std::optional<helix::ams::Observation> spoolman =
+        helix::ams::lane_sources(lane_id(slot_index)).spoolman;
+    if (!spoolman.has_value()) {
+        return;
+    }
+    persist_external_identity_impl(slot_index, *spoolman);
+}
+
 void AmsBackend::apply_resolved_lane(SlotInfo& slot, int slot_index) {
     helix::ams::apply_resolved(slot, helix::ams::resolved_lane(lane_id(slot_index)));
 }

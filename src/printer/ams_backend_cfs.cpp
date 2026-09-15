@@ -1601,8 +1601,9 @@ void AmsBackendCfs::handle_status_update(const nlohmann::json& notification) {
                     // not the resolved view. FillUnsetOnly: CFS user
                     // edits don't reach firmware, so we must not let firmware
                     // overwrite them - see mirror_firmware_to_lane_data docs.
-                    // The record's own colour and material declarations guard
-                    // this mirror.
+                    // The record's own declarations guard this mirror, and so
+                    // does a field a declaring lane source holds: a linked
+                    // spool's material never reaches firmware.
                     //
                     // The runout strip (#1390) runs inside the same !cleared
                     // gate and before the mirror: it POSTs the stripped record,
@@ -1623,7 +1624,7 @@ void AmsBackendCfs::handle_status_update(const nlohmann::json& notification) {
                             override_store_.get(), overrides_, global_idx, slot.color_rgb,
                             slot.material, slot.status == SlotStatus::AVAILABLE,
                             helix::ams::MirrorPolicy::FillUnsetOnly, backend_log_tag(),
-                            helix::ams::DeclaredOnLane{});
+                            helix::ams::declared_on_lane(lane_id(global_idx)));
                     }
                     apply_resolved_lane(slot, global_idx);
                 }
@@ -2184,6 +2185,14 @@ AmsError AmsBackendCfs::sync_external_identity(int slot_index, const SlotInfo& i
                  info.color_name);
     emit_event(EVENT_SLOT_CHANGED, std::to_string(slot_index));
     return AmsErrorHelper::success();
+}
+
+void AmsBackendCfs::persist_external_identity_impl(int slot_index,
+                                                   const helix::ams::Observation& spoolman) {
+    const std::string tag = backend_log_tag();
+    std::lock_guard<std::mutex> lock(mutex_);
+    helix::ams::persist_override_external_identity(override_store_.get(), overrides_, slot_index,
+                                                   spoolman, tag);
 }
 
 void AmsBackendCfs::persist_slot_weight(int slot_index, float remaining_weight_g,

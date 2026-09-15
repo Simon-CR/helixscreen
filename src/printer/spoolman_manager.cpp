@@ -454,21 +454,11 @@ void SpoolmanManager::refresh_spoolman_weights() {
                             // already seen it. Ahead of the weights-unchanged
                             // return for the same reason. Refiling an unchanged
                             // record is harmless, since it replaces the old one.
-                            const bool lane_changed = file_spool_on_lane(
-                                owner->lane_id(d->slot_index), d->spool, d->local_weight);
-
-                            // A backend serving its slots from a cache painted
-                            // this one from the lane as it stood before the
-                            // filing, and the slot's subjects follow backend
-                            // events, of which a filing raises none. Every poll
-                            // refiles every linked lane, so only a changed record
-                            // is worth the repaint and the resync. `slot` is a
-                            // copy taken before, so the weight comparison below
-                            // still reads the old values.
-                            if (lane_changed) {
-                                owner->repaint_slot_from_lane(d->slot_index);
-                                ams.update_slot_for_backend(d->backend_index, d->slot_index);
-                            }
+                            // `slot` is a copy taken before this, so the
+                            // weight comparison below still reads the old
+                            // values.
+                            apply_fetched_spool(*owner, d->backend_index, d->slot_index, d->spool,
+                                                d->local_weight);
 
                             // When backend tracks weight locally, only update total_weight
                             // (initial weight from Spoolman). Preserve the backend's
@@ -629,6 +619,27 @@ void SpoolmanManager::refresh_spoolman_weights() {
         spdlog::trace("[SpoolmanManager] Refreshing Spoolman weights for {} linked slots",
                       linked_count);
     }
+}
+
+bool SpoolmanManager::apply_fetched_spool(helix::AmsBackend& owner, int backend_index,
+                                          int slot_index, const SpoolInfo& spool,
+                                          bool local_weight) {
+    const bool lane_changed = file_spool_on_lane(owner.lane_id(slot_index), spool, local_weight);
+    // Every poll refiles every linked lane, so only a changed record is worth
+    // the work below.
+    if (!lane_changed) {
+        return false;
+    }
+    // The stored record holds the identity the server stated when it was
+    // written, so a restart with Spoolman unreachable shows what the filing
+    // just changed only if the record moves with it.
+    owner.persist_external_identity(slot_index);
+    // A backend serving its slots from a cache painted this one from the lane as
+    // it stood before the filing, and the slot's subjects follow backend events,
+    // of which a filing raises none.
+    owner.repaint_slot_from_lane(slot_index);
+    AmsState::instance().update_slot_for_backend(backend_index, slot_index);
+    return true;
 }
 
 bool SpoolmanManager::file_spool_on_lane(helix::ams::LaneId lane, const SpoolInfo& spool,

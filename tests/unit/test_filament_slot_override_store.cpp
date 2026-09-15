@@ -3917,3 +3917,74 @@ TEST_CASE("a same-spool edit on a linked release 1.0 record declares only the co
         CHECK(helix::ams::declared_field_names(amended.declared) == json::array());
     }
 }
+
+TEST_CASE("a Spoolman filing keeps a declared colour on the stored record",
+          "[filament_slot_override][1653]") {
+    using helix::ams::declares_color;
+    using helix::ams::Observation;
+    using helix::ams::ObservationSource;
+    using helix::ams::persist_override_external_identity;
+
+    std::unordered_map<int, FilamentSlotOverride> overrides;
+    FilamentSlotOverride linked;
+    linked.spoolman_id = 42;
+    linked.brand = "Polymaker";
+    linked.material = "PLA";
+    linked.spool_name = "PolyLite PLA";
+    linked.spoolman_vendor_id = 7;
+    linked.color_rgb = 0xBCBCBC;
+    linked.color_set = true;
+    linked.remaining_weight_g = 730.0f;
+    linked.catalog_id = "sunlu-pla-plus-2-0";
+    linked.declared = helix::ams::declared_fields_from_names(json::array({"color_rgb"}));
+
+    Observation spoolman(ObservationSource::Spoolman);
+    spoolman.spoolman_id = 42;
+    spoolman.brand = "Sunlu";
+    spoolman.material = "PETG";
+    spoolman.spool_name = "PLA Plus";
+    spoolman.spoolman_vendor_id = 9;
+    spoolman.color_rgb = 0xFF0000u;
+
+    SECTION("the server's identity lands and the user's colour stands") {
+        overrides[0] = linked;
+        CHECK(persist_override_external_identity(nullptr, overrides, 0, spoolman, "[test]"));
+        const FilamentSlotOverride& amended = overrides.at(0);
+        CHECK(amended.brand == "Sunlu");
+        CHECK(amended.material == "PETG");
+        CHECK(amended.spool_name == "PLA Plus");
+        CHECK(amended.spoolman_vendor_id == 9);
+        CHECK(amended.color_rgb == 0xBCBCBCu);
+        CHECK(declares_color(amended));
+        // A filing states identity, so the meter's weight and the user's pick stand.
+        CHECK(amended.remaining_weight_g == Catch::Approx(730.0f));
+        CHECK(amended.catalog_id == "sunlu-pla-plus-2-0");
+    }
+
+    SECTION("a colour the record does not declare follows the server") {
+        linked.declared = helix::ams::declared_fields_from_names(json::array());
+        overrides[0] = linked;
+        CHECK(persist_override_external_identity(nullptr, overrides, 0, spoolman, "[test]"));
+        CHECK(overrides.at(0).color_rgb == 0xFF0000u);
+        CHECK_FALSE(declares_color(overrides.at(0)));
+    }
+
+    SECTION("a record naming another spool is left alone") {
+        linked.spoolman_id = 7;
+        overrides[0] = linked;
+        CHECK_FALSE(persist_override_external_identity(nullptr, overrides, 0, spoolman, "[test]"));
+        CHECK(overrides.at(0).material == "PLA");
+        CHECK(overrides.at(0).brand == "Polymaker");
+    }
+
+    SECTION("a lane with no record gets none") {
+        CHECK_FALSE(persist_override_external_identity(nullptr, overrides, 0, spoolman, "[test]"));
+        CHECK(overrides.empty());
+    }
+
+    SECTION("an identity that has not moved is not written again") {
+        overrides[0] = linked;
+        REQUIRE(persist_override_external_identity(nullptr, overrides, 0, spoolman, "[test]"));
+        CHECK_FALSE(persist_override_external_identity(nullptr, overrides, 0, spoolman, "[test]"));
+    }
+}

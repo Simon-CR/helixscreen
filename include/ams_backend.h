@@ -1694,6 +1694,36 @@ class AmsBackend {
     }
 
     /**
+     * @brief Amend a slot's stored record with what the lane's Spoolman record states.
+     *
+     * The durable half of a Spoolman filing. SpoolmanManager files the spool on
+     * the lane and calls this, so the record a restart reloads carries the
+     * identity the server last stated rather than the one the record was
+     * written with. A lane with no Spoolman record on it is left alone.
+     *
+     * @param slot_index Slot to amend (0-based, global)
+     */
+    void persist_external_identity(int slot_index);
+
+    /**
+     * @brief The backend half of persist_external_identity().
+     *
+     * Reached only through that wrapper, which reads the lane. The default
+     * writes nothing, for a backend that keeps no stored record. An override
+     * amends the record it holds for @p slot_index and writes no identity to
+     * firmware: the server is where this identity came from, and a persist is
+     * not an edit.
+     *
+     * @param slot_index Slot to amend (0-based, global)
+     * @param spoolman   The lane's Spoolman record
+     */
+    virtual void persist_external_identity_impl(int slot_index,
+                                                const helix::ams::Observation& spoolman) {
+        (void)slot_index;
+        (void)spoolman;
+    }
+
+    /**
      * @brief Aim a tool at a slot, on purpose.
      *
      * The one entry point for a deliberate tool-to-lane assignment. Every

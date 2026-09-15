@@ -441,6 +441,8 @@ class AmsBackendAd5xIfs : public AmsSubscriptionBackend {
     AmsError apply_user_edit(int slot_index, const SlotInfo& info,
                              const helix::ams::Observation& declared) override;
     AmsError sync_external_identity(int slot_index, const SlotInfo& info) override;
+    void persist_external_identity_impl(int slot_index,
+                                        const helix::ams::Observation& spoolman) override;
     // Weight-only persist: updates remaining/total weight in the override store
     // and NEVER rewrites Adventurer5M.json / _IFS_VARS or re-locks material —
     // the firmware-facing writers in apply_user_edit() are what reverted the

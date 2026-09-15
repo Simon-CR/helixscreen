@@ -405,6 +405,15 @@ void persist_override_weight(FilamentSlotOverrideStore* store,
                              int slot_index, float remaining_weight_g, float total_weight_g,
                              const std::string& log_tag);
 
+/// Amend a linked slot's stored record with what Spoolman now states.
+///
+/// Caller MUST hold the backend's mutex protecting `overrides`. Returns true
+/// when a field moved, which is also when the record is saved.
+bool persist_override_external_identity(FilamentSlotOverrideStore* store,
+                                        std::unordered_map<int, FilamentSlotOverride>& overrides,
+                                        int slot_index, const Observation& spoolman,
+                                        const std::string& log_tag);
+
 /// Publish (or clear) the external / bypass spool as an extra lane one past
 /// the last physical slot, so slicers (OrcaSlicer's MoonrakerPrinterAgent)
 /// can select it as the "next tool over" (T4 beside T0-T3). The record rides

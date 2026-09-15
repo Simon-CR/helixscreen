@@ -179,6 +179,12 @@ enum class LegacyLockKeys {
 /// where they are.
 void withdraw_color_and_material(FilamentSlotOverride& record);
 
+/// Withdraw @p record's declarations of the fields a linked spool owns
+/// (material, brand, spool name, Spoolman vendor id), leaving their values
+/// where they are. A record the server's own identity has just been written
+/// onto claims none of them.
+void withdraw_spool_owned_declarations(FilamentSlotOverride& record);
+
 /// @p edited with every field a linked spool owns taken from the spool.
 ///
 /// Applies to an edit that keeps the same positive spool id. Material, brand,

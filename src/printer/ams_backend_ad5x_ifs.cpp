@@ -1431,16 +1431,18 @@ bool AmsBackendAd5xIfs::sync_override_to_firmware_locked(int slot_index, uint32_
     // native LCD, CHANGE_ZCOLOR).
     //
     // Declaration guard (#965): apply_user_edit() declares the colour and
-    // material the user moved, and the record's own colour and material
-    // declarations guard this mirror. Without the guard, an AD5X firmware
-    // post-print FFMInfo revert (which re-emits the prior material into
-    // Adventurer5M.json) would clobber the user's material choice through this
-    // call site. To re-enable auto-track on a previously-edited slot the user
-    // calls clear_slot_override.
+    // material the user moved, and the record's own declarations guard this
+    // mirror. Without the guard, an AD5X firmware post-print FFMInfo revert
+    // (which re-emits the prior material into Adventurer5M.json) would clobber
+    // the user's material choice through this call site. A field a declaring
+    // lane source holds is guarded the same way, which is how a linked spool's
+    // material survives a type the printer's own menu sets. To re-enable
+    // auto-track on a previously-edited slot the user calls clear_slot_override.
+    const helix::ams::DeclaredOnLane declared = helix::ams::declared_on_lane(lane_id(slot_index));
     bool changed = helix::ams::mirror_firmware_to_lane_data(
         override_store_.get(), overrides_, slot_index, firmware_color, firmware_material,
         /*slot_has_filament=*/true, helix::ams::MirrorPolicy::OverwriteAlways, backend_log_tag(),
-        helix::ams::DeclaredOnLane{});
+        declared);
 
     // The lane's stored declaration of what the mirror just rewrote goes with
     // it, or the two stores disagree and the stronger record paints a value the
@@ -1454,7 +1456,10 @@ bool AmsBackendAd5xIfs::sync_override_to_firmware_locked(int slot_index, uint32_
     auto it = overrides_.find(slot_index);
     RetractedFields restated;
     restated.color = it == overrides_.end() || !helix::ams::declares_color(it->second);
-    restated.material = it == overrides_.end() || !helix::ams::declares_material(it->second);
+    // A linked spool's material never reaches firmware, so a type firmware
+    // states does not retract what the server states.
+    restated.material = it == overrides_.end() ||
+                        (!helix::ams::declares_material(it->second) && !declared.material);
     retract_lane_declaration_locked(slot_index, restated);
 
     if (!changed)
@@ -1539,6 +1544,11 @@ void AmsBackendAd5xIfs::release_color_material_locks_locked(int slot_index,
                                                             ReleasedValues disposition) {
     // Caller holds mutex_. Both stores, always: see the header for why one of
     // them on its own leaves the released values still painting.
+    //
+    // The record's own spool id is the question, not the lane's: a link whose
+    // server is unreachable is still a link, and this record is what the
+    // release operates on.
+    const bool linked = ovr.spoolman_id > 0;
     helix::ams::withdraw_color_and_material(ovr);
     if (disposition == ReleasedValues::Strip) {
         // These are the fields the persisted record stops carrying, so a
@@ -1548,15 +1558,19 @@ void AmsBackendAd5xIfs::release_color_material_locks_locked(int slot_index,
         ovr.color_set = false;
         ovr.color_rgb = 0;
         ovr.color_name.clear();
-        ovr.material.clear();
-        // The catalog pick is scoped to a MATERIAL: "sunlu-pla-plus-2-0" only
-        // makes sense while the lane is PLA, and a Strip release is firmware
-        // re-authoring the material. setup_details_selector() seeds the type
-        // dropdown from catalog_id first, so a stale id drags the editor back
-        // to the old material family and contradicts the firmware truth just
-        // accepted.
-        ovr.catalog_id.clear();
-        ovr.product_name.clear();
+        // A linked spool owns its material, and firmware re-authoring a type
+        // says nothing about the spool the lane is bound to.
+        if (!linked) {
+            ovr.material.clear();
+            // The catalog pick is scoped to a MATERIAL: "sunlu-pla-plus-2-0"
+            // only makes sense while the lane is PLA, and a Strip release is
+            // firmware re-authoring the material. setup_details_selector()
+            // seeds the type dropdown from catalog_id first, so a stale id
+            // drags the editor back to the old material family and contradicts
+            // the firmware truth just accepted.
+            ovr.catalog_id.clear();
+            ovr.product_name.clear();
+        }
     }
 
     // The lane's own records are trimmed to match, whatever the disposition:
@@ -1564,10 +1578,12 @@ void AmsBackendAd5xIfs::release_color_material_locks_locked(int slot_index,
     // declaring record outranks the vendor cache the mirror feeds.
     RetractedFields released;
     released.color = true;
-    released.material = true;
+    // The material and the pick scoped to it stay on a linked lane, where the
+    // server states the material and firmware does not.
+    released.material = !linked;
     // The catalog pick goes with the material it is scoped to, for the same
     // reason it goes from the override above.
-    released.catalog = disposition == ReleasedValues::Strip;
+    released.catalog = disposition == ReleasedValues::Strip && !linked;
     retract_lane_declaration_locked(slot_index, released);
 
     // Persist so a restart reloads the released record rather than the locked
@@ -2944,6 +2960,14 @@ AmsError AmsBackendAd5xIfs::apply_user_edit(int slot_index, const SlotInfo& info
 
     emit_event(EVENT_SLOT_CHANGED, std::to_string(slot_index));
     return AmsErrorHelper::success();
+}
+
+void AmsBackendAd5xIfs::persist_external_identity_impl(int slot_index,
+                                                       const helix::ams::Observation& spoolman) {
+    const std::string tag = backend_log_tag();
+    std::lock_guard<std::mutex> lock(mutex_);
+    helix::ams::persist_override_external_identity(override_store_.get(), overrides_, slot_index,
+                                                   spoolman, tag);
 }
 
 AmsError AmsBackendAd5xIfs::sync_external_identity(int slot_index, const SlotInfo& info) {

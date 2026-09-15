@@ -732,6 +732,16 @@ bool declares_material(const FilamentSlotOverride& record) {
     return record.declared.test(MATERIAL_INDEX);
 }
 
+void withdraw_spool_owned_declarations(FilamentSlotOverride& record) {
+    for_each_field_indexed([&](const auto& f, size_t index) {
+        using Row = std::decay_t<decltype(f)>;
+        if constexpr (Row::owner == Owner::SpoolWhenLinked) {
+            (void)f;
+            record.declared.reset(index);
+        }
+    });
+}
+
 void withdraw_color_and_material(FilamentSlotOverride& record) {
     record.declared.reset(COLOR_INDEX);
     record.declared.reset(MATERIAL_INDEX);

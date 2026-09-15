@@ -1987,6 +1987,67 @@ bool clear_persisted_override(FilamentSlotOverrideStore* store,
     return true;
 }
 
+bool persist_override_external_identity(FilamentSlotOverrideStore* store,
+                                        std::unordered_map<int, FilamentSlotOverride>& overrides,
+                                        int slot_index, const Observation& spoolman,
+                                        const std::string& log_tag) {
+    auto it = overrides.find(slot_index);
+    if (it == overrides.end()) {
+        // A lane nobody edited has no record, and a filing is not an edit.
+        return false;
+    }
+    FilamentSlotOverride& ovr = it->second;
+    const int stated = spoolman.spoolman_id.value_or(0);
+    if (stated <= 0 || ovr.spoolman_id != stated) {
+        // A record naming another spool describes a different spool.
+        return false;
+    }
+
+    bool changed = false;
+    const auto take = [&changed](auto& field, const auto& state) {
+        if (state.has_value() && field != *state) {
+            field = *state;
+            changed = true;
+        }
+    };
+    take(ovr.brand, spoolman.brand);
+    take(ovr.material, spoolman.material);
+    take(ovr.spool_name, spoolman.spool_name);
+    take(ovr.spoolman_vendor_id, spoolman.spoolman_vendor_id);
+
+    // The colour is the one identity field a linked record can declare, and a
+    // declared colour is the user's to keep.
+    if (!declares_color(ovr) && spoolman.color_rgb.has_value() &&
+        (!ovr.color_set || ovr.color_rgb != *spoolman.color_rgb)) {
+        ovr.color_rgb = *spoolman.color_rgb;
+        ovr.color_set = true;
+        changed = true;
+    }
+
+    // What the server states is the server's word, so the record claims none of
+    // it. The weights, the catalog pick and the temperatures are left alone:
+    // this states identity and nothing else.
+    const DeclaredFields claimed = ovr.declared;
+    withdraw_spool_owned_declarations(ovr);
+    changed = changed || !(ovr.declared == claimed);
+
+    if (!changed) {
+        return false;
+    }
+    if (store) {
+        FilamentSlotOverride snapshot = ovr;
+        const std::string tag_copy = log_tag;
+        store->save_async(slot_index, snapshot,
+                          [tag_copy, slot_index](bool success, const std::string& err) {
+                              if (!success) {
+                                  spdlog::warn("{} identity amend persist failed for slot {}: {}",
+                                               tag_copy, slot_index, err);
+                              }
+                          });
+    }
+    return true;
+}
+
 void persist_override_weight(FilamentSlotOverrideStore* store,
                              std::unordered_map<int, FilamentSlotOverride>& overrides,
                              int slot_index, float remaining_weight_g, float total_weight_g,

@@ -294,6 +294,13 @@ unlinked one is split:
 | anything else the record carries | `Remembered`, which the resolver ranks **below** the current firmware frame |
 | `remaining_weight_g` / `total_weight_g` | `Metered`, always: a weight is a measurement whoever wrote it |
 
+A lane's stored record is amended from each changed Spoolman filing, through
+`AmsBackend::persist_external_identity()`
+(`include/ams_backend.h#AmsBackend/persist_external_identity`). It takes the
+identity the server states, leaves a declared colour, the weights, the catalog
+pick and the temperatures alone, claims no authorship, and writes nothing to
+firmware. A lane with no record gets none: a filing is not an edit.
+
 A record written before `helix_declared` existed carries no set, and its brand,
 spool name and vendor id count as declared only beside a colour or material
 declaration the same record carries. That declaration is the evidence a person

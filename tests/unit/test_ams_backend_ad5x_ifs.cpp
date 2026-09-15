@@ -15,6 +15,7 @@
 #include "filament_slot_override.h"
 #include "filament_slot_override_store.h"
 #include "filament_variants.h"
+#include "lane_resolver.h"
 #include "lane_source_store.h"
 #include "lane_translation.h"
 #include "moonraker_api_mock.h"
@@ -5449,7 +5450,8 @@ TEST_CASE("AD5X IFS apply_user_edit with pre-existing override replaces it",
 // in parse_adventurer_json) and clears the override there.
 // ==========================================================================
 
-TEST_CASE("AD5X IFS external color change syncs lane_data, preserves brand metadata",
+TEST_CASE("AD5X IFS external color change syncs colour and preserves a linked spool's brand "
+          "and material",
           "[ams][ad5x_ifs][filament_slot_override]") {
     Ad5xIfsTmpCacheDir tmp("ext_color_change_syncs");
     MoonrakerClientMock client(MoonrakerClientMock::PrinterType::VORON_24);
@@ -5512,23 +5514,24 @@ TEST_CASE("AD5X IFS external color change syncs lane_data, preserves brand metad
         CHECK(info.brand == "Polymaker");
         CHECK(info.spool_name == "PolyLite Orange");
         CHECK(info.spoolman_id == 42);
-        // Color + material reflect firmware truth.
+        // Colour follows firmware. The linked spool states the material, so a
+        // firmware type does not move it.
         CHECK(info.color_rgb == 0x0055FFu);
-        CHECK(info.material == "PETG");
+        CHECK(info.material == "PLA");
     }
     auto staged = Ad5xIfsTestAccess::get_override(backend, 0);
     REQUIRE(staged.has_value());
     CHECK(staged->brand == "Polymaker");
     CHECK(staged->spoolman_id == 42);
     CHECK(staged->color_rgb == 0x0055FFu);
-    CHECK(staged->material == "PETG");
+    CHECK(staged->material == "PLA");
 
-    // Moonraker DB lane1 entry refreshed by save_async — Orca now sees the
-    // new color/material plus the preserved vendor + spool_id.
+    // Moonraker DB lane1 entry refreshed by save_async, so Orca sees the new
+    // colour beside the preserved vendor, spool_id and the spool's material.
     auto db = api.mock_get_db_value("lane_data", "lane1");
     REQUIRE(!db.is_null());
     CHECK(db.value("color", "") == "#0055FF");
-    CHECK(db.value("material", "") == "PETG");
+    CHECK(db.value("material", "") == "PLA");
     CHECK(db.value("vendor", "") == "Polymaker");
     CHECK(db.value("spool_id", 0) == 42);
 }
@@ -5995,17 +5998,16 @@ TEST_CASE("AD5X IFS empty colors_[] on boot does NOT establish phantom baseline"
         CHECK(info.brand == "Polymaker");
         CHECK(info.spoolman_id == 42);
         CHECK(info.color_rgb == 0xFF5500u);
-        // External edit changed material to firmware truth — override.material
-        // is synced too, since material is firmware-owned for AD5X-IFS (it has
-        // to be in zmod's whitelist or the firmware errors). Brand metadata
-        // is the only thing the user owns independently and it persists.
-        CHECK(info.material == "PLA");
+        // The colour follows firmware, which owns it. The lane is bound to a
+        // spool, and the spool states the material, so a firmware type does not
+        // move it.
+        CHECK(info.material == "PETG");
     }
     auto staged3 = Ad5xIfsTestAccess::get_override(backend, 0);
     REQUIRE(staged3.has_value());
     CHECK(staged3->brand == "Polymaker");
     CHECK(staged3->color_rgb == 0xFF5500u);
-    CHECK(staged3->material == "PLA");
+    CHECK(staged3->material == "PETG");
 }
 
 TEST_CASE("AD5X IFS first firmware color observation does NOT clear override",
@@ -11462,4 +11464,110 @@ TEST_CASE(
     const nlohmann::json written = nlohmann::json::parse(written_file, nullptr, false);
     REQUIRE(written.is_object());
     CHECK(written.at("FFMInfo").at("ffmType1") == "SILK");
+}
+
+TEST_CASE("an external AD5X type change leaves a linked lane's Spoolman material standing",
+          "[ams][ad5x_ifs][filament_slot_override][1653]") {
+    // A linked spool owns its material. Firmware's own type still shows beneath
+    // the server's on the lane, but it neither rewrites the stored record nor
+    // takes the server's material off the lane.
+    Ad5xIfsTmpCacheDir tmp("ifs_linked_external_type");
+    MoonrakerClientMock client(MoonrakerClientMock::PrinterType::VORON_24);
+    helix::PrinterState state;
+    state.init_subjects(false);
+    MoonrakerAPIMock api(client, state);
+
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(&api, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
+    auto store = std::make_unique<helix::ams::FilamentSlotOverrideStore>(&api, "ifs");
+    FilamentSlotOverrideStoreTestAccess::set_cache_directory(*store, tmp.path);
+    Ad5xIfsTestAccess::inject_override_store(backend, std::move(store));
+
+    helix::ams::FilamentSlotOverride linked;
+    linked.spoolman_id = 42;
+    linked.brand = "Polymaker";
+    linked.material = "PLA";
+    Ad5xIfsTestAccess::seed_override(backend, 0, linked);
+
+    SpoolInfo spool;
+    spool.id = 42;
+    spool.vendor = "Polymaker";
+    spool.filament_name = "PolyLite PLA";
+    spool.material = "PLA";
+    spool.color_hex = "1A1A2E";
+    helix::test::spool_states(backend, 0, spool);
+
+    Ad5xIfsTestAccess::set_color(backend, 0, "1A1A2E");
+    Ad5xIfsTestAccess::set_material(backend, 0, "PLA");
+    Ad5xIfsTestAccess::set_port_presence(backend, 0, true);
+
+    // The printer's own menu sets a different type.
+    REQUIRE_FALSE(
+        Ad5xIfsTestAccess::on_gcode_response_line(backend, "CHANGE_ZCOLOR SLOT=1 TYPE=PETG"));
+
+    const auto lane = helix::ams::lane_sources(backend_reg.lane(0));
+    REQUIRE(lane.spoolman.has_value());
+    CHECK(lane.spoolman->material == "PLA");
+    CHECK(helix::ams::resolve(lane).material == std::string("PLA"));
+
+    const auto staged = Ad5xIfsTestAccess::get_override(backend, 0);
+    REQUIRE(staged.has_value());
+    CHECK(staged->material == "PLA");
+}
+
+TEST_CASE("an external CHANGE_ZCOLOR on a linked lane releases the colour and keeps the spool's "
+          "material",
+          "[ams][ad5x_ifs][filament_slot_override][1653]") {
+    // Firmware re-authors the colour it owns, so the user's colour is released.
+    // The material is the linked spool's, and the catalog pick is scoped to it,
+    // so neither the record nor the lane gives them up.
+    Ad5xIfsTmpCacheDir tmp("ifs_linked_zcolor_release");
+    MoonrakerClientMock client(MoonrakerClientMock::PrinterType::VORON_24);
+    helix::PrinterState state;
+    state.init_subjects(false);
+    MoonrakerAPIMock api(client, state);
+
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(&api, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
+    auto store = std::make_unique<helix::ams::FilamentSlotOverrideStore>(&api, "ifs");
+    FilamentSlotOverrideStoreTestAccess::set_cache_directory(*store, tmp.path);
+    Ad5xIfsTestAccess::inject_override_store(backend, std::move(store));
+
+    helix::ams::FilamentSlotOverride linked;
+    linked.spoolman_id = 42;
+    linked.brand = "Polymaker";
+    linked.material = "PLA";
+    linked.color_rgb = 0xBCBCBC;
+    linked.color_set = true;
+    linked.catalog_id = "polymaker-polylite-pla";
+    linked.product_name = "PolyLite PLA";
+    linked.declared = helix::ams::declared_fields_from_names(nlohmann::json::array({"color_rgb"}));
+    Ad5xIfsTestAccess::seed_override(backend, 0, linked);
+
+    SpoolInfo spool;
+    spool.id = 42;
+    spool.vendor = "Polymaker";
+    spool.filament_name = "PolyLite PLA";
+    spool.material = "PLA";
+    spool.color_hex = "1A1A2E";
+    helix::test::spool_states(backend, 0, spool);
+
+    Ad5xIfsTestAccess::set_color(backend, 0, "BCBCBC");
+    Ad5xIfsTestAccess::set_material(backend, 0, "PLA");
+    Ad5xIfsTestAccess::set_port_presence(backend, 0, true);
+    REQUIRE(helix::ams::declares_color(*Ad5xIfsTestAccess::get_override(backend, 0)));
+
+    REQUIRE_FALSE(Ad5xIfsTestAccess::on_gcode_response_line(
+        backend, "CHANGE_ZCOLOR SLOT=1 HEX=00FF00 TYPE=PETG"));
+
+    const auto staged = Ad5xIfsTestAccess::get_override(backend, 0);
+    REQUIRE(staged.has_value());
+    CHECK_FALSE(helix::ams::declares_color(*staged));
+    CHECK(staged->material == "PLA");
+    CHECK(staged->catalog_id == "polymaker-polylite-pla");
+    CHECK(staged->spoolman_id == 42);
+
+    const auto lane = helix::ams::lane_sources(backend_reg.lane(0));
+    REQUIRE(lane.spoolman.has_value());
+    CHECK(lane.spoolman->material == "PLA");
 }
