@@ -12,14 +12,20 @@
 
 ```bash
 pgrep -x -d' ' 'make|cc1plus'   # ONE pattern. Never pgrep -f: it matches its own command line
-free -h                          # read the Mem AND Swap rows together
+free -h                          # read the Mem row: `available` is the only number that matters
+#   A nearly-full Swap row is NORMAL here and is NOT a problem by itself. Linux
+#   never reclaims swap it has already written, so `used` only ratchets up over
+#   an uptime measured in weeks; those pages are cold and cost nothing. If ANY
+#   swap is free and `available` is healthy, the box is fine: do not throttle,
+#   do not wait for it to drain, do not narrate it.
 ps -eo pid,etime,time,pcpu,comm --sort=-time | head   # abandoned spinners
 #   A helix-tests left behind by a deleted worktree can hold a core at 100% for
 #   a day: high TIME, high %CPU, and `readlink /proc/<pid>/cwd` ends in
 #   "(deleted)". Kill that PID by number - never by name, it is shared.
 ```
 
-- Throttle to `-j6` only when BOTH are tight: low `available` *and* swap near 0. That is the case where `-j8` dies mid-link with no `oom-kill` line while load average looks healthy. Tens of GB `available` beside an exhausted swap row is not a throttle signal. With the box to yourself, `-j` at full `nproc`, and ramp back up the moment a peer finishes.
+- **Default to a big `-j`.** This box has 32 cores and ~120GB of RAM; the common mistake is building far too small and leaving the machine idle. Read `nproc`, the idle % in `top`, and `available` — with cores idle and tens of GB available, `-j16`-`-j24` is right even with peers building. Ramp back up the moment a peer finishes.
+- Throttle ONLY when `available` itself is genuinely low (single-digit GB). A full swap row is not a trigger and never has been: tens of GB `available` beside a 14-of-16GB swap row is a healthy box. The failure the throttle exists for is a big `-j` dying mid-link with no `oom-kill` line while load average looks healthy, and that needs `available` to be exhausted, not swap.
 - Dying at the same step twice **can** be a resource ceiling, but rule out a peer first: a second `make` in the SAME tree deletes your freshly linked binary (`prune-orphan-test-objs` in `mk/tests.mk` runs `rm -f $(TEST_BIN)` as a sibling prerequisite of the link, so `-j` gives them no order). The tell: `[LD] helix-tests`, then `✓ Unit test binary ready`, NO `✗ Test linking failed!`, then every shard reports `No such file or directory`. Nothing is wrong with your code; a starved link fails loudly and stops make.
 - Who else is building, and in which tree, is a question you ask them: `ListAgents` + `SendMessage` (global CLAUDE.md § Peer Sessions), not a `pgrep` guess.
 - **The commit hook builds too.** `scripts/quality-checks.sh` verifies an incremental build of the app, at `-j${HELIX_QC_JOBS:-6}`. That is the bound that keeps N sessions committing from becoming N unbounded builds; raise `HELIX_QC_JOBS` when the box is yours. `scripts/qc_timing.py [--staged-only]` runs the gate and prints where its time went, which is how you find out whether you are waiting on that build or on a check.
