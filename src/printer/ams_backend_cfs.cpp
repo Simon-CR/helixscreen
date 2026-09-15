@@ -1601,6 +1601,9 @@ void AmsBackendCfs::handle_status_update(const nlohmann::json& notification) {
                     // not the resolved view. FillUnsetOnly: CFS user
                     // edits don't reach firmware, so we must not let firmware
                     // overwrite them - see mirror_firmware_to_lane_data docs.
+                    // The record's own declarations guard this mirror, and so
+                    // does a field a declaring lane source holds: a linked
+                    // spool's material never reaches firmware.
                     //
                     // The runout strip (#1390) runs inside the same !cleared
                     // gate and before the mirror: it POSTs the stripped record,
@@ -1620,7 +1623,8 @@ void AmsBackendCfs::handle_status_update(const nlohmann::json& notification) {
                         helix::ams::mirror_firmware_to_lane_data(
                             override_store_.get(), overrides_, global_idx, slot.color_rgb,
                             slot.material, slot.status == SlotStatus::AVAILABLE,
-                            helix::ams::MirrorPolicy::FillUnsetOnly, backend_log_tag());
+                            helix::ams::MirrorPolicy::FillUnsetOnly, backend_log_tag(),
+                            helix::ams::declared_on_lane(lane_id(global_idx)));
                     }
                     apply_resolved_lane(slot, global_idx);
                 }
@@ -2181,6 +2185,14 @@ AmsError AmsBackendCfs::sync_external_identity(int slot_index, const SlotInfo& i
                  info.color_name);
     emit_event(EVENT_SLOT_CHANGED, std::to_string(slot_index));
     return AmsErrorHelper::success();
+}
+
+void AmsBackendCfs::persist_external_identity_impl(int slot_index,
+                                                   const helix::ams::Observation& spoolman) {
+    const std::string tag = backend_log_tag();
+    std::lock_guard<std::mutex> lock(mutex_);
+    helix::ams::persist_override_external_identity(override_store_.get(), overrides_, slot_index,
+                                                   spoolman, tag);
 }
 
 void AmsBackendCfs::persist_slot_weight(int slot_index, float remaining_weight_g,
@@ -3850,24 +3862,25 @@ bool AmsBackendCfs::clear_stale_override_on_removal_locked(SlotInfo& slot, int s
         return false;
 
     // A deliberate user assignment survives an empty bay. The user told us what
-    // belongs in this slot; unloading it — or a reader that momentarily can't
-    // see the tag — must not throw that away. Locks are the authoritative
-    // "the user chose this" signal and they round-trip through lane_data, so
-    // this holds across restarts too. Legacy records load with locks defaulted
-    // to true wherever the field has a value, so pre-lock user data is covered.
+    // belongs in this slot, and neither unloading it nor a reader that
+    // momentarily can't see the tag may throw that away. A declared colour or
+    // material is
+    // the authoritative "the user chose this" signal, and it round-trips
+    // through lane_data, so this holds across restarts too.
     const auto& o = it->second;
-    if (o.user_locked_color || o.user_locked_material) {
+    if (helix::ams::declares_color(o) || helix::ams::declares_material(o)) {
         return false;
     }
 
-    // Identity fields are equally authoritative, and locks alone don't cover
-    // them. The FillUnsetOnly auto-mirror writes ONLY color_rgb/color_set and
-    // material (see mirror_firmware_to_lane_data) — it can never populate a
-    // brand, spool name or Spoolman id. So an override carrying any of those
-    // came from a user assignment (or a Spoolman link), which must survive an
-    // empty bay exactly like a locked field does. Without this, a bay that
-    // reads EMPTY for one poll — a genuine unload, but equally a transient
-    // unreadable-tag read — silently destroys the user's Spoolman linkage.
+    // Identity fields are equally authoritative, and the colour and material
+    // declarations alone don't cover them. The FillUnsetOnly auto-mirror writes
+    // ONLY color_rgb/color_set and material (see mirror_firmware_to_lane_data),
+    // so it can never populate a brand, spool name or Spoolman id. An override
+    // carrying any of those came from a user assignment (or a Spoolman link),
+    // which must survive an empty bay exactly like a declared field does.
+    // Without this, a bay that reads EMPTY for one poll (a genuine unload, but
+    // equally a transient unreadable-tag read) silently destroys the user's
+    // Spoolman linkage.
     //
     // catalog_id belongs in the same list and is NOT redundant with brand: a
     // Generic catalog product carries an empty brand, so a user who picked one
@@ -3990,7 +4003,7 @@ void AmsBackendCfs::strip_spoolman_link_on_runout_locked(SlotInfo& slot, int slo
 
     const int old_id = o.spoolman_id;
     // Drop ONLY the Spoolman handle. Brand, material, color, catalog pick,
-    // lock flags and temperatures describe the lane's contents and survive -
+    // declarations and temperatures describe the lane's contents and survive -
     // the fresh spool the user loads keeps inheriting a correctly-labeled
     // lane while the exhausted spool's id stops being re-asserted onto it.
     o.spoolman_id = 0;

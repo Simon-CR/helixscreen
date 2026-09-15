@@ -136,7 +136,7 @@ void AmsSubscriptionBackend::request_resync() {
                             for (const auto& [slot, entry] : records) {
                                 // Only what the namespace merely remembers is
                                 // re-filed. A record naming a spool is the
-                                // server's statement and one carrying a lock key
+                                // server's statement and one declaring a colour or material
                                 // is a person's; re-filing either would forge a
                                 // declaration out of a re-read, which is the
                                 // confusion the source model exists to end.
@@ -144,7 +144,7 @@ void AmsSubscriptionBackend::request_resync() {
                                 // Remembered rather than VendorCache because this
                                 // re-reads our own store, not a firmware frame.
                                 const helix::ams::Observation obs =
-                                    helix::ams::declared_from_record(entry.record, entry.wire);
+                                    helix::ams::declared_from_record(entry.record);
                                 if (obs.source != helix::ams::ObservationSource::Remembered) {
                                     continue;
                                 }

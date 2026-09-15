@@ -314,6 +314,7 @@
   <translation tag="Bowden Length" en="Bowden Length"/>
   <translation tag="Bowden tube length from hub to toolhead" en="Bowden tube length from hub to toolhead"/>
   <translation tag="Brand" en="Brand"/>
+  <translation tag="Brand and material come from Spoolman" en="Brand and material come from Spoolman"/>
   <translation tag="Brightness" en="Brightness"/>
   <translation tag="Brightness level when LEDs turn on at startup" en="Brightness level when LEDs turn on at startup"/>
   <translation tag="BrightnessCLI" en="BrightnessCLI"/>
@@ -648,7 +649,7 @@
   <translation tag="Could not update filaments" en="Could not update filaments"/>
   <translation tag="Could not verify Spoolman status. Moonraker may still be restarting." en="Could not verify Spoolman status. Moonraker may still be restarting."/>
   <translation tag="Couldn&apos;t save the material name" en="Couldn&apos;t save the material name"/>
-  <translation tag="Couldn&apos;t update Spoolman — saved locally" en="Couldn&apos;t update Spoolman — saved locally"/>
+  <translation tag="Couldn&apos;t save to Spoolman. Nothing changed on this printer." en="Couldn&apos;t save to Spoolman. Nothing changed on this printer."/>
   <translation tag="Cover open" en="Cover open"/>
   <translation tag="Crash Report" en="Crash Report"/>
   <translation tag="Crash report sent — thank you!" en="Crash report sent — thank you!"/>
@@ -891,6 +892,7 @@
   <translation tag="Ethernet" en="Ethernet"/>
   <translation tag="Events appear here after sessions and prints" en="Events appear here after sessions and prints"/>
   <translation tag="Every extruder&apos;s temperature at once" en="Every extruder&apos;s temperature at once"/>
+  <translation tag="Everything else was saved. Change them in Spoolman." en="Everything else was saved. Change them in Spoolman."/>
   <translation tag="Everything else was saved. Rename the material using letters, digits, spaces, and + - _ . ( ) /" en="Everything else was saved. Rename the material using letters, digits, spaces, and + - _ . ( ) /"/>
   <translation tag="Excellent Accuracy" en="Excellent Accuracy"/>
   <translation tag="Exception: {}" en="Exception: {}"/>
@@ -2529,6 +2531,11 @@
   <translation tag="Spoolman found! Configuring..." en="Spoolman found! Configuring..."/>
   <translation tag="Spoolman has no spools configured" en="Spoolman has no spools configured"/>
   <translation tag="Spoolman is not configured — nothing to remove." en="Spoolman is not configured — nothing to remove."/>
+  <translation tag="Spoolman is offline, so brand and material can&apos;t be saved." en="Spoolman is offline, so brand and material can&apos;t be saved."/>
+  <translation tag="Spoolman is offline. Brand and material can change once it&apos;s back." en="Spoolman is offline. Brand and material can change once it&apos;s back."/>
+  <translation tag="Spoolman needs a brand for this filament." en="Spoolman needs a brand for this filament."/>
+  <translation tag="Spoolman needs a color for this filament." en="Spoolman needs a color for this filament."/>
+  <translation tag="Spoolman needs a material for this filament." en="Spoolman needs a material for this filament."/>
   <translation tag="Spoolman removed." en="Spoolman removed."/>
   <translation tag="Spoolman unavailable — filament weights may be stale" en="Spoolman unavailable — filament weights may be stale"/>
   <translation tag="Spoolman was not configured." en="Spoolman was not configured."/>

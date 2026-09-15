@@ -36,6 +36,7 @@
 #include "lane_apply.h"
 #include "lane_legacy_migration.h"
 #include "lane_translation.h"
+#include "lvgl/src/others/translation/lv_translation.h"
 #include "printer_discovery.h"
 #include "runtime_config.h"
 
@@ -361,6 +362,15 @@ void AmsBackend::update_slot_weight(int slot_index, float remaining_weight_g, fl
     update_slot_weight_impl(slot_index, remaining_weight_g, total_weight_g, persist);
 }
 
+void AmsBackend::persist_external_identity(int slot_index) {
+    const std::optional<helix::ams::Observation> spoolman =
+        helix::ams::lane_sources(lane_id(slot_index)).spoolman;
+    if (!spoolman.has_value()) {
+        return;
+    }
+    persist_external_identity_impl(slot_index, *spoolman);
+}
+
 void AmsBackend::apply_resolved_lane(SlotInfo& slot, int slot_index) {
     helix::ams::apply_resolved(slot, helix::ams::resolved_lane(lane_id(slot_index)));
 }
@@ -374,11 +384,16 @@ AmsError AmsBackend::commit_user_edit(int slot_index, const SlotInfo& original,
     const helix::ams::Observation declaration = helix::ams::user_edit_observation(original, info);
     const bool binding_changed = original.spoolman_id != info.spoolman_id;
 
+    // An edit that keeps a spool cannot move what the spool states about
+    // itself: firmware, the stored record and the lane all get the spool's
+    // material, brand, spool name and vendor id instead of the edit's.
+    //
     // A catalog pick names the product of the spool that was bound, so binding
     // a different spool takes it off the slot and out of the stored record,
     // as the drop below takes the colour picked for that spool. An unlink
     // keeps it: the slot still describes what is loaded.
-    SlotInfo applied = info;
+    SlotInfo applied = helix::ams::keep_spool_owned_identity(
+        original, info, helix::ams::lane_sources(lane_id(slot_index)).spoolman);
     if (binding_changed && info.spoolman_id > 0) {
         applied.catalog_id.clear();
         applied.product_name.clear();
@@ -439,7 +454,34 @@ AmsError AmsBackend::commit_user_edit(int slot_index, const SlotInfo& original,
     // A backend that paints from the lane while it applies an edit painted the
     // lane before the drop and the filings above.
     repaint_slot_from_lane(slot_index);
-    return err;
+
+    // The rest of the edit is saved, but a field the user moved and the spool
+    // kept is not, and reporting success would tell them it was.
+    const std::vector<std::string_view> kept =
+        helix::ams::spool_owned_fields_dropped(original, info, applied);
+    if (kept.empty()) {
+        return err;
+    }
+    std::string kept_names;
+    for (const std::string_view name : kept) {
+        if (!kept_names.empty()) {
+            kept_names += ", ";
+        }
+        kept_names += name;
+    }
+    if (!err.success()) {
+        spdlog::warn("[AMS Backend] slot {} kept spool {}'s {} beside its own error: {}",
+                     slot_index, info.spoolman_id, kept_names, err.technical_msg);
+        return err;
+    }
+    AmsError kept_by_spool(AmsResult::WRONG_STATE,
+                           fmt::format("slot {} is linked to spool {}; kept Spoolman's {}",
+                                       slot_index, info.spoolman_id, kept_names),
+                           lv_tr("Brand and material come from Spoolman"),
+                           lv_tr("Everything else was saved. Change them in Spoolman."),
+                           slot_index);
+    kept_by_spool.partially_applied = true;
+    return kept_by_spool;
 }
 
 std::string AmsBackend::normalize_material(const std::string& material) const {

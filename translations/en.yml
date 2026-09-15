@@ -334,6 +334,7 @@ translations:
   Bowden Length: Bowden Length
   Bowden tube length from hub to toolhead: Bowden tube length from hub to toolhead
   Brand: Brand
+  Brand and material come from Spoolman: Brand and material come from Spoolman
   Brightness: Brightness
   Brightness level when LEDs turn on at startup: Brightness level when LEDs turn on
     at startup
@@ -708,7 +709,7 @@ translations:
   Could not verify Spoolman status. Moonraker may still be restarting.: Could not
     verify Spoolman status. Moonraker may still be restarting.
   Couldn't save the material name: Couldn't save the material name
-  Couldn't update Spoolman — saved locally: Couldn't update Spoolman — saved locally
+  Couldn't save to Spoolman. Nothing changed on this printer.: Couldn't save to Spoolman. Nothing changed on this printer.
   Cover open: Cover open
   Crash Report: Crash Report
   Crash report sent — thank you!: Crash report sent — thank you!
@@ -960,6 +961,7 @@ translations:
   Events appear here after sessions and prints: Events appear here after sessions
     and prints
   Every extruder's temperature at once: Every extruder's temperature at once
+  Everything else was saved. Change them in Spoolman.: Everything else was saved. Change them in Spoolman.
   Everything else was saved. Rename the material using letters, digits, spaces, and + - _ . ( ) /: Everything else was saved. Rename the material using letters, digits, spaces, and + - _ . ( ) /
   Excellent Accuracy: Excellent Accuracy
   'Exception: {}': 'Exception: {}'
@@ -2749,6 +2751,11 @@ translations:
   Spoolman found! Configuring...: Spoolman found! Configuring...
   Spoolman has no spools configured: Spoolman has no spools configured
   Spoolman is not configured — nothing to remove.: Spoolman is not configured — nothing to remove.
+  Spoolman is offline, so brand and material can't be saved.: Spoolman is offline, so brand and material can't be saved.
+  Spoolman is offline. Brand and material can change once it's back.: Spoolman is offline. Brand and material can change once it's back.
+  Spoolman needs a brand for this filament.: Spoolman needs a brand for this filament.
+  Spoolman needs a color for this filament.: Spoolman needs a color for this filament.
+  Spoolman needs a material for this filament.: Spoolman needs a material for this filament.
   Spoolman removed.: Spoolman removed.
   Spoolman unavailable — filament weights may be stale: Spoolman unavailable — filament
     weights may be stale

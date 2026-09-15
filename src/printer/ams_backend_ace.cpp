@@ -578,6 +578,14 @@ AmsError AmsBackendAce::sync_external_identity(int slot_index, const SlotInfo& i
     return AmsErrorHelper::success();
 }
 
+void AmsBackendAce::persist_external_identity_impl(int slot_index,
+                                                   const helix::ams::Observation& spoolman) {
+    const std::string tag = backend_log_tag();
+    std::lock_guard<std::mutex> lock(mutex_);
+    helix::ams::persist_override_external_identity(override_store_.get(), overrides_, slot_index,
+                                                   spoolman, tag);
+}
+
 void AmsBackendAce::persist_slot_weight(int slot_index, float remaining_weight_g,
                                         float total_weight_g) {
     const std::string tag = backend_log_tag();

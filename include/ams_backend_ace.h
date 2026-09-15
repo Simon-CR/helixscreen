@@ -138,6 +138,8 @@ class AmsBackendAce : public AmsSubscriptionBackend {
     AmsError sync_external_identity(int slot_index, const SlotInfo& info) override;
     void persist_slot_weight(int slot_index, float remaining_weight_g,
                              float total_weight_g) override;
+    void persist_external_identity_impl(int slot_index,
+                                        const helix::ams::Observation& spoolman) override;
 
     // Explicit user-initiated override clear (e.g. "Clear slot metadata" button
     // in the AMS edit modal). Erases overrides_[slot_index], resets the

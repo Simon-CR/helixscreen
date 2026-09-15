@@ -314,6 +314,7 @@
   <translation tag="Bowden Length" it="Lunghezza del bowden"/>
   <translation tag="Bowden tube length from hub to toolhead" it="Lunghezza del tubo bowden dall&apos;hub alla testina"/>
   <translation tag="Brand" it="Marca"/>
+  <translation tag="Brand and material come from Spoolman"/>
   <translation tag="Brightness" it="Luminosità"/>
   <translation tag="Brightness level when LEDs turn on at startup" it="Livello di luminosità quando i LED si accendono all&apos;avvio"/>
   <translation tag="BrightnessCLI" it="CLI luminosità"/>
@@ -648,7 +649,7 @@
   <translation tag="Could not update filaments" it="Impossibile aggiornare i filamenti"/>
   <translation tag="Could not verify Spoolman status. Moonraker may still be restarting." it="Impossibile verificare lo stato di Spoolman. Moonraker potrebbe essere ancora in riavvio."/>
   <translation tag="Couldn&apos;t save the material name" it="Impossibile salvare il nome del materiale"/>
-  <translation tag="Couldn&apos;t update Spoolman — saved locally" it="Impossibile aggiornare Spoolman — salvato localmente"/>
+  <translation tag="Couldn&apos;t save to Spoolman. Nothing changed on this printer."/>
   <translation tag="Cover open" it="Coperchio aperto"/>
   <translation tag="Crash Report" it="Rapporto di crash"/>
   <translation tag="Crash report sent — thank you!" it="Report crash inviato — grazie!"/>
@@ -891,6 +892,7 @@
   <translation tag="Ethernet" it="Ethernet"/>
   <translation tag="Events appear here after sessions and prints" it="Gli eventi appaiono qui dopo sessioni e stampe"/>
   <translation tag="Every extruder&apos;s temperature at once" it="Temperatura di ogni estrusore"/>
+  <translation tag="Everything else was saved. Change them in Spoolman."/>
   <translation tag="Everything else was saved. Rename the material using letters, digits, spaces, and + - _ . ( ) /" it="Tutto il resto è stato salvato. Rinomina il materiale usando lettere, cifre, spazi e + - _ . ( ) /"/>
   <translation tag="Excellent Accuracy" it="Precisione eccellente"/>
   <translation tag="Exception: {}" it="Eccezione: {}"/>
@@ -2529,6 +2531,11 @@
   <translation tag="Spoolman found! Configuring..." it="Spoolman trovato! Configurazione..."/>
   <translation tag="Spoolman has no spools configured" it="Spoolman non ha bobine configurate"/>
   <translation tag="Spoolman is not configured — nothing to remove." it="Spoolman non è configurato — niente da rimuovere."/>
+  <translation tag="Spoolman is offline, so brand and material can&apos;t be saved."/>
+  <translation tag="Spoolman is offline. Brand and material can change once it&apos;s back."/>
+  <translation tag="Spoolman needs a brand for this filament."/>
+  <translation tag="Spoolman needs a color for this filament."/>
+  <translation tag="Spoolman needs a material for this filament."/>
   <translation tag="Spoolman removed." it="Spoolman rimosso."/>
   <translation tag="Spoolman unavailable — filament weights may be stale" it="Spoolman non disponibile — i pesi del filamento potrebbero non essere aggiornati"/>
   <translation tag="Spoolman was not configured." it="Spoolman non era configurato."/>

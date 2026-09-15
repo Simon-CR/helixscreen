@@ -1012,6 +1012,14 @@ AmsError AmsBackendSnapmaker::sync_external_identity(int slot_index, const SlotI
     return AmsErrorHelper::success();
 }
 
+void AmsBackendSnapmaker::persist_external_identity_impl(int slot_index,
+                                                         const helix::ams::Observation& spoolman) {
+    const std::string tag = backend_log_tag();
+    std::lock_guard<std::mutex> lock(mutex_);
+    helix::ams::persist_override_external_identity(override_store_.get(), overrides_, slot_index,
+                                                   spoolman, tag);
+}
+
 void AmsBackendSnapmaker::persist_slot_weight(int slot_index, float remaining_weight_g,
                                               float total_weight_g) {
     const std::string tag = backend_log_tag();
@@ -1907,23 +1915,13 @@ void AmsBackendSnapmaker::handle_status_update(const nlohmann::json& notificatio
             //
             // The stored override defers to what a declaring lane source holds,
             // so the store reads the lane here. A Spoolman record or a user's
-            // unlocked value never reaches firmware, and firmware's reading must
-            // not overwrite it in the override or in the lane_data record it
+            // value never reaches firmware, and firmware's reading must not
+            // overwrite it in the override or in the lane_data record it
             // persists.
-            const helix::ams::LaneSources declaring_sources = helix::ams::lane_sources(lane_id(i));
-            const auto held = [&declaring_sources](auto field) {
-                return (declaring_sources.spoolman.has_value() &&
-                        ((*declaring_sources.spoolman).*field).has_value()) ||
-                       (declaring_sources.local_user.has_value() &&
-                        ((*declaring_sources.local_user).*field).has_value());
-            };
-            helix::ams::DeclaredOnLane declared;
-            declared.color = held(&helix::ams::Observation::color_rgb);
-            declared.material = held(&helix::ams::Observation::material);
             helix::ams::mirror_firmware_to_lane_data(
                 override_store_.get(), overrides_, i, slot->color_rgb, slot->material,
                 slot->status == SlotStatus::AVAILABLE, helix::ams::MirrorPolicy::OverwriteAlways,
-                backend_log_tag(), declared);
+                backend_log_tag(), helix::ams::declared_on_lane(lane_id(i)));
             apply_resolved_lane(*slot, i);
         }
 

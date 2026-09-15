@@ -394,6 +394,14 @@ void AmsEditOverlay::init_subjects() {
         // details row, and (Phase 5) the Save-to-Spoolman toggle default.
         UI_MANAGED_SUBJECT_INT(is_managed_subject_, 0, "ams_edit_is_managed", subjects_);
 
+        // The slot's identity belongs to the linked spool. Paired in XML with
+        // printer_has_spoolman to decide whether the catalog selector or the
+        // read-only row shows.
+        UI_MANAGED_SUBJECT_INT(identity_is_spoolmans_subject_, 0, "ams_edit_identity_is_spoolmans",
+                               subjects_);
+        UI_MANAGED_SUBJECT_STRING(identity_text_subject_, identity_text_buf_, "",
+                                  "ams_edit_identity_text", subjects_);
+
         chip_text_buf_[0] = '\0';
         lv_subject_init_string(&chip_text_subject_, chip_text_buf_, nullptr, sizeof(chip_text_buf_),
                                "");
@@ -872,8 +880,17 @@ void AmsEditOverlay::handle_spool_edit_save(bool finish) {
             return std::tolower(x) == std::tolower(y);
         });
     };
+    // A linked spool's brand and material are Spoolman's, so with the server
+    // unreachable the selector states the slot rather than editing it, and
+    // nothing it shows reaches working_info_. Read fresh: availability can flip
+    // while this view is open.
+    const bool identity_is_locked =
+        identity_locked(original_info_, working_info_, get_printer_state().is_spoolman_available());
     const helix::printer::EffectiveFilament* ef = details_selector_.highlighted();
-    if (ef) {
+    if (identity_is_locked) {
+        spdlog::debug("[AmsEditOverlay] Spoolman offline: keeping the linked spool's '{} {}'",
+                      working_info_.brand, working_info_.material);
+    } else if (ef) {
         working_info_.material = ef->type;
         // Preserve the user's stored brand string when the highlighted product
         // is the SAME vendor (case-insensitive). The selector is seeded to the
@@ -1427,17 +1444,29 @@ void AmsEditOverlay::update_ui() {
         }
     }
 
+    // "Brand \xC2\xB7 Material": what the untracked chip shows, and what the
+    // offline read-only row states a linked slot as. Built once, so the two
+    // cannot drift into different spellings of the same slot.
+    snprintf(identity_text_buf_, sizeof(identity_text_buf_), "%s \xC2\xB7 %s",
+             working_info_.brand.empty() ? "Generic" : working_info_.brand.c_str(),
+             working_info_.material.empty() ? "\xE2\x80\x94" : working_info_.material.c_str());
+    lv_subject_copy_string(&identity_text_subject_, identity_text_buf_);
+
     if (managed && !chip_name.empty()) {
         const std::string chip =
             helix::compose_filament_label(chip_brand, chip_name, working_info_.material);
         snprintf(chip_text_buf_, sizeof(chip_text_buf_), "%s", chip.c_str());
     } else {
-        const char* brand = working_info_.brand.empty() ? "Generic" : working_info_.brand.c_str();
-        const char* material =
-            working_info_.material.empty() ? "—" : working_info_.material.c_str();
-        snprintf(chip_text_buf_, sizeof(chip_text_buf_), "%s \xC2\xB7 %s", brand, material);
+        snprintf(chip_text_buf_, sizeof(chip_text_buf_), "%s", identity_text_buf_);
     }
     lv_subject_copy_string(&chip_text_subject_, chip_text_buf_);
+
+    // The identity is the linked spool's while the edit stays on that spool. A
+    // relink staged in working_info_ points at a different spool, whose record
+    // the editor has not read, so the rule does not apply to it.
+    const bool identity_is_spoolmans =
+        original_info_.spoolman_id > 0 && working_info_.spoolman_id == original_info_.spoolman_id;
+    lv_subject_set_int(&identity_is_spoolmans_subject_, identity_is_spoolmans ? 1 : 0);
 
     // Spool number beside the tracked mark. Empty for untracked slots; the label's
     // own hidden-flag binding on ams_edit_is_managed keeps it off screen there.
@@ -1617,8 +1646,27 @@ void AmsEditOverlay::update_sync_button_state() {
     // can't see them. Overview: dirty-gated (replaces the modal's Save/Close text
     // morph). Reads (never writes) the view subject.
     const int view = lv_subject_get_int(&view_mode_subject_);
-    const bool disabled = (view == VIEW_SPOOL_EDIT) ? false : !is_dirty();
-    lv_subject_set_int(&save_disabled_subject_, disabled ? 1 : 0);
+    lv_subject_set_int(&save_disabled_subject_,
+                       save_is_disabled(view, save_in_flight_, is_dirty()) ? 1 : 0);
+}
+
+bool AmsEditOverlay::identity_locked(const SlotInfo& original, const SlotInfo& working,
+                                     bool spoolman_available) {
+    if (spoolman_available) {
+        return false;
+    }
+    // Only the spool the editor opened on. A relink names a spool whose record
+    // this editor never read, and a slot with no link owns its own identity.
+    return original.spoolman_id > 0 && working.spoolman_id == original.spoolman_id;
+}
+
+bool AmsEditOverlay::save_is_disabled(int view, bool save_in_flight, bool dirty) {
+    // A save in flight holds Save shut on either view: the editor stays open
+    // while it runs, so a second tap would start a second save.
+    if (save_in_flight) {
+        return true;
+    }
+    return (view == VIEW_SPOOL_EDIT) ? false : !dirty;
 }
 
 void AmsEditOverlay::open_color_view() {
@@ -1831,6 +1879,21 @@ void AmsEditOverlay::commit_and_close() {
         api_ = get_moonraker_api();
     }
 
+    // Spoolman can go away between staging a brand or material and saving it.
+    // The change has nowhere to go, and committing it locally would leave the
+    // slot claiming an identity the server never heard, so the edit stays on
+    // screen. Back is the way out, and it discards.
+    if (identity_locked(original_info_, working_info_,
+                        get_printer_state().is_spoolman_available()) &&
+        (working_info_.brand != original_info_.brand ||
+         working_info_.material != original_info_.material)) {
+        ToastManager::instance().show(
+            ToastSeverity::ERROR,
+            lv_tr("Spoolman is offline, so brand and material can't be saved."), 3000);
+        stay_open_after_failed_save();
+        return;
+    }
+
     // Switching the linked spool (A>0 -> B>0, or 0 -> B>0) is a pure RELINK, not
     // an edit of the linked spool's record. The newly linked spool already owns
     // its identity/weight in Spoolman, so there is nothing to confirm and nothing
@@ -1866,6 +1929,19 @@ void AmsEditOverlay::commit_and_close() {
             return;
         }
 
+        // The toggle is the user asking for this spool to exist in Spoolman.
+        // It cannot while a field a filament is identified by is missing, so
+        // the save stops here instead of closing with the toggle ignored.
+        if (save_to_spoolman_opt_in_ && working_info_.spoolman_id == 0) {
+            const helix::MissingFilamentFields missing =
+                helix::SpoolmanSlotSaver::missing_filament_fields(working_info_);
+            if (missing.any()) {
+                show_missing_filament_toast(missing);
+                stay_open_after_failed_save();
+                return;
+            }
+        }
+
         if ((has_linked_spool && changes.any()) || can_create_new) {
             do_spoolman_save();
             return; // Async path - close_editor called from callback
@@ -1876,21 +1952,65 @@ void AmsEditOverlay::commit_and_close() {
     close_editor(true);
 }
 
+void AmsEditOverlay::stay_open_after_failed_save() {
+    // The spool-edit view's Save detaches its catalog selector on the way to
+    // the save, so the view needs it back before the user can try again.
+    if (lv_subject_get_int(&view_mode_subject_) == VIEW_SPOOL_EDIT) {
+        reattach_details_selector();
+    }
+    update_sync_button_state();
+}
+
+void AmsEditOverlay::show_missing_filament_toast(const helix::MissingFilamentFields& missing) {
+    const char* message = nullptr;
+    if (missing.brand) {
+        message = lv_tr("Spoolman needs a brand for this filament.");
+    } else if (missing.material) {
+        message = lv_tr("Spoolman needs a material for this filament.");
+    } else if (missing.color) {
+        message = lv_tr("Spoolman needs a color for this filament.");
+    }
+    if (message) {
+        ToastManager::instance().show(ToastSeverity::ERROR, message, 3000);
+    }
+}
+
 void AmsEditOverlay::do_spoolman_save(helix::SpoolmanSlotSaver::LinkIntent intent) {
     auto token = lifetime_.token();
     auto saver = std::make_shared<helix::SpoolmanSlotSaver>(api_);
+    // One save at a time. The editor stays open while this runs, so a second
+    // tap on Save is reachable until the answer arrives.
+    save_in_flight_ = true;
+    update_sync_button_state();
     saver->save(original_info_, working_info_, intent,
                 [this, token, saver](const helix::SaveResult& result) {
                     // Spoolman callback arrives on a background thread — defer
                     // to the UI thread before touching LVGL subjects/widgets.
                     token.defer([this, result]() {
+                        save_in_flight_ = false;
+                        if (result.missing.any()) {
+                            // Spoolman was given no filament to write, so
+                            // nothing was sent. Naming the field is what lets
+                            // the user finish the save.
+                            spdlog::info("[AmsEditOverlay] Spoolman save stopped: the filament is "
+                                         "missing a field it is identified by");
+                            show_missing_filament_toast(result.missing);
+                            stay_open_after_failed_save();
+                            return;
+                        }
                         if (!result.success) {
-                            // Local save still proceeds; only the Spoolman mirror failed.
-                            spdlog::error("[AmsEditOverlay] Spoolman save failed, saving locally");
+                            // Nothing reached Spoolman and nothing is committed
+                            // here, so the edit stays on screen to retry.
+                            spdlog::error("[AmsEditOverlay] Spoolman save failed; nothing written");
                             ToastManager::instance().show(
                                 ToastSeverity::ERROR,
-                                lv_tr("Couldn't update Spoolman — saved locally"), 3000);
-                        } else if (result.created_new_spool || result.repointed_filament) {
+                                lv_tr("Couldn't save to Spoolman. Nothing changed on this "
+                                      "printer."),
+                                3000);
+                            stay_open_after_failed_save();
+                            return;
+                        }
+                        if (result.created_new_spool || result.repointed_filament) {
                             // Persist new Spoolman IDs into working_info_ so the
                             // completion callback's commit_slot_edit() writes
                             // the link back to the slot. Without this, a subsequent
@@ -1920,7 +2040,16 @@ void AmsEditOverlay::do_spoolman_save(helix::SpoolmanSlotSaver::LinkIntent inten
                             }
                             // Repoint is silent — IDs change but no toast.
                         }
+                        // A created spool's id is stamped onto working_info_
+                        // above, so this is the id the commit binds either way.
+                        const int saved_spool_id = working_info_.spoolman_id;
                         close_editor(true);
+                        // After the commit, so the slot already names the spool
+                        // the answer has to be filed against. The lane's
+                        // Spoolman record is what a linked spool's identity
+                        // resolves from, and the poll would leave it showing
+                        // what the user just changed for a whole interval.
+                        SpoolmanManager::refresh_spool(saved_spool_id);
                     });
                 });
 }

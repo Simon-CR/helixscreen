@@ -465,19 +465,20 @@ different kinds of data, and they follow different rules:
   the user; firmware knows nothing about it. Retained across an eject/insert
   cycle so a re-inserted same spool keeps its assignment (**#1071**).
 
-The `user_locked_color` / `user_locked_material` flags are where colour's and
-material's authorship lives, and two readers consult them. The
-`OverwriteAlways` auto-mirror (`mirror_firmware_to_lane_data`) asks whether it
-may refresh the display fields from firmware truth: a locked field is **never**
-auto-refreshed, which is what protects a deliberate user choice from the AD5X
+The record's declared set (`FilamentSlotOverride::declared`, read through
+`declares_color()` / `declares_material()`) is where colour's and material's
+authorship lives, and two readers consult it. The `OverwriteAlways` auto-mirror
+(`mirror_firmware_to_lane_data`) asks whether it may refresh the display fields
+from firmware truth: a declared field is **never** auto-refreshed, which is what protects a deliberate user choice from the AD5X
 post-print `FFMInfo` revert, which re-emits the *old* type after a print
 (**#965**). And `sources_from_record()`
 (`src/printer/lane_translation.cpp#sources_from_record`) asks whether a stored
 record's colour and material are the user's own declaration or something the
 store merely remembered, because the two rank differently against what firmware
-states on the current frame. That second reader checks the **wire document**,
-not the parsed struct: the parser defaults a missing `helix_locked_*` key from
-the field's own presence, which is a legacy guess rather than a declaration.
+states on the current frame. The `helix_locked_*` keys on the wire are written
+from the set; on load they count only on a record with no Spoolman binding,
+only when present and true, and only beside a value
+(`src/printer/lane_translation.cpp#declared_fields_on_load`).
 
 **The reconcile detectors** live in `ams_backend_ad5x_ifs.cpp`:
 `check_external_color_change` and `check_external_type_change`, both called from
@@ -498,15 +499,14 @@ Two footguns this area has repeatedly hit (fixed in #1065; keep them fixed):
 2. **Insert can't clear a lock, so the display sticks.** The only thing that
    clears a lock is an external `CHANGE_ZCOLOR` in the gcode stream (**#981**,
    emitted by the ZMOD COLOR macro / LCD). A **physical insert emits no
-   `CHANGE_ZCOLOR`**, so a lane whose material was locked — either by a menu
-   type-set (`apply_user_edit`) or by the pessimistic `!material.empty()` load
-   default in `from_lane_data_record` — keeps painting the *previous* spool's
+   `CHANGE_ZCOLOR`**, so a lane whose material was declared by a menu type-set
+   (`apply_user_edit`) keeps painting the *previous* spool's
    type after a new spool goes in. This is why "change type via the COLOR macro"
    worked while "insert a new spool and change its type" did not.
 
    Fix: `unlock_auto_tracked_override_on_insert_locked()` runs on the
-   empty→present edge (both `apply_zcolor_result` presence sites). It drops the
-   two lock flags **only when the lane has no real Spoolman binding**
+   empty→present edge (both `apply_zcolor_result` presence sites). It withdraws the
+   colour and material declarations **only when the lane has no real Spoolman binding**
    (`spoolman_id <= 0`) — an auto-tracked material is a guess that a fresh insert
    invalidates, so firmware truth should win. `brand` / `spool_name` /
    `spoolman_id` / weights are never touched, so a retained binding still paints.

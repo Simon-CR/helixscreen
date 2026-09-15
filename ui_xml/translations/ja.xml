@@ -314,6 +314,7 @@
   <translation tag="Bowden Length" ja="ボーデン長"/>
   <translation tag="Bowden tube length from hub to toolhead" ja="ハブからツールヘッドまでのボーデンチューブ長"/>
   <translation tag="Brand" ja="ブランド"/>
+  <translation tag="Brand and material come from Spoolman"/>
   <translation tag="Brightness" ja="明るさ"/>
   <translation tag="Brightness level when LEDs turn on at startup" ja="起動時にLEDが点灯する際の明るさレベル"/>
   <translation tag="BrightnessCLI" ja="明るさCLI"/>
@@ -648,7 +649,7 @@
   <translation tag="Could not update filaments" ja="フィラメントを更新できませんでした"/>
   <translation tag="Could not verify Spoolman status. Moonraker may still be restarting." ja="Spoolman のステータスを確認できませんでした。Moonraker がまだ再起動中の可能性があります。"/>
   <translation tag="Couldn&apos;t save the material name" ja="材料名を保存できませんでした"/>
-  <translation tag="Couldn&apos;t update Spoolman — saved locally" ja="Spoolman を更新できませんでした — ローカルに保存しました"/>
+  <translation tag="Couldn&apos;t save to Spoolman. Nothing changed on this printer."/>
   <translation tag="Cover open" ja="カバーが開いています"/>
   <translation tag="Crash Report" ja="クラッシュレポート"/>
   <translation tag="Crash report sent — thank you!" ja="クラッシュレポートを送信しました — ありがとうございます！"/>
@@ -891,6 +892,7 @@
   <translation tag="Ethernet" ja="イーサネット"/>
   <translation tag="Events appear here after sessions and prints" ja="セッションと印刷の後にイベントがここに表示されます"/>
   <translation tag="Every extruder&apos;s temperature at once" ja="全エクストルーダーの温度を一覧表示"/>
+  <translation tag="Everything else was saved. Change them in Spoolman."/>
   <translation tag="Everything else was saved. Rename the material using letters, digits, spaces, and + - _ . ( ) /" ja="その他はすべて保存されました。材料名は英字・数字・スペース・+ - _ . ( ) / で構成される名前に変更してください"/>
   <translation tag="Excellent Accuracy" ja="非常に高精度"/>
   <translation tag="Exception: {}" ja="例外: {}"/>
@@ -2529,6 +2531,11 @@
   <translation tag="Spoolman found! Configuring..." ja="Spoolman を検出しました！設定中..."/>
   <translation tag="Spoolman has no spools configured" ja="Spoolman にスプールが設定されていません"/>
   <translation tag="Spoolman is not configured — nothing to remove." ja="Spoolman が設定されていません — 削除する項目はありません。"/>
+  <translation tag="Spoolman is offline, so brand and material can&apos;t be saved."/>
+  <translation tag="Spoolman is offline. Brand and material can change once it&apos;s back."/>
+  <translation tag="Spoolman needs a brand for this filament."/>
+  <translation tag="Spoolman needs a color for this filament."/>
+  <translation tag="Spoolman needs a material for this filament."/>
   <translation tag="Spoolman removed." ja="Spoolman を削除しました。"/>
   <translation tag="Spoolman unavailable — filament weights may be stale" ja="Spoolmanが利用できません — フィラメント重量が古い可能性があります"/>
   <translation tag="Spoolman was not configured." ja="Spoolman は設定されていませんでした。"/>

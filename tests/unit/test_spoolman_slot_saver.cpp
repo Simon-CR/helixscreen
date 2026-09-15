@@ -218,7 +218,8 @@ TEST_CASE("SpoolmanSlotSaver detect_changes: spoolman_id cleared sets spool_leve
 // save() Tests
 // ============================================================================
 
-TEST_CASE("SpoolmanSlotSaver save does nothing for non-spoolman slots", "[spoolman][slot_saver]") {
+TEST_CASE("SpoolmanSlotSaver save on an unlinked slot with no colour is incomplete",
+          "[spoolman][slot_saver]") {
     PrinterState state;
     MoonrakerClientMock client;
     MoonrakerAPIMock api(client, state);
@@ -231,18 +232,21 @@ TEST_CASE("SpoolmanSlotSaver save does nothing for non-spoolman slots", "[spoolm
     original.material = "PLA";
 
     SlotInfo edited = original;
-    edited.brand = "eSUN"; // Changed but irrelevant since spoolman_id=0
+    edited.brand = "eSUN";
 
     bool callback_called = false;
-    bool callback_success = false;
+    SaveResult got{};
 
     saver.save(original, edited, [&](const SaveResult& r) {
         callback_called = true;
-        callback_success = r.success;
+        got = r;
     });
 
     REQUIRE(callback_called);
-    REQUIRE(callback_success); // No-op success
+    // The slot carries no colour, and a Spoolman filament is identified by
+    // vendor, material and colour, so the save names what it wanted.
+    REQUIRE_FALSE(got.success);
+    REQUIRE(got.missing.color);
 }
 
 TEST_CASE("SpoolmanSlotSaver save does nothing when no changes detected",
@@ -919,7 +923,7 @@ TEST_CASE("SpoolmanSlotSaver repoint_spool: PATCHes spool with new filament_id",
 // ============================================================================
 
 TEST_CASE("SpoolmanSlotSaver save: linked spool + incomplete filament fields + no weight change "
-          "-> silent success, no API calls",
+          "-> incomplete, no API calls",
           "[spoolman][slot_saver]") {
     PrinterState state;
     MoonrakerClientMock client;
@@ -934,7 +938,8 @@ TEST_CASE("SpoolmanSlotSaver save: linked spool + incomplete filament fields + n
     SaveResult got{};
     saver.save(original, edited, [&](const SaveResult& r) { got = r; });
 
-    REQUIRE(got.success);
+    REQUIRE_FALSE(got.success);
+    REQUIRE(got.missing.brand);
     REQUIRE_FALSE(got.repointed_filament);
     REQUIRE(api.spoolman_mock().spool_updates.empty());
     REQUIRE(api.spoolman_mock().filament_updates.empty());
@@ -943,7 +948,7 @@ TEST_CASE("SpoolmanSlotSaver save: linked spool + incomplete filament fields + n
 }
 
 TEST_CASE("SpoolmanSlotSaver save: linked spool + incomplete filament fields + weight change "
-          "-> weight is still written",
+          "-> incomplete, and the weight waits with it",
           "[spoolman][slot_saver]") {
     PrinterState state;
     MoonrakerClientMock client;
@@ -970,18 +975,19 @@ TEST_CASE("SpoolmanSlotSaver save: linked spool + incomplete filament fields + w
     SaveResult got{};
     saver.save(original, edited, [&](const SaveResult& r) { got = r; });
 
-    REQUIRE(got.success);
+    REQUIRE_FALSE(got.success);
+    REQUIRE(got.missing.brand);
     REQUIRE_FALSE(got.repointed_filament);
 
-    // Filament side skipped entirely.
+    // Nothing is sent: one Save is one outcome, so a half of it does not land
+    // while the user is told the save did not happen.
     REQUIRE(api.spoolman_mock().filament_updates.empty());
     REQUIRE(api.spoolman_mock().created_vendors.empty());
     REQUIRE(api.spoolman_mock().created_filaments.empty());
-
-    // But the weight update landed.
+    REQUIRE(api.spoolman_mock().spool_updates.empty());
     for (const auto& spool : api.spoolman_mock().get_mock_spools()) {
         if (spool.id == 42) {
-            REQUIRE(spool.remaining_weight_g == Catch::Approx(600.0));
+            REQUIRE(spool.remaining_weight_g == Catch::Approx(800.0));
             break;
         }
     }
@@ -1088,7 +1094,8 @@ TEST_CASE("SpoolmanSlotSaver save: no linked spool + incomplete fields -> no Spo
     SaveResult got{};
     saver.save(original, edited, [&](const SaveResult& r) { got = r; });
 
-    REQUIRE(got.success);
+    REQUIRE_FALSE(got.success);
+    REQUIRE(got.missing.material);
     REQUIRE_FALSE(got.created_new_spool);
     REQUIRE(api.spoolman_mock().created_vendors.empty());
     REQUIRE(api.spoolman_mock().created_filaments.empty());
@@ -1285,4 +1292,117 @@ TEST_CASE("SpoolmanSlotSaver UpdateLinked still patches the linked spool",
 
     REQUIRE(done);
     CHECK_FALSE(api.spoolman_mock().weight_updates.empty());
+}
+
+TEST_CASE("SpoolmanSlotSaver detect_changes: a catalog pick is not a filament identity change",
+          "[spoolman][slot_saver]") {
+    // A Spoolman filament is identified by vendor, material and colour. The
+    // catalog product is HelixScreen's own, so a pick moves the edit without
+    // asking Spoolman for anything.
+    SlotInfo original = make_test_slot();
+    original.catalog_id = "sunlu-pla-marble";
+    original.product_name = "PLA Marble";
+
+    SECTION("a pick alone") {
+        SlotInfo edited = original;
+        edited.catalog_id = "sunlu-pla-plus-2-0";
+        edited.product_name = "PLA+ 2.0";
+
+        const auto changes = SpoolmanSlotSaver::detect_changes(original, edited);
+        CHECK(changes.filament_level);
+        CHECK_FALSE(changes.filament_identity);
+    }
+
+    SECTION("a material the user moved") {
+        SlotInfo edited = original;
+        edited.material = "PETG";
+
+        const auto changes = SpoolmanSlotSaver::detect_changes(original, edited);
+        CHECK(changes.filament_level);
+        CHECK(changes.filament_identity);
+    }
+}
+
+TEST_CASE("SpoolmanSlotSaver reports a linked filament edit missing its brand as incomplete",
+          "[spoolman][slot_saver]") {
+    // Spoolman needs a vendor to resolve a filament, so a save that cannot
+    // name one writes nothing and says which field it wanted.
+    PrinterState state;
+    MoonrakerClientMock client;
+    MoonrakerAPIMock api(client, state);
+    api.spoolman_mock().get_mock_spools().clear();
+
+    SlotInfo original = make_test_slot();
+    SlotInfo edited = original;
+    edited.brand = "";
+    edited.material = "PETG";
+
+    SpoolmanSlotSaver saver(&api);
+    SaveResult got{};
+    saver.save(original, edited, [&](const SaveResult& r) { got = r; });
+
+    CHECK_FALSE(got.success);
+    CHECK(got.missing.brand);
+    CHECK_FALSE(got.missing.material);
+    CHECK_FALSE(got.missing.color);
+    CHECK(api.spoolman_mock().spool_updates.empty());
+    CHECK(api.spoolman_mock().filament_updates.empty());
+    CHECK(api.spoolman_mock().created_vendors.empty());
+    CHECK(api.spoolman_mock().created_filaments.empty());
+}
+
+TEST_CASE("SpoolmanSlotSaver reports a new spool missing its color as incomplete",
+          "[spoolman][slot_saver][create]") {
+    // The create path needs the same three fields, and the grey sentinel is a
+    // slot with no colour rather than a grey filament.
+    PrinterState state;
+    MoonrakerClientMock client;
+    MoonrakerAPIMock api(client, state);
+
+    SlotInfo original = make_test_slot();
+    SlotInfo edited = original;
+    edited.brand = "Creality";
+    edited.material = "PLA";
+    edited.color_rgb = AMS_DEFAULT_SLOT_COLOR;
+
+    SpoolmanSlotSaver saver(&api);
+    SaveResult got{};
+    saver.save(original, edited, SpoolmanSlotSaver::LinkIntent::CreateAndRebind,
+               [&](const SaveResult& r) { got = r; });
+
+    CHECK_FALSE(got.success);
+    CHECK(got.missing.color);
+    CHECK_FALSE(got.missing.brand);
+    CHECK_FALSE(got.missing.material);
+    CHECK_FALSE(got.created_new_spool);
+    CHECK(api.spoolman_mock().created_spools.empty());
+    CHECK(api.spoolman_mock().created_vendors.empty());
+    CHECK(api.spoolman_mock().created_filaments.empty());
+}
+
+TEST_CASE("SpoolmanSlotSaver save: an incomplete linked slot still saves a catalog pick",
+          "[spoolman][slot_saver]") {
+    // The pick is HelixScreen's own, so a slot Spoolman could not describe a
+    // filament for still saves it: there is nothing for the server to write.
+    PrinterState state;
+    MoonrakerClientMock client;
+    MoonrakerAPIMock api(client, state);
+    api.spoolman_mock().get_mock_spools().clear();
+
+    SlotInfo original = make_test_slot();
+    original.brand = "";
+    SlotInfo edited = original;
+    edited.catalog_id = "sunlu-pla-plus-2-0";
+    edited.product_name = "PLA+ 2.0";
+
+    SpoolmanSlotSaver saver(&api);
+    SaveResult got{};
+    saver.save(original, edited, [&](const SaveResult& r) { got = r; });
+
+    CHECK(got.success);
+    CHECK_FALSE(got.missing.any());
+    CHECK(api.spoolman_mock().filament_updates.empty());
+    CHECK(api.spoolman_mock().created_vendors.empty());
+    CHECK(api.spoolman_mock().created_filaments.empty());
+    CHECK(api.spoolman_mock().spool_updates.empty());
 }

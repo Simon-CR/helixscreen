@@ -314,6 +314,7 @@
   <translation tag="Bowden Length" ru="Длина боудена"/>
   <translation tag="Bowden tube length from hub to toolhead" ru="Длина боуден-трубки от хаба до печатающей головки"/>
   <translation tag="Brand" ru="Бренд"/>
+  <translation tag="Brand and material come from Spoolman"/>
   <translation tag="Brightness" ru="Яркость"/>
   <translation tag="Brightness level when LEDs turn on at startup" ru="Уровень яркости при включении LED при запуске"/>
   <translation tag="BrightnessCLI" ru="Командная строка яркости"/>
@@ -648,7 +649,7 @@
   <translation tag="Could not update filaments" ru="Не удалось обновить филаменты"/>
   <translation tag="Could not verify Spoolman status. Moonraker may still be restarting." ru="Не удалось проверить статус Spoolman. Moonraker может ещё перезапускаться."/>
   <translation tag="Couldn&apos;t save the material name" ru="Не удалось сохранить название материала"/>
-  <translation tag="Couldn&apos;t update Spoolman — saved locally" ru="Не удалось обновить Spoolman — сохранено локально"/>
+  <translation tag="Couldn&apos;t save to Spoolman. Nothing changed on this printer."/>
   <translation tag="Cover open" ru="Крышка открыта"/>
   <translation tag="Crash Report" ru="Отчёт о сбое"/>
   <translation tag="Crash report sent — thank you!" ru="Отчёт об ошибке отправлен — спасибо!"/>
@@ -891,6 +892,7 @@
   <translation tag="Ethernet" ru="Ethernet"/>
   <translation tag="Events appear here after sessions and prints" ru="События появятся здесь после сессий и печатей"/>
   <translation tag="Every extruder&apos;s temperature at once" ru="Температура всех экструдеров"/>
+  <translation tag="Everything else was saved. Change them in Spoolman."/>
   <translation tag="Everything else was saved. Rename the material using letters, digits, spaces, and + - _ . ( ) /" ru="Всё остальное сохранено. Переименуйте материал, используя буквы, цифры, пробелы и + - _ . ( ) /"/>
   <translation tag="Excellent Accuracy" ru="Отличная точность"/>
   <translation tag="Exception: {}" ru="Исключение: {}"/>
@@ -2529,6 +2531,11 @@
   <translation tag="Spoolman found! Configuring..." ru="Spoolman найден! Настройка..."/>
   <translation tag="Spoolman has no spools configured" ru="В Spoolman нет настроенных катушек"/>
   <translation tag="Spoolman is not configured — nothing to remove." ru="Spoolman не настроен — удалять нечего."/>
+  <translation tag="Spoolman is offline, so brand and material can&apos;t be saved."/>
+  <translation tag="Spoolman is offline. Brand and material can change once it&apos;s back."/>
+  <translation tag="Spoolman needs a brand for this filament."/>
+  <translation tag="Spoolman needs a color for this filament."/>
+  <translation tag="Spoolman needs a material for this filament."/>
   <translation tag="Spoolman removed." ru="Spoolman удалён."/>
   <translation tag="Spoolman unavailable — filament weights may be stale" ru="Spoolman недоступен — вес филамента может быть устаревшим"/>
   <translation tag="Spoolman was not configured." ru="Spoolman не был настроен."/>

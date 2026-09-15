@@ -1430,20 +1430,24 @@ bool AmsBackendAd5xIfs::sync_override_to_firmware_locked(int slot_index, uint32_
     // hardware swap and catches genuine external edits (Mainsail console,
     // native LCD, CHANGE_ZCOLOR).
     //
-    // User-lock guard (#965): apply_user_edit() tags the override
-    // user_locked_color / user_locked_material; the helper skips those
-    // fields. Without the guard, an AD5X firmware post-print FFMInfo revert
-    // (re-emits prior material into Adventurer5M.json) was clobbering the
-    // user's material choice through this call site. To re-enable auto-track
-    // on a previously-edited slot the user calls clear_slot_override.
+    // Declaration guard (#965): apply_user_edit() declares the colour and
+    // material the user moved, and the record's own declarations guard this
+    // mirror. Without the guard, an AD5X firmware post-print FFMInfo revert
+    // (which re-emits the prior material into Adventurer5M.json) would clobber
+    // the user's material choice through this call site. A field a declaring
+    // lane source holds is guarded the same way, which is how a linked spool's
+    // material survives a type the printer's own menu sets. To re-enable
+    // auto-track on a previously-edited slot the user calls clear_slot_override.
+    const helix::ams::DeclaredOnLane declared = helix::ams::declared_on_lane(lane_id(slot_index));
     bool changed = helix::ams::mirror_firmware_to_lane_data(
         override_store_.get(), overrides_, slot_index, firmware_color, firmware_material,
-        /*slot_has_filament=*/true, helix::ams::MirrorPolicy::OverwriteAlways, backend_log_tag());
+        /*slot_has_filament=*/true, helix::ams::MirrorPolicy::OverwriteAlways, backend_log_tag(),
+        declared);
 
     // The lane's stored declaration of what the mirror just rewrote goes with
     // it, or the two stores disagree and the stronger record paints a value the
-    // override has stopped holding. Exactly the fields the OverwriteAlways
-    // mirror rewrites: a locked field is the user still standing behind their
+    // override has stopped holding. Exactly the fields the record does
+    // not declare: a declared field is the user still standing behind their
     // choice, the mirror skips it, and firmware does not get to retract it.
     //
     // Not gated on `changed`, which says the override needed moving. The lane
@@ -1451,8 +1455,11 @@ bool AmsBackendAd5xIfs::sync_override_to_firmware_locked(int slot_index, uint32_
     // where firmware has deliberately restated the field.
     auto it = overrides_.find(slot_index);
     RetractedFields restated;
-    restated.color = it == overrides_.end() || !it->second.user_locked_color;
-    restated.material = it == overrides_.end() || !it->second.user_locked_material;
+    restated.color = it == overrides_.end() || !helix::ams::declares_color(it->second);
+    // A linked spool's material never reaches firmware, so a type firmware
+    // states does not retract what the server states.
+    restated.material = it == overrides_.end() ||
+                        (!helix::ams::declares_material(it->second) && !declared.material);
     retract_lane_declaration_locked(slot_index, restated);
 
     if (!changed)
@@ -1537,8 +1544,12 @@ void AmsBackendAd5xIfs::release_color_material_locks_locked(int slot_index,
                                                             ReleasedValues disposition) {
     // Caller holds mutex_. Both stores, always: see the header for why one of
     // them on its own leaves the released values still painting.
-    ovr.user_locked_color = false;
-    ovr.user_locked_material = false;
+    //
+    // The record's own spool id is the question, not the lane's: a link whose
+    // server is unreachable is still a link, and this record is what the
+    // release operates on.
+    const bool linked = ovr.spoolman_id > 0;
+    helix::ams::withdraw_color_and_material(ovr);
     if (disposition == ReleasedValues::Strip) {
         // These are the fields the persisted record stops carrying, so a
         // restart reloads a record that declares nothing for them and the
@@ -1547,15 +1558,19 @@ void AmsBackendAd5xIfs::release_color_material_locks_locked(int slot_index,
         ovr.color_set = false;
         ovr.color_rgb = 0;
         ovr.color_name.clear();
-        ovr.material.clear();
-        // The catalog pick is scoped to a MATERIAL: "sunlu-pla-plus-2-0" only
-        // makes sense while the lane is PLA, and a Strip release is firmware
-        // re-authoring the material. setup_details_selector() seeds the type
-        // dropdown from catalog_id first, so a stale id drags the editor back
-        // to the old material family and contradicts the firmware truth just
-        // accepted.
-        ovr.catalog_id.clear();
-        ovr.product_name.clear();
+        // A linked spool owns its material, and firmware re-authoring a type
+        // says nothing about the spool the lane is bound to.
+        if (!linked) {
+            ovr.material.clear();
+            // The catalog pick is scoped to a MATERIAL: "sunlu-pla-plus-2-0"
+            // only makes sense while the lane is PLA, and a Strip release is
+            // firmware re-authoring the material. setup_details_selector()
+            // seeds the type dropdown from catalog_id first, so a stale id
+            // drags the editor back to the old material family and contradicts
+            // the firmware truth just accepted.
+            ovr.catalog_id.clear();
+            ovr.product_name.clear();
+        }
     }
 
     // The lane's own records are trimmed to match, whatever the disposition:
@@ -1563,10 +1578,12 @@ void AmsBackendAd5xIfs::release_color_material_locks_locked(int slot_index,
     // declaring record outranks the vendor cache the mirror feeds.
     RetractedFields released;
     released.color = true;
-    released.material = true;
+    // The material and the pick scoped to it stay on a linked lane, where the
+    // server states the material and firmware does not.
+    released.material = !linked;
     // The catalog pick goes with the material it is scoped to, for the same
     // reason it goes from the override above.
-    released.catalog = disposition == ReleasedValues::Strip;
+    released.catalog = disposition == ReleasedValues::Strip && !linked;
     retract_lane_declaration_locked(slot_index, released);
 
     // Persist so a restart reloads the released record rather than the locked
@@ -1629,13 +1646,12 @@ void AmsBackendAd5xIfs::release_locked_override_keep_identity_locked(int slot_in
 
 void AmsBackendAd5xIfs::unlock_auto_tracked_override_on_insert_locked(int slot_index) {
     // Caller holds mutex_. See the header doc + FILAMENT_MANAGEMENT.md for the
-    // full model. Short version: a lane's material/color override can be
-    // user-locked either by a menu edit (apply_user_edit) or by the pessimistic
-    // !material.empty() load default (from_lane_data_record). A locked field is
-    // never refreshed by the OverwriteAlways auto-mirror, so a freshly inserted
-    // spool keeps painting the PREVIOUS spool's type/color. Only an external
-    // CHANGE_ZCOLOR clears that lock (#981), and a physical insert emits none —
-    // so unlock here, on the insert edge itself.
+    // full model. Short version: a lane's material/color override is declared
+    // by a menu edit (apply_user_edit). A declared field is never refreshed by
+    // the OverwriteAlways auto-mirror, so a freshly inserted spool keeps
+    // painting the PREVIOUS spool's type/color. Only an external CHANGE_ZCOLOR
+    // withdraws that declaration (#981), and a physical insert emits none, so
+    // withdraw it here, on the insert edge itself.
     auto it = overrides_.find(slot_index);
     if (it == overrides_.end())
         return; // auto-tracking already (no override) — nothing to unlock
@@ -1646,7 +1662,7 @@ void AmsBackendAd5xIfs::unlock_auto_tracked_override_on_insert_locked(int slot_i
     // the bound spool, not a stale guess.
     if (ovr.spoolman_id > 0)
         return;
-    if (!ovr.user_locked_material && !ovr.user_locked_color)
+    if (!helix::ams::declares_material(ovr) && !helix::ams::declares_color(ovr))
         return; // already auto-tracking both fields
     spdlog::info("{} Slot {} inserted (empty->present) with no Spoolman link — "
                  "unlocking auto-tracked material/color so the new spool's firmware "
@@ -1654,8 +1670,8 @@ void AmsBackendAd5xIfs::unlock_auto_tracked_override_on_insert_locked(int slot_i
                  backend_log_tag(), slot_index);
     // Keep the values: the OverwriteAlways mirror refreshes them to the new
     // spool's firmware truth on the next parse, and the released record is
-    // persisted so a restart cannot reload the pessimistic !material.empty()
-    // lock default and re-stick the old type.
+    // persisted so a restart cannot reload the old declaration and re-stick the
+    // old type.
     release_color_material_locks_locked(slot_index, ovr, ReleasedValues::Keep);
 }
 
@@ -2946,6 +2962,14 @@ AmsError AmsBackendAd5xIfs::apply_user_edit(int slot_index, const SlotInfo& info
     return AmsErrorHelper::success();
 }
 
+void AmsBackendAd5xIfs::persist_external_identity_impl(int slot_index,
+                                                       const helix::ams::Observation& spoolman) {
+    const std::string tag = backend_log_tag();
+    std::lock_guard<std::mutex> lock(mutex_);
+    helix::ams::persist_override_external_identity(override_store_.get(), overrides_, slot_index,
+                                                   spoolman, tag);
+}
+
 AmsError AmsBackendAd5xIfs::sync_external_identity(int slot_index, const SlotInfo& info) {
     if (!validate_slot_index(slot_index)) {
         return AmsErrorHelper::invalid_slot(lane_noun(), slot_index, NUM_PORTS - 1);
@@ -4080,8 +4104,8 @@ bool AmsBackendAd5xIfs::on_gcode_response_line(const std::string& line) {
                     std::lock_guard<std::mutex> lock(mutex_);
                     auto it = overrides_.find(slot0);
                     const bool has_locked_override =
-                        (it != overrides_.end() &&
-                         (it->second.user_locked_color || it->second.user_locked_material));
+                        (it != overrides_.end() && (helix::ams::declares_color(it->second) ||
+                                                    helix::ams::declares_material(it->second)));
 
                     if (has_locked_override) {
                         spdlog::info(
@@ -4164,10 +4188,10 @@ bool AmsBackendAd5xIfs::on_gcode_response_line(const std::string& line) {
                         // declares nothing for those fields and firmware truth
                         // shows unaided.
                         //
-                        // The #981 clear above erases any locked override before
-                        // we get here, so a surviving entry is auto-mirror
-                        // (locks false); sync_override_to_firmware_locked diffs
-                        // both fields and honors user_locked_* regardless, so it
+                        // The #981 clear above erases any declared override
+                        // before we get here, so a surviving entry is
+                        // auto-mirror (nothing declared); sync_override_to_firmware_locked diffs
+                        // both fields and honors a declared colour or material regardless, so it
                         // updates only the dimension that actually changed. Skip
                         // when no real firmware color baseline exists yet, so we
                         // don't pin black (0x000000) onto the override.

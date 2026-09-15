@@ -3,6 +3,7 @@
 
 #include "ams_types.h"
 #include "filament_slot_override.h"
+#include "lane_source_store.h"
 
 #include <chrono>
 #include <filesystem>
@@ -68,8 +69,8 @@ struct LaneDataAnomalies {
 // keys and the declared set live on this document and nowhere else, so a
 // fixture seeding a stored override has to build the same document the store
 // would have written before anything can read authorship back off it. A record
-// classified against an empty document declares nothing, whatever its struct
-// holds.
+// classified against an empty document reads as one written before the
+// declared set existed.
 [[nodiscard]] nlohmann::json to_lane_data_record(int slot_index, const FilamentSlotOverride& o);
 
 // Parse AFC-shaped record (+ our extensions) back into FilamentSlotOverride.
@@ -83,10 +84,10 @@ from_lane_data_record(const nlohmann::json& j);
 
 /// A parsed lane_data record beside the object it came from.
 ///
-/// The wire object travels with the record because classify_declaration()
-/// reads the lock keys off the document: from_lane_data_record defaults a
-/// missing helix_locked_color from color_set, so the parsed struct alone
-/// cannot tell a written lock from a defaulted one.
+/// The wire object travels with the record because sources_from_record() asks
+/// the document whether it carries a declared set at all: a record written
+/// before the set existed falls back to the legacy rule for its brand, spool
+/// name and vendor id, and the parsed struct cannot say which it was.
 struct LaneDataRecord {
     FilamentSlotOverride record;
     nlohmann::json wire;
@@ -191,10 +192,9 @@ class FilamentSlotOverrideStore {
 
     /// The lane_data records this store's last load_blocking() parsed, each
     /// paired with the raw document it came from. Migration classification
-    /// needs the document rather than the parsed struct: from_lane_data_record
-    /// defaults a missing helix_locked_* key to the field's own presence, so
-    /// one layer up a legacy record is indistinguishable from a user-authored
-    /// one. Empty before the first load, and empty after a load that fell back
+    /// needs the document beside the parsed struct: whether a record carries a
+    /// declared set at all decides the legacy rule for its brand, and the
+    /// struct cannot say. Empty before the first load, and empty after a load that fell back
     /// to the on-disk cache — that path has no wire document to classify
     /// against.
     [[nodiscard]] const std::unordered_map<int, LaneDataRecord>& last_lane_data_records() const {
@@ -300,8 +300,8 @@ struct LoadedOverrideStore {
 //
 //   - IFS: apply_user_edit writes to Adventurer5M.json — firmware re-reads it
 //     and reports the user's chosen color on the next status poll. The mirror
-//     can safely overwrite the override with firmware values (except fields
-//     the user explicitly locked, per #965 — see MirrorPolicy::OverwriteAlways
+//     can safely overwrite the override with firmware values (except a colour
+//     or material the record declares, per #965; see MirrorPolicy::OverwriteAlways
 //     below) because firmware-truth and user-truth converge.
 //
 //   - CFS: apply_user_edit does NOT touch the firmware-side material_type /
@@ -312,8 +312,8 @@ struct LoadedOverrideStore {
 //     after which auto-mirror takes over again.
 enum class MirrorPolicy {
     /// Overwrite ovr.color_rgb / ovr.material with firmware values, EXCEPT for
-    /// fields the user explicitly locked (user_locked_color /
-    /// user_locked_material — see #965). Use when user edits propagate back to
+    /// a colour or material the record declares (declares_color /
+    /// declares_material, see #965). Use when user edits propagate back to
     /// firmware so the two views stay in sync (AD5X IFS, Snapmaker paxx12).
     /// A field the caller reports as declared on the lane is left alone the
     /// same way; see DeclaredOnLane.
@@ -329,12 +329,14 @@ enum class MirrorPolicy {
 ///
 /// Neither reaches firmware, so firmware's reading does not stand for such a
 /// field, and every mirror policy leaves it in the override exactly as it
-/// leaves a user-locked one. The default names nothing, so a caller that does
-/// not read the lane gets the lock flags alone.
+/// leaves a field the record itself declares. Build one with declared_on_lane().
 struct DeclaredOnLane {
     bool color = false;
     bool material = false;
 };
+
+/// What @p lane's declaring sources hold, read from the lane source store.
+[[nodiscard]] DeclaredOnLane declared_on_lane(LaneId lane);
 
 /// Mirror firmware-detected color/material into `overrides[slot_index]` and
 /// fire `store->save_async` to push the resulting record to the lane_data
@@ -357,7 +359,9 @@ struct DeclaredOnLane {
 /// `log_tag` is included in the warn log on save failure so multi-backend
 /// logs stay attributable.
 ///
-/// `declared` names the fields a declaring lane source holds; see DeclaredOnLane.
+/// `declared` names the fields a declaring lane source holds; build it with
+/// declared_on_lane(). It has no default, so no caller can pass "nothing
+/// declared" by leaving it out.
 ///
 /// Returns true iff `overrides[slot_index]` was actually mutated. Callers
 /// (e.g. IFS) use this to drive secondary side-effects like _IFS_VARS sync.
@@ -366,7 +370,7 @@ bool mirror_firmware_to_lane_data(FilamentSlotOverrideStore* store,
                                   int slot_index, uint32_t firmware_color,
                                   const std::string& firmware_material, bool slot_has_filament,
                                   MirrorPolicy policy, const std::string& log_tag,
-                                  DeclaredOnLane declared = {});
+                                  DeclaredOnLane declared);
 
 /// Discard a slot's stored override, in memory and on the printer.
 ///
@@ -400,6 +404,15 @@ void persist_override_weight(FilamentSlotOverrideStore* store,
                              std::unordered_map<int, FilamentSlotOverride>& overrides,
                              int slot_index, float remaining_weight_g, float total_weight_g,
                              const std::string& log_tag);
+
+/// Amend a linked slot's stored record with what Spoolman now states.
+///
+/// Caller MUST hold the backend's mutex protecting `overrides`. Returns true
+/// when a field moved, which is also when the record is saved.
+bool persist_override_external_identity(FilamentSlotOverrideStore* store,
+                                        std::unordered_map<int, FilamentSlotOverride>& overrides,
+                                        int slot_index, const Observation& spoolman,
+                                        const std::string& log_tag);
 
 /// Publish (or clear) the external / bypass spool as an extra lane one past
 /// the last physical slot, so slicers (OrcaSlicer's MoonrakerPrinterAgent)

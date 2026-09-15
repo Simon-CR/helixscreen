@@ -204,6 +204,8 @@ class AmsBackendCfs : public AmsSubscriptionBackend {
     AmsError sync_external_identity(int slot_index, const SlotInfo& info) override;
     void persist_slot_weight(int slot_index, float remaining_weight_g,
                              float total_weight_g) override;
+    void persist_external_identity_impl(int slot_index,
+                                        const helix::ams::Observation& spoolman) override;
     AmsError set_tool_mapping_impl(int tool_number, int slot_index) override;
 
     // Explicit user-initiated override clear (e.g. "Clear slot metadata" button
@@ -698,10 +700,11 @@ class AmsBackendCfs : public AmsSubscriptionBackend {
     /// isn't there: stale color/material published to OrcaSlicer, and a lane
     /// that goes on declaring an identity for a bay holding nothing.
     ///
-    /// User-locked overrides are RETAINED across an empty bay — a deliberate
-    /// assignment means "this is what lives in this slot", and a slot that is
-    /// merely unloaded must not lose it. Only unlocked records, which by
-    /// construction came from the firmware auto-mirror, are erased. Matches
+    /// Overrides that declare a colour or material, or carry identity, are
+    /// RETAINED across an empty bay: a deliberate assignment means "this is
+    /// what lives in this slot", and a slot that is merely unloaded must not
+    /// lose it. Only records that declare nothing and carry no identity, which
+    /// by construction came from the firmware auto-mirror, are erased. Matches
     /// the AD5X IFS policy of retaining the lane->Spoolman override across
     /// empty (#1071).
     ///
@@ -742,14 +745,14 @@ class AmsBackendCfs : public AmsSubscriptionBackend {
     /// One-shot #1390 strip. When the lane captured at the runout edge reads
     /// EMPTY and its override still remembers a Spoolman link, drop ONLY
     /// spoolman_id / spoolman_vendor_id - brand, material, color, catalog
-    /// pick, lock flags and temperatures describe the lane's contents and
+    /// pick, declarations and temperatures describe the lane's contents and
     /// survive ("unlinking means stop tracking this in Spoolman, not forget
     /// what is in the lane", SlotInfo::clear_spoolman_link semantics applied
     /// to the persisted record). The exhausted spool's id must not survive a
     /// confirmed runout: the early return in clear_stale_override_on_
     /// removal_locked kept it alive, and it was re-asserted onto whatever
-    /// fresh spool the user loaded next. User locks do not protect the id -
-    /// they guard color and material, and no lock exists for the link.
+    /// fresh spool the user loaded next. Declarations do not protect the id -
+    /// they guard color and material, and the link carries none.
     ///
     /// Persists with save_async (POST of the whole stripped record), NOT
     /// clear_override_locked, whose clear_async DELETEs the record the
