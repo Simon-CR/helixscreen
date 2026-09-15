@@ -1992,6 +1992,7 @@ translations:
     を再起動中...
   ? "Plugin not responding after restart.\nIt may need more time to load."
   : "再起動後にプラグインが応答しません。\n読み込みに時間がかかる場合があります。"
+  Plugin removed. A config file needs attention - check the HelixScreen log for details.: ''
   Plugin uninstalled successfully.: プラグインが正常にアンインストールされました。
   Plugins: プラグイン
   Plugins are discovered on application startup: プラグインはアプリケーション起動時に検出されます
@@ -2854,6 +2855,10 @@ translations:
     %.0fg 必要ですが、スプールの残量は約 %.0fg です。それでも開始しますか？
   ? This printer looks like a {} ({}% confidence), but it is set up as a {}. A wrong type applies incorrect pre-print options and presets.
   : このプリンターは {} のようです（信頼度 {}%）が、{} として設定されています。誤ったタイプでは不正確な印刷前オプションとプリセットが適用されます。
+  ? This removes the plugin's Moonraker component and restarts Moonraker. The printer will briefly disconnect. If old phase-tracking lines are still in PRINT_START, they are removed too, with backups kept. A Klipper restart applies that.
+  : ''
+  ? This removes the plugin's Moonraker component. If old phase-tracking lines are still in PRINT_START, they are removed too, with backups kept. A Klipper restart applies that.
+  : ''
   This removes the plugin's macros and its Moonraker component from the printer and restarts Klipper.: プラグインのマクロと Moonraker コンポーネントをプリンターから削除し、Klipper を再起動します。
   This replaces the printer's helper macros with the current version and restarts Klipper.: 'プリンターのヘルパーマクロを現在のバージョンに置き換え、Klipper を再起動します。'
   ? This replaces the printer's helper macros with the current version. A print is running, so Klipper restarts after it finishes.

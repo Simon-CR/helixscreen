@@ -1935,6 +1935,7 @@
   <translation tag="Plugin installed successfully." fr="Plugin installé avec succès."/>
   <translation tag="Plugin installed successfully. Moonraker is restarting..." fr="Plugin installé avec succès. Moonraker redémarre..."/>
   <translation tag="Plugin not responding after restart.&#10;It may need more time to load." fr="Le plugin ne répond pas après le redémarrage.&#10;Il peut avoir besoin de plus de temps."/>
+  <translation tag="Plugin removed. A config file needs attention - check the HelixScreen log for details."/>
   <translation tag="Plugin uninstalled successfully." fr="Plugin désinstallé avec succès."/>
   <translation tag="Plugins" fr="Plugins"/>
   <translation tag="Plugins are discovered on application startup" fr="Les plugins sont découverts au démarrage de l&apos;application"/>
@@ -2758,6 +2759,8 @@
   <translation tag="This plugin lets HelixScreen control print start options like bed mesh and QGL. Once installed, use Configure PRINT_START below to enable optional steps." fr="Ce plugin permet à HelixScreen de contrôler les options de démarrage d&apos;impression comme le maillage du plateau et QGL. Une fois installé, utilisez Configurer PRINT_START ci-dessous pour activer les étapes optionnelles."/>
   <translation tag="This print needs about %.0fg but the spool has about %.0fg remaining. Start anyway?" fr="Cette impression nécessite environ %.0fg mais il reste environ %.0fg sur la bobine. Démarrer quand même ?"/>
   <translation tag="This printer looks like a {} ({}% confidence), but it is set up as a {}. A wrong type applies incorrect pre-print options and presets." fr="Cette imprimante ressemble à un {} ({} % de confiance), mais elle est configurée en {}. Un type erroné applique des options et des préréglages de pré-impression incorrects."/>
+  <translation tag="This removes the plugin&apos;s Moonraker component and restarts Moonraker. The printer will briefly disconnect. If old phase-tracking lines are still in PRINT_START, they are removed too, with backups kept. A Klipper restart applies that."/>
+  <translation tag="This removes the plugin&apos;s Moonraker component. If old phase-tracking lines are still in PRINT_START, they are removed too, with backups kept. A Klipper restart applies that."/>
   <translation tag="This removes the plugin&apos;s macros and its Moonraker component from the printer and restarts Klipper." fr="Supprime les macros du plugin et son composant Moonraker de l&apos;imprimante, puis redémarre Klipper."/>
   <translation tag="This replaces the printer&apos;s helper macros with the current version and restarts Klipper." fr="Cela remplace les macros d&apos;aide de l&apos;imprimante par la version actuelle et redémarre Klipper."/>
   <translation tag="This replaces the printer&apos;s helper macros with the current version. A print is running, so Klipper restarts after it finishes." fr="Cela remplace les macros d&apos;aide de l&apos;imprimante par la version actuelle. Une impression est en cours, Klipper redémarrera une fois terminée."/>

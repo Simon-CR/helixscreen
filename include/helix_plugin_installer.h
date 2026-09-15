@@ -32,10 +32,24 @@ namespace helix {
  * @brief State of the plugin installation process
  */
 enum class PluginInstallState {
-    IDLE,       ///< No installation in progress
-    INSTALLING, ///< Installation is running
-    SUCCESS,    ///< Installation completed successfully
-    FAILED      ///< Installation failed
+    IDLE,            ///< No installation in progress
+    INSTALLING,      ///< Installation is running
+    SUCCESS,         ///< Installation completed successfully
+    NEEDS_ATTENTION, ///< Uninstall removed the plugin, but left a config file that needs a look
+    FAILED           ///< Installation failed
+};
+
+/**
+ * @brief Outcome of a local uninstall attempt
+ *
+ * Mirrors install.sh's own --uninstall / --uninstall-auto exit codes: 0
+ * maps to SUCCESS, 2 to NEEDS_ATTENTION, anything else to FAILED.
+ */
+enum class UninstallOutcome {
+    SUCCESS,         ///< Plugin removed; nothing left in the config to clean up
+    NEEDS_ATTENTION, ///< Plugin removed, but a config file was skipped or failed
+                     ///< during the phase-tracking strip and needs a look
+    FAILED           ///< Uninstall failed; the plugin may still be present
 };
 
 // ============================================================================
@@ -63,7 +77,8 @@ enum class PluginInstallState {
  */
 class HelixPluginInstaller {
   public:
-    using InstallCallback = std::function<void(bool success, const std::string& message)>;
+    using UninstallCallback =
+        std::function<void(UninstallOutcome outcome, const std::string& message)>;
 
     HelixPluginInstaller() = default;
     ~HelixPluginInstaller() = default;
@@ -124,12 +139,12 @@ class HelixPluginInstaller {
     /**
      * @brief Attempt local auto-uninstallation
      *
-     * Runs the bundled install.sh script with --uninstall flag.
-     * Only works when connected to local Moonraker.
+     * Runs the bundled install.sh script with --uninstall-auto. Only works
+     * when connected to local Moonraker.
      *
-     * @param callback Called when uninstallation completes or fails
+     * @param callback Called with the outcome once the script exits
      */
-    void uninstall_local(InstallCallback callback);
+    void uninstall_local(UninstallCallback callback);
 
     /**
      * @brief Get the curl command for remote installation

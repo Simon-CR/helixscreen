@@ -16,8 +16,10 @@ and the reason are reported. Nothing here restarts Klipper - the caller is
 told the edit takes effect at the next restart.
 
 Usage: strip_phase_tracking.py CONFIG_DIR
-Exit status: 0 if no file's edit failed (files may still have been skipped
-as anomalous - that is not a failure), 1 if any file's edit failed.
+Exit status: 0 if every file was clean or fully stripped; 2 if nothing
+failed but at least one file was skipped (an anomaly, or a concurrent
+change) and needs a human to look at it; 1 if any file's edit failed
+outright.
 """
 
 import argparse
@@ -31,6 +33,14 @@ import time
 
 TRACKING_MARKER_BEGIN = b"# <<< HELIX_TRACKING v2 >>>"
 TRACKING_MARKER_END = b"# <<< /HELIX_TRACKING >>>"
+
+# main()'s exit status: install.sh's uninstall paths wire this straight
+# through into their own exit code, so a caller two layers up (the
+# HelixScreen app) can tell "nothing left to clean" from "something here
+# needs a human" without re-deriving it from the printed summary.
+EXIT_OK = 0
+EXIT_FAILED = 1
+EXIT_NEEDS_ATTENTION = 2
 
 # The only line _instrument_gcode ever wrote between the markers: a bare
 # HELIX_PHASE_* or HELIX_READY call, no arguments.
@@ -302,6 +312,14 @@ def _discover_cfg_files(scan_dir):
     directory, and `cfg_file.with_suffix(...)` builds the backup name from
     that same listed path, not from whatever it resolves to.
 
+    When the same real file is reachable under more than one alias, the one
+    kept as "discovered" is whichever sorts first by its path parts relative
+    to scan_dir - the same order `sorted(Path.glob("**/*.cfg"))` visits
+    candidates in, which is the order the pre-1.1 writer relies on to pick
+    between aliases. Matching that order, not just being deterministic, is
+    what matters: it is the only way the hint's backup name can point at a
+    file that writer would actually have created.
+
     Never descends a directory symlink: the writer that ever instrumented a
     macro located it with pathlib's `**` glob, which does not either, so a
     symlinked directory holds nothing this strip needs to undo - and without
@@ -309,20 +327,23 @@ def _discover_cfg_files(scan_dir):
     config scan into a walk of that tree. A `.cfg` that is itself a symlink
     is still resolved to its real target, same as any other file, for both
     reading and editing. Skips SAVE_CONFIG snapshot files and anything under
-    a config_backups directory. Traversal is sorted at each level, so which
-    of several aliases for the same real file is kept as "discovered" is
-    deterministic rather than filesystem-order-dependent.
+    a config_backups directory.
     """
-    discovered = {}
+    candidates = []  # (relative_parts, found_path, real_path)
     for root, dirs, files in os.walk(scan_dir, followlinks=False):
-        dirs[:] = sorted(d for d in dirs if d != "config_backups")
-        for name in sorted(files):
+        dirs[:] = [d for d in dirs if d != "config_backups"]
+        for name in files:
             if not name.endswith(".cfg") or _is_snapshot_name(name):
                 continue
             found_path = os.path.join(root, name)
             real_path = os.path.realpath(found_path)
-            if real_path not in discovered:
-                discovered[real_path] = found_path
+            relative_parts = tuple(os.path.relpath(found_path, scan_dir).split(os.sep))
+            candidates.append((relative_parts, found_path, real_path))
+
+    discovered = {}
+    for _relative_parts, found_path, real_path in sorted(candidates, key=lambda c: c[0]):
+        if real_path not in discovered:
+            discovered[real_path] = found_path
     return discovered
 
 
@@ -446,7 +467,11 @@ def main(argv):
     print(f"INFO: phase-tracking strip summary: edited {len(edited)}, "
           f"skipped {len(skipped)}, failed {len(failed)}")
 
-    return 1 if failed else 0
+    if failed:
+        return EXIT_FAILED
+    if skipped:
+        return EXIT_NEEDS_ATTENTION
+    return EXIT_OK
 
 
 if __name__ == "__main__":

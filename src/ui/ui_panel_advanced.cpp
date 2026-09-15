@@ -523,25 +523,44 @@ void AdvancedPanel::handle_helix_plugin_uninstall_clicked() {
     opts.owner_token = object_lifetime_.token();
     helix::ui::modal_confirm(
         lv_tr("Uninstall HelixPrint Plugin?"),
-        lv_tr("This removes the plugin's macros and its Moonraker component from the printer "
-              "and restarts Klipper."),
+        lv_tr("This removes the plugin's Moonraker component and restarts Moonraker. The printer "
+              "will briefly disconnect. If old phase-tracking lines are still in PRINT_START, "
+              "they are removed too, with backups kept. A Klipper restart applies that."),
         ModalSeverity::Error, lv_tr("Uninstall"), [this]() { run_helix_plugin_uninstall(); }, opts);
 }
 
 void AdvancedPanel::run_helix_plugin_uninstall() {
+    using UninstallOutcome = helix::UninstallOutcome;
+
     // Update installer's websocket URL for local/remote detection
     if (api_) {
         plugin_installer_.set_websocket_url(api_->get_websocket_url());
     }
 
-    auto on_done = [this](bool success, const std::string& message) {
-        spdlog::info("[{}] Plugin uninstall {}: {}", get_name(), success ? "succeeded" : "failed",
-                     message);
-        if (success) {
+    auto on_done = [this](UninstallOutcome outcome, const std::string& message) {
+        const char* outcome_name = outcome == UninstallOutcome::SUCCESS ? "succeeded"
+                                   : outcome == UninstallOutcome::NEEDS_ATTENTION
+                                       ? "needs attention"
+                                       : "failed";
+        spdlog::info("[{}] Plugin uninstall {}: {}", get_name(), outcome_name, message);
+
+        // The plugin itself is gone in both SUCCESS and NEEDS_ATTENTION - only
+        // a FAILED uninstall leaves it installed.
+        if (outcome != UninstallOutcome::FAILED) {
             printer_state_.set_helix_plugin_installed(false);
         }
-        ToastManager::instance().show(success ? ToastSeverity::SUCCESS : ToastSeverity::ERROR,
-                                      message.c_str(), success ? 2000 : 4000);
+
+        switch (outcome) {
+        case UninstallOutcome::SUCCESS:
+            ToastManager::instance().show(ToastSeverity::SUCCESS, message.c_str(), 2000);
+            break;
+        case UninstallOutcome::NEEDS_ATTENTION:
+            ToastManager::instance().show(ToastSeverity::WARNING, message.c_str(), 5000);
+            break;
+        case UninstallOutcome::FAILED:
+            ToastManager::instance().show(ToastSeverity::ERROR, message.c_str(), 4000);
+            break;
+        }
     };
 
     // The installer forks the bundled script and waits for it right here, on the

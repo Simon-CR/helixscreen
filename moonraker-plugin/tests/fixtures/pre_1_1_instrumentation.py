@@ -231,10 +231,13 @@ def _update_macro(config_dir: Path, macro_name: str, gcode: str) -> bool:
     if new_content == content:
         return True
 
-    backup_path = cfg_file.with_suffix(f".bak.{int(time.time())}")
-    shutil.copy(cfg_file, backup_path)
-    cfg_file.write_text(new_content)
-    return True
+    try:
+        backup_path = cfg_file.with_suffix(f".bak.{int(time.time())}")
+        shutil.copy(cfg_file, backup_path)
+        cfg_file.write_text(new_content)
+        return True
+    except Exception:
+        return False
 
 
 def enable(config_dir: Path) -> dict:
@@ -336,38 +339,39 @@ def _update_macro_legacy(config_dir: Path, macro_name: str, gcode: str) -> bool:
     for cfg_file in config_dir.glob("**/*.cfg"):
         try:
             content = cfg_file.read_text()
+
+            pattern = rf"\[gcode_macro\s+{re.escape(macro_name)}\]"
+            match = re.search(pattern, content, re.IGNORECASE)
+            if not match:
+                continue
+
+            backup_path = cfg_file.with_suffix(f".bak.{int(time.time())}")
+            shutil.copy(cfg_file, backup_path)
+
+            section_start = match.start()
+            section_end = len(content)
+            next_section = re.search(r"\n\[", content[match.end():])
+            if next_section:
+                section_end = match.end() + next_section.start()
+            section = content[section_start:section_end]
+
+            gcode_match = re.search(r"gcode:\s*\n((?:[ \t]+.*\n)*)", section, re.MULTILINE)
+            if not gcode_match:
+                continue
+
+            indent = "    "
+            indented_gcode = "\n".join(
+                indent + line if line.strip() else line for line in gcode.split("\n")
+            )
+            new_section = (
+                section[: gcode_match.start(1)] + indented_gcode + "\n"
+                + section[gcode_match.end(1):]
+            )
+            new_content = content[:section_start] + new_section + content[section_end:]
+            cfg_file.write_text(new_content)
+            return True
         except Exception:
             continue
-
-        pattern = rf"\[gcode_macro\s+{re.escape(macro_name)}\]"
-        match = re.search(pattern, content, re.IGNORECASE)
-        if not match:
-            continue
-
-        backup_path = cfg_file.with_suffix(f".bak.{int(time.time())}")
-        shutil.copy(cfg_file, backup_path)
-
-        section_start = match.start()
-        section_end = len(content)
-        next_section = re.search(r"\n\[", content[match.end():])
-        if next_section:
-            section_end = match.end() + next_section.start()
-        section = content[section_start:section_end]
-
-        gcode_match = re.search(r"gcode:\s*\n((?:[ \t]+.*\n)*)", section, re.MULTILINE)
-        if not gcode_match:
-            continue
-
-        indent = "    "
-        indented_gcode = "\n".join(
-            indent + line if line.strip() else line for line in gcode.split("\n")
-        )
-        new_section = (
-            section[: gcode_match.start(1)] + indented_gcode + "\n" + section[gcode_match.end(1):]
-        )
-        new_content = content[:section_start] + new_section + content[section_end:]
-        cfg_file.write_text(new_content)
-        return True
 
     return False
 
