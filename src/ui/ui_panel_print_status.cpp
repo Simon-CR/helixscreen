@@ -1684,7 +1684,24 @@ void PrintStatusPanel::hide_exclude_map_view() {
     lv_subject_set_int(&exclude_map_active_subject_, 0);
 }
 
+bool PrintStatusPanel::is_load_for_effective_print(const std::string& print_filename) const {
+    return print_filename == printer_state_.get_effective_print_filename();
+}
+
 void PrintStatusPanel::load_gcode_file(const char* file_path, const std::string& print_filename) {
+    // A fetch that started for the print showing when it was requested can
+    // reach this point after the print has moved on - the metadata lookup and
+    // the download both cross the network. Calling ui_gcode_viewer_load_file()
+    // here would replace whatever the viewer currently shows with this stale
+    // print's geometry, so route to ensure_preview_current() instead: it
+    // reconciles against whichever print is effective NOW.
+    if (!is_load_for_effective_print(print_filename)) {
+        spdlog::debug("[{}] Dropping G-code load for '{}': no longer the effective print ('{}')",
+                      get_name(), print_filename, printer_state_.get_effective_print_filename());
+        ensure_preview_current();
+        return;
+    }
+
     if (!gcode_viewer_ || !file_path) {
         spdlog::warn("[{}] Cannot load G-code: viewer={}, path={}", get_name(),
                      gcode_viewer_ != nullptr, file_path != nullptr);
@@ -1698,6 +1715,23 @@ void PrintStatusPanel::load_gcode_file(const char* file_path, const std::string&
         gcode_viewer_,
         [](lv_obj_t* viewer, void* user_data, bool success) {
             auto* self = static_cast<PrintStatusPanel*>(user_data);
+
+            // The print can change again while the viewer builds this load in
+            // the background - the entry check in load_gcode_file() only knew
+            // the print was current when the load STARTED. Applying this
+            // result now would swap the already-displayed print's geometry for
+            // one that is no longer running, so drop it here too and let
+            // ensure_preview_current() (re)load whichever print is effective.
+            if (!self->is_load_for_effective_print(self->gcode_load_filename_)) {
+                spdlog::debug(
+                    "[{}] Dropping G-code load result for '{}': no longer the effective print "
+                    "('{}')",
+                    self->get_name(), self->gcode_load_filename_,
+                    self->printer_state_.get_effective_print_filename());
+                self->ensure_preview_current();
+                return;
+            }
+
             if (!success) {
                 spdlog::error("[{}] G-code load failed", self->get_name());
                 self->lifecycle_.set_gcode_loaded(false);
@@ -1738,17 +1772,9 @@ void PrintStatusPanel::load_gcode_file(const char* file_path, const std::string&
             // For single-tool, falls back to current AMS color subject.
             self->build_and_apply_tool_colors();
 
-            // A load for a print that is no longer running keeps its geometry in
-            // the viewer until the preview is next refreshed, but it must not
-            // scope the running print's runout badge or supply its layer count.
-            const bool for_current_print =
-                self->gcode_load_filename_ == self->printer_state_.get_effective_print_filename();
-
             // The parsed file now carries the tools this print uses — refresh the
             // print-scoped runout badge (FIX B) so it reflects only those tools.
-            if (for_current_print) {
-                self->recompute_scoped_runout();
-            }
+            self->recompute_scoped_runout();
 
             // Show viewer if print is active or in terminal state (user can see
             // where print stopped). Only skip in Idle.
@@ -1771,7 +1797,7 @@ void PrintStatusPanel::load_gcode_file(const char* file_path, const std::string&
 
             // Fallback: if Moonraker metadata didn't provide layer count,
             // use the count from the parsed/indexed gcode file
-            if (for_current_print && total_layers == 0 && viewer_max_layer > 0) {
+            if (total_layers == 0 && viewer_max_layer > 0) {
                 int layer_count = viewer_max_layer + 1; // max_layer is 0-based
                 self->printer_state_.set_print_layer_total(layer_count);
                 spdlog::info("[{}] Set total layers from gcode viewer: {}", self->get_name(),
@@ -2008,6 +2034,17 @@ void PrintStatusPanel::recompute_scoped_runout() {
     // narrower than PrintLifecycleState::is_active().
     auto state = printer_state_.get_print_job_state();
     if (!helix::print_scopes_runout_badge(state)) {
+        fsm.set_scoped_runout(-1);
+        return;
+    }
+
+    // The viewer's parsed file can lag a print switch until ensure_preview_current()
+    // reloads it: a load's completion only advances gcode_displayed_file_ to name
+    // the print it was actually for (load_gcode_file's callback), so a mismatch
+    // here means the geometry in the viewer belongs to a different print. Reading
+    // get_tools_used() in that window would scope the badge to the wrong print's
+    // tools, so treat it the same as no file loaded yet.
+    if (gcode_displayed_file_ != printer_state_.get_effective_print_filename()) {
         fsm.set_scoped_runout(-1);
         return;
     }
@@ -3599,6 +3636,17 @@ void PrintStatusPanel::load_gcode_for_viewing(const std::string& filename) {
     // Skip if no API available
     if (!api_) {
         spdlog::debug("[{}] No API available - skipping G-code load", get_name());
+        return;
+    }
+
+    // ensure_preview_current() queues this fetch through a debounce timer (up
+    // to 5s), and the print can move on before the timer fires. Checking here
+    // avoids starting a cache lookup, metadata fetch or download for a print
+    // that is already known to be the wrong one.
+    if (!is_load_for_effective_print(filename)) {
+        spdlog::debug("[{}] Skipping G-code fetch for '{}': no longer the effective print ('{}')",
+                      get_name(), filename, printer_state_.get_effective_print_filename());
+        ensure_preview_current();
         return;
     }
 
