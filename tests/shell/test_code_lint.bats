@@ -2007,3 +2007,136 @@ EOF
     run bash -c "grep -nE 'getenv\(\"(XDG_RUNTIME_DIR|RUNTIME_DIRECTORY)\"' '$probe'"
     [ "$status" -eq 0 ]  # the gate above can go red
 }
+
+# --- a getenv() pointer must not be read after a setenv may have replaced it --
+#
+# setenv() may reallocate the environ block and the strings it points at, so a
+# `const char*` captured from getenv() and dereferenced after any later
+# setenv()/unsetenv() reads whatever bytes live at that address now — a
+# corrupted variable inherited by every std::system() child the test spawns
+# (prestonbrown/helixscreen#1537). Copy the value into a std::string at capture
+# (helix::ScopedEnv in tests/test_helpers/scoped_env.h does this) and restore
+# from the copy.
+
+getenv_pointer_live_across_setenv_files() {
+    python3 - "$@" <<'EOF'
+import pathlib
+import re
+import sys
+
+CAPTURE = re.compile(r'(?:const\s+)?char\s*\*\s*([A-Za-z_]\w*)\s*=\s*[^;]*\bgetenv\s*\(')
+SETENV = re.compile(r'\b(?:setenv|unsetenv)\s*\(')
+# A save -> setenv -> restore inside one test or guard spans a few dozen lines.
+# The window keeps a same-named local in a later function out of the match.
+WINDOW = 60
+
+bad = 0
+for arg in sys.argv[1:]:
+    root = pathlib.Path(arg)
+    paths = sorted(root.rglob('*')) if root.is_dir() else [root]
+    for path in paths:
+        if path.suffix not in ('.cpp', '.h', '.cc', '.hpp'):
+            continue
+        try:
+            lines = path.read_text(errors='replace').splitlines()
+        except OSError:
+            continue
+        active = {}  # name -> [capture line index, setenv seen since capture]
+        for i, raw in enumerate(lines):
+            line = raw.split('//', 1)[0]
+            for m in CAPTURE.finditer(line):
+                active[m.group(1)] = [i, False]
+            if SETENV.search(line):
+                for state in active.values():
+                    state[1] = True
+            for name, state in list(active.items()):
+                if i <= state[0] or i > state[0] + WINDOW:
+                    continue
+                if state[1] and re.search(r'\b' + re.escape(name) + r'\b', line):
+                    print(f"{path}:{state[0] + 1}: '{name}' from getenv() is read at "
+                          f"line {i + 1}, after a setenv() between the two; copy the "
+                          f"value into a std::string at capture (helix::ScopedEnv)")
+                    bad = 1
+                    del active[name]
+sys.exit(bad)
+EOF
+}
+
+@test "no getenv pointer is read after a setenv may have replaced it" {
+    run getenv_pointer_live_across_setenv_files tests/ src/ include/
+    [ "$status" -eq 0 ]
+    [ -z "$output" ]
+}
+
+@test "the getenv/setenv gate fires on a pointer restored after a setenv" {
+    # Meta-test: a gate that cannot fail is not a gate.
+    local d="${BATS_TEST_TMPDIR}/stale"
+    mkdir -p "$d"
+    cat > "$d/restore.cpp" <<'EOF'
+TEST_CASE("restores PATH through a stale pointer") {
+    const char* original = std::getenv("PATH");
+    setenv("PATH", "", 1);
+    run_thing();
+    if (original) {
+        setenv("PATH", original, 1);
+    }
+}
+EOF
+    run getenv_pointer_live_across_setenv_files "$d"
+    [ "$status" -ne 0 ]
+    contains "restore.cpp" "$output"
+    contains "std::string" "$output"
+}
+
+@test "the getenv/setenv gate stays quiet on capture-time copies and immediate reads" {
+    local d="${BATS_TEST_TMPDIR}/owned"
+    mkdir -p "$d"
+    cat > "$d/copied.cpp" <<'EOF'
+TEST_CASE("copies the value out before the setenv") {
+    std::string saved;
+    if (const char* prev = std::getenv("HELIX_CONFIG_DIR")) {
+        saved = prev;
+    }
+    setenv("HELIX_CONFIG_DIR", "/tmp/x", 1);
+    setenv("HELIX_CONFIG_DIR", saved.c_str(), 1);
+}
+EOF
+    cat > "$d/immediate.cpp" <<'EOF'
+TEST_CASE("reads and decides in one breath") {
+    const char* existing = getenv("HELIX_CACHE_DIR");
+    if (!existing || existing[0] == '\0')
+        setenv("HELIX_CACHE_DIR", "/tmp/x", 1);
+}
+EOF
+    cat > "$d/shared_guard.cpp" <<'EOF'
+TEST_CASE("uses the shared guard") {
+    helix::ScopedEnv env("PATH");
+    setenv("PATH", "", 1);
+}
+EOF
+    run getenv_pointer_live_across_setenv_files "$d"
+    [ "$status" -eq 0 ]
+    [ -z "$output" ]
+}
+
+@test "the getenv/setenv gate stays quiet on a same-named local in a later function" {
+    # The window keeps the scan inside one function's span: a `v` declared as a
+    # JSON iterator a hundred lines below a `const char* v` from getenv() is a
+    # different variable, not a stale restore.
+    local d="${BATS_TEST_TMPDIR}/shadow"
+    mkdir -p "$d"
+    {
+        echo 'void guard(const char* name) {'
+        echo '    const char* v = getenv(name);'
+        echo '    std::string saved = v;'
+        echo '    setenv(name, "", 1);'
+        echo '}'
+        for _ in $(seq 80); do echo ''; done
+        echo 'void far_below() {'
+        echo '    for (auto v = table.begin(); v != table.end(); ++v) use(*v);'
+        echo '}'
+    } > "$d/shadow.cpp"
+    run getenv_pointer_live_across_setenv_files "$d"
+    [ "$status" -eq 0 ]
+    [ -z "$output" ]
+}
