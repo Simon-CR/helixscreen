@@ -449,7 +449,7 @@ bool DisplayManager::init(const Config& config) {
 
     // Configure scroll behavior and sleep-aware wrapper
     if (m_pointer) {
-        m_indev_delete_watch.watch(m_pointer, &m_pointer);
+        watch_pointer();
         configure_scroll(config.scroll_throw, config.scroll_limit);
         // Long-press threshold — user-configurable global setting (#1245), default
         // AppConstants::Input::LONG_PRESS_MS. Applied here and on backend swap;
@@ -469,7 +469,7 @@ bool DisplayManager::init(const Config& config) {
     // Create keyboard input device (optional)
     m_keyboard = m_backend->create_input_keyboard();
     if (m_keyboard) {
-        m_indev_delete_watch.watch(m_keyboard, &m_keyboard);
+        watch_keyboard();
         setup_keyboard_group();
         spdlog::trace("[DisplayManager] Physical keyboard input enabled");
     }
@@ -712,6 +712,14 @@ void DisplayManager::configure_scroll(int scroll_throw, int scroll_limit) {
     spdlog::trace("[DisplayManager] Scroll config: throw={}, limit={}", scroll_throw, scroll_limit);
 }
 
+void DisplayManager::watch_pointer() {
+    m_indev_delete_watch.watch(m_pointer, &m_pointer);
+}
+
+void DisplayManager::watch_keyboard() {
+    m_indev_delete_watch.watch(m_keyboard, &m_keyboard);
+}
+
 void DisplayManager::debug_touch_tick(lv_timer_t* /*t*/) {
     if (!RuntimeConfig::debug_touches())
         return;
@@ -784,7 +792,7 @@ void DisplayManager::rebuild_input_after_backend_swap() {
 
     m_pointer = m_backend->create_input_pointer();
     if (m_pointer) {
-        m_indev_delete_watch.watch(m_pointer, &m_pointer);
+        watch_pointer();
         configure_scroll(m_scroll_throw, m_scroll_limit);
         const int long_press_ms = helix::Config::get_instance()->get<int>(
             "/input/long_press_time", static_cast<int>(AppConstants::Input::LONG_PRESS_MS));
@@ -796,7 +804,7 @@ void DisplayManager::rebuild_input_after_backend_swap() {
 
     m_keyboard = m_backend->create_input_keyboard();
     if (m_keyboard) {
-        m_indev_delete_watch.watch(m_keyboard, &m_keyboard);
+        watch_keyboard();
         setup_keyboard_group();
     }
 

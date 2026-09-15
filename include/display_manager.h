@@ -835,6 +835,12 @@ class DisplayManager : public helix::ICalibrationSink {
      */
     void configure_scroll(int scroll_throw, int scroll_limit);
 
+    /// Registers m_pointer/m_keyboard with m_indev_delete_watch. init() and
+    /// rebuild_input_after_backend_swap() both call these right after
+    /// creating the device, so the two paths watch it identically.
+    void watch_pointer();
+    void watch_keyboard();
+
     /**
      * @brief Create the debug-touch ripple timer
      *
