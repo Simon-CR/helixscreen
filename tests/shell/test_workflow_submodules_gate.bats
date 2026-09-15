@@ -12,6 +12,11 @@
 # rather than warn into a build missing the patch. The flag counts on the make
 # invocation or as workflow/job-level `env:`; a run string is judged command by
 # command, so a flagged apply cannot bless an unflagged sibling.
+#
+# A make inside `docker run` is a third rule, because neither form reaches it:
+# workflow env stops at the container boundary, so the docker command has to
+# forward the flag with `-e` - and a no-value `-e` reads the runner's
+# environment, which the env must therefore set.
 
 load helpers
 
@@ -76,4 +81,35 @@ make_fixture() {
     run bash -c "cd '$ROOT' && python3 '$GATE'"
     [ "$status" -eq 1 ]
     grep -q 'missing' <<<"$output"
+}
+
+@test "a docker-run make without the flag passthrough fails the gate" {
+    # Workflow env does not cross the container boundary, so neither the env
+    # form nor a flag on a sibling plain-make step can cover this build.
+    ROOT=$(make_fixture "$BATS_TEST_DIRNAME/fixtures/workflow_submodules_docker_bare.yml")
+    run bash -c "cd '$ROOT' && python3 '$GATE'"
+    [ "$status" -eq 1 ]
+    grep -q 'a make inside `docker run`' <<<"$output"
+    grep -q 'container boundary' <<<"$output"
+    # The command is joined across its continuations, so the error shows one
+    # docker invocation, not a fragment of it.
+    grep -q 'helixscreen/toolchain-k1' <<<"$output"
+}
+
+@test "a no-value -e passthrough fails without workflow or job env" {
+    # `-e HELIX_PATCHES_FROM_CLEAN` takes its value from the runner's
+    # environment; unset there, the container receives nothing.
+    ROOT=$(make_fixture "$BATS_TEST_DIRNAME/fixtures/workflow_submodules_docker_no_value.yml")
+    run bash -c "cd '$ROOT' && python3 '$GATE'"
+    [ "$status" -eq 1 ]
+    grep -q 'without a value' <<<"$output"
+}
+
+@test "a docker build with the passthrough and env passes; stats steps are not flagged" {
+    # The same job's ccache -s docker step has no make in it and must not be
+    # judged by the docker rule.
+    ROOT=$(make_fixture "$BATS_TEST_DIRNAME/fixtures/workflow_submodules_docker_ok.yml")
+    run bash -c "cd '$ROOT' && python3 '$GATE'"
+    [ "$status" -eq 0 ]
+    grep -q '0 job(s)' <<<"$output"
 }

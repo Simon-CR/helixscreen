@@ -28,6 +28,13 @@ is the one a workflow should use, because the apply that matters usually runs
 inside a plain `make -j` build step rather than a dedicated apply step - and a
 flag pinned to one step never reaches that one.
 
+A `docker run ... make ...` step is covered by neither form: workflow env stops
+at the container boundary, so the docker command itself has to forward the flag
+with `-e HELIX_PATCHES_FROM_CLEAN`. Forwarded without a value, `-e` takes it
+from the runner's environment, so the workflow, job or step env must still set
+it - otherwise the container receives an unset variable and the apply inside
+runs in its warn mode.
+
 Deliberately not solved by making the bats file skip on a missing header: that
 would turn "the committed table is up to date" green-by-skip, which is the
 failure this gate exists to prevent.
@@ -56,7 +63,11 @@ INVOCATIONS = (
 # apply-patches HELIX_PATCHES_FROM_CLEAN=1` flags only the second apply, and a
 # flag anywhere in the string must not bless the rest of it. Split on every
 # separator shell recognizes, then judge each command on its own.
+# Backslash-newline is a continuation, not a separator, so it is joined before
+# the split - otherwise a docker command written across lines has its `docker
+# run` and its `make` judged as different fragments.
 COMMAND_SPLIT_RE = re.compile(r"[\n;|&]+")
+CONTINUATION_RE = re.compile(r"\\\n")
 MAKE_RE = re.compile(r"\bmake\b")
 # `reapply-patches` is a different target that must not be excused by this rule;
 # `force-apply-patches` is the apply target and must be. A plain \b cannot tell
@@ -64,6 +75,19 @@ MAKE_RE = re.compile(r"\bmake\b")
 # the one ('reapply'), '-' the other ('force-').
 APPLY_TARGET_RE = re.compile(r"(?<![a-zA-Z0-9])apply-patches\b")
 FLAG_RE = re.compile(r"HELIX_PATCHES_FROM_CLEAN=1")
+# A `docker run` make invocation: workflow env does not cross the container
+# boundary, so the flag must be forwarded on the docker command itself. The
+# value group distinguishes `-e HELIX_PATCHES_FROM_CLEAN` (value comes from the
+# runner's environment) from `-e HELIX_PATCHES_FROM_CLEAN=1` (self-contained).
+DOCKER_RUN_RE = re.compile(r"\bdocker\b.*\brun\b")
+DOCKER_FLAG_RE = re.compile(
+    r"(?:-e|--env)[ \t=]*HELIX_PATCHES_FROM_CLEAN(?P<value>=\S+)?\b"
+)
+
+
+def commands_of(run):
+    """Return `run` as a list of single commands, continuations joined."""
+    return COMMAND_SPLIT_RE.split(CONTINUATION_RE.sub(" ", run))
 
 
 def steps_of(job):
@@ -75,7 +99,7 @@ def apply_commands(run):
     """Return the commands in `run` that invoke `make apply-patches`."""
     return [
         seg.strip()
-        for seg in COMMAND_SPLIT_RE.split(run)
+        for seg in commands_of(run)
         if MAKE_RE.search(seg) and APPLY_TARGET_RE.search(seg)
     ]
 
@@ -118,6 +142,36 @@ def bare_apply_patches(steps, env_covered):
     return bare
 
 
+def step_env_sets_flag(step):
+    env = step.get("env")
+    return isinstance(env, dict) and str(env.get(FLAG_ENV)) == "1"
+
+
+def docker_make_without_flag(steps, env_covered):
+    """Return `docker run` make commands the flag cannot reach.
+
+    Tuples of (step name, command, reason): "missing" when no `-e`/`--env`
+    names the flag on the docker command, "no-value" when it is forwarded
+    without a value - that form reads the runner's environment, so a workflow,
+    job or step env must set it or the container receives an unset variable.
+    """
+    findings = []
+    for step in steps:
+        name = step.get("name") or "unnamed step"
+        for seg in commands_of(step.get("run") or ""):
+            if not (DOCKER_RUN_RE.search(seg) and MAKE_RE.search(seg)):
+                continue
+            command = " ".join(seg.split())
+            m = DOCKER_FLAG_RE.search(command)
+            if m is None:
+                findings.append((name, command, "missing"))
+            elif m.group("value") is None and not (
+                env_covered or step_env_sets_flag(step)
+            ):
+                findings.append((name, command, "no-value"))
+    return findings
+
+
 def main():
     if not WORKFLOW_DIR.is_dir():
         print(f"❌ {WORKFLOW_DIR} not found", file=sys.stderr)
@@ -157,6 +211,32 @@ def main():
                     "\n    Pass HELIX_PATCHES_FROM_CLEAN=1 on the make invocation, or"
                     f" set `env: {FLAG_ENV}: \"1\"` at the workflow or job level - the"
                     " env form also covers applies that run inside a plain `make -j`."
+                )
+
+            for step_name, command, reason in docker_make_without_flag(
+                steps, env_covered
+            ):
+                if reason == "missing":
+                    detail = (
+                        "without forwarding HELIX_PATCHES_FROM_CLEAN into the"
+                        " container"
+                        "\n    Workflow env stops at the container boundary: the make"
+                        " inside runs the patch recipe, and without the flag a drifted"
+                        " patch only warns and the build proceeds with the patch"
+                        " silently missing. Add `-e HELIX_PATCHES_FROM_CLEAN`."
+                    )
+                else:
+                    detail = (
+                        "forwards HELIX_PATCHES_FROM_CLEAN without a value"
+                        "\n    The value comes from the runner's environment, so the"
+                        " workflow, job or step env must set it - otherwise the"
+                        " container receives an unset variable and the apply inside"
+                        " runs in its warn mode. Set"
+                        f" `env: {FLAG_ENV}: \"1\"` or pass `-e {FLAG_ENV}=1`."
+                    )
+                errors.append(
+                    f"{wf.name}: job '{job_id}' step '{step_name}' runs `{command}`"
+                    f" - a make inside `docker run` {detail}"
                 )
 
             invocation = job_runs_shell_suite(steps)
