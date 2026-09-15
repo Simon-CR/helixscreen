@@ -85,30 +85,18 @@ mkdir -p /var/lib/helixscreen 2>/dev/null || mkdir -p "${HOME}/.helixscreen" 2>/
 # before the launcher runs: the early splash gate inside start(). Init runs
 # ahead of the launcher's env-file read, so without this the gate would see
 # only the shell environment and the hook default while the launcher honours
-# the file — and the two splash decisions disagree. Read it here from the same
-# file the launcher reads, ahead of the hooks, so the ordering is the
-# launcher's own: shell environment, env file, then the hooks' guarded
-# default. Deliberately a single-variable carve-out, not an env-file parser:
-# one anchored KEY, last line wins, and the only tolerance is value hygiene
-# the launcher also applies (CR, trailing blanks, quotes, an `export `
-# prefix). A second KEY read here is a fork of the launcher's parser
-# (prestonbrown/helixscreen#1634).
-_no_splash=""
-if [ -z "${HELIX_NO_SPLASH:-}" ]; then
-    for _env_file in "${DAEMON_DIR}/config/helixscreen.env" /etc/helixscreen/helixscreen.env; do
-        if [ -f "$_env_file" ]; then
-            _no_splash=$(sed -n \
-                -e 's/\r$//' \
-                -e 's/[ 	]*$//' \
-                -e 's/^export[ 	][ 	]*//' \
-                -e 's/^HELIX_NO_SPLASH="\(.*\)"$/\1/p' \
-                -e 's/^HELIX_NO_SPLASH=\(.*\)/\1/p' "$_env_file" | tail -1)
-            break
-        fi
-    done
+# the file — and the two splash decisions disagree. Ask the launcher itself
+# (`helix-launcher.sh --print-env NAME`) so one parser and one resolution
+# order — shell environment, env file, then the hooks' guarded default —
+# answers both readers (prestonbrown/helixscreen#1634). A missing launcher
+# or a failed query leaves the variable unset and the hook default governs,
+# the same environment the fallback install path execs the daemon in; the
+# launcher re-parses the file on startup and logs any warnings there.
+if [ -z "${HELIX_NO_SPLASH:-}" ] && [ -x "$LAUNCHER" ]; then
+    _no_splash=$("$LAUNCHER" --print-env HELIX_NO_SPLASH 2>/dev/null) || _no_splash=""
     [ -n "$_no_splash" ] && HELIX_NO_SPLASH="$_no_splash"
 fi
-unset _env_file _no_splash
+unset _no_splash
 
 # Platform hook defaults (no-ops). Platform-specific hook files override these.
 platform_stop_competing_uis() { :; }
@@ -214,7 +202,7 @@ start() {
     # Set HELIX_NO_SPLASH=1 to disable splash (for debugging backlight issues)
     # Splash auto-detects resolution from display hardware
     # HELIX_NO_SPLASH here resolves in the launcher's order — shell
-    # environment, helixscreen.env (the single-variable read above the
+    # environment, helixscreen.env (the --print-env query above the
     # hooks), then the hook's file-scope default (Forge-X) — so this gate
     # and the launcher's own splash decision agree.
     EARLY_SPLASH_PID=""

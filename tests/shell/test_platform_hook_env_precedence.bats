@@ -16,9 +16,9 @@
 # Hooks supply the platform DEFAULT. Anything already set wins.
 # Precedence: shell environment > helixscreen.env > platform hook > built-in.
 # That ordering holds inside the launcher; the init script's own early-splash
-# read of HELIX_NO_SPLASH resolves the same order through a single-variable
-# env-file read ahead of the hooks it sources, so both splash decisions see
-# one operator intent.
+# read of HELIX_NO_SPLASH asks the launcher (--print-env NAME) ahead of the
+# hooks it sources, so both splash decisions share one parser and see one
+# operator intent.
 
 WORKTREE_ROOT="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)"
 HOOKS_DIR="$WORKTREE_ROOT/assets/config/platform"
@@ -237,8 +237,8 @@ HOOKEOF
     grep -q '^dest:unset$' "$BATS_TEST_TMPDIR/leak.out"
 }
 
-# The init script's single-variable env-file read, taken from the real script
-# as one block (outer `if` at column zero, inner `fi`s indented), so these
+# The init script's HELIX_NO_SPLASH query, taken from the real script as one
+# block (outer `if` at column zero, closing `fi` at column zero), so these
 # tests run what ships.
 init_no_splash_read() {
     awk '/^if \[ -z .*HELIX_NO_SPLASH.*; then$/ { printing = 1 }
@@ -257,7 +257,9 @@ init_early_splash_gate() {
     # Forge-X shape: the hook assigns HELIX_NO_SPLASH at file scope when
     # nothing else did. The gate must see the operator's env file ahead of
     # that default, the shell environment ahead of the file, and the hook's
-    # default when the file is silent.
+    # default when the file is silent. The read asks the launcher itself
+    # (--print-env NAME), so every spelling below is resolved by the parser
+    # that ships, not by a second reader approximating it.
     read_block="$(init_no_splash_read)"
     # An empty extraction would make every assertion below vacuously green.
     [ -n "$read_block" ]
@@ -269,17 +271,23 @@ init_early_splash_gate() {
     mkdir -p "$MOCK_INSTALL/bin" "$MOCK_INSTALL/config" "$MOCK_INSTALL/platform"
     printf '#!/bin/sh\nexit 0\n' > "$MOCK_INSTALL/bin/helix-splash"
     chmod +x "$MOCK_INSTALL/bin/helix-splash"
+    # The launcher resolves BIN_DIR from a helix-screen beside itself; the
+    # stub records its argv so the test can also prove the query path never
+    # execs the daemon.
+    printf '#!/bin/sh\necho "$@" > "%s/helix_screen_args.txt"\nexit 0\n' \
+        "$MOCK_INSTALL" > "$MOCK_INSTALL/bin/helix-screen"
+    chmod +x "$MOCK_INSTALL/bin/helix-screen"
+    cp "$LAUNCHER" "$MOCK_INSTALL/bin/helix-launcher.sh"
+    rm -f "$MOCK_INSTALL/helix_screen_args.txt"
     cat > "$MOCK_INSTALL/platform/hooks.sh" << 'EOF'
 if [ -z "${HELIX_NO_SPLASH}" ]; then
     HELIX_NO_SPLASH=0
 fi
 EOF
-    cat > "$MOCK_INSTALL/config/helixscreen.env" << 'EOF'
-HELIX_NO_SPLASH=1
-EOF
+    printf 'HELIX_NO_SPLASH=1\n' > "$MOCK_INSTALL/config/helixscreen.env"
 
     resolve_without_env() {
-        DAEMON_DIR="$MOCK_INSTALL" sh -c '
+        DAEMON_DIR="$MOCK_INSTALL" LAUNCHER="$MOCK_INSTALL/bin/helix-launcher.sh" sh -c '
             unset HELIX_NO_SPLASH
             . "'"$BATS_TEST_TMPDIR"'/no-splash-read.sh"
             . "'"$MOCK_INSTALL"'/platform/hooks.sh"
@@ -287,7 +295,8 @@ EOF
         '
     }
     resolve_with_env() {
-        HELIX_NO_SPLASH="$1" DAEMON_DIR="$MOCK_INSTALL" sh -c '
+        HELIX_NO_SPLASH="$1" DAEMON_DIR="$MOCK_INSTALL" \
+            LAUNCHER="$MOCK_INSTALL/bin/helix-launcher.sh" sh -c '
             . "'"$BATS_TEST_TMPDIR"'/no-splash-read.sh"
             . "'"$MOCK_INSTALL"'/platform/hooks.sh"
             echo "${HELIX_NO_SPLASH:-unset}"
@@ -295,7 +304,8 @@ EOF
     }
     gate_branch() {
         # Exit status of the shipped gate condition after the same resolution.
-        DAEMON_DIR="$MOCK_INSTALL" SPLASH="$MOCK_INSTALL/bin/helix-splash" sh -c '
+        DAEMON_DIR="$MOCK_INSTALL" SPLASH="$MOCK_INSTALL/bin/helix-splash" \
+            LAUNCHER="$MOCK_INSTALL/bin/helix-launcher.sh" sh -c '
             unset HELIX_NO_SPLASH
             . "'"$BATS_TEST_TMPDIR"'/no-splash-read.sh"
             . "'"$MOCK_INSTALL"'/platform/hooks.sh"
@@ -309,15 +319,33 @@ EOF
     if gate_branch; then
         fail "shipped gate starts the splash despite the operator's file value"
     fi
+    # Every spelling the launcher's parse accepts reads as 1 here too:
+    # quoted, commented, and indented lines, which a cruder reader misses.
+    for shape in "HELIX_NO_SPLASH='1'" \
+                 'HELIX_NO_SPLASH="1" # operator note' \
+                 '  HELIX_NO_SPLASH=1'; do
+        printf '%s\n' "$shape" > "$MOCK_INSTALL/config/helixscreen.env"
+        [ "$(resolve_without_env)" = "1" ] || fail "read misses the shape: $shape"
+    done
+    # First definition in the file wins, both directions.
+    printf 'HELIX_NO_SPLASH=0\nHELIX_NO_SPLASH=1\n' > "$MOCK_INSTALL/config/helixscreen.env"
+    [ "$(resolve_without_env)" = "0" ]
+    printf 'HELIX_NO_SPLASH=1\nHELIX_NO_SPLASH=0\n' > "$MOCK_INSTALL/config/helixscreen.env"
+    [ "$(resolve_without_env)" = "1" ]
     # Shell environment beats the file.
     [ "$(resolve_with_env 0)" = "0" ]
-    # Last line in the file wins.
-    printf 'HELIX_NO_SPLASH=0\nHELIX_NO_SPLASH=1\n' > "$MOCK_INSTALL/config/helixscreen.env"
-    [ "$(resolve_without_env)" = "1" ]
     # No file at all: the hook default is authoritative and the splash starts.
     rm "$MOCK_INSTALL/config/helixscreen.env"
     [ "$(resolve_without_env)" = "0" ]
     gate_branch || fail "shipped gate skips the splash with no file and the hook default"
+    # No launcher to ask: the read degrades to the hook default, the same
+    # environment the fallback install path execs the daemon in.
+    mv "$MOCK_INSTALL/bin/helix-launcher.sh" "$MOCK_INSTALL/bin/helix-launcher.sh.aside"
+    [ "$(resolve_without_env)" = "0" ]
+    gate_branch || fail "shipped gate skips the splash with no launcher present"
+    mv "$MOCK_INSTALL/bin/helix-launcher.sh.aside" "$MOCK_INSTALL/bin/helix-launcher.sh"
+    # The query path never launched the daemon.
+    [ ! -e "$MOCK_INSTALL/helix_screen_args.txt" ]
 }
 
 @test "e2e: through the init ordering, helixscreen.env outranks a hook default" {

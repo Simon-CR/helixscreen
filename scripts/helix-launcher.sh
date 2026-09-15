@@ -16,6 +16,9 @@
 #   --log-level=<level>  Log level: trace, debug, info, warn, error, critical, off
 #   --log-dest=<dest>    Log destination: auto, journal, syslog, file, console
 #   --log-file=<path>    Log file path (when --log-dest=file)
+#   --print-env NAME     Print NAME as the env-file read resolves it and exit
+#                       (query mode for callers that launch this script later;
+#                       no display side effects, no daemon)
 #
 # Environment variables:
 #   HELIX_DATA_DIR=<d>   Override asset directory (ui_xml/, assets/, config/)
@@ -88,6 +91,148 @@ helix_klipper_co_hosted() {
     return 1
 }
 
+# Log function. Defined before the first log site so every launcher line,
+# including the env-file parse warnings below, gets the same treatment.
+#
+# Uses stderr to avoid polluting stdout which could be captured unexpectedly.
+#
+# Every line is stamped with wall-clock time. launcher.log is the only record
+# of the wrapper's own output and of crash stderr (glibc aborts,
+# std::terminate); spdlog is already dead by then, so none of that reaches the
+# app log. Without a timestamp its lines cannot be correlated to anything else
+# on the machine (a Klipper macro, a print, a calibration run). The format is
+# deliberately plain
+# `date` with %Y-%m-%d %H:%M:%S — the BusyBox date on AD5M/K1/CC1/SonicPad has
+# no -I / --rfc-3339 / %N. If date is missing entirely, log without the stamp
+# rather than aborting the launcher under `set -e`.
+log() {
+    _log_ts=$(date '+%Y-%m-%d %H:%M:%S' 2>/dev/null || true)
+    if [ -n "$_log_ts" ]; then
+        echo "[$_log_ts] [helix-launcher] $*" >&2
+    else
+        echo "[helix-launcher] $*" >&2
+    fi
+}
+
+# Determine script and binary locations
+# Use $0 instead of BASH_SOURCE for POSIX compatibility
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# Support installed and development layouts
+# Installed: launcher is in bin/ alongside binaries
+# Development: launcher in scripts/, binaries in build/bin/
+if [ -x "${SCRIPT_DIR}/helix-screen" ]; then
+    # Installed: binaries in same directory as launcher (bin/)
+    BIN_DIR="${SCRIPT_DIR}"
+elif [ -x "${SCRIPT_DIR}/../build/bin/helix-screen" ]; then
+    # Development: launcher in scripts/, binaries in build/bin/
+    BIN_DIR="${SCRIPT_DIR}/../build/bin"
+else
+    echo "Error: Cannot find helix-screen binary" >&2
+    echo "Looked in: ${SCRIPT_DIR} and ${SCRIPT_DIR}/../build/bin" >&2
+    exit 1
+fi
+
+# Derive the install root (parent of bin/)
+INSTALL_DIR="$(cd "${BIN_DIR}/.." && pwd)"
+
+# Source environment configuration file if present.
+# Supports both installed (/etc/helixscreen/) and deployed (config/) locations.
+# Variables already set in the environment take precedence — the env file only
+# provides defaults for unset variables.
+#
+# One implementation, called by this launcher's own startup below and by the
+# --print-env query above it: any caller that needs the launcher's resolution
+# for a variable before exec'ing this script asks for it here rather than
+# forking a second parser of helixscreen.env (prestonbrown/helixscreen#1634).
+helix_load_env_file() {
+    _helix_env_file=""
+    for _env_path in \
+        "${INSTALL_DIR}/config/helixscreen.env" \
+        /etc/helixscreen/helixscreen.env; do
+        if [ -f "$_env_path" ]; then
+            _helix_env_file="$_env_path"
+            break
+        fi
+    done
+    unset _env_path
+
+    [ -n "$_helix_env_file" ] || return 0
+
+    # Read each VAR=value line; only export if not already set.
+    # Tolerant of common typos so users don't get a silent no-op:
+    #   - CRLF line endings (env file edited on Windows)
+    #   - Leading/trailing whitespace
+    #   - `export VAR=value` (bash habit)
+    #   - `VAR = value` (spaces around the equals sign)
+    # Malformed lines emit a stderr warning instead of being dropped silently.
+    _lineno=0
+    while IFS= read -r _line || [ -n "$_line" ]; do
+        _lineno=$((_lineno + 1))
+        # Normalize: strip CR, trim whitespace, drop optional `export ` prefix.
+        # Literal spaces+tabs in the bracket classes are deliberate (POSIX
+        # `[:space:]` is unreliable in busybox sed shipped on AD5X/K1/SonicPad).
+        _line=$(printf '%s' "$_line" | sed -e 's/\r$//' \
+                                            -e 's/^[ 	]*//' \
+                                            -e 's/[ 	]*$//' \
+                                            -e 's/^export[ 	][ 	]*//')
+        case "$_line" in
+            '#'*|'') continue ;;
+        esac
+        # Require KEY=value with a valid POSIX identifier on the LHS.
+        case "$_line" in
+            [A-Za-z_]*=*) ;;
+            *)
+                log "warning: ${_helix_env_file}:${_lineno}: ignored malformed line: $_line"
+                continue
+                ;;
+        esac
+        _var="${_line%%=*}"
+        case "$_var" in
+            *[!A-Za-z0-9_]*)
+                log "warning: ${_helix_env_file}:${_lineno}: invalid variable name '$_var'"
+                continue
+                ;;
+        esac
+        # Only set if not already in environment (systemd Environment= /
+        # exported parent shell vars win over the file).
+        eval "_existing=\"\${${_var}:-}\""
+        if [ -z "$_existing" ]; then
+            if ! eval "export $_line" 2>/dev/null; then
+                log "warning: ${_helix_env_file}:${_lineno}: failed to export: $_line"
+            fi
+        elif [ "${HELIX_DEBUG:-0}" = "1" ]; then
+            # DEBUG_MODE is derived later in this script; the raw variable
+            # is all that exists at parse time.
+            log "note: ${_helix_env_file}:${_lineno}: $_var already set in environment; file value ignored"
+        fi
+    done < "$_helix_env_file"
+    unset _line _var _existing _lineno _helix_env_file
+}
+
+# --print-env NAME: resolve NAME exactly as the env-file read resolves it
+# (shell environment first, then the file, first definition wins) and print
+# the value, exiting before any other launcher work — no display side
+# effects, no daemon. The init script's early-splash gate uses this so one
+# parser serves every reader of helixscreen.env. NAME must be a plain
+# identifier: the parse evaluates file lines, so an arbitrary argument must
+# never reach it.
+if [ "${1:-}" = "--print-env" ]; then
+    if [ "$#" -ne 2 ]; then
+        echo "usage: $0 --print-env NAME" >&2
+        exit 2
+    fi
+    case "$2" in
+        '' | *[!A-Za-z0-9_]*)
+            echo "$0: --print-env: not a variable name: $2" >&2
+            exit 2
+            ;;
+    esac
+    helix_load_env_file
+    eval "printf '%s\n' \"\${$2:-}\""
+    exit 0
+fi
+
 # Stop firmware display-management services that conflict with HelixScreen.
 # Creality SonicPad/Nebula Pad ships display-sleep.sh which polls X11 DPMS via
 # xset. When X isn't running (fbdev mode), xset fails and the script interprets
@@ -137,48 +282,6 @@ for arg in "$@"; do
             ;;
     esac
 done
-
-# Log function. Defined before the first log site so every launcher line,
-# including the env-file parse warnings below, gets the same treatment.
-#
-# Uses stderr to avoid polluting stdout which could be captured unexpectedly.
-#
-# Every line is stamped with wall-clock time. launcher.log is the only record
-# of the wrapper's own output and of crash stderr (glibc aborts,
-# std::terminate); spdlog is already dead by then, so none of that reaches the
-# app log. Without a timestamp its lines cannot be correlated to anything else
-# on the machine (a Klipper macro, a print, a calibration run). The format is
-# deliberately plain
-# `date` with %Y-%m-%d %H:%M:%S — the BusyBox date on AD5M/K1/CC1/SonicPad has
-# no -I / --rfc-3339 / %N. If date is missing entirely, log without the stamp
-# rather than aborting the launcher under `set -e`.
-log() {
-    _log_ts=$(date '+%Y-%m-%d %H:%M:%S' 2>/dev/null || true)
-    if [ -n "$_log_ts" ]; then
-        echo "[$_log_ts] [helix-launcher] $*" >&2
-    else
-        echo "[helix-launcher] $*" >&2
-    fi
-}
-
-# Determine script and binary locations
-# Use $0 instead of BASH_SOURCE for POSIX compatibility
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-
-# Support installed and development layouts
-# Installed: launcher is in bin/ alongside binaries
-# Development: launcher is in scripts/, binaries in build/bin/
-if [ -x "${SCRIPT_DIR}/helix-screen" ]; then
-    # Installed: binaries in same directory as launcher (bin/)
-    BIN_DIR="${SCRIPT_DIR}"
-elif [ -x "${SCRIPT_DIR}/../build/bin/helix-screen" ]; then
-    # Development: launcher in scripts/, binaries in build/bin/
-    BIN_DIR="${SCRIPT_DIR}/../build/bin"
-else
-    echo "Error: Cannot find helix-screen binary" >&2
-    echo "Looked in: ${SCRIPT_DIR} and ${SCRIPT_DIR}/../build/bin" >&2
-    exit 1
-fi
 
 # True when every shared library a binary needs resolves on this system.
 # A GPU-linked binary on a board whose userspace has no Mesa presents exactly
@@ -265,9 +368,6 @@ SPLASH_BIN="${BIN_DIR}/helix-splash"
 WATCHDOG_BIN="${BIN_DIR}/helix-watchdog"
 FALLBACK_BIN="${BIN_DIR}/helix-screen-fbdev"
 
-# Derive the install root (parent of bin/)
-INSTALL_DIR="$(cd "${BIN_DIR}/.." && pwd)"
-
 # Ensure SSL certificate verification works for HTTPS requests (e.g., update checker).
 # Static glibc builds embed OpenSSL with compiled-in cert paths from the Docker build
 # container, which don't exist on the target device. Set SSL_CERT_FILE to a valid path.
@@ -285,73 +385,7 @@ if [ -z "${SSL_CERT_FILE:-}" ]; then
     unset _cert_path
 fi
 
-# Source environment configuration file if present.
-# Supports both installed (/etc/helixscreen/) and deployed (config/) locations.
-# Variables already set in the environment take precedence — the env file only
-# provides defaults for unset variables.
-_helix_env_file=""
-for _env_path in \
-    "${INSTALL_DIR}/config/helixscreen.env" \
-    /etc/helixscreen/helixscreen.env; do
-    if [ -f "$_env_path" ]; then
-        _helix_env_file="$_env_path"
-        break
-    fi
-done
-unset _env_path
-
-if [ -n "$_helix_env_file" ]; then
-    # Read each VAR=value line; only export if not already set.
-    # Tolerant of common typos so users don't get a silent no-op:
-    #   - CRLF line endings (env file edited on Windows)
-    #   - Leading/trailing whitespace
-    #   - `export VAR=value` (bash habit)
-    #   - `VAR = value` (spaces around the equals sign)
-    # Malformed lines emit a stderr warning instead of being dropped silently.
-    _lineno=0
-    while IFS= read -r _line || [ -n "$_line" ]; do
-        _lineno=$((_lineno + 1))
-        # Normalize: strip CR, trim whitespace, drop optional `export ` prefix.
-        # Literal spaces+tabs in the bracket classes are deliberate (POSIX
-        # `[:space:]` is unreliable in busybox sed shipped on AD5X/K1/SonicPad).
-        _line=$(printf '%s' "$_line" | sed -e 's/\r$//' \
-                                            -e 's/^[ 	]*//' \
-                                            -e 's/[ 	]*$//' \
-                                            -e 's/^export[ 	][ 	]*//')
-        case "$_line" in
-            '#'*|'') continue ;;
-        esac
-        # Require KEY=value with a valid POSIX identifier on the LHS.
-        case "$_line" in
-            [A-Za-z_]*=*) ;;
-            *)
-                log "warning: ${_helix_env_file}:${_lineno}: ignored malformed line: $_line"
-                continue
-                ;;
-        esac
-        _var="${_line%%=*}"
-        case "$_var" in
-            *[!A-Za-z0-9_]*)
-                log "warning: ${_helix_env_file}:${_lineno}: invalid variable name '$_var'"
-                continue
-                ;;
-        esac
-        # Only set if not already in environment (systemd Environment= /
-        # exported parent shell vars win over the file).
-        eval "_existing=\"\${${_var}:-}\""
-        if [ -z "$_existing" ]; then
-            if ! eval "export $_line" 2>/dev/null; then
-                log "warning: ${_helix_env_file}:${_lineno}: failed to export: $_line"
-            fi
-        elif [ "${HELIX_DEBUG:-0}" = "1" ]; then
-            # DEBUG_MODE is derived later in this script; the raw variable
-            # is all that exists at parse time.
-            log "note: ${_helix_env_file}:${_lineno}: $_var already set in environment; file value ignored"
-        fi
-    done < "$_helix_env_file"
-    unset _line _var _existing _lineno
-fi
-unset _helix_env_file
+helix_load_env_file
 
 # Heap-corruption diagnostics on constrained embedded glibc platforms where
 # ASAN is not feasible and crash reports otherwise show only libc frames.
@@ -509,14 +543,14 @@ fi
 # and the parent shell's own variables are already in place, so a hook's
 # guarded default fills only what nothing else set —
 #   shell environment > helixscreen.env > platform hook > built-in.
-# That rule governs this launcher's environment. A caller's own pre-launch
-# reads (the init script's early-splash HELIX_NO_SPLASH check) resolve the
-# same order for that one variable via a single-variable env-file read of
-# its own, ahead of the hooks it sources — so the two splash decisions see
-# one operator intent. Any caller that runs platform_pre_start before
-# exec'ing this script must confine its exports the way the init script
-# does, or its hook defaults arrive as "already set" and outrank the
-# operator's env file.
+# That rule governs this launcher's environment. A caller that must resolve
+# one of these variables before exec'ing this script (the init script's
+# early-splash HELIX_NO_SPLASH gate) asks this launcher via
+# `helix-launcher.sh --print-env NAME` — helix_load_env_file above answers
+# the query — so every reader of helixscreen.env shares one parser and one
+# resolution order. Any caller that runs platform_pre_start before exec'ing
+# this script must confine its exports the way the init script does, or its
+# hook defaults arrive as "already set" and outrank the operator's env file.
 PLATFORM_HOOKS="${INSTALL_DIR}/platform/hooks.sh"
 if [ -f "${PLATFORM_HOOKS}" ]; then
     # shellcheck disable=SC1090  # path depends on INSTALL_DIR
