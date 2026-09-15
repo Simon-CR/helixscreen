@@ -5,12 +5,19 @@
 #include "ui_screensaver.h"
 
 #include "display_settings_manager.h"
+#include "lvgl/src/misc/lv_timer_private.h" // lv_timer_t::period; LVGL has no period getter
 #include "screen_hide_hold.h"
 #include "screensaver.h"
 #include "screensaver_pipes.h"
 #include "screensaver_starfield.h"
 
 #include <spdlog/spdlog.h>
+
+uint32_t helix::ui::screensaver_timer_period_ms() {
+    lv_display_t* disp = lv_display_get_default();
+    const lv_timer_t* refr = disp ? lv_display_get_refr_timer(disp) : nullptr;
+    return refr ? refr->period : LV_DEF_REFR_PERIOD;
+}
 
 ScreensaverManager& ScreensaverManager::instance() {
     static ScreensaverManager mgr;

@@ -147,6 +147,267 @@ TEST_CASE_METHOD(LVGLTestFixture, "FlyingToasterScreensaver creates overlay on l
 }
 
 // ============================================================================
+// FlyingToasterScreensaver motion follows elapsed time
+// ============================================================================
+
+#include "../test_helpers/screensaver_test_access.h"
+#include "screensaver_motion.h"
+
+namespace {
+
+using ToasterAccess = FlyingToasterScreensaverTestAccess;
+using helix::ui::screensaver::flap_frame_at;
+using helix::ui::screensaver::flight_pos_at;
+using helix::ui::screensaver::FlightPos;
+
+constexpr int32_t TOASTER_FLIGHT_PX = 1600;
+
+void run_toaster_tick(const FlyingToasterScreensaver& ss) {
+    lv_timer_t* timer = ToasterAccess::tick_timer(ss);
+    REQUIRE(timer != nullptr);
+    REQUIRE(timer->timer_cb != nullptr);
+    timer->timer_cb(timer);
+}
+
+struct SpriteView {
+    bool hidden;
+    int32_t x;
+    int32_t y;
+    int frame;
+
+    bool operator==(const SpriteView& o) const {
+        return hidden == o.hidden && x == o.x && y == o.y && frame == o.frame;
+    }
+};
+
+std::vector<SpriteView> view_sprites(const FlyingToasterScreensaver& ss) {
+    std::vector<SpriteView> out;
+    for (const auto& s : ToasterAccess::sprites(ss)) {
+        out.push_back(
+            {lv_obj_has_flag(s.img, LV_OBJ_FLAG_HIDDEN), lv_obj_get_style_x(s.img, LV_PART_MAIN),
+             lv_obj_get_style_y(s.img, LV_PART_MAIN), ToasterAccess::frame_of(ss, s.img)});
+    }
+    return out;
+}
+
+std::vector<int> shown_frames(const FlyingToasterScreensaver& ss) {
+    std::vector<int> frames;
+    for (const auto& s : ToasterAccess::sprites(ss)) {
+        frames.push_back(ToasterAccess::frame_of(ss, s.img));
+    }
+    return frames;
+}
+
+/// A toaster on a 10 s or 16 s flight changes wing frame every 50 ms; one on a 24 s flight,
+/// every 100 ms.
+uint32_t flap_step_ms_for(int32_t fly_ms) {
+    return fly_ms >= 20000 ? 100 : 50;
+}
+
+struct SpriteTally {
+    int visible_toasters = 0;
+    int visible_reversed_toasters = 0;
+    int visible_only_at_full_size = 0;
+};
+
+/// Checks every flying sprite against where `elapsed_ms` of flight puts it, and counts what
+/// the check covered. `initial_frames` are the frames the sprites showed at start.
+SpriteTally check_sprites_at(const FlyingToasterScreensaver& ss, uint32_t elapsed_ms,
+                             const std::vector<int>& initial_frames) {
+    lv_display_t* disp = lv_display_get_default();
+    const int32_t w = lv_display_get_horizontal_resolution(disp);
+    const int32_t h = lv_display_get_vertical_resolution(disp);
+    const int32_t size = w > 800 ? 128 : 64;
+    const auto sprites = ToasterAccess::sprites(ss);
+    REQUIRE(sprites.size() == initial_frames.size());
+
+    SpriteTally tally;
+    for (size_t i = 0; i < sprites.size(); i++) {
+        const auto& s = sprites[i];
+        CAPTURE(i, elapsed_ms);
+        const FlightPos pos = flight_pos_at(elapsed_ms, s.start_x, s.start_y, s.fly_ms, s.delay_ms,
+                                            TOASTER_FLIGHT_PX);
+        if (!pos.started) {
+            continue;
+        }
+        const bool on_screen = pos.x + size > 0 && pos.x < w && pos.y + size > 0 && pos.y < h;
+        CHECK(lv_obj_has_flag(s.img, LV_OBJ_FLAG_HIDDEN) == !on_screen);
+        if (!on_screen) {
+            continue;
+        }
+        CHECK(lv_obj_get_style_x(s.img, LV_PART_MAIN) == pos.x);
+        CHECK(lv_obj_get_style_y(s.img, LV_PART_MAIN) == pos.y);
+        if (size > 64 && (pos.x + 64 <= 0 || pos.y + 64 <= 0)) {
+            tally.visible_only_at_full_size++;
+        }
+        if (s.is_toaster) {
+            tally.visible_toasters++;
+            // Reversed toasters start on wing frame 2.
+            if (initial_frames[i] == 2) {
+                tally.visible_reversed_toasters++;
+            }
+            CHECK(ToasterAccess::frame_of(ss, s.img) ==
+                  flap_frame_at(elapsed_ms, s.delay_ms, flap_step_ms_for(s.fly_ms),
+                                static_cast<uint8_t>(initial_frames[i])));
+        }
+    }
+    return tally;
+}
+
+} // namespace
+
+TEST_CASE_METHOD(LVGLTestFixture, "FlyingToasterScreensaver ticks at the display refresh period",
+                 "[screensaver][screensaver_motion]") {
+    // Matches neither LVGL's default refresh period nor any fixed saver period.
+    ScopedRefreshPeriod refresh(20);
+    FlyingToasterScreensaver ss;
+    ScreensaverStopOnExit<FlyingToasterScreensaver> stop_on_exit{ss};
+
+    ss.start();
+    REQUIRE(ss.is_active());
+    lv_timer_t* timer = ToasterAccess::tick_timer(ss);
+    REQUIRE(timer != nullptr);
+    CHECK(timer->period == 20);
+}
+
+TEST_CASE_METHOD(
+    LVGLTestFixture,
+    "FlyingToasterScreensaver lands sprites by elapsed time however callbacks split it",
+    "[screensaver][screensaver_motion]") {
+    FlyingToasterScreensaver one_tick;
+    ScreensaverStopOnExit<FlyingToasterScreensaver> stop_one{one_tick};
+    FlyingToasterScreensaver eleven_ticks;
+    ScreensaverStopOnExit<FlyingToasterScreensaver> stop_eleven{eleven_ticks};
+
+    one_tick.start();
+    eleven_ticks.start();
+    REQUIRE(one_tick.is_active());
+    REQUIRE(eleven_ticks.is_active());
+    REQUIRE(ToasterAccess::frames_decoded(one_tick));
+    REQUIRE(ToasterAccess::frames_decoded(eleven_ticks));
+
+    // Every sprite starts off-screen. Four seconds in, the 16 s and 24 s flights are
+    // crossing it; both savers get there by the same calls.
+    for (int i = 0; i < 10; i++) {
+        lv_tick_inc(400);
+        run_toaster_tick(one_tick);
+        run_toaster_tick(eleven_ticks);
+    }
+    const auto before = view_sprites(one_tick);
+
+    for (int i = 0; i < 11; i++) {
+        lv_tick_inc(10);
+        run_toaster_tick(eleven_ticks);
+    }
+    run_toaster_tick(one_tick);
+
+    const auto one = view_sprites(one_tick);
+    const auto eleven = view_sprites(eleven_ticks);
+    const auto sprites = ToasterAccess::sprites(one_tick);
+    REQUIRE(one.size() == eleven.size());
+    REQUIRE(one.size() == before.size());
+    int moved = 0;
+    int flapped = 0;
+    for (size_t i = 0; i < one.size(); i++) {
+        CAPTURE(i);
+        CHECK(one[i].hidden == eleven[i].hidden);
+        if (one[i].hidden || eleven[i].hidden) {
+            continue;
+        }
+        CHECK(one[i].x == eleven[i].x);
+        CHECK(one[i].y == eleven[i].y);
+        CHECK(one[i].frame == eleven[i].frame);
+        if (!before[i].hidden && one[i].x != before[i].x) {
+            moved++;
+        }
+        if (sprites[i].is_toaster && !before[i].hidden && one[i].frame != before[i].frame) {
+            flapped++;
+        }
+    }
+    // The 110 ms window moved visible sprites and changed toasters' wing frames, so the
+    // comparison covered both.
+    REQUIRE(moved > 0);
+    REQUIRE(flapped > 0);
+}
+
+TEST_CASE_METHOD(LVGLTestFixture,
+                 "FlyingToasterScreensaver flies 128 px sprites on displays wider than 800 px",
+                 "[screensaver][screensaver_motion]") {
+    ScopedResolution res(lv_display_get_default(), 1024, 600);
+    FlyingToasterScreensaver ss;
+    ScreensaverStopOnExit<FlyingToasterScreensaver> stop_on_exit{ss};
+
+    ss.start();
+    REQUIRE(ss.is_active());
+    REQUIRE(ToasterAccess::frames_decoded(ss));
+    for (const auto& s : ToasterAccess::sprites(ss)) {
+        CHECK(lv_image_get_scale(s.img) == 512);
+    }
+    const auto initial = shown_frames(ss);
+
+    lv_tick_inc(100);
+    run_toaster_tick(ss);
+
+    const SpriteTally tally = check_sprites_at(ss, 100, initial);
+    REQUIRE(tally.visible_toasters > 0);
+    // Some visible sprite overlaps the screen only because it is 128 px, so the sprite size
+    // decided its visibility.
+    REQUIRE(tally.visible_only_at_full_size > 0);
+}
+
+TEST_CASE_METHOD(LVGLTestFixture,
+                 "FlyingToasterScreensaver flaps each toaster from its own initial frame",
+                 "[screensaver][screensaver_motion]") {
+    FlyingToasterScreensaver ss;
+    ScreensaverStopOnExit<FlyingToasterScreensaver> stop_on_exit{ss};
+
+    ss.start();
+    REQUIRE(ss.is_active());
+    REQUIRE(ToasterAccess::frames_decoded(ss));
+    const auto initial = shown_frames(ss);
+
+    // 4.1 s in, the reversed 16 s toasters are on screen at a point in the wing cycle where
+    // one started from frame 2 shows a different frame than one started from frame 0.
+    for (int i = 0; i < 10; i++) {
+        lv_tick_inc(400);
+        run_toaster_tick(ss);
+    }
+    lv_tick_inc(100);
+    run_toaster_tick(ss);
+
+    REQUIRE(check_sprites_at(ss, 4100, initial).visible_reversed_toasters > 0);
+}
+
+TEST_CASE_METHOD(LVGLTestFixture,
+                 "FlyingToasterScreensaver restarts its flight on start after stop",
+                 "[screensaver][screensaver_motion]") {
+    FlyingToasterScreensaver ss;
+    ScreensaverStopOnExit<FlyingToasterScreensaver> stop_on_exit{ss};
+
+    ss.start();
+    REQUIRE(ss.is_active());
+    REQUIRE(ToasterAccess::frames_decoded(ss));
+    const auto initial = shown_frames(ss);
+    // 370 ms puts both flap rates on a frame other than the initial one.
+    lv_tick_inc(370);
+    run_toaster_tick(ss);
+    REQUIRE(check_sprites_at(ss, 370, initial).visible_toasters > 0);
+    const auto first_run = view_sprites(ss);
+
+    ss.stop();
+    lv_tick_inc(5000);
+    ss.start();
+    REQUIRE(ss.is_active());
+    REQUIRE(ToasterAccess::frames_decoded(ss));
+    CHECK(shown_frames(ss) == initial);
+
+    lv_tick_inc(370);
+    run_toaster_tick(ss);
+    CHECK(check_sprites_at(ss, 370, initial).visible_toasters > 0);
+    CHECK(view_sprites(ss) == first_run);
+}
+
+// ============================================================================
 // ScreensaverManager Tests
 // ============================================================================
 
@@ -394,6 +655,263 @@ TEST_CASE_METHOD(LVGLTestFixture, "the panel under a running screensaver is not 
     CHECK(draws_under_saver == 0);
     // The same invalidate and refresh draw the child once the saver is gone.
     CHECK(draws > draws_under_saver);
+}
+
+// ============================================================================
+// Starfield and pipes redraw only what their canvas changes
+// ============================================================================
+
+#include <algorithm>
+#include <cstring>
+
+namespace {
+
+using StarAccess = StarfieldScreensaverTestAccess;
+using PipesAccess = PipesScreensaverTestAccess;
+
+// A pipe grows one grid step per 100 ms of frame time.
+constexpr uint32_t PIPES_STEP_MS = 100;
+
+void run_timer(lv_timer_t* timer) {
+    REQUIRE(timer != nullptr);
+    REQUIRE(timer->timer_cb != nullptr);
+    timer->timer_cb(timer);
+}
+
+/// Counts the draw tasks `obj` itself adds to refreshes and snapshots, for as long as it lives.
+class DrawTaskCounter {
+  public:
+    explicit DrawTaskCounter(lv_obj_t* obj) : obj_(obj) {
+        lv_obj_add_flag(obj_, LV_OBJ_FLAG_SEND_DRAW_TASK_EVENTS);
+        lv_obj_add_event_cb(obj_, on_task_added, LV_EVENT_DRAW_TASK_ADDED, this);
+    }
+    ~DrawTaskCounter() {
+        if (lv_obj_is_valid(obj_)) {
+            lv_obj_remove_event_cb_with_user_data(obj_, on_task_added, this);
+            lv_obj_remove_flag(obj_, LV_OBJ_FLAG_SEND_DRAW_TASK_EVENTS);
+        }
+    }
+    DrawTaskCounter(const DrawTaskCounter&) = delete;
+    DrawTaskCounter& operator=(const DrawTaskCounter&) = delete;
+
+    int total = 0;
+    int fills = 0;
+    int images = 0;
+
+  private:
+    static void on_task_added(lv_event_t* e) {
+        auto* self = static_cast<DrawTaskCounter*>(lv_event_get_user_data(e));
+        const lv_draw_task_type_t type = lv_draw_task_get_type(lv_event_get_draw_task(e));
+        self->total++;
+        self->fills += type == LV_DRAW_TASK_TYPE_FILL;
+        self->images += type == LV_DRAW_TASK_TYPE_IMAGE;
+    }
+
+    lv_obj_t* obj_;
+};
+
+/// Records every area invalidated on `disp`, for as long as it lives.
+class InvalidatedAreas {
+  public:
+    explicit InvalidatedAreas(lv_display_t* disp) : disp_(disp) {
+        lv_display_add_event_cb(disp_, on_invalidate, LV_EVENT_INVALIDATE_AREA, this);
+    }
+    ~InvalidatedAreas() {
+        lv_display_remove_event_cb_with_user_data(disp_, on_invalidate, this);
+    }
+    InvalidatedAreas(const InvalidatedAreas&) = delete;
+    InvalidatedAreas& operator=(const InvalidatedAreas&) = delete;
+
+    std::vector<lv_area_t> areas;
+
+  private:
+    static void on_invalidate(lv_event_t* e) {
+        auto* self = static_cast<InvalidatedAreas*>(lv_event_get_user_data(e));
+        self->areas.push_back(*static_cast<const lv_area_t*>(lv_event_get_param(e)));
+    }
+
+    lv_display_t* disp_;
+};
+
+bool area_contains(const lv_area_t& outer, const lv_area_t& inner) {
+    return outer.x1 <= inner.x1 && outer.y1 <= inner.y1 && outer.x2 >= inner.x2 &&
+           outer.y2 >= inner.y2;
+}
+
+lv_area_t coords_of(lv_obj_t* obj) {
+    lv_obj_update_layout(obj);
+    lv_area_t area;
+    lv_obj_get_coords(obj, &area);
+    return area;
+}
+
+/// Redraws everything on the top layer now.
+void refresh_top_layer() {
+    lv_obj_invalidate(lv_layer_top());
+    lv_refr_now(lv_display_get_default());
+}
+
+void check_overlay_draws_only_its_canvas(lv_obj_t* overlay, lv_obj_t* canvas) {
+    REQUIRE(overlay != nullptr);
+    REQUIRE(canvas != nullptr);
+    DrawTaskCounter overlay_tasks(overlay);
+    DrawTaskCounter canvas_tasks(canvas);
+
+    refresh_top_layer();
+
+    CHECK(overlay_tasks.fills == 0);
+    // The refresh did reach the overlay: it drew the canvas on top of it.
+    CHECK(canvas_tasks.images > 0);
+}
+
+/// The overlay is deleted on a later timer pass. Until then a refresh (a wake's
+/// lv_refr_now) or a top-layer snapshot (a screenshot) must not draw the canvas, whose
+/// buffer is already freed.
+void check_stopped_canvas_is_not_drawn(lv_obj_t* canvas) {
+    REQUIRE(lv_obj_is_valid(canvas));
+    CHECK(lv_obj_has_flag(canvas, LV_OBJ_FLAG_HIDDEN));
+
+    DrawTaskCounter canvas_tasks(canvas);
+    refresh_top_layer();
+    lv_draw_buf_t* snapshot = lv_snapshot_take(lv_layer_top(), LV_COLOR_FORMAT_ARGB8888);
+    REQUIRE(snapshot != nullptr);
+    lv_draw_buf_destroy(snapshot);
+
+    CHECK(canvas_tasks.total == 0);
+}
+
+struct PixelChanges {
+    size_t changed = 0;
+    size_t outside_areas = 0;
+};
+
+/// Compares the canvas buffer with `before`, and counts the changed pixels no area in
+/// `areas` (display coordinates) covers.
+PixelChanges diff_canvas(const std::vector<uint8_t>& before, const lv_draw_buf_t* buf,
+                         const lv_area_t& canvas_coords, const std::vector<lv_area_t>& areas) {
+    PixelChanges out;
+    for (uint32_t y = 0; y < buf->header.h; y++) {
+        for (uint32_t x = 0; x < buf->header.w; x++) {
+            const size_t i = y * buf->header.stride + x * 4;
+            if (std::memcmp(&before[i], &buf->data[i], 4) == 0) {
+                continue;
+            }
+            out.changed++;
+            const int32_t px = canvas_coords.x1 + static_cast<int32_t>(x);
+            const int32_t py = canvas_coords.y1 + static_cast<int32_t>(y);
+            const bool covered =
+                std::any_of(areas.begin(), areas.end(), [px, py](const lv_area_t& a) {
+                    return px >= a.x1 && px <= a.x2 && py >= a.y1 && py <= a.y2;
+                });
+            out.outside_areas += covered ? 0 : 1;
+        }
+    }
+    return out;
+}
+
+} // namespace
+
+TEST_CASE_METHOD(LVGLTestFixture,
+                 "the starfield and pipes overlays draw nothing under their canvas",
+                 "[screensaver][screensaver_canvas]") {
+    SECTION("starfield") {
+        StarfieldScreensaver ss;
+        ScreensaverStopOnExit<StarfieldScreensaver> stop_on_exit{ss};
+        ss.start();
+        REQUIRE(ss.is_active());
+        check_overlay_draws_only_its_canvas(StarAccess::overlay(ss), StarAccess::canvas(ss));
+    }
+
+    SECTION("pipes") {
+        PipesScreensaver ss;
+        ScreensaverStopOnExit<PipesScreensaver> stop_on_exit{ss};
+        ss.start();
+        REQUIRE(ss.is_active());
+        check_overlay_draws_only_its_canvas(PipesAccess::overlay(ss), PipesAccess::canvas(ss));
+    }
+}
+
+TEST_CASE_METHOD(LVGLTestFixture,
+                 "each pipes grow step invalidates less than the canvas and every pixel it changes",
+                 "[screensaver][screensaver_canvas]") {
+    PipesScreensaver ss;
+    ScreensaverStopOnExit<PipesScreensaver> stop_on_exit{ss};
+    PipesAccess::set_fixed_seed(ss, 42);
+    ss.start();
+    REQUIRE(ss.is_active());
+    lv_obj_t* canvas = PipesAccess::canvas(ss);
+    REQUIRE(canvas != nullptr);
+    const lv_draw_buf_t* buf = lv_canvas_get_draw_buf(canvas);
+    REQUIRE(buf != nullptr);
+    REQUIRE(lv_color_format_get_size(static_cast<lv_color_format_t>(buf->header.cf)) == 4);
+    const lv_area_t canvas_coords = coords_of(canvas);
+    const int64_t canvas_px = lv_area_get_size(&canvas_coords);
+
+    InvalidatedAreas invalidated(lv_obj_get_display(canvas));
+    // The first step also starts the third pipe; later ones turn corners and draw joints.
+    for (int step = 0; step < 40; step++) {
+        CAPTURE(step);
+        const std::vector<uint8_t> before(buf->data, buf->data + buf->data_size);
+        invalidated.areas.clear();
+
+        lv_tick_inc(PIPES_STEP_MS);
+        run_timer(PipesAccess::timer(ss));
+
+        const PixelChanges changes = diff_canvas(before, buf, canvas_coords, invalidated.areas);
+        REQUIRE(changes.changed > 0);
+        CHECK(changes.outside_areas == 0);
+        REQUIRE_FALSE(invalidated.areas.empty());
+        for (const lv_area_t& area : invalidated.areas) {
+            CHECK(lv_area_get_size(&area) < canvas_px);
+        }
+    }
+}
+
+TEST_CASE_METHOD(LVGLTestFixture, "a pipes grid reset invalidates the whole canvas",
+                 "[screensaver][screensaver_canvas]") {
+    PipesScreensaver ss;
+    ScreensaverStopOnExit<PipesScreensaver> stop_on_exit{ss};
+    PipesAccess::set_fixed_seed(ss, 11);
+    ss.start();
+    REQUIRE(ss.is_active());
+    lv_obj_t* canvas = PipesAccess::canvas(ss);
+    REQUIRE(canvas != nullptr);
+    const lv_area_t canvas_coords = coords_of(canvas);
+
+    PipesAccess::set_total_segments(ss, PipesAccess::max_segments() + 1);
+    InvalidatedAreas invalidated(lv_obj_get_display(canvas));
+    lv_tick_inc(PIPES_STEP_MS);
+    run_timer(PipesAccess::timer(ss));
+    REQUIRE(PipesAccess::total_segments(ss) == 0);
+
+    CHECK(std::any_of(invalidated.areas.begin(), invalidated.areas.end(),
+                      [&](const lv_area_t& a) { return area_contains(a, canvas_coords); }));
+}
+
+TEST_CASE_METHOD(LVGLTestFixture,
+                 "a stopped starfield or pipes canvas is hidden until its overlay is deleted",
+                 "[screensaver][screensaver_canvas]") {
+    SECTION("starfield") {
+        StarfieldScreensaver ss;
+        ScreensaverStopOnExit<StarfieldScreensaver> stop_on_exit{ss};
+        ss.start();
+        REQUIRE(ss.is_active());
+        lv_obj_t* canvas = StarAccess::canvas(ss);
+        REQUIRE(canvas != nullptr);
+        ss.stop();
+        check_stopped_canvas_is_not_drawn(canvas);
+    }
+
+    SECTION("pipes") {
+        PipesScreensaver ss;
+        ScreensaverStopOnExit<PipesScreensaver> stop_on_exit{ss};
+        ss.start();
+        REQUIRE(ss.is_active());
+        lv_obj_t* canvas = PipesAccess::canvas(ss);
+        REQUIRE(canvas != nullptr);
+        ss.stop();
+        check_stopped_canvas_is_not_drawn(canvas);
+    }
 }
 
 #endif // HELIX_ENABLE_SCREENSAVER

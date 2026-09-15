@@ -24,18 +24,50 @@ enum class ScreensaverType : int {
 namespace helix::ui {
 
 /**
- * @brief Row pitch in bytes lv_canvas_set_buffer() uses for a w-wide ARGB8888 canvas
+ * @brief Color format of the starfield canvas
+ *
+ * Opaque, so the full-screen canvas draws as a straight copy instead of an alpha blend.
+ * Production 32 bpp displays run ARGB8888 and copy an XRGB8888 image byte for byte, so
+ * every canvas pixel's X byte must be 0xFF or that pixel draws transparent ("The alpha
+ * trap" in docs/devel/GPU_ACCELERATION.md). The starfield writes every pixel itself with
+ * that byte set. A canvas drawn with lv_draw_* cannot rely on it: see PIPES_CANVAS_FORMAT.
+ */
+inline constexpr lv_color_format_t SCREENSAVER_CANVAS_FORMAT = LV_COLOR_FORMAT_XRGB8888;
+
+/**
+ * @brief Color format of the pipes canvas
+ *
+ * Pipes draws antialiased segments and joints with lv_draw_*. On aarch64, LVGL's NEON
+ * blends into an XRGB8888 destination write 0 into each pixel's 4th byte, and an XRGB8888
+ * canvas is copied byte for byte into the ARGB8888 display, so those pixels would draw
+ * transparent. An ARGB8888 canvas keeps real alpha, and it is filled opaque before anything
+ * is drawn on it, so it still covers every pixel under the transparent overlay.
+ */
+inline constexpr lv_color_format_t PIPES_CANVAS_FORMAT = LV_COLOR_FORMAT_ARGB8888;
+
+/**
+ * @brief Row pitch in bytes lv_canvas_set_buffer() uses for a w-wide canvas in format cf
  *
  * lv_canvas_set_buffer() does not take the caller's word for packing: it
  * derives an LV_DRAW_BUF_STRIDE_ALIGN-rounded stride and sizes the canvas
- * extent from it, so a buffer allocated at w * h * 4 under-runs the extent
- * whenever the stride exceeds w * 4 (prestonbrown/helixscreen#1591). The
- * canvas screensavers size their allocations and direct pixel writes from
- * this pitch so they cannot disagree with what LVGL steps rows by.
+ * extent from it, so a buffer allocated at w * h * bytes-per-pixel under-runs
+ * the extent whenever the stride exceeds w * bytes-per-pixel
+ * (prestonbrown/helixscreen#1591). The canvas screensavers size their
+ * allocations and direct pixel writes from this pitch so they cannot disagree
+ * with what LVGL steps rows by.
  */
-inline uint32_t screensaver_canvas_stride_bytes(int32_t w) {
-    return lv_draw_buf_width_to_stride(static_cast<uint32_t>(w), LV_COLOR_FORMAT_ARGB8888);
+inline uint32_t screensaver_canvas_stride_bytes(int32_t w, lv_color_format_t cf) {
+    return lv_draw_buf_width_to_stride(static_cast<uint32_t>(w), cf);
 }
+
+/**
+ * @brief Period for a screensaver's frame timer: the default display's refresh period
+ *
+ * A saver ticking faster than the display refreshes computes frames nobody sees, and one
+ * ticking slower moves in visible steps. LV_DEF_REFR_PERIOD when there is no display or
+ * its refresh timer has been deleted.
+ */
+uint32_t screensaver_timer_period_ms();
 
 } // namespace helix::ui
 

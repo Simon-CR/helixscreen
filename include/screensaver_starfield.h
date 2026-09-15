@@ -5,8 +5,12 @@
 #ifdef HELIX_ENABLE_SCREENSAVER
 
 #include "screensaver.h"
+#include "screensaver_motion.h"
 
+#include <cstdint>
 #include <lvgl.h>
+#include <optional>
+#include <random>
 #include <vector>
 
 /**
@@ -18,7 +22,8 @@
  *
  * Renders via direct pixel writes to the canvas buffer — no LVGL draw API
  * in the hot loop. Previous star positions are incrementally erased each
- * frame to avoid a full-buffer clear.
+ * frame to avoid a full-buffer clear. Stars move by the time since the previous
+ * frame, so their speed does not depend on the timer's rate.
  */
 class StarfieldScreensaver : public Screensaver {
   public:
@@ -35,16 +40,15 @@ class StarfieldScreensaver : public Screensaver {
     }
 
   private:
-    // Test-only seam: reads the allocation records below so the stride
-    // contract can be pinned without a full display pipeline. See
-    // tests/test_helpers/screensaver_test_access.h.
+    // Test-only seam: reads the draw buffer, timer and simulation state, and fixes
+    // the seed. See tests/test_helpers/screensaver_test_access.h.
     friend class StarfieldScreensaverTestAccess;
 
     struct Star {
         float x;        // normalized position (-1..1)
         float y;        // normalized position (-1..1)
         float z;        // depth (0..1, 1=far, approaches 0)
-        float speed;    // z decrement per frame
+        float speed;    // z decrement per 33 ms
         uint8_t tint_r; // color tint (assigned at birth, visible when close)
         uint8_t tint_g;
         uint8_t tint_b;
@@ -58,7 +62,7 @@ class StarfieldScreensaver : public Screensaver {
     void recycle_star(Star& star);
 
     static void frame_timer_cb(lv_timer_t* timer);
-    void render_frame();
+    void render_frame(uint32_t dt_ms);
 
     /// Shared by stop() and the destructor — a timer cancelled only in stop()
     /// stays armed on a freed `this` on any teardown that skips it.
@@ -77,6 +81,13 @@ class StarfieldScreensaver : public Screensaver {
     uint32_t draw_buf_stride_ = 0;
 
     std::vector<Star> stars_;
+
+    // Owned random sequence, seeded in start(); initializing and recycling stars draw from it.
+    std::minstd_rand rng_;
+    // When set, start() seeds the random sequence from this instead of the clock, so a
+    // run replays exactly.
+    std::optional<uint32_t> fixed_seed_;
+    helix::ui::screensaver::MotionClock clock_;
 
     // Cached screen dimensions and projection constants
     int screen_w_ = 0;
