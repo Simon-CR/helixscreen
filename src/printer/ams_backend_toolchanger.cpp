@@ -1298,6 +1298,10 @@ AmsError AmsBackendToolChanger::apply_user_edit(int slot_index, const SlotInfo& 
             });
     }
 
+    // Emit OUTSIDE the lock to avoid deadlock with callbacks, and ahead of the
+    // remap's return so an edit that also moves a tool number is announced too.
+    emit_event(EVENT_SLOT_CHANGED, std::to_string(slot_index));
+
     if (!physical_tool_name.empty()) {
         spdlog::info("[AMS ToolChanger] Remap via slot edit: T{} -> physical {} (slot {})",
                      info.mapped_tool, physical_tool_name, slot_index);
@@ -1309,19 +1313,24 @@ AmsError AmsBackendToolChanger::apply_user_edit(int slot_index, const SlotInfo& 
 }
 
 AmsError AmsBackendToolChanger::sync_external_identity(int slot_index, const SlotInfo& info) {
-    std::lock_guard<std::mutex> lock(mutex_);
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
 
-    AmsError slot_valid = validate_slot_index(slot_index);
-    if (!slot_valid) {
-        return slot_valid;
+        AmsError slot_valid = validate_slot_index(slot_index);
+        if (!slot_valid) {
+            return slot_valid;
+        }
+
+        // The slot keeps the tool number it answers to: only a person's edit moves
+        // the tool map, and moving it sends ASSIGN_TOOL.
+        if (!system_info_.units.empty() &&
+            slot_index < static_cast<int>(system_info_.units[0].slots.size())) {
+            write_filament_fields(system_info_.units[0].slots[slot_index], info);
+        }
     }
 
-    // The slot keeps the tool number it answers to: only a person's edit moves
-    // the tool map, and moving it sends ASSIGN_TOOL.
-    if (!system_info_.units.empty() &&
-        slot_index < static_cast<int>(system_info_.units[0].slots.size())) {
-        write_filament_fields(system_info_.units[0].slots[slot_index], info);
-    }
+    // Emit OUTSIDE the lock to avoid deadlock with callbacks
+    emit_event(EVENT_SLOT_CHANGED, std::to_string(slot_index));
     return AmsErrorHelper::success();
 }
 

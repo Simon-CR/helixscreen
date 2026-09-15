@@ -427,6 +427,44 @@ TEST_CASE_METHOD(LVGLTestFixture, "AmsState publishes per-slot fill subject on s
     ams.deinit_subjects();
 }
 
+TEST_CASE_METHOD(LVGLTestFixture, "A slot event refreshes the fill subject without a full sync",
+                 "[ams][fill][ams_state]") {
+    auto& ams = AmsState::instance();
+    ams.init_subjects(false);
+
+    auto mock = AmsBackend::create_mock(2);
+    auto* mock_ptr = static_cast<AmsBackendMock*>(mock.get());
+    mock_ptr->force_slot_status(0, SlotStatus::AVAILABLE);
+    SlotInfo s0;
+    s0.slot_index = 0;
+    s0.material = "PLA";
+    s0.color_rgb = 0x00FF00;
+    s0.remaining_weight_g = 1000.0f;
+    s0.total_weight_g = 1000.0f;
+    helix::test::apply_edit(*mock_ptr, 0, s0);
+
+    ams.set_backend(std::move(mock));
+    ams.sync_from_backend();
+    drain();
+    REQUIRE(lv_subject_get_int(ams.get_slot_fill_subject(0)) == 100);
+    const int version_before = lv_subject_get_int(ams.get_slots_version_subject());
+
+    // The mock's slot write raises SLOT_CHANGED for this slot and nothing else,
+    // so the drain below runs the single-slot update alone.
+    s0.remaining_weight_g = 250.0f;
+    helix::test::apply_edit(*mock_ptr, 0, s0);
+    REQUIRE(mock_ptr->get_slot_info(0).remaining_weight_g == 250.0f);
+    drain();
+
+    CHECK(lv_subject_get_int(ams.get_slot_fill_subject(0)) == 25);
+    CHECK(std::string(lv_subject_get_string(ams.get_slot_remaining_subject(0))) == "250g");
+    // A fill change moves slots_version, as it does in a full sync.
+    CHECK(lv_subject_get_int(ams.get_slots_version_subject()) > version_before);
+
+    ams.clear_backends();
+    ams.deinit_subjects();
+}
+
 // ============================================================================
 // Per-slot REMAINING subject: same canonical-shape rule as the fill subject,
 // with one twist: the CFS box reports two sentinel lengths that are NOT
