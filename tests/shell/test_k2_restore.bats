@@ -125,6 +125,18 @@ case "$action" in
         ;;
     stop)
         . "$script"
+        # A USE_PROCD script has no stop() of its own; rc.common stops the
+        # tracked instance (kills its pid, drops the record).
+        if [ "$USE_PROCD" = 1 ]; then
+            if [ -f "$MOCK_ROOT/var/run/procd-instances/$name" ]; then
+                while IFS= read -r pf; do
+                    _ip=$(cat "$pf" 2>/dev/null)
+                    [ -n "$_ip" ] && kill "$_ip" 2>/dev/null
+                done < "$MOCK_ROOT/var/run/procd-instances/$name"
+                rm -f "$MOCK_ROOT/var/run/procd-instances/$name"
+            fi
+            exit 0
+        fi
         stop
         ;;
 esac
@@ -440,18 +452,65 @@ assert_both_fixes_without_reboot() {
     done
 }
 
+# --- the verified slot comes from the script's own directives ---
+
+@test "k2 restore: a stock app declaring START=50 verifies at its own slot" {
+    # The expected S slot is derived from the stock script's own START, so a
+    # firmware variant numbering its boot order differently still verifies.
+    printf '#!/bin/sh %s/etc/rc.common\nSTART=50\nSTOP=01\n' "$MOCK_ROOT" \
+        > "$MOCK_ROOT/etc/init.d/app"
+    chmod +x "$MOCK_ROOT/etc/init.d/app"
+    export RC_ENABLE_LINKS="S50 K01"
+    run in_bundle "$UNINSTALL_BUNDLE" "$RESTORE_BODY"
+    [ "$status" -eq 0 ] || fail "exited $status: $output"
+    assert_sandboxed_run
+    [ -n "$(published CLAIM)" ] || fail "a declared-slot entry went unverified: $output"
+    contains "S50app" "$(published CLAIM)"
+    [ -z "$(published WARNED)" ] || fail "warned despite the declared slot verifying: $output"
+}
+
+@test "k2 restore: a stale different-slot entry is dropped for the declared slot" {
+    # A pre-existing rc.d entry in another slot must not survive beside the
+    # fresh pair: the enable path drops every S??app/K??app first, so the
+    # boot entry ends up exactly where the stock script declares it.
+    ln -s ../init.d/app "$MOCK_ROOT/etc/rc.d/S50app"
+    run in_bundle "$UNINSTALL_BUNDLE" "$RESTORE_BODY"
+    [ "$status" -eq 0 ] || fail "exited $status: $output"
+    assert_sandboxed_run
+    [ ! -e "$MOCK_ROOT/etc/rc.d/S50app" ] || fail "stale S50app survived the restore"
+    [ -L "$MOCK_ROOT/etc/rc.d/S99app" ] || fail "the declared-slot entry is missing"
+    contains "S99app" "$(published CLAIM)"
+}
+
+@test "k2 restore: a stock app without STOP restores S-verified with a warn" {
+    # STOP is verified-when-declared: a stock firmware script we do not
+    # author must restore fine, its boot entry verified on the S half.
+    printf '#!/bin/sh %s/etc/rc.common\nSTART=99\n' "$MOCK_ROOT" \
+        > "$MOCK_ROOT/etc/init.d/app"
+    chmod +x "$MOCK_ROOT/etc/init.d/app"
+    export RC_ENABLE_LINKS="S99"
+    run in_bundle "$UNINSTALL_BUNDLE" "$RESTORE_BODY"
+    [ "$status" -eq 0 ] || fail "exited $status: $output"
+    assert_sandboxed_run
+    contains "S99app" "$(published CLAIM)"
+    # The helper warned at its own level; the restore itself claims success.
+    [ -z "$(published WARNED)" ] || fail "restore warned at its own level: $output"
+    contains "no parseable STOP" "$output"
+    event_line "rc app start" >/dev/null
+}
+
 # --- 1g: the sysv-created ledger replay stops what the carve-out runs ---
 
 @test "k2 uninstall: sysv-created replay stops the running web-server and removes script and links" {
-    local bundle init pidfile pid
+    local bundle init pidfile pid record
     init="$MOCK_ROOT/etc/init.d/helix-k2-webserver"
-    pidfile="$MOCK_ROOT/var/run/helix-k2-webserver.pid"
+    pidfile="$MOCK_ROOT/var/run/procd-helix-k2-webserver.pid"
+    record="$MOCK_ROOT/var/run/procd-instances/helix-k2-webserver"
     for bundle in "$UNINSTALL_BUNDLE" "$INSTALL_BUNDLE"; do
         reset_host
         sed -e "s|#!/bin/sh /etc/rc.common|#!/bin/sh $MOCK_ROOT/etc/rc.common|" \
             -e "s|/usr/sbin:/usr/bin:/sbin:/bin:||" \
             -e "s|/usr/bin/web-server|$MOCK_ROOT/usr/bin/web-server|g" \
-            -e "s|/var/run/helix-k2-webserver.pid|$pidfile|g" \
             "$WORKTREE_ROOT/config/k2-webserver.init" > "$init"
         chmod +x "$init"
         "$init" enable
@@ -459,9 +518,12 @@ assert_both_fixes_without_reboot() {
         [ -L "$MOCK_ROOT/etc/rc.d/K01helix-k2-webserver" ]
 
         # The running carve-out: a process this test owns, orphaned so it is
-        # reaped as soon as it dies, with fd 3 closed so bats does not wait on it.
+        # reaped as soon as it dies, with fd 3 closed so bats does not wait
+        # on it. The procd model tracks it as the registered instance.
         ( sleep 300 > /dev/null 2>&1 3>&- & echo $! > "$pidfile" )
         pid=$(cat "$pidfile")
+        mkdir -p "$MOCK_ROOT/var/run/procd-instances"
+        echo "$pidfile" > "$record"
         echo "$pid" >> "$BATS_TEST_TMPDIR/owned.pids"
         kill -0 "$pid"
 

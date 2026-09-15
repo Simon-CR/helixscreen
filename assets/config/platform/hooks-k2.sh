@@ -33,39 +33,27 @@ platform_stop_competing_uis() {
     killall boot-play 2>/dev/null || true
 
     # web-server is intentionally NOT killed by the sweep above — it serves
-    # the Creality Cloud integration and camera stream (webrtc_local).
-    # Stopping it would break remote monitoring via the Creality app.
+    # the LAN web interface (ports 80/443 redirect to Fluidd on :4408; 9999
+    # is the local status websocket). Stopping it would take that interface
+    # away from every browser and tool on the network.
 
-    # Persistently disable the stock UI service (reversible). On this
-    # Tina/procd box `stop` and `disable` also take the service's running
-    # instances down, so a live web-server dies right here — at every boot
-    # and on every service restart.
+    # Persistently disable the stock UI service (reversible). Only `stop`
+    # above kills — the stock stop_service runs killall -9 over the set —
+    # while `disable` just removes the app's rc.d links.
     if [ -x /etc/init.d/app ]; then
         /etc/init.d/app disable 2>/dev/null || true
     fi
 
-    # The disable just took a live web-server down, and the dying pid lingers
-    # in the table for seconds; a pidof sampled right now reads it as "the
-    # port is served". Both restore paths below are pidof-guarded against
-    # double-launching, so each would decline to relaunch and the carve-out
-    # would stay down until the next HelixScreen start. Poll until the pid
-    # leaves the table; on timeout a survivor really is serving, and the
-    # guards below leave a live server alone.
-    _ws_wait=0
-    while pidof web-server >/dev/null 2>&1 && [ "$_ws_wait" -lt 10 ]; do
-        sleep 1
-        _ws_wait=$((_ws_wait + 1))
-    done
-    unset _ws_wait
-
-    # The carve-out's liveness is guaranteed HERE, after the disable, not by
-    # a boot script beside it: procd's boot iterator dispatches this hook's
-    # own S99helixscreen every boot but does not dispatch
-    # S99helix-k2-webserver, so this is the one path that provably runs at
-    # boot and at every restart. Restore web-server through our init script
-    # when it is installed (pidof-guarded inside), else with a guarded
-    # direct launch. After every HelixScreen start on K2, the carve-out is
-    # serving (prestonbrown/helixscreen#1617).
+    # The stop's killall -9 takes any live web-server down, and a killed pid
+    # leaves the table within ~0.03s (measured on the K2 Plus) — before the
+    # restore below samples it. A killed instance is procd's job to
+    # respawn, so nothing waits between the disable and the restore.
+    # Liveness is guaranteed HERE, not by a boot script beside it: the
+    # restore below is the one path that runs at every boot and every
+    # restart. Restore web-server through our init script when it is
+    # installed (pidof-guarded inside), else with a guarded direct launch.
+    # After every HelixScreen start on K2, the carve-out is serving
+    # (prestonbrown/helixscreen#1617).
     if [ -x /etc/init.d/helix-k2-webserver ]; then
         /etc/init.d/helix-k2-webserver start 2>/dev/null || true
     elif ! pidof web-server >/dev/null 2>&1 && [ -x /usr/bin/web-server ]; then

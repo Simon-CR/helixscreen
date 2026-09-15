@@ -7968,23 +7968,143 @@ install_service() {
         install_service_systemd
     else
         install_service_sysv
-        # K2 (procd) needs an extra shim — see install_procd_shim_k2
+        # K2 (procd) needs an extra shim — see install_procd_shim_k2.
+        # Non-fatal on purpose: by this point the stock UI is already
+        # stopped and nothing of ours has started, so an abort would leave
+        # the device with no UI at all — strictly worse than the incomplete
+        # boot entry the function just detected and logged. The session UI
+        # still comes up via start_service.
         if [ "$platform" = "k2" ]; then
-            install_procd_shim_k2
+            install_procd_shim_k2 || {
+                log_error "K2 procd shim not verified — the UI will not autostart at boot"
+                log_error "Manual fix: $SUDO /etc/init.d/helixscreen enable"
+            }
         fi
     fi
 }
 
-# K2 (Tina Linux / procd) requires init scripts to use the rc.common
-# shebang AND declare a DEPEND directive — without both, procd's boot
-# iterator silently skips them. Our shared SysV-style S99helixscreen has
-# neither, so on K2 it's never auto-started at boot, leaving the device
-# stuck on the Creality boot logo with no UI.
+# True when $1 is an rc.common script: its first line names /etc/rc.common,
+# the shebang rc.common dispatches and a plain SysV script does not carry.
+# read and case are shell builtins, so the check needs no external applet.
+# A missing, unreadable or empty file answers non-zero (an empty first
+# line is not a shebang).
+is_rc_common_script() {
+    local first
+    IFS= read -r first 2>/dev/null < "$1" || return 1
+    case "$first" in
+        */etc/rc.common*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+# Verify one rc.d boot link points where rc.common's `enable` puts it. A
+# mismatch — including a missing link — is a failed boot entry; the caller
+# has already run `enable`, so the manual fix is to run it again by hand.
+_verify_rcd_link() {
+    local link="$1" expected="$2" script="$3"
+    local actual
+    actual="$($SUDO readlink "$link" 2>/dev/null || true)"
+    if [ "$actual" != "$expected" ]; then
+        log_error "$link -> '$actual' (expected '$expected')"
+        log_error "The rc.d boot entry is incomplete; Manual fix: $SUDO $script enable"
+        return 1
+    fi
+    return 0
+}
+
+# The START=/STOP= slot a script declares, as bare digits; prints it and
+# returns 0, or returns 1 when nothing parseable remains. rc.common reads
+# these directives by sourcing the script, where comments and quotes never
+# survive — this reads without executing anything, so it strips what
+# sourcing would have discarded: a trailing comment, surrounding quotes,
+# CR from a CRLF edit, stray spaces. A duplicated directive keeps its
+# newline and fails the digit check rather than silently picking a winner.
+_rcd_slot() {
+    local directive="$1" script="$2" value
+    value="$(sed -n "s/^${directive}=//p" "$script" 2>/dev/null | tr -d '\r \t')"
+    value="${value%%#*}"
+    value="${value#\"}" ; value="${value%\"}"
+    value="${value#\'}" ; value="${value%\'}"
+    case "$value" in
+        ''|*[!0-9]*) return 1 ;;
+        *) printf '%s\n' "$value" ;;
+    esac
+}
+
+# Enable an rc.common init script and verify the rc.d boot links it made.
 #
-# Fix: install a tiny procd-compatible /etc/init.d/helixscreen shim that
-# delegates every action to the real SysV script. Replace any existing
-# rc.d symlink (older installs pointed it at the SysV script directly,
-# which procd silently skips).
+# rc.common's `enable` writes relative links /etc/rc.d/S${START}<name> and
+# K${STOP}<name> (START/STOP read from the script itself) and exits 0 when
+# at least ONE link was made — so a partial enable (the S link without its
+# K link, say) reads as success and leaves the boot entry silently
+# incomplete. Drop the script's existing S??/K?? links first (an older
+# install may have used a different two-digit slot — the same space
+# rc.common's own disable globs), run `enable`, then verify each link by
+# readlink against ../init.d/<name>.
+#
+# START is required: it is the boot slot, and without it rc.common makes
+# no S link — there is no boot entry to verify. STOP is verified when
+# declared: rc.common makes no K link without one, and this helper also
+# runs against stock firmware scripts we do not author, so an absent or
+# unparseable STOP downgrades to a warning and an S-only verification
+# instead of failing the enable.
+enable_and_verify_rcd() {
+    local script="$1"
+    local name start stop
+
+    name="$(basename "$script")"
+
+    # A missing or unreadable script must not be diagnosed as a directive
+    # problem: the operator would be sent to edit a file that does not
+    # exist while the real fault is the copy step or permissions.
+    if [ ! -f "$script" ]; then
+        log_error "$script: not found at verification time"
+        log_error "The copy step failed; Manual fix: check the install logs above"
+        return 1
+    fi
+    if [ ! -r "$script" ]; then
+        log_error "$script: not readable — cannot verify its rc.d boot entry"
+        return 1
+    fi
+
+    if ! start="$(_rcd_slot START "$script")"; then
+        log_error "unparseable START= in $script (expected a two-digit slot)"
+        log_error "Manual fix: set START=<nn> to a plain number in $script"
+        return 1
+    fi
+    if ! stop="$(_rcd_slot STOP "$script")"; then
+        log_warn "$name: no parseable STOP= in $script — the shutdown half of the boot entry is left unverified"
+        stop=""
+    fi
+
+    # The glob must expand as root: an unprivileged shell cannot read
+    # /etc/rc.d, the pattern would reach rm literally, and rm -f on the
+    # literal name removes nothing without a sound.
+    $SUDO sh -c "rm -f /etc/rc.d/S??\"$name\" /etc/rc.d/K??\"$name\"" \
+        || log_warn "$name: could not drop a stale rc.d link; a duplicate boot entry may remain"
+
+    if ! $SUDO "$script" enable; then
+        log_error "$name: enable failed — the rc.d boot entry was not installed"
+        log_error "Manual fix: $SUDO $script enable"
+        return 1
+    fi
+
+    _verify_rcd_link "/etc/rc.d/S${start}${name}" "../init.d/$name" "$script" || return 1
+    if [ -n "$stop" ]; then
+        _verify_rcd_link "/etc/rc.d/K${stop}${name}" "../init.d/$name" "$script" || return 1
+    fi
+
+    log_info "$name: rc.d boot links verified (S${start}${name}${stop:+ K${stop}${name}})"
+    return 0
+}
+
+# K2 (Tina Linux / procd) boot-dispatches init scripts carrying the
+# `#!/bin/sh /etc/rc.common` shebang; a DEPEND directive is optional for
+# boot dispatch. Our shared SysV-style S99helixscreen has no such shebang,
+# so on K2 install a tiny procd-compatible /etc/init.d/helixscreen shim
+# that delegates every action to the real SysV script, and repoint the
+# rc.d entry at it: a link straight at the SysV script names a file rc.common
+# will not dispatch.
 install_procd_shim_k2() {
     local shim_src="${INSTALL_DIR}/config/helixscreen-k2-procd-shim.sh"
     local shim_dest="/etc/init.d/helixscreen"
@@ -8006,44 +8126,30 @@ install_procd_shim_k2() {
     $SUDO cp "$shim_src" "$shim_dest"
     $SUDO chmod +x "$shim_dest"
 
-    # procd skips an /etc/rc.d/S99helixscreen that points straight at the
-    # SysV script, so drop any such symlink, then let rc.common's `enable`
-    # create fresh S99/K01 symlinks pointing at the shim. Verify the rc.d
-    # entry before returning — `enable` exits 0 even when it produced no
-    # symlink at all, so a silently-wrong entry is otherwise invisible.
-    $SUDO rm -f /etc/rc.d/S99helixscreen /etc/rc.d/K01helixscreen
-    if ! $SUDO "$shim_dest" enable; then
-        log_warn "K2 procd shim: enable failed — UI will not autostart at boot"
-        log_warn "Manual fix: $SUDO $shim_dest enable"
-        return 1
-    fi
-
-    local rcd_target
-    rcd_target=$(readlink /etc/rc.d/S99helixscreen 2>/dev/null || true)
-    if [ "$rcd_target" != "../init.d/helixscreen" ]; then
-        log_error "K2 procd shim: /etc/rc.d/S99helixscreen -> '$rcd_target' (expected '../init.d/helixscreen')"
-        log_error "UI will not autostart at boot (see [L086])."
-        return 1
-    fi
+    # Drop any rc.d entry an older install left, then verify the fresh pair.
+    enable_and_verify_rcd "$shim_dest" || return 1
 
     log_success "Installed K2 procd shim at $shim_dest (boot symlink verified)"
 }
 
 # K2 web-server carve-out (prestonbrown/helixscreen#1617). The runtime hook
-# runs `/etc/init.d/app stop` + `disable`, and on this Tina/procd box both
-# take a running web-server down too — so the hook restores the carve-out
-# at the end of every HelixScreen start, through the rc.common script this
-# installs at /etc/init.d/helix-k2-webserver. The script is the service-
-# shaped starter the hook calls and the manual handle; its rc.d boot entry
-# is belt-and-braces (procd's boot iterator dispatches the helixscreen shim
-# but not this S99 on real hardware).
+# runs `/etc/init.d/app stop` + `disable`: stop kills any running
+# web-server (killall -9 in the stock app's stop_service, ours included,
+# even with the app already stopped) while disable only removes the app's
+# rc.d links. The hook therefore restores the carve-out at the end of every
+# HelixScreen start, through the rc.common procd script this installs at
+# /etc/init.d/helix-k2-webserver — the service-shaped starter and
+# supervisor whose registered instance procd respawns. Its rc.d boot entry
+# is belt-and-braces next to the hook's restore.
 #
-# Must be called AFTER start_service: the service start is what runs
-# platform_stop_competing_uis — the hook's own restore already brings
-# web-server back, and the explicit start here is the same belt-and-braces
-# for paths that bypass the hook (a direct launcher start, say). No-op when
-# the stock app service is absent (a firmware without the stock set has
-# nothing to carve out of) or when procd's rc.common is missing.
+# INSTALL half: runs BEFORE start_service, so the hook's first
+# platform_stop_competing_uis finds the script and the procd instance is
+# registered from the first launch (the hook's bare-launch fallback then
+# stays unreachable for shipped payloads; it exists for degraded installs
+# that never got this script). No-op when the stock app service is absent
+# (a firmware without the stock set has nothing to carve out of) or when
+# procd's rc.common is missing. The START half is
+# start_k2_webserver_backend, which runs after start_service.
 install_k2_webserver_backend() {
     [ "${1:-}" = "k2" ] || return 0
 
@@ -8065,43 +8171,49 @@ install_k2_webserver_backend() {
         return 0
     fi
 
-    cp "$src" "$dest" 2>/dev/null || $SUDO cp "$src" "$dest" 2>/dev/null || {
+    # A single sudo cp, like the shim's copy: /etc/init.d is root-owned
+    # and the carve-out has no non-root install path that could write it.
+    # The guard is load-bearing: main.sh calls this function as
+    # `... || log_warn`, and under set -e an || context does not abort —
+    # an unguarded cp failure would fall through to the ledger write and
+    # the enable below. chmod stays non-fatal: without +x the rc.common
+    # shebang cannot execute, and `enable` below surfaces that loudly.
+    $SUDO cp "$src" "$dest" || {
         log_warn "Could not install $dest; the web-server carve-out will not survive reboot"
         return 0
     }
-    chmod +x "$dest" 2>/dev/null || $SUDO chmod +x "$dest" 2>/dev/null || true
+    $SUDO chmod +x "$dest" || log_warn "chmod failed on $dest"
 
     # Record the script for uninstall BEFORE any step below can fail: a
     # carve-out left on disk without its ledger entry survives uninstall as
     # an orphan competing with the restored stock UI.
     record_disabled_service "sysv-created" "$dest"
 
-    # Drop any existing rc.d entry before enabling — `enable` exits 0 even
-    # when it produced no symlink, so the boot entry is verified by link
-    # the same way install_procd_shim_k2 does. enable and start go through
-    # $SUDO for the same reason the shim's do: a non-root caller must not
-    # leave the carve-out half-installed.
-    $SUDO rm -f /etc/rc.d/S99helix-k2-webserver /etc/rc.d/K01helix-k2-webserver 2>/dev/null || true
-    if ! $SUDO "$dest" enable; then
-        log_error "K2 web-server carve-out: enable failed — web-server will not start at boot"
-        log_error "Manual fix: $SUDO $dest enable"
-        return 1
-    fi
-    local ws_target
-    ws_target=$(readlink /etc/rc.d/S99helix-k2-webserver 2>/dev/null || true)
-    if [ "$ws_target" != "../init.d/helix-k2-webserver" ]; then
-        log_error "K2 web-server carve-out: /etc/rc.d/S99helix-k2-webserver -> '$ws_target' (expected '../init.d/helix-k2-webserver')"
-        log_error "web-server will not start at boot (see [L086])."
-        return 1
-    fi
+    # Drop any rc.d entry an older install left, then verify the fresh pair.
+    enable_and_verify_rcd "$dest" || return 1
 
     log_info "Installed K2 web-server carve-out: $dest (boot symlink verified)"
-    # Bring web-server up now — the stock instance died with the app stop
-    # the service start just ran. A failed start is logged, not fatal: the
-    # boot entry above is already verified, so the carve-out comes up at
-    # the next reboot regardless.
-    if ! $SUDO "$dest" start 2>/dev/null; then
-        log_warn "K2 web-server carve-out: start failed; it will start at the next boot"
+    return 0
+}
+
+# START half of the carve-out install: bring web-server up for the current
+# session, AFTER start_service. The service start's hook already ran
+# platform_stop_competing_uis — its app stop took whatever web-server was
+# live down, and its own restore brings the carve-out back — so this
+# explicit start is belt-and-braces for paths that bypass the hook (a
+# degraded install whose hook was never copied, say). A failed start is
+# logged, not fatal: procd respawns a registered instance, and the verified
+# boot entry brings it up at the next boot. No-op when the carve-out script
+# is not installed.
+start_k2_webserver_backend() {
+    [ "${1:-}" = "k2" ] || return 0
+
+    if [ ! -x /etc/init.d/helix-k2-webserver ]; then
+        return 0
+    fi
+
+    if ! $SUDO /etc/init.d/helix-k2-webserver start 2>/dev/null; then
+        log_warn "K2 web-server carve-out: start failed; procd respawn or the next boot brings it up"
     fi
     return 0
 }
@@ -11021,8 +11133,7 @@ reenable_disabled_services() {
                 # boot symlinks outlive the script they point at.
                 if [ -f "$target" ]; then
                     log_info "Removing HelixScreen init script: $target"
-                    if [ -x /etc/rc.common ] && \
-                       awk 'NR==1 {exit !/\/etc\/rc\.common/}' "$target" 2>/dev/null; then
+                    if [ -x /etc/rc.common ] && is_rc_common_script "$target"; then
                         $SUDO "$target" disable 2>/dev/null || true
                     fi
                     $SUDO "$target" stop 2>/dev/null || true
@@ -11161,26 +11272,22 @@ restore_previous_ui_platform() {
         # Drop any web-server the carve-out left running so the stock
         # instance app start is about to spawn can bind its port.
         kill_process_by_name web-server || true
-        $SUDO /etc/init.d/app enable 2>/dev/null || true
-        # rc.common's `enable` writes an S (boot) link and a K (shutdown) link
-        # and reports success if either was made, so its status says nothing
-        # about boot. Only the S link starts a service at boot, and the K link
-        # sorts ahead of it, so the glob admits S links alone; the slot number
-        # comes from the stock script's own START directive. A restore claimed
-        # without an S link leaves the K2 booting to the logo with no UI.
+        # enable_and_verify_rcd drops any rc.d entry an older install left
+        # and verifies the fresh pair by target against the script's own
+        # START/STOP slots — `enable` exits 0 even having made no (or only
+        # half the) links, which would otherwise read as a restored boot
+        # entry.
         local app_link app_target="" start_fix
-        for app_link in /etc/rc.d/S[0-9][0-9]app; do
-            [ -L "$app_link" ] || continue
-            if [ "$(readlink "$app_link" 2>/dev/null || true)" = "../init.d/app" ]; then
-                app_target="$app_link"
-                break
-            fi
-        done
-        if [ -z "$app_target" ]; then
+        if enable_and_verify_rcd /etc/init.d/app; then
+            # The helper dropped every other slot before enabling, so the
+            # first S??app link names exactly the entry it verified.
+            for app_link in /etc/rc.d/S??app; do
+                [ -L "$app_link" ] && { app_target="$app_link"; break; }
+            done
+            restored_ui="Creality stock UI (/etc/init.d/app, boot via $app_target)"
+        else
             log_warn "Stock UI boot symlink missing or wrong (no /etc/rc.d/S<nn>app -> ../init.d/app); run: /etc/init.d/app enable"
             restore_warned="Creality stock UI will not start at boot; run: /etc/init.d/app enable"
-        else
-            restored_ui="Creality stock UI (/etc/init.d/app, boot via $app_target)"
         fi
         # Start runs in both branches: the kill above already took the
         # carve-out's web-server down, so a missing boot symlink must leave
@@ -11511,16 +11618,14 @@ uninstall() {
             if [ -f "$init_script" ]; then
                 log_info "Stopping and removing $init_script..."
                 $SUDO "$init_script" stop 2>/dev/null || true
-                # K2 procd shim: only call disable if this is actually a
-                # rc.common-style script. CC1 installs a plain SysV script
-                # at the same /etc/init.d/helixscreen path, and CC1's BusyBox
-                # rejects `head -1` (only supports `head -n 1`), so we use
-                # awk for the shebang check (portable across all BusyBox
-                # variants we ship to). Also CC1 has no /etc/rc.common, so
-                # the first guard short-circuits anyway.
+                # K2 procd shim: only call disable if this is actually an
+                # rc.common script. CC1 installs a plain SysV script at
+                # the same /etc/init.d/helixscreen path and has no
+                # /etc/rc.common, so the first guard short-circuits there
+                # anyway.
                 if [ "$init_script" = "/etc/init.d/helixscreen" ] && \
                    [ -x /etc/rc.common ] && \
-                   awk 'NR==1 {exit !/\/etc\/rc\.common/}' "$init_script" 2>/dev/null; then
+                   is_rc_common_script "$init_script"; then
                     $SUDO "$init_script" disable 2>/dev/null || true
                     removed_procd_shim=true
                 fi
@@ -11529,9 +11634,10 @@ uninstall() {
         done
         # Belt-and-suspenders cleanup of rc.d symlinks, but only if we actually
         # removed a procd shim (avoid touching /etc/rc.d on platforms that
-        # don't use the procd boot iterator).
+        # don't use the procd boot iterator). Globbed across slots so a stale
+        # link in a different slot does not dangle beside the sweep.
         if [ "$removed_procd_shim" = "true" ]; then
-            $SUDO rm -f /etc/rc.d/S99helixscreen /etc/rc.d/K01helixscreen 2>/dev/null || true
+            $SUDO rm -f /etc/rc.d/S??helixscreen /etc/rc.d/K??helixscreen 2>/dev/null || true
         fi
     fi
 
@@ -12726,21 +12832,26 @@ main() {
     # already exists.
     configure_alsa_default || true
 
+    # K2: install the web-server carve-out's init script
+    # (prestonbrown/helixscreen#1617) BEFORE the service start, so the
+    # hook's first platform_stop_competing_uis finds the script and the
+    # procd instance is registered from the first launch. No-op off K2.
+    # The || guard keeps a carve-out failure non-fatal under set -eu: a
+    # supplementary backend must not abort the install — the function has
+    # already logged the fault and the manual fix.
+    install_k2_webserver_backend "$platform" ||
+        log_warn "Web-server carve-out incomplete; the UI install itself is fine"
+
     # Start service
     start_service "$platform"
 
-    # K2: install and start the web-server carve-out
-    # (prestonbrown/helixscreen#1617). Must follow start_service: the
-    # service start runs platform_stop_competing_uis, whose app stop+
-    # disable take the stock web-server down — the hook's own restore and
-    # this start both bring the carve-out back for the current session,
-    # and the hook keeps it across reboots and restarts. No-op off K2.
-    # The || guard keeps a carve-out failure non-fatal: we run under
-    # set -eu with the service already started, and a supplementary
-    # backend must not abort the install before cleanup_* runs — the
-    # function has already logged the error and the manual fix.
-    install_k2_webserver_backend "$platform" ||
-        log_warn "Web-server carve-out incomplete; the UI install itself is fine"
+    # K2: bring the carve-out up for this session. The service start just
+    # ran the hook, whose app stop (killall -9) took whatever web-server
+    # was live down; the hook's own restore, this start, and procd's
+    # respawn bring it back. Belt-and-braces for paths that bypass the
+    # hook. No-op off K2; non-fatal on the same || contract.
+    start_k2_webserver_backend "$platform" ||
+        log_warn "Web-server carve-out not started; the UI install itself is fine"
 
     cleanup_old_install
     cleanup_migrated_install

@@ -509,9 +509,9 @@ libc irrelevant.
 `K2_HOST` is mandatory for every deploy verb: the K2 has no mDNS, so the hostname does not
 resolve.
 
-procd only runs an init script that carries both `#!/bin/sh /etc/rc.common` and a `DEPEND`
-line. A bare SysV script is skipped silently and the device sits on the Creality logo, which
-is why the shim exists.
+procd only runs an init script that carries the `#!/bin/sh /etc/rc.common` shebang; a
+`DEPEND` line is optional for boot dispatch. A bare SysV script without the shebang is
+skipped silently and the device sits on the Creality logo, which is why the shim exists.
 
 ### Build & Deploy
 
