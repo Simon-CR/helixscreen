@@ -89,6 +89,36 @@ EOF
     ! grep -q '✓.*fixture patch' <<<"$output"
 }
 
+@test "a neither-branch patch whose marker is present reads as applied" {
+    # A sibling moved the context git compares, but the line the patch adds
+    # is in the file: this is the routine healthy state of a shared-file
+    # patch on a patched tree, and it must not print the warn a dead patch
+    # prints - operators would learn to skip it.
+    printf 'sha256\tpatch\tkind\tdir\tfile\tmarker\tlabel\tnote\n' > "$ROOT/markers.tsv"
+    printf 'x\tgood.patch\t+\tLVGL_DIR\tone.txt\tALPHA\tfixture patch\t\n' >> "$ROOT/markers.tsv"
+    printf 'one-moved-by-sibling\nALPHA\n' > "$SUB/one.txt"
+    HELIX_PATCH_MARKERS_TSV="$ROOT/markers.tsv" HELIX_MARKER_LVGL_DIR="$SUB" \
+        run "$HELPER" "$SUB" "$ROOT/patches/good.patch" "fixture patch"
+    [ "$status" -eq 0 ]
+    grep -q 'already applied' <<<"$output"
+    grep -q 'marker present' <<<"$output"
+    ! grep -q '⚠' <<<"$output"
+}
+
+@test "a neither-branch patch whose marker is absent says the effect is missing" {
+    # Same unreadable context, but the patch's line is not in the file: the
+    # warn must name what is wrong rather than hedge.
+    printf 'sha256\tpatch\tkind\tdir\tfile\tmarker\tlabel\tnote\n' > "$ROOT/markers.tsv"
+    printf 'x\tgood.patch\t+\tLVGL_DIR\tone.txt\tALPHA\tfixture patch\t\n' >> "$ROOT/markers.tsv"
+    printf 'one-moved-by-sibling\n' > "$SUB/one.txt"
+    HELIX_PATCH_MARKERS_TSV="$ROOT/markers.tsv" HELIX_MARKER_LVGL_DIR="$SUB" \
+        run "$HELPER" "$SUB" "$ROOT/patches/good.patch" "fixture patch"
+    [ "$status" -eq 0 ]
+    grep -q "marker is absent" <<<"$output"
+    grep -q 'reapply-patches' <<<"$output"
+    ! grep -q '✓' <<<"$output"
+}
+
 @test "a dead patch fails a from-clean run" {
     HELIX_PATCHES_FROM_CLEAN=1 run "$HELPER" "$SUB" "$ROOT/patches/dead.patch" "fixture patch"
     [ "$status" -eq 1 ]

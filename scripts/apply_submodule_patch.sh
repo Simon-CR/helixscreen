@@ -27,9 +27,17 @@
 # Usage: apply_submodule_patch.sh <submodule-dir> <patch-file> <label> [note]
 #
 # The optional note names the runtime consequence of building without the
-# patch. It is appended to the two verdicts that mean "this patch may be
-# missing" - the in-place warn and the from-clean fatal - never to the
+# patch. It is appended to the verdicts that mean "this patch may be
+# missing" - the marker-absent warn and the from-clean fatal - never to the
 # success lines.
+#
+# The neither-branch is triaged by the marker table: one line this patch
+# adds (or removes) that upstream never contained, grepped by
+# check_patch_markers.py --only. A present marker means the patch's effect
+# is in the checkout and a sibling merely moved the context git compares,
+# which is the routine case on shared files (seven patches touch
+# src/misc/lv_event.c); an absent marker means the effect is genuinely
+# missing; no row means no information and the verdict stays hedged.
 
 set -u
 
@@ -70,6 +78,19 @@ from_clean_verified() {
   [ -z "$(git_submodule status --porcelain 2>/dev/null)" ]
 }
 
+# Marker-table verdict for this one patch: 0 present, 1 absent, 2 unknown
+# (no row, no python, or no answer). Anything but a clean answer reads as
+# unknown to the caller.
+marker_state() {
+  local here
+  here=$(cd "$(dirname "$0")" && pwd) || return 2
+  python3 "$here/check_patch_markers.py" \
+    --tsv "${HELIX_PATCH_MARKERS_TSV:-$here/../mk/patch-markers.tsv}" \
+    --lvgl "${HELIX_MARKER_LVGL_DIR:-lib/lvgl}" \
+    --libhv "${HELIX_MARKER_LIBHV_DIR:-lib/libhv}" \
+    --only "$(basename "$patch_file")" >/dev/null 2>&1
+}
+
 if git_submodule apply --check "$patch_file" 2>/dev/null; then
   echo "${yellow}→ Applying ${label}...${reset}"
   if ! git_submodule apply "$patch_file"; then
@@ -84,5 +105,12 @@ elif [ "${HELIX_PATCHES_FROM_CLEAN:-0}" = "1" ] && from_clean_verified; then
   echo "${red}  Regenerate it: patches/README.md § \"Regenerating a patch whose file is shared\"${reset}" >&2
   exit 1
 else
-  echo "${yellow}⚠ ${label} is not verifiable in place: neither applies nor reverses (later patches may share its files).${note:+ $note} Run 'make reapply-patches' to judge it from a clean checkout${reset}"
+  marker_rc=0; marker_state || marker_rc=$?
+  if [ "$marker_rc" -eq 0 ]; then
+    echo "${green}✓ ${label} already applied${reset} (marker present; sibling patches moved the context git compares)"
+  elif [ "$marker_rc" -eq 1 ]; then
+    echo "${yellow}⚠ ${label}: its marker is absent from the checkout - the patch's effect is missing.${note:+ $note} Run 'make reapply-patches'${reset}"
+  else
+    echo "${yellow}⚠ ${label} is not verifiable in place: neither applies nor reverses (later patches may share its files).${note:+ $note} Run 'make reapply-patches' to judge it from a clean checkout${reset}"
+  fi
 fi

@@ -1028,7 +1028,9 @@ check), or report that it matches no reachable state of the submodule.
 **Status Messages**:
 - `✓ <label> applied` - Patch was applied during this build
 - `✓ <label> already applied` - Reverse check recognized it; the tree keeps it
-- `⚠ <label> is not verifiable in place` - Neither check passes on an already-patched tree; run `make reapply-patches` to judge from clean
+- `✓ <label> already applied (marker present; sibling patches moved the context git compares)` - Neither check passes, but the marker table confirms the patch's effect is in the checkout; the routine case on shared files
+- `⚠ <label>: its marker is absent from the checkout - the patch's effect is missing` - Neither check passes and the marker is gone; run `make reapply-patches`
+- `⚠ <label> is not verifiable in place` - Neither check passes and the marker table has no row for the patch, so the verdict stays hedged; run `make reapply-patches` to judge from clean
 - `⚠ <submodule> is not pristine, so this run cannot judge patches from clean` - `HELIX_PATCHES_FROM_CLEAN=1` was set but the submodule already carries changes (the state `make clean` leaves), so the fatal verdict is not available and every patch is judged in place; run `make reapply-patches` to reset and judge from clean
 - `✗ <label> does not apply to a clean checkout` - The patch and the submodule disagree, on a run verified to have started from pristine submodules; regenerate the patch
 - `✗ <patch> ... Its marker is missing from <file>` - The patch's one distinctive line is absent from the checkout, so the build stops before compiling against unpatched code; run `make reapply-patches`. The marker check is a text search that needs no git, so it also fires in docker builds rsynced from worktrees. Companion messages name a changed patch file (`make regen-patch-markers`) and a wired stanza with no marker row.
@@ -1671,7 +1673,7 @@ SDL2_LIBS := $(shell sdl2-config --libs)
 ### Patch Application Fails
 
 **Symptom**: `✗ <label> does not apply to a clean checkout` (from `make reapply-patches`),
-or `⚠ <label> is not verifiable in place` (from an incremental build)
+or `⚠ <label>: its marker is absent from the checkout` / `⚠ <label> is not verifiable in place` (from an incremental build)
 
 **Causes**:
 1. The patch drifted: a sibling patch moved the context it needs, and it

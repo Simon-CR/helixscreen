@@ -19,6 +19,11 @@ Three layers, each failing loudly:
 
 Both fixable states name their remedy: 'make reapply-patches' restores a
 missing patch, 'make regen-patch-markers' refreshes a stale table.
+
+`--only PATCH` answers the same presence question for a single patch and
+exits silently: 0 marker present, 1 absent, 2 no row. apply_submodule_patch.sh
+uses it to tell a healthy shared-file warn (context moved by a sibling, effect
+intact) from a dead one, which the three-way git verdict cannot do on its own.
 """
 import argparse
 import hashlib
@@ -57,10 +62,25 @@ def main():
     ap.add_argument("--libhv", default="lib/libhv")
     ap.add_argument("--list-files", action="store_true",
                     help="print the files the table reads, and exit")
+    ap.add_argument("--only", metavar="PATCH",
+                    help="judge one patch and exit: 0 marker present, 1 absent, 2 no row")
     args = ap.parse_args()
     dirs = {"LVGL_DIR": args.lvgl, "LIBHV_DIR": args.libhv}
 
     rows = read_table(args.tsv)
+    if args.only:
+        for row in rows:
+            if row["patch"] != args.only:
+                continue
+            target = f"{dirs[row['dir']]}/{row['file']}"
+            try:
+                with open(target, encoding="utf-8", errors="replace") as fh:
+                    content = fh.read()
+            except OSError:
+                # No target file: the marker cannot be in it.
+                return 1
+            return 0 if (row["marker"] in content) == (row["kind"] == "+") else 1
+        return 2
     if args.list_files:
         seen = set()
         for row in rows:
@@ -125,4 +145,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
