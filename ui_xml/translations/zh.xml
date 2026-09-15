@@ -30,6 +30,7 @@
   <translation tag="%zu events queued" zh="%zu 个事件已排队"/>
   <translation tag="%zu plugins failed to load" zh="%zu 个插件加载失败"/>
   <translation tag="&apos;{}&apos; already exists. Replace the stored mesh?" zh="&apos;{}&apos; 已存在。替换已保存的网格？"/>
+  <translation tag="&apos;{}&apos; and &apos;{}&apos; already exist. Replace the stored meshes?" zh="&apos;{}&apos; 和 &apos;{}&apos; 已存在。替换已保存的网格？"/>
   <translation tag="(different grade)" zh="（等级不同）"/>
   <translation tag="(incompatible)" zh="(不兼容)"/>
   <translation tag="(multi-tool)" zh="(多工具)"/>
@@ -650,6 +651,7 @@
   <translation tag="Could not read the screw adjustments from the printer" zh="无法从打印机读取螺丝调整数据"/>
   <translation tag="Could not resolve printer RFCOMM channel" zh="无法解析打印机 RFCOMM 通道"/>
   <translation tag="Could not save filament" zh="无法保存耗材"/>
+  <translation tag="Could not save the mesh as &apos;{}&apos;: {}" zh="无法将网格保存为 &apos;{}&apos;：{}"/>
   <translation tag="Could not start Bluetooth discovery" zh="无法启动蓝牙发现"/>
   <translation tag="Could not update filaments" zh="无法更新耗材"/>
   <translation tag="Could not verify Spoolman status. Moonraker may still be restarting." zh="无法验证 Spoolman 状态。Moonraker 可能仍在重启中。"/>
@@ -863,7 +865,6 @@
   <translation tag="Enter a multiplier between 0.5 and 2.0" zh="请输入 0.5 至 2.0 之间的倍率"/>
   <translation tag="Enter a name for this profile" zh="输入此配置的名称"/>
   <translation tag="Enter a name for your custom theme:" zh="输入自定义主题名称："/>
-  <translation tag="Enter a name to save this profile" zh="输入名称以保存此配置"/>
   <translation tag="Enter network name" zh="输入网络名称"/>
   <translation tag="Enter password" zh="输入密码"/>
   <translation tag="Enter printer IP address first" zh="请先输入打印机 IP 地址"/>
@@ -1010,7 +1011,6 @@
   <translation tag="Failed to save fan configuration" zh="保存风扇配置失败"/>
   <translation tag="Failed to save heater configuration" zh="保存加热器配置失败"/>
   <translation tag="Failed to save printer configuration" zh="保存打印机配置失败"/>
-  <translation tag="Failed to save profile" zh="保存配置文件失败"/>
   <translation tag="Failed to save setup completion" zh="保存设置完成状态失败"/>
   <translation tag="Failed to save spool" zh="保存料盘失败"/>
   <translation tag="Failed to save theme file" zh="保存主题文件失败"/>
@@ -1398,6 +1398,7 @@
   <translation tag="Klipper firmware has disconnected from the host. Try restarting Klipper or performing a firmware restart." zh="Klipper 固件已与主机断开连接。请尝试重启 Klipper 或执行固件重启。"/>
   <translation tag="Klipper has entered an error state. This is typically caused by an MCU connection failure or configuration error. Try a firmware restart." zh="Klipper 已进入错误状态。这通常是由 MCU 连接失败或配置错误引起的。请尝试固件重启。"/>
   <translation tag="Klipper has entered shutdown state. This may be due to an emergency stop, thermal runaway, or configuration error." zh="Klipper 已进入关机状态。这可能是由于紧急停止、热失控或配置错误引起的。"/>
+  <translation tag="Klipper reserves &apos;default&apos; for new calibrations. Choose another name." zh="Klipper 将 &apos;default&apos; 保留用于新的校准。请选择其他名称。"/>
   <translation tag="Klipper restarting - macros activating" zh="正在重启 Klipper - 正在启用宏"/>
   <translation tag="Klipper will restart to apply changes" zh="Klipper 将重启以应用更改"/>
   <translation tag="Klipper will restart to apply changes." zh="Klipper 将重启以应用更改。"/>
@@ -1595,7 +1596,6 @@
   <translation tag="Memory" zh="内存"/>
   <translation tag="Memory (MB)" zh="内存 (MB)"/>
   <translation tag="Memory Snapshot" zh="内存快照"/>
-  <translation tag="Mesh Complete" zh="网格完成"/>
   <translation tag="Mesh saved as &apos;{}&apos;" zh="网格已保存为 &apos;{}&apos;"/>
   <translation tag="Method" zh="方法"/>
   <translation tag="Min" zh="最小"/>
@@ -1728,6 +1728,7 @@
   <translation tag="No multi-filament system detected" zh="未检测到多耗材系统"/>
   <translation tag="No network. Scan QR code to report on your phone." zh="无网络。扫描二维码在手机上报告。"/>
   <translation tag="No networks found" zh="未找到网络"/>
+  <translation tag="No new mesh was stored as &apos;{}&apos;" zh="没有新的网格保存为 &apos;{}&apos;"/>
   <translation tag="No notifications" zh="无通知"/>
   <translation tag="No objects defined for this print" zh="此次打印未定义对象"/>
   <translation tag="No plugins" zh="无插件"/>
@@ -2083,6 +2084,7 @@
   <translation tag="Processing..." zh="处理中..."/>
   <translation tag="Profile deleted" zh="配置文件已删除"/>
   <translation tag="Profile name (e.g., default)" zh="配置名称（例如：default）"/>
+  <translation tag="Profile names cannot contain &apos;;&apos;" zh="配置名称不能包含 &apos;;&apos;"/>
   <translation tag="Profile renamed" zh="配置文件已重命名"/>
   <translation tag="Profiles" zh="配置"/>
   <translation tag="Progress, file, and time remaining" zh="进度、文件和剩余时间"/>
@@ -2194,7 +2196,6 @@
   <translation tag="Rename Mesh Profile" zh="重命名网格配置"/>
   <translation tag="Rename failed at load step" zh="重命名在加载步骤失败"/>
   <translation tag="Rename failed at remove step" zh="重命名在删除步骤失败"/>
-  <translation tag="Rename failed at save step" zh="重命名在保存步骤失败"/>
   <translation tag="Render Now" zh="立即渲染"/>
   <translation tag="Rendering timelapse..." zh="正在渲染延时摄影..."/>
   <translation tag="Replace" zh="替换"/>

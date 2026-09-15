@@ -568,6 +568,7 @@ helix::TemperatureController* get_temperature_controller() {
 namespace {
 std::function<void(const std::string&)> g_test_warning_hook;
 std::function<void(const std::string&)> g_test_error_hook;
+std::function<void(const std::string&)> g_test_success_hook;
 std::function<void(const std::string&)> g_test_info_hook;
 } // namespace
 
@@ -582,6 +583,9 @@ void set_test_notification_error_hook(std::function<void(const std::string&)> ho
 
 void set_test_notification_info_hook(std::function<void(const std::string&)> hook) {
     g_test_info_hook = std::move(hook);
+}
+void set_test_notification_success_hook(std::function<void(const std::string&)> hook) {
+    g_test_success_hook = std::move(hook);
 }
 } // namespace ui
 } // namespace helix
@@ -614,11 +618,17 @@ void ui_notification_info_with_action(const char* title, const char* message, co
 
 void ui_notification_success(const char* message) {
     spdlog::debug("[Test Stub] ui_notification_success: {}", message ? message : "(null)");
+    if (g_test_success_hook) {
+        g_test_success_hook(message ? message : "");
+    }
 }
 
 void ui_notification_success(const char* title, const char* message) {
     spdlog::debug("[Test Stub] ui_notification_success: {} - {}", title ? title : "(null)",
                   message ? message : "(null)");
+    if (g_test_success_hook) {
+        g_test_success_hook(message ? message : "");
+    }
 }
 
 void ui_notification_warning(const char* message) {

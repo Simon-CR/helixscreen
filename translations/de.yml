@@ -31,6 +31,7 @@ translations:
   '%zu events queued': '%zu Ereignisse in Warteschlange'
   '%zu plugins failed to load': '%zu Plugins konnten nicht geladen werden'
   "'{}' already exists. Replace the stored mesh?": "'{}' existiert bereits. Gespeichertes Netz ersetzen?"
+  "'{}' and '{}' already exist. Replace the stored meshes?": "'{}' und '{}' existieren bereits. Gespeicherte Netze ersetzen?"
   (different grade): (andere Klasse)
   (incompatible): (inkompatibel)
   (multi-tool): (Multi-Werkzeug)
@@ -739,6 +740,7 @@ translations:
   Could not resolve printer RFCOMM channel: RFCOMM-Kanal des Druckers konnte nicht
     ermittelt werden
   Could not save filament: Filament konnte nicht gespeichert werden
+  "Could not save the mesh as '{}': {}": "Netz konnte nicht als '{}' gespeichert werden: {}"
   Could not start Bluetooth discovery: Bluetooth-Erkennung konnte nicht gestartet
     werden
   Could not update filaments: Filamente konnten nicht aktualisiert werden
@@ -963,8 +965,6 @@ translations:
   Enter a name for this profile: "Geben Sie einen Namen für dieses Profil ein"
   'Enter a name for your custom theme:': 'Geben Sie einen Namen für Ihr benutzerdefiniertes
     Thema ein:'
-  Enter a name to save this profile: Geben Sie einen Namen ein, um dieses Profil zu
-    speichern
   Enter network name: Netzwerknamen eingeben
   Enter password: Passwort eingeben
   Enter printer IP address first: Zuerst Drucker-IP-Adresse eingeben
@@ -1130,7 +1130,6 @@ translations:
   Failed to save fan configuration: Lüfterkonfiguration speichern fehlgeschlagen
   Failed to save heater configuration: Heizungskonfiguration speichern fehlgeschlagen
   Failed to save printer configuration: Druckerkonfiguration speichern fehlgeschlagen
-  Failed to save profile: Profil speichern fehlgeschlagen
   Failed to save setup completion: Setup-Abschluss speichern fehlgeschlagen
   Failed to save spool: Spule konnte nicht gespeichert werden
   Failed to save theme file: Fehler beim Speichern der Thema-Datei
@@ -1572,6 +1571,7 @@ translations:
   Klipper has entered shutdown state. This may be due to an emergency stop, thermal runaway, or configuration error.: Klipper
     ist in den Shutdown-Zustand gewechselt. Dies kann auf einen Notaus, thermisches
     Durchgehen oder einen Konfigurationsfehler zurückzuführen sein.
+  Klipper reserves 'default' for new calibrations. Choose another name.: "Klipper reserviert 'default' für neue Kalibrierungen. Wählen Sie einen anderen Namen."
   Klipper restarting - macros activating: 'Klipper startet neu - Makros werden aktiviert'
   Klipper will restart to apply changes: Klipper wird neu starten, um Änderungen anzuwenden
   Klipper will restart to apply changes.: Klipper wird neu starten, um Änderungen
@@ -1783,7 +1783,6 @@ translations:
   Memory: Speicher
   Memory (MB): Speicher (MB)
   Memory Snapshot: Speicher-Momentaufnahme
-  Mesh Complete: Netz abgeschlossen
   Mesh saved as '{}': Netz gespeichert als '{}'
   Method: Methode
   Min: Min
@@ -1930,6 +1929,7 @@ translations:
   No network. Scan QR code to report on your phone.: Kein Netzwerk. QR-Code scannen,
     um auf dem Handy zu melden.
   No networks found: Keine Netzwerke gefunden
+  No new mesh was stored as '{}': "Kein neues Netz wurde als '{}' gespeichert"
   No notifications: Keine Benachrichtigungen
   No objects defined for this print: Keine Objekte für diesen Druck definiert
   No plugins: Keine Plugins
@@ -2319,6 +2319,7 @@ translations:
   Processing...: 'Wird verarbeitet...'
   Profile deleted: Profil gelöscht
   Profile name (e.g., default): Profilname (z.B. Standard)
+  Profile names cannot contain ';': "Profilnamen dürfen kein ';' enthalten"
   Profile renamed: Profil umbenannt
   Profiles: Profile
   Progress, file, and time remaining: Fortschritt, Datei und Restzeit
@@ -2438,7 +2439,6 @@ translations:
   Rename Mesh Profile: Netzprofil umbenennen
   Rename failed at load step: Umbenennung beim Laden fehlgeschlagen
   Rename failed at remove step: Umbenennung beim Entfernen fehlgeschlagen
-  Rename failed at save step: Umbenennung beim Speichern fehlgeschlagen
   Render Now: Jetzt rendern
   Rendering timelapse...: Zeitraffer wird gerendert...
   Replace: "Ersetzen"

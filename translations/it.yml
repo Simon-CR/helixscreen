@@ -30,6 +30,7 @@ translations:
   '%zu events queued': '%zu eventi in coda'
   '%zu plugins failed to load': Caricamento di %zu plugin non riuscito
   "'{}' already exists. Replace the stored mesh?": "'{}' esiste già. Sostituire la mesh salvata?"
+  "'{}' and '{}' already exist. Replace the stored meshes?": "'{}' e '{}' esistono già. Sostituire le mesh salvate?"
   (different grade): (grado diverso)
   (incompatible): (incompatibile)
   (multi-tool): (multi-utensile)
@@ -730,6 +731,7 @@ translations:
   Could not resolve printer RFCOMM channel: Impossibile risolvere il canale RFCOMM
     della stampante
   Could not save filament: Impossibile salvare il filamento
+  "Could not save the mesh as '{}': {}": "Impossibile salvare la mesh come '{}': {}"
   Could not start Bluetooth discovery: Impossibile avviare la ricerca Bluetooth
   Could not update filaments: Impossibile aggiornare i filamenti
   Could not verify Spoolman status. Moonraker may still be restarting.: Impossibile
@@ -954,7 +956,6 @@ translations:
   Enter a multiplier between 0.5 and 2.0: 'Inserisci un moltiplicatore tra 0.5 e 2.0'
   Enter a name for this profile: "Inserisci un nome per questo profilo"
   'Enter a name for your custom theme:': 'Inserisci un nome per il tuo tema personalizzato:'
-  Enter a name to save this profile: Inserisci un nome per salvare questo profilo
   Enter network name: Inserisci il nome della rete
   Enter password: Inserisci password
   Enter printer IP address first: Inserire prima l'indirizzo IP della stampante
@@ -1117,7 +1118,6 @@ translations:
   Failed to save fan configuration: Impossibile salvare configurazione ventola
   Failed to save heater configuration: Impossibile salvare configurazione riscaldatore
   Failed to save printer configuration: Impossibile salvare configurazione stampante
-  Failed to save profile: Impossibile salvare il profilo
   Failed to save setup completion: Impossibile salvare completamento configurazione
   Failed to save spool: Salvataggio bobina fallito
   Failed to save theme file: Salvataggio file tema fallito
@@ -1559,6 +1559,7 @@ translations:
   Klipper has entered shutdown state. This may be due to an emergency stop, thermal runaway, or configuration error.: Klipper
     è entrato in stato di arresto. Questo potrebbe essere dovuto a un arresto di emergenza,
     fuga termica o errore di configurazione.
+  Klipper reserves 'default' for new calibrations. Choose another name.: "Klipper riserva 'default' alle nuove calibrazioni. Scegli un altro nome."
   Klipper restarting - macros activating: 'Riavvio di Klipper - attivazione delle macro'
   Klipper will restart to apply changes: Klipper si riavvierà per applicare le modifiche
   Klipper will restart to apply changes.: Klipper si riavvierà per applicare le modifiche.
@@ -1772,7 +1773,6 @@ translations:
   Memory: Memoria
   Memory (MB): Memoria (MB)
   Memory Snapshot: Istantanea della memoria
-  Mesh Complete: Mesh completata
   Mesh saved as '{}': Mesh salvata come '{}'
   Method: Metodo
   Min: Min
@@ -1920,6 +1920,7 @@ translations:
   No network. Scan QR code to report on your phone.: Nessuna rete. Scansiona il QR
     code per segnalare dal telefono.
   No networks found: Nessuna rete trovata
+  No new mesh was stored as '{}': "Nessuna nuova mesh è stata salvata come '{}'"
   No notifications: Nessuna notifica
   No objects defined for this print: Nessun oggetto definito per questa stampa
   No plugins: Nessun plugin
@@ -2307,6 +2308,7 @@ translations:
   Processing...: 'Elaborazione in corso...'
   Profile deleted: Profilo eliminato
   Profile name (e.g., default): Nome profilo (es. default)
+  Profile names cannot contain ';': "I nomi dei profili non possono contenere ';'"
   Profile renamed: Profilo rinominato
   Profiles: Profili
   Progress, file, and time remaining: Avanzamento, file e tempo rimanente
@@ -2426,7 +2428,6 @@ translations:
   Rename Mesh Profile: Rinomina profilo mesh
   Rename failed at load step: Rinomina fallita al caricamento
   Rename failed at remove step: Rinomina fallita alla rimozione
-  Rename failed at save step: Rinomina fallita al salvataggio
   Render Now: Renderizza ora
   Rendering timelapse...: Rendering del timelapse...
   Replace: "Sostituisci"

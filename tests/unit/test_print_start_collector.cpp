@@ -3209,6 +3209,8 @@ class K1CPrintStartReplayFixture : public PrintStartCollectorHeaterFixture {
         // cleared at print start, so probe_count is the source, not
         // probed_matrix).
         client().set_config_bed_mesh_probe_count(5, 5);
+        // The mock starts with a probed mesh and answers the query with it.
+        client().gcode_script("BED_MESH_CLEAR");
     }
 
     bool have_profile_ = false;

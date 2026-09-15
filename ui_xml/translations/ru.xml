@@ -30,6 +30,7 @@
   <translation tag="%zu events queued" ru="%zu событий в очереди"/>
   <translation tag="%zu plugins failed to load" ru="Не удалось загрузить %zu плагинов"/>
   <translation tag="&apos;{}&apos; already exists. Replace the stored mesh?" ru="&apos;{}&apos; уже существует. Заменить сохранённую сетку?"/>
+  <translation tag="&apos;{}&apos; and &apos;{}&apos; already exist. Replace the stored meshes?" ru="&apos;{}&apos; и &apos;{}&apos; уже существуют. Заменить сохранённые сетки?"/>
   <translation tag="(different grade)" ru="(другая марка)"/>
   <translation tag="(incompatible)" ru="(несовместимо)"/>
   <translation tag="(multi-tool)" ru="(мультиинструмент)"/>
@@ -650,6 +651,7 @@
   <translation tag="Could not read the screw adjustments from the printer" ru="Не удалось получить данные регулировки винтов от принтера"/>
   <translation tag="Could not resolve printer RFCOMM channel" ru="Не удалось определить RFCOMM-канал принтера"/>
   <translation tag="Could not save filament" ru="Не удалось сохранить филамент"/>
+  <translation tag="Could not save the mesh as &apos;{}&apos;: {}" ru="Не удалось сохранить сетку как &apos;{}&apos;: {}"/>
   <translation tag="Could not start Bluetooth discovery" ru="Не удалось запустить поиск Bluetooth"/>
   <translation tag="Could not update filaments" ru="Не удалось обновить филаменты"/>
   <translation tag="Could not verify Spoolman status. Moonraker may still be restarting." ru="Не удалось проверить статус Spoolman. Moonraker может ещё перезапускаться."/>
@@ -863,7 +865,6 @@
   <translation tag="Enter a multiplier between 0.5 and 2.0" ru="Введите множитель от 0,5 до 2,0"/>
   <translation tag="Enter a name for this profile" ru="Введите имя для этого профиля"/>
   <translation tag="Enter a name for your custom theme:" ru="Введите название для вашей темы:"/>
-  <translation tag="Enter a name to save this profile" ru="Введите имя для сохранения профиля"/>
   <translation tag="Enter network name" ru="Введите имя сети"/>
   <translation tag="Enter password" ru="Введите пароль"/>
   <translation tag="Enter printer IP address first" ru="Сначала введите IP-адрес принтера"/>
@@ -1010,7 +1011,6 @@
   <translation tag="Failed to save fan configuration" ru="Не удалось сохранить настройки вентилятора"/>
   <translation tag="Failed to save heater configuration" ru="Не удалось сохранить настройки нагревателя"/>
   <translation tag="Failed to save printer configuration" ru="Не удалось сохранить настройки принтера"/>
-  <translation tag="Failed to save profile" ru="Не удалось сохранить профиль"/>
   <translation tag="Failed to save setup completion" ru="Не удалось сохранить завершение настройки"/>
   <translation tag="Failed to save spool" ru="Не удалось сохранить катушку"/>
   <translation tag="Failed to save theme file" ru="Не удалось сохранить файл темы"/>
@@ -1398,6 +1398,7 @@
   <translation tag="Klipper firmware has disconnected from the host. Try restarting Klipper or performing a firmware restart." ru="Прошивка Klipper отключилась от хоста. Попробуйте перезапустить Klipper или выполнить перезапуск прошивки."/>
   <translation tag="Klipper has entered an error state. This is typically caused by an MCU connection failure or configuration error. Try a firmware restart." ru="Klipper перешёл в состояние ошибки. Обычно это вызвано сбоем соединения MCU или ошибкой конфигурации. Попробуйте перезапустить прошивку."/>
   <translation tag="Klipper has entered shutdown state. This may be due to an emergency stop, thermal runaway, or configuration error." ru="Klipper перешёл в состояние остановки. Это может быть вызвано аварийной остановкой, тепловым разгоном или ошибкой конфигурации."/>
+  <translation tag="Klipper reserves &apos;default&apos; for new calibrations. Choose another name." ru="Klipper резервирует &apos;default&apos; для новых калибровок. Выберите другое имя."/>
   <translation tag="Klipper restarting - macros activating" ru="Перезапуск Klipper - активация макросов"/>
   <translation tag="Klipper will restart to apply changes" ru="Klipper перезапустится для применения изменений"/>
   <translation tag="Klipper will restart to apply changes." ru="Klipper перезапустится для применения изменений."/>
@@ -1595,7 +1596,6 @@
   <translation tag="Memory" ru="Память"/>
   <translation tag="Memory (MB)" ru="Память (МБ)"/>
   <translation tag="Memory Snapshot" ru="Снимок памяти"/>
-  <translation tag="Mesh Complete" ru="Сетка завершена"/>
   <translation tag="Mesh saved as &apos;{}&apos;" ru="Сетка сохранена как &apos;{}&apos;"/>
   <translation tag="Method" ru="Метод"/>
   <translation tag="Min" ru="Мин"/>
@@ -1728,6 +1728,7 @@
   <translation tag="No multi-filament system detected" ru="Мультифиламентная система не обнаружена"/>
   <translation tag="No network. Scan QR code to report on your phone." ru="Нет сети. Отсканируйте QR-код, чтобы отправить отчёт с телефона."/>
   <translation tag="No networks found" ru="Сети не найдены"/>
+  <translation tag="No new mesh was stored as &apos;{}&apos;" ru="Новая сетка не сохранена как &apos;{}&apos;"/>
   <translation tag="No notifications" ru="Нет уведомлений"/>
   <translation tag="No objects defined for this print" ru="Для этой печати не определены объекты"/>
   <translation tag="No plugins" ru="Нет плагинов"/>
@@ -2083,6 +2084,7 @@
   <translation tag="Processing..." ru="Обработка..."/>
   <translation tag="Profile deleted" ru="Профиль удалён"/>
   <translation tag="Profile name (e.g., default)" ru="Имя профиля (например, default)"/>
+  <translation tag="Profile names cannot contain &apos;;&apos;" ru="Имена профилей не могут содержать &apos;;&apos;"/>
   <translation tag="Profile renamed" ru="Профиль переименован"/>
   <translation tag="Profiles" ru="Профили"/>
   <translation tag="Progress, file, and time remaining" ru="Прогресс, файл и остаток времени"/>
@@ -2194,7 +2196,6 @@
   <translation tag="Rename Mesh Profile" ru="Переименовать профиль сетки"/>
   <translation tag="Rename failed at load step" ru="Ошибка переименования при загрузке"/>
   <translation tag="Rename failed at remove step" ru="Ошибка переименования при удалении"/>
-  <translation tag="Rename failed at save step" ru="Ошибка переименования при сохранении"/>
   <translation tag="Render Now" ru="Отрендерить сейчас"/>
   <translation tag="Rendering timelapse..." ru="Рендеринг таймлапса..."/>
   <translation tag="Replace" ru="Заменить"/>

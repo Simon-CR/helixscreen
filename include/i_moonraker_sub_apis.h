@@ -287,12 +287,17 @@ class IAdvancedAPI {
         /// Resolved gcode. May be multi-line — Klipper's gcode.script accepts it.
         std::string script;
 
-        /// The script prepares the probe itself, so probe_preparation must not
+        /// The script prepares the printer itself, so probe_preparation must not
         /// prepend its own. True for a printer-shipped sequence: those are
-        /// authored per machine and open with their own tare or wipe, and the
-        /// database's skip_if_macro_in cannot recognise them because they are
-        /// scripts rather than macro names.
+        /// authored per machine, and the database's skip_if_macro_in cannot
+        /// recognise them because they are scripts rather than macro names.
         bool self_prepares = false;
+
+        /// A sequence helixscreen ships for this printer, so every command in it
+        /// is meant to exist and an unknown one fails the calibration. Any other
+        /// script may call something the printer does not define; that is logged,
+        /// and the calibration is judged by what it stores.
+        bool shipped = false;
     };
 
     virtual void start_bed_mesh_calibrate(const BedMeshCommand& command,

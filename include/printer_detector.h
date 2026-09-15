@@ -404,17 +404,16 @@ class PrinterDetector {
     /**
      * @brief Printer-specific bed-mesh calibration gcode template
      *
-     * Some printers need pre-probe housekeeping that helixscreen can't express
-     * with a single macro slot — notably the Elegoo Centauri Carbon whose
-     * mainline-Klipper `[load_cell_probe]` requires `LOAD_CELL_SAVE_TARE` and
-     * a nozzle-wipe wrapper before `BED_MESH_CALIBRATE`. The database entry
-     * may supply a multi-line template under `calibration.bed_mesh_gcode`.
+     * For a printer whose firmware mesh macro takes parameters a bare macro slot
+     * cannot carry, or needs housekeeping helixscreen cannot infer. The database
+     * entry may supply a template, one line or several, under
+     * `calibration.bed_mesh_gcode`.
      *
      * Read through StandardMacros rather than directly: this feeds the SHIPPED
      * tier, so the user's own Settings override still outranks it and
-     * resolve_macro_script() handles the `{profile}` substitution.
+     * resolve_macro_script() substitutes its placeholders.
      *
-     * @return Template with `{profile}` placeholder, or empty string if the
+     * @return Template, possibly with placeholders, or empty string if the
      *         printer ships no sequence for this operation.
      */
     static std::string get_bed_mesh_calibrate_gcode(const std::string& printer_name);

@@ -31,6 +31,7 @@ translations:
   '%zu events queued': '%zu событий в очереди'
   '%zu plugins failed to load': Не удалось загрузить %zu плагинов
   "'{}' already exists. Replace the stored mesh?": "'{}' уже существует. Заменить сохранённую сетку?"
+  "'{}' and '{}' already exist. Replace the stored meshes?": "'{}' и '{}' уже существуют. Заменить сохранённые сетки?"
   (different grade): (другая марка)
   (incompatible): (несовместимо)
   (multi-tool): (мультиинструмент)
@@ -723,6 +724,7 @@ translations:
   Could not read the screw adjustments from the printer: Не удалось получить данные регулировки винтов от принтера
   Could not resolve printer RFCOMM channel: Не удалось определить RFCOMM-канал принтера
   Could not save filament: Не удалось сохранить филамент
+  "Could not save the mesh as '{}': {}": "Не удалось сохранить сетку как '{}': {}"
   Could not start Bluetooth discovery: Не удалось запустить поиск Bluetooth
   Could not update filaments: Не удалось обновить филаменты
   Could not verify Spoolman status. Moonraker may still be restarting.: Не удалось
@@ -945,7 +947,6 @@ translations:
   Enter a multiplier between 0.5 and 2.0: 'Введите множитель от 0,5 до 2,0'
   Enter a name for this profile: "Введите имя для этого профиля"
   'Enter a name for your custom theme:': 'Введите название для вашей темы:'
-  Enter a name to save this profile: Введите имя для сохранения профиля
   Enter network name: Введите имя сети
   Enter password: Введите пароль
   Enter printer IP address first: Сначала введите IP-адрес принтера
@@ -1104,7 +1105,6 @@ translations:
   Failed to save fan configuration: Не удалось сохранить настройки вентилятора
   Failed to save heater configuration: Не удалось сохранить настройки нагревателя
   Failed to save printer configuration: Не удалось сохранить настройки принтера
-  Failed to save profile: Не удалось сохранить профиль
   Failed to save setup completion: Не удалось сохранить завершение настройки
   Failed to save spool: Не удалось сохранить катушку
   Failed to save theme file: Не удалось сохранить файл темы
@@ -1543,6 +1543,7 @@ translations:
   Klipper has entered shutdown state. This may be due to an emergency stop, thermal runaway, or configuration error.: Klipper
     перешёл в состояние остановки. Это может быть вызвано аварийной остановкой, тепловым
     разгоном или ошибкой конфигурации.
+  Klipper reserves 'default' for new calibrations. Choose another name.: "Klipper резервирует 'default' для новых калибровок. Выберите другое имя."
   Klipper restarting - macros activating: 'Перезапуск Klipper - активация макросов'
   Klipper will restart to apply changes: Klipper перезапустится для применения изменений
   Klipper will restart to apply changes.: Klipper перезапустится для применения изменений.
@@ -1754,7 +1755,6 @@ translations:
   Memory: Память
   Memory (MB): Память (МБ)
   Memory Snapshot: Снимок памяти
-  Mesh Complete: Сетка завершена
   Mesh saved as '{}': Сетка сохранена как '{}'
   Method: Метод
   Min: Мин
@@ -1900,6 +1900,7 @@ translations:
   No network. Scan QR code to report on your phone.: Нет сети. Отсканируйте QR-код,
     чтобы отправить отчёт с телефона.
   No networks found: Сети не найдены
+  No new mesh was stored as '{}': "Новая сетка не сохранена как '{}'"
   No notifications: Нет уведомлений
   No objects defined for this print: Для этой печати не определены объекты
   No plugins: Нет плагинов
@@ -2285,6 +2286,7 @@ translations:
   Processing...: 'Обработка...'
   Profile deleted: Профиль удалён
   Profile name (e.g., default): Имя профиля (например, default)
+  Profile names cannot contain ';': "Имена профилей не могут содержать ';'"
   Profile renamed: Профиль переименован
   Profiles: Профили
   Progress, file, and time remaining: Прогресс, файл и остаток времени
@@ -2404,7 +2406,6 @@ translations:
   Rename Mesh Profile: Переименовать профиль сетки
   Rename failed at load step: Ошибка переименования при загрузке
   Rename failed at remove step: Ошибка переименования при удалении
-  Rename failed at save step: Ошибка переименования при сохранении
   Render Now: Отрендерить сейчас
   Rendering timelapse...: Рендеринг таймлапса...
   Replace: "Заменить"

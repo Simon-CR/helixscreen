@@ -30,6 +30,7 @@ translations:
   '%zu events queued': '%zu events queued'
   '%zu plugins failed to load': '%zu plugins failed to load'
   "'{}' already exists. Replace the stored mesh?": "'{}' already exists. Replace the stored mesh?"
+  "'{}' and '{}' already exist. Replace the stored meshes?": "'{}' and '{}' already exist. Replace the stored meshes?"
   (different grade): (different grade)
   (incompatible): (incompatible)
   (multi-tool): (multi-tool)
@@ -711,6 +712,7 @@ translations:
   Could not read the screw adjustments from the printer: Could not read the screw adjustments from the printer
   Could not resolve printer RFCOMM channel: Could not resolve printer RFCOMM channel
   Could not save filament: Could not save filament
+  "Could not save the mesh as '{}': {}": "Could not save the mesh as '{}': {}"
   Could not start Bluetooth discovery: Could not start Bluetooth discovery
   Could not update filaments: Could not update filaments
   Could not verify Spoolman status. Moonraker may still be restarting.: Could not
@@ -931,7 +933,6 @@ translations:
   Enter a multiplier between 0.5 and 2.0: Enter a multiplier between 0.5 and 2.0
   Enter a name for this profile: Enter a name for this profile
   'Enter a name for your custom theme:': 'Enter a name for your custom theme:'
-  Enter a name to save this profile: Enter a name to save this profile
   Enter network name: Enter network name
   Enter password: Enter password
   Enter printer IP address first: Enter printer IP address first
@@ -1089,7 +1090,6 @@ translations:
   Failed to save fan configuration: Failed to save fan configuration
   Failed to save heater configuration: Failed to save heater configuration
   Failed to save printer configuration: Failed to save printer configuration
-  Failed to save profile: Failed to save profile
   Failed to save setup completion: Failed to save setup completion
   Failed to save spool: Failed to save spool
   Failed to save theme file: Failed to save theme file
@@ -1526,6 +1526,7 @@ translations:
   Klipper has entered shutdown state. This may be due to an emergency stop, thermal runaway, or configuration error.: Klipper
     has entered shutdown state. This may be due to an emergency stop, thermal runaway,
     or configuration error.
+  Klipper reserves 'default' for new calibrations. Choose another name.: Klipper reserves 'default' for new calibrations. Choose another name.
   Klipper restarting - macros activating: Klipper restarting - macros activating
   Klipper will restart to apply changes: Klipper will restart to apply changes
   Klipper will restart to apply changes.: Klipper will restart to apply changes.
@@ -1732,7 +1733,6 @@ translations:
   Memory: Memory
   Memory (MB): Memory (MB)
   Memory Snapshot: Memory Snapshot
-  Mesh Complete: Mesh Complete
   Mesh saved as '{}': Mesh saved as '{}'
   Method: Method
   Min: Min
@@ -1879,6 +1879,7 @@ translations:
   No network. Scan QR code to report on your phone.: No network. Scan QR code to report
     on your phone.
   No networks found: No networks found
+  No new mesh was stored as '{}': No new mesh was stored as '{}'
   No notifications: No notifications
   No objects defined for this print: No objects defined for this print
   No plugins: No plugins
@@ -2261,6 +2262,7 @@ translations:
   Processing...: Processing...
   Profile deleted: Profile deleted
   Profile name (e.g., default): Profile name (e.g., default)
+  Profile names cannot contain ';': Profile names cannot contain ';'
   Profile renamed: Profile renamed
   Profiles: Profiles
   Progress, file, and time remaining: Progress, file, and time remaining
@@ -2380,7 +2382,6 @@ translations:
   Rename Mesh Profile: Rename Mesh Profile
   Rename failed at load step: Rename failed at load step
   Rename failed at remove step: Rename failed at remove step
-  Rename failed at save step: Rename failed at save step
   Render Now: Render Now
   Rendering timelapse...: Rendering timelapse...
   Replace: Replace

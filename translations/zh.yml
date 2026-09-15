@@ -30,6 +30,7 @@ translations:
   '%zu events queued': '%zu 个事件已排队'
   '%zu plugins failed to load': '%zu 个插件加载失败'
   "'{}' already exists. Replace the stored mesh?": "'{}' 已存在。替换已保存的网格？"
+  "'{}' and '{}' already exist. Replace the stored meshes?": "'{}' 和 '{}' 已存在。替换已保存的网格？"
   (different grade): （等级不同）
   (incompatible): (不兼容)
   (multi-tool): (多工具)
@@ -659,6 +660,7 @@ translations:
   Could not read the screw adjustments from the printer: 无法从打印机读取螺丝调整数据
   Could not resolve printer RFCOMM channel: 无法解析打印机 RFCOMM 通道
   Could not save filament: 无法保存耗材
+  "Could not save the mesh as '{}': {}": "无法将网格保存为 '{}'：{}"
   Could not start Bluetooth discovery: 无法启动蓝牙发现
   Could not update filaments: 无法更新耗材
   Could not verify Spoolman status. Moonraker may still be restarting.: 无法验证 Spoolman
@@ -875,7 +877,6 @@ translations:
   Enter a multiplier between 0.5 and 2.0: '请输入 0.5 至 2.0 之间的倍率'
   Enter a name for this profile: "输入此配置的名称"
   'Enter a name for your custom theme:': 输入自定义主题名称：
-  Enter a name to save this profile: 输入名称以保存此配置
   Enter network name: 输入网络名称
   Enter password: 输入密码
   Enter printer IP address first: 请先输入打印机 IP 地址
@@ -1024,7 +1025,6 @@ translations:
   Failed to save fan configuration: 保存风扇配置失败
   Failed to save heater configuration: 保存加热器配置失败
   Failed to save printer configuration: 保存打印机配置失败
-  Failed to save profile: 保存配置文件失败
   Failed to save setup completion: 保存设置完成状态失败
   Failed to save spool: 保存料盘失败
   Failed to save theme file: 保存主题文件失败
@@ -1433,6 +1433,7 @@ translations:
   : Klipper 已进入错误状态。这通常是由 MCU 连接失败或配置错误引起的。请尝试固件重启。
   Klipper has entered shutdown state. This may be due to an emergency stop, thermal runaway, or configuration error.: Klipper
     已进入关机状态。这可能是由于紧急停止、热失控或配置错误引起的。
+  Klipper reserves 'default' for new calibrations. Choose another name.: "Klipper 将 'default' 保留用于新的校准。请选择其他名称。"
   Klipper restarting - macros activating: '正在重启 Klipper - 正在启用宏'
   Klipper will restart to apply changes: Klipper 将重启以应用更改
   Klipper will restart to apply changes.: Klipper 将重启以应用更改。
@@ -1631,7 +1632,6 @@ translations:
   Memory: 内存
   Memory (MB): 内存 (MB)
   Memory Snapshot: 内存快照
-  Mesh Complete: 网格完成
   Mesh saved as '{}': 网格已保存为 '{}'
   Method: 方法
   Min: 最小
@@ -1769,6 +1769,7 @@ translations:
   No multi-filament system detected: 未检测到多耗材系统
   No network. Scan QR code to report on your phone.: 无网络。扫描二维码在手机上报告。
   No networks found: 未找到网络
+  No new mesh was stored as '{}': "没有新的网格保存为 '{}'"
   No notifications: 无通知
   No objects defined for this print: 此次打印未定义对象
   No plugins: 无插件
@@ -2136,6 +2137,7 @@ translations:
   Processing...: '处理中...'
   Profile deleted: 配置文件已删除
   Profile name (e.g., default): 配置名称（例如：default）
+  Profile names cannot contain ';': "配置名称不能包含 ';'"
   Profile renamed: 配置文件已重命名
   Profiles: 配置
   Progress, file, and time remaining: 进度、文件和剩余时间
@@ -2248,7 +2250,6 @@ translations:
   Rename Mesh Profile: 重命名网格配置
   Rename failed at load step: 重命名在加载步骤失败
   Rename failed at remove step: 重命名在删除步骤失败
-  Rename failed at save step: 重命名在保存步骤失败
   Render Now: 立即渲染
   Rendering timelapse...: 正在渲染延时摄影...
   Replace: "替换"

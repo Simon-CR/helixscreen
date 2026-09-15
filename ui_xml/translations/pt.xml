@@ -30,6 +30,7 @@
   <translation tag="%zu events queued" pt="%zu eventos na fila"/>
   <translation tag="%zu plugins failed to load" pt="%zu plugins falharam ao carregar"/>
   <translation tag="&apos;{}&apos; already exists. Replace the stored mesh?" pt="&apos;{}&apos; já existe. Substituir a malha salva?"/>
+  <translation tag="&apos;{}&apos; and &apos;{}&apos; already exist. Replace the stored meshes?" pt="&apos;{}&apos; e &apos;{}&apos; já existem. Substituir as malhas salvas?"/>
   <translation tag="(different grade)" pt="(grau diferente)"/>
   <translation tag="(incompatible)" pt="(incompatível)"/>
   <translation tag="(multi-tool)" pt="(multiferramenta)"/>
@@ -650,6 +651,7 @@
   <translation tag="Could not read the screw adjustments from the printer" pt="Não foi possível ler os ajustes dos parafusos da impressora"/>
   <translation tag="Could not resolve printer RFCOMM channel" pt="Não foi possível resolver o canal RFCOMM da impressora"/>
   <translation tag="Could not save filament" pt="Não foi possível salvar o filamento"/>
+  <translation tag="Could not save the mesh as &apos;{}&apos;: {}" pt="Não foi possível salvar a malha como &apos;{}&apos;: {}"/>
   <translation tag="Could not start Bluetooth discovery" pt="Não foi possível iniciar a descoberta Bluetooth"/>
   <translation tag="Could not update filaments" pt="Não foi possível atualizar os filamentos"/>
   <translation tag="Could not verify Spoolman status. Moonraker may still be restarting." pt="Não foi possível verificar o status do Spoolman. O Moonraker pode ainda estar reiniciando."/>
@@ -863,7 +865,6 @@
   <translation tag="Enter a multiplier between 0.5 and 2.0" pt="Insira um multiplicador entre 0.5 e 2.0"/>
   <translation tag="Enter a name for this profile" pt="Digite um nome para este perfil"/>
   <translation tag="Enter a name for your custom theme:" pt="Digite um nome para seu tema personalizado:"/>
-  <translation tag="Enter a name to save this profile" pt="Digite um nome para salvar este perfil"/>
   <translation tag="Enter network name" pt="Digite o nome da rede"/>
   <translation tag="Enter password" pt="Digite a senha"/>
   <translation tag="Enter printer IP address first" pt="Insira o endereço IP da impressora primeiro"/>
@@ -1010,7 +1011,6 @@
   <translation tag="Failed to save fan configuration" pt="Falha ao salvar configuração da ventoinha"/>
   <translation tag="Failed to save heater configuration" pt="Falha ao salvar configuração do aquecedor"/>
   <translation tag="Failed to save printer configuration" pt="Falha ao salvar configuração da impressora"/>
-  <translation tag="Failed to save profile" pt="Falha ao salvar perfil"/>
   <translation tag="Failed to save setup completion" pt="Falha ao salvar conclusão da configuração"/>
   <translation tag="Failed to save spool" pt="Falha ao salvar carretel"/>
   <translation tag="Failed to save theme file" pt="Falha ao salvar arquivo do tema"/>
@@ -1398,6 +1398,7 @@
   <translation tag="Klipper firmware has disconnected from the host. Try restarting Klipper or performing a firmware restart." pt="O firmware Klipper desconectou do host. Tente reiniciar o Klipper ou realizar um firmware restart."/>
   <translation tag="Klipper has entered an error state. This is typically caused by an MCU connection failure or configuration error. Try a firmware restart." pt="Klipper entrou em estado de erro. Isto é geralmente causado por uma falha de conexão do MCU ou erro de configuração. Tente um firmware restart."/>
   <translation tag="Klipper has entered shutdown state. This may be due to an emergency stop, thermal runaway, or configuration error." pt="O Klipper entrou em estado de desligamento. Isso pode ser devido a uma parada de emergência, fuga térmica ou erro de configuração."/>
+  <translation tag="Klipper reserves &apos;default&apos; for new calibrations. Choose another name." pt="O Klipper reserva &apos;default&apos; para novas calibrações. Escolha outro nome."/>
   <translation tag="Klipper restarting - macros activating" pt="Reiniciando o Klipper - ativando macros"/>
   <translation tag="Klipper will restart to apply changes" pt="O Klipper será reiniciado para aplicar as alterações"/>
   <translation tag="Klipper will restart to apply changes." pt="O Klipper será reiniciado para aplicar as alterações."/>
@@ -1595,7 +1596,6 @@
   <translation tag="Memory" pt="Memória"/>
   <translation tag="Memory (MB)" pt="Memória (MB)"/>
   <translation tag="Memory Snapshot" pt="Captura de Memória"/>
-  <translation tag="Mesh Complete" pt="Malha Concluída"/>
   <translation tag="Mesh saved as &apos;{}&apos;" pt="Malha salva como &apos;{}&apos;"/>
   <translation tag="Method" pt="Método"/>
   <translation tag="Min" pt="Mín"/>
@@ -1728,6 +1728,7 @@
   <translation tag="No multi-filament system detected" pt="Nenhum sistema multifilamento detectado"/>
   <translation tag="No network. Scan QR code to report on your phone." pt="Sem rede. Escaneie o QR code para reportar pelo celular."/>
   <translation tag="No networks found" pt="Nenhuma rede encontrada"/>
+  <translation tag="No new mesh was stored as &apos;{}&apos;" pt="Nenhuma malha nova foi salva como &apos;{}&apos;"/>
   <translation tag="No notifications" pt="Sem notificações"/>
   <translation tag="No objects defined for this print" pt="Nenhum objeto definido para esta impressão"/>
   <translation tag="No plugins" pt="Sem plugins"/>
@@ -2083,6 +2084,7 @@
   <translation tag="Processing..." pt="Processando..."/>
   <translation tag="Profile deleted" pt="Perfil excluído"/>
   <translation tag="Profile name (e.g., default)" pt="Nome do perfil (ex.: padrão)"/>
+  <translation tag="Profile names cannot contain &apos;;&apos;" pt="Os nomes de perfil não podem conter &apos;;&apos;"/>
   <translation tag="Profile renamed" pt="Perfil renomeado"/>
   <translation tag="Profiles" pt="Perfis"/>
   <translation tag="Progress, file, and time remaining" pt="Progresso, arquivo e tempo restante"/>
@@ -2194,7 +2196,6 @@
   <translation tag="Rename Mesh Profile" pt="Renomear Perfil de Malha"/>
   <translation tag="Rename failed at load step" pt="Falha ao renomear na etapa de carga"/>
   <translation tag="Rename failed at remove step" pt="Falha ao renomear na etapa de remoção"/>
-  <translation tag="Rename failed at save step" pt="Falha ao renomear na etapa de salvamento"/>
   <translation tag="Render Now" pt="Renderizar Agora"/>
   <translation tag="Rendering timelapse..." pt="Renderizando timelapse..."/>
   <translation tag="Replace" pt="Substituir"/>

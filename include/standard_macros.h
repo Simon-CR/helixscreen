@@ -20,6 +20,7 @@
 
 #include "ui_observer_guard.h" // SubjectLifetime
 
+#include "bed_mesh_probe_temp.h"
 #include "subject_managed_panel.h" // SubjectManager
 
 #include <functional>
@@ -90,12 +91,12 @@ struct StandardMacroInfo {
      *
      * Outranks detection because it is hand-authored for one machine and
      * detection is not: detection matches a name and stops, with no way to know
-     * that an Elegoo Centauri Carbon must tare its load cell and run the vendor
-     * wipe wrapper before the mesh means anything.
+     * which parameters that machine's macro needs or what it already prepares.
      *
      * Unlike the other three this may be a multi-line SCRIPT rather than a macro
      * name — printers need a sequence more often than they need a rename. It may
-     * contain `{profile}`; resolve_macro() substitutes it.
+     * contain the placeholders MacroScriptValues names; resolve_macro_script()
+     * substitutes them.
      */
     std::string shipped_macro;
 
@@ -185,16 +186,34 @@ struct StandardMacroInfo {
 
 namespace helix {
 
+/// Values a shipped sequence may reference by placeholder.
+struct MacroScriptValues {
+    /// Replaces `{profile_arg}`: the bed mesh profile argument with its leading
+    /// space (` PROFILE=cold`), or empty to leave the firmware's default profile.
+    std::string profile_arg;
+
+    /// Replaces `{bed_temp}`, in whole degrees C: the bed temperature to probe at.
+    int bed_temp_c = bed_mesh::DEFAULT_PROBE_BED_TEMP_C;
+};
+
 /// A slot resolved into something runnable.
 struct ResolvedMacroScript {
-    /// The winning macro name or sequence, with `{profile}` substituted.
+    /// The winning macro name or sequence, with its placeholders substituted.
     std::string script;
 
     /// The script prepares the machine itself, so a caller that would otherwise
-    /// prepend preparation gcode must not. True only for the shipped tier: those
-    /// sequences are authored per machine and open with their own tare or wipe,
-    /// and the database's name-based skip rules cannot recognise a script.
+    /// heat, home or prepend preparation gcode must not. True only for the
+    /// shipped tier: those sequences are authored per machine, and the
+    /// database's name-based skip rules cannot recognise a script.
     bool self_prepares = false;
+
+    /// The script marks where a profile argument goes, so whatever it stores lands
+    /// in the profile the caller named.
+    bool takes_profile_arg = false;
+
+    /// The shipped tier won: a sequence authored for this printer, every command of
+    /// which is meant to exist.
+    bool shipped = false;
 };
 
 /**
@@ -202,11 +221,11 @@ struct ResolvedMacroScript {
  *
  * The priority is StandardMacroInfo::get_macro()'s; this adds the two things a
  * caller would otherwise open-code, and get subtly different from the next
- * caller: substituting `{profile}`, and deciding whether the winner brings its
+ * caller: substituting placeholders, and deciding whether the winner brings its
  * own preparation.
  *
  * @param info    The slot to resolve.
- * @param profile Replaces `{profile}` wherever it appears.
+ * @param values  What each placeholder is replaced with, wherever it appears.
  * @param accept_fallback Whether the HELIX_* fallback tier may win. Pass false
  *        from a caller whose operation must happen unconditionally: the
  *        fallbacks are "if needed" macros (HELIX_BED_MESH_IF_NEEDED reports
@@ -214,7 +233,7 @@ struct ResolvedMacroScript {
  *        print start and wrong for a button that means "do it now".
  */
 [[nodiscard]] ResolvedMacroScript resolve_macro_script(const StandardMacroInfo& info,
-                                                       const std::string& profile,
+                                                       const helix::MacroScriptValues& values,
                                                        bool accept_fallback = true);
 
 } // namespace helix

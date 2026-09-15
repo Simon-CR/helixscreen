@@ -74,6 +74,12 @@ void register_print_handlers(std::unordered_map<std::string, MethodHandler>& reg
             line_start = nl + 1;
         }
 
+        // Test injection: a console line the script produced, delivered before the
+        // RPC answers as Klipper's own replies are.
+        if (auto reply = self->take_forced_console_reply(script)) {
+            self->dispatch_gcode_response(*reply);
+        }
+
         // Test injection: simulate a response that never comes back at all (Klippy
         // restarted, connection stalled). Klipper still processed the gcode above;
         // NEITHER callback fires, so any caller-side in-flight counter stays pinned.

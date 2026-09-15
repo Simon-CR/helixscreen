@@ -31,6 +31,7 @@ translations:
   '%zu events queued': '%zu événements en file'
   '%zu plugins failed to load': '%zu plugins n''ont pas pu se charger'
   "'{}' already exists. Replace the stored mesh?": "'{}' existe déjà. Remplacer le maillage enregistré ?"
+  "'{}' and '{}' already exist. Replace the stored meshes?": "'{}' et '{}' existent déjà. Remplacer les maillages enregistrés ?"
   (different grade): (grade différent)
   (incompatible): (incompatible)
   (multi-tool): (multi-outils)
@@ -741,6 +742,7 @@ translations:
   Could not resolve printer RFCOMM channel: Impossible de résoudre le canal RFCOMM
     de l'imprimante
   Could not save filament: 'Impossible d''enregistrer le filament'
+  "Could not save the mesh as '{}': {}": "Impossible d'enregistrer le maillage sous '{}' : {}"
   Could not start Bluetooth discovery: Impossible de démarrer la découverte Bluetooth
   Could not update filaments: Impossible de mettre à jour les filaments
   Could not verify Spoolman status. Moonraker may still be restarting.: Impossible
@@ -967,7 +969,6 @@ translations:
   Enter a name for this profile: "Entrez un nom pour ce profil"
   'Enter a name for your custom theme:': 'Entrez un nom pour votre thème personnalisé
     :'
-  Enter a name to save this profile: Entrez un nom pour enregistrer ce profil
   Enter network name: Saisir le nom du réseau
   Enter password: Entrez le mot de passe
   Enter printer IP address first: Entrez d'abord l'adresse IP de l'imprimante
@@ -1136,7 +1137,6 @@ translations:
     chauffage
   Failed to save printer configuration: Échec de l'enregistrement de la configuration
     imprimante
-  Failed to save profile: Échec de l'enregistrement du profil
   Failed to save setup completion: Échec de l'enregistrement de la fin de configuration
   Failed to save spool: Échec de l'enregistrement de la bobine
   Failed to save theme file: Échec de l'enregistrement du fichier de thème
@@ -1576,6 +1576,7 @@ translations:
   Klipper has entered shutdown state. This may be due to an emergency stop, thermal runaway, or configuration error.: Klipper
     est passé en état d'arrêt. Cela peut être dû à un arrêt d'urgence, à un emballement
     thermique ou à une erreur de configuration.
+  Klipper reserves 'default' for new calibrations. Choose another name.: "Klipper réserve 'default' aux nouvelles calibrations. Choisissez un autre nom."
   Klipper restarting - macros activating: 'Redémarrage de Klipper - activation des macros'
   Klipper will restart to apply changes: Klipper redémarrera pour appliquer les modifications
   Klipper will restart to apply changes.: Klipper redémarrera pour appliquer les modifications.
@@ -1789,7 +1790,6 @@ translations:
   Memory: Mémoire
   Memory (MB): Mémoire (Mo)
   Memory Snapshot: Instantané de la mémoire
-  Mesh Complete: Maillage du plateau terminé
   Mesh saved as '{}': Maillage enregistré sous '{}'
   Method: Méthode
   Min: Min
@@ -1937,6 +1937,7 @@ translations:
   No network. Scan QR code to report on your phone.: Pas de réseau. Scannez le QR
     code pour signaler depuis votre téléphone.
   No networks found: Aucun réseau trouvé
+  No new mesh was stored as '{}': "Aucun nouveau maillage n'a été enregistré sous '{}'"
   No notifications: Aucune notification
   No objects defined for this print: Aucun objet défini pour cette impression
   No plugins: Aucun plugin
@@ -2329,6 +2330,7 @@ translations:
   Processing...: 'Traitement...'
   Profile deleted: Profil supprimé
   Profile name (e.g., default): 'Nom du profil (ex : default)'
+  Profile names cannot contain ';': "Les noms de profil ne peuvent pas contenir ';'"
   Profile renamed: Profil renommé
   Profiles: Profils
   Progress, file, and time remaining: Progression, fichier et temps restant
@@ -2450,7 +2452,6 @@ translations:
   Rename Mesh Profile: Renommer le profil de maillage du plateau
   Rename failed at load step: Échec du renommage à l'étape de chargement
   Rename failed at remove step: Échec du renommage à l'étape de suppression
-  Rename failed at save step: Échec du renommage à l'étape d'enregistrement
   Render Now: Rendre maintenant
   Rendering timelapse...: Rendu du timelapse...
   Replace: "Remplacer"

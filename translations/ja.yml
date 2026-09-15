@@ -30,6 +30,7 @@ translations:
   '%zu events queued': '%zu 件のイベントを待機中'
   '%zu plugins failed to load': '%zu 個のプラグインの読み込みに失敗しました'
   "'{}' already exists. Replace the stored mesh?": "'{}' は既に存在します。保存されたメッシュを置き換えますか？"
+  "'{}' and '{}' already exist. Replace the stored meshes?": "'{}' と '{}' は既に存在します。保存されたメッシュを置き換えますか？"
   (different grade): (グレード違い)
   (incompatible): (非対応)
   (multi-tool): (マルチツール)
@@ -663,6 +664,7 @@ translations:
   Could not read the screw adjustments from the printer: プリンターからネジ調整を読み取れませんでした
   Could not resolve printer RFCOMM channel: プリンターの RFCOMM チャンネルを解決できませんでした
   Could not save filament: フィラメントを保存できませんでした
+  "Could not save the mesh as '{}': {}": "メッシュを '{}' として保存できませんでした: {}"
   Could not start Bluetooth discovery: Bluetooth の検出を開始できませんでした
   Could not update filaments: フィラメントを更新できませんでした
   Could not verify Spoolman status. Moonraker may still be restarting.: Spoolman のステータスを確認できませんでした。Moonraker
@@ -881,7 +883,6 @@ translations:
   Enter a multiplier between 0.5 and 2.0: '倍率は 0.5〜2.0 にしてください'
   Enter a name for this profile: "このプロファイルの名前を入力"
   'Enter a name for your custom theme:': 'カスタムテーマの名前を入力してください:'
-  Enter a name to save this profile: このプロファイルを保存する名前を入力
   Enter network name: ネットワーク名を入力
   Enter password: パスワードを入力
   Enter printer IP address first: 先にプリンターのIPアドレスを入力してください
@@ -1030,7 +1031,6 @@ translations:
   Failed to save fan configuration: ファン設定の保存に失敗しました
   Failed to save heater configuration: ヒーター設定の保存に失敗しました
   Failed to save printer configuration: プリンター設定の保存に失敗しました
-  Failed to save profile: プロファイルの保存に失敗しました
   Failed to save setup completion: セットアップ完了の保存に失敗しました
   Failed to save spool: スプールの保存に失敗しました
   Failed to save theme file: テーマファイルの保存に失敗しました
@@ -1439,6 +1439,7 @@ translations:
   : Klipper がエラー状態になりました。これは通常、MCU 接続の失敗または設定エラーが原因です。ファームウェア再起動を試してください。
   Klipper has entered shutdown state. This may be due to an emergency stop, thermal runaway, or configuration error.: Klipper
     がシャットダウン状態になりました。緊急停止、熱暴走、または設定エラーが原因の可能性があります。
+  Klipper reserves 'default' for new calibrations. Choose another name.: "Klipper は 'default' を新しいキャリブレーション用に予約しています。別の名前を選んでください。"
   Klipper restarting - macros activating: 'Klipper を再起動しています - マクロを有効化中'
   Klipper will restart to apply changes: 変更を適用するために Klipper が再起動します
   Klipper will restart to apply changes.: 変更を適用するために Klipper が再起動します。
@@ -1638,7 +1639,6 @@ translations:
   Memory: メモリ
   Memory (MB): メモリ (MB)
   Memory Snapshot: メモリースナップショット
-  Mesh Complete: メッシュ完了
   Mesh saved as '{}': '"メッシュを ''{}'' として保存しました"'
   Method: 方法
   Min: 最小
@@ -1777,6 +1777,7 @@ translations:
   No multi-filament system detected: マルチフィラメントシステムが検出されません
   No network. Scan QR code to report on your phone.: ネットワークなし。QR コードをスキャンしてスマホから報告してください。
   No networks found: ネットワークが見つかりません
+  No new mesh was stored as '{}': "新しいメッシュは '{}' として保存されませんでした"
   No notifications: 通知なし
   No objects defined for this print: この印刷にはオブジェクトが定義されていません
   No plugins: プラグインなし
@@ -2145,6 +2146,7 @@ translations:
   Processing...: '処理中...'
   Profile deleted: プロファイルを削除しました
   Profile name (e.g., default): 'プロファイル名（例: default）'
+  Profile names cannot contain ';': "プロファイル名に ';' は使用できません"
   Profile renamed: プロファイル名を変更しました
   Profiles: プロファイル
   Progress, file, and time remaining: 進行状況、ファイル、残り時間
@@ -2257,7 +2259,6 @@ translations:
   Rename Mesh Profile: メッシュプロファイルの名前を変更
   Rename failed at load step: 名前変更が読込ステップで失敗しました
   Rename failed at remove step: 名前変更が削除ステップで失敗しました
-  Rename failed at save step: 名前変更が保存ステップで失敗しました
   Render Now: 今すぐレンダリング
   Rendering timelapse...: タイムラプスをレンダリング中...
   Replace: "置き換え"
