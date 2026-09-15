@@ -59,6 +59,13 @@ constexpr const char* CHAMBER_HEATER = "heaters/chamber";
 constexpr const char* FEEDER_OPEN_MACRO = "toolchanger/feeder_open_macro";
 constexpr const char* FEEDER_CLOSE_MACRO = "toolchanger/feeder_close_macro";
 
+// ACE bypass macros. The ACE Pro has no bypass command, so the master switch
+// that disables its filament path is thrown by macros. "auto" detects the
+// conventional names; a printer exposing neither reports no bypass. Per-printer,
+// because the wrapper macros are the owner's own and differ between machines.
+constexpr const char* ACE_BYPASS_ON_MACRO = "ams/ace_bypass_on_macro";
+constexpr const char* ACE_BYPASS_OFF_MACRO = "ams/ace_bypass_off_macro";
+
 // LED hardware (legacy — used for migration only in LedController::load_config()
 // and hardware_validator.cpp. New code should use LedController::selected_strips())
 constexpr const char* LED_STRIP = "leds/strip";

@@ -3,7 +3,40 @@
 
 #pragma once
 
+#include <string>
+
 namespace helix {
+
+class PrinterDiscovery;
+
+/// The macros that throw a filament-path bypass on hardware with no bypass
+/// command of its own. Empty names mean this machine cannot bypass, which is
+/// the honest answer for one that exposes neither a switch nor a wrapper.
+struct BypassMacros {
+    std::string on;  ///< Engages bypass (disables the managed filament path)
+    std::string off; ///< Releases it again
+};
+
+/// Resolve the bypass macros for this printer, from discovery and the user's
+/// stored overrides.
+///
+/// Auto-detection looks for the conventional names; a machine exposing neither
+/// resolves to empty, so no bypass is offered rather than a control with
+/// nothing safe behind it. An explicit override is honoured verbatim even when
+/// discovery has not seen it - the owner may know something discovery does not,
+/// and Klipper's own error is the honest signal.
+///
+/// Driving the underlying pin directly is deliberately not an option here: it
+/// would skip the unload-first and refuse-during-print guards the wrapper
+/// macros exist to enforce.
+[[nodiscard]] BypassMacros resolve_bypass_macros(const PrinterDiscovery& hw,
+                                                 const std::string& on_override,
+                                                 const std::string& off_override);
+
+/// Gather resolve_bypass_macros()'s overrides from settings. Split from the
+/// rule above so the rule is testable without standing up SettingsManager,
+/// matching the bypass_available() / bypass_available_for() split.
+[[nodiscard]] BypassMacros resolve_bypass_macros_for(const PrinterDiscovery& hw);
 
 /**
  * @brief Whether the bypass controls should be available on this machine.

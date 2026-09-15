@@ -158,6 +158,18 @@ class SettingsManager {
     /** @brief Set the tool-changer feeder CLOSE macro and persist */
     void set_feeder_close_macro(const std::string& value);
 
+    /** @brief Get the ACE bypass ON macro ("auto" = detected default) */
+    std::string get_ace_bypass_on_macro() const;
+
+    /** @brief Set the ACE bypass ON macro and persist */
+    void set_ace_bypass_on_macro(const std::string& value);
+
+    /** @brief Get the ACE bypass OFF macro ("auto" = detected default) */
+    std::string get_ace_bypass_off_macro() const;
+
+    /** @brief Set the ACE bypass OFF macro and persist */
+    void set_ace_bypass_off_macro(const std::string& value);
+
     /** @brief Z movement style subject (integer: 0=Auto, 1=Bed Moves, 2=Nozzle Moves) */
     lv_subject_t* subject_z_movement_style() {
         return &z_movement_style_subject_;
@@ -603,6 +615,8 @@ class SettingsManager {
     std::string chamber_heater_assignment_{"auto"};
     std::string feeder_open_macro_{"auto"};
     std::string feeder_close_macro_{"auto"};
+    std::string ace_bypass_on_macro_{"auto"};
+    std::string ace_bypass_off_macro_{"auto"};
     std::string chamber_sensor_assignment_{"auto"};
 
     // Scanner device selection (plain strings, no LVGL subjects needed)
