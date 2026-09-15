@@ -440,6 +440,51 @@ TEST_CASE("apply_chamber_sensor_override on already-CHAMBER sensor is a no-op",
     REQUIRE(chamber->priority == original_priority);
 }
 
+// An override naming a sensor the printer does not report yields to the
+// strongest discovered chamber sensor instead of demoting it and leaving the
+// chamber role vacant.
+TEST_CASE("apply_chamber_sensor_override with an absent name keeps the discovered chamber sensor",
+          "[chamber][override]") {
+    LVGLTestFixture fixture;
+
+    auto& mgr = helix::sensors::TemperatureSensorManager::instance();
+    mgr.init_subjects();
+
+    SECTION("a chamber-named temperature_fan keeps the CHAMBER role") {
+        std::vector<std::string> objects = {"temperature_fan chamber_exhaust_fans",
+                                            "temperature_sensor mcu_temp"};
+        mgr.discover(objects);
+        REQUIRE(mgr.get_discovered_chamber_sensor() == "temperature_fan chamber_exhaust_fans");
+
+        mgr.apply_chamber_sensor_override("temperature_sensor chamber_temp");
+
+        auto sensors = mgr.get_sensors_sorted();
+        auto fan = std::find_if(sensors.begin(), sensors.end(), [](const auto& s) {
+            return s.klipper_name == "temperature_fan chamber_exhaust_fans";
+        });
+        REQUIRE(fan != sensors.end());
+        CHECK(fan->role == helix::sensors::TemperatureSensorRole::CHAMBER);
+        CHECK(fan->priority == 0);
+        CHECK(mgr.get_discovered_chamber_sensor() == "temperature_fan chamber_exhaust_fans");
+        auto mcu = std::find_if(sensors.begin(), sensors.end(), [](const auto& s) {
+            return s.klipper_name == "temperature_sensor mcu_temp";
+        });
+        REQUIRE(mcu != sensors.end());
+        CHECK(mcu->role == helix::sensors::TemperatureSensorRole::MCU);
+    }
+    SECTION("no discovered chamber candidate leaves no CHAMBER role") {
+        std::vector<std::string> objects = {"temperature_sensor mcu_temp"};
+        mgr.discover(objects);
+
+        mgr.apply_chamber_sensor_override("temperature_sensor chamber_temp");
+
+        for (const auto& sensor : mgr.get_sensors_sorted()) {
+            CHECK(sensor.role != helix::sensors::TemperatureSensorRole::CHAMBER);
+        }
+        CHECK(mgr.get_discovered_chamber_sensor().empty());
+    }
+}
+
 // 11. Full round trip: setting → override → temperature update
 TEST_CASE("Chamber assignment full round trip", "[chamber][integration]") {
     LVGLTestFixture fixture;

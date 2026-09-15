@@ -839,9 +839,31 @@ void PrinterState::set_hardware(helix::PrinterDiscovery hardware) {
     // Resolve chamber assignments. A named sensor or heater counts only while Klipper
     // reports it (chamber::resolve_sensor, chamber::resolve_heater).
     auto& settings = helix::SettingsManager::instance();
+    auto& temp_mgr = helix::sensors::TemperatureSensorManager::instance();
 
-    const std::string chamber_sensor =
-        chamber::resolve_sensor(settings.get_chamber_sensor_assignment(), discovery_);
+    const std::string chamber_sensor_assignment = settings.get_chamber_sensor_assignment();
+    std::string chamber_sensor = chamber::resolve_sensor(chamber_sensor_assignment, discovery_);
+
+    // A named override that resolved to nothing yields to the strongest chamber
+    // sensor discovery classified. PrinterDiscovery's sensor pick considers only
+    // temperature_sensor objects, so its fallback misses a printer whose only
+    // chamber thermistor is a chamber-named temperature_fan — which the sensor
+    // manager does classify as CHAMBER. Adoption is runtime-only: the stored
+    // assignment stands, and the override resumes its authority on the discovery
+    // that reports the named sensor again.
+    const bool assignment_names_sensor = !chamber_sensor_assignment.empty() &&
+                                         chamber_sensor_assignment != "auto" &&
+                                         chamber_sensor_assignment != "none";
+    if (assignment_names_sensor && chamber_sensor.empty()) {
+        const std::string adopted = temp_mgr.get_discovered_chamber_sensor();
+        if (!adopted.empty()) {
+            spdlog::info("[PrinterState] Chamber sensor override '{}' not found on this printer; "
+                         "using discovered chamber sensor '{}'",
+                         chamber_sensor_assignment, adopted);
+            chamber_sensor = adopted;
+        }
+    }
+
     const std::string chamber_heater =
         chamber::resolve_heater(settings.get_chamber_heater_assignment(), discovery_);
 
@@ -904,7 +926,6 @@ void PrinterState::set_hardware(helix::PrinterDiscovery hardware) {
     // the temp graph would add the sensor twice — once as "Chamber" (from
     // PrinterTemperatureState::chamber_sensor_name) and once under its raw
     // display name (because the AUXILIARY role isn't filtered out).
-    auto& temp_mgr = helix::sensors::TemperatureSensorManager::instance();
     temp_mgr.apply_chamber_sensor_override(chamber_sensor);
 
     // Update composite subjects for G-code modification options

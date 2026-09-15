@@ -425,9 +425,9 @@ TEST_CASE_METHOD(TemperatureSensorTestFixture, "TemperatureSensorManager - confi
 
         bool found_mcu = false;
         for (const auto& sensor : config["sensors"]) {
-            if (sensor["klipper_name"] == "temperature_sensor mcu_temp") {
-                REQUIRE(sensor["role"] == "mcu");
-                REQUIRE(sensor["enabled"] == true);
+            if (sensor.value("klipper_name", "") == "temperature_sensor mcu_temp") {
+                REQUIRE(sensor.value("role", "") == "mcu");
+                REQUIRE(sensor.value("enabled", false) == true);
                 found_mcu = true;
             }
         }
@@ -543,9 +543,10 @@ TEST_CASE_METHOD(TemperatureSensorTestFixture, "TemperatureSensorManager - edge 
 
 namespace {} // namespace
 
-TEST_CASE_METHOD(TemperatureSensorTestFixture,
-                 "TemperatureSensorManager - unmatched chamber override is not a warning",
-                 "[temperature][chamber][logging]") {
+TEST_CASE_METHOD(
+    TemperatureSensorTestFixture,
+    "TemperatureSensorManager - unmatched chamber override adopts the incumbent at info",
+    "[temperature][chamber][logging]") {
     // A chamber-named object auto-takes the CHAMBER role. Overriding onto a
     // different, absent object is what reaches the unmatched branch: without an
     // incumbent CHAMBER sensor the call early-outs and logs nothing at all.
@@ -561,14 +562,18 @@ TEST_CASE_METHOD(TemperatureSensorTestFixture,
     helix::LogCapture log;
     mgr().apply_chamber_sensor_override("temperature_sensor chamber_temp");
 
-    // The override names nothing that was discovered, so the role is left unfilled.
+    // The override names nothing that was discovered, so the incumbent keeps
+    // the chamber role instead of being demoted with nothing promoted.
     for (const auto& config : mgr().get_sensors()) {
-        REQUIRE(config.role != TemperatureSensorRole::CHAMBER);
+        if (config.klipper_name == "temperature_fan chamber_fan") {
+            REQUIRE(config.role == TemperatureSensorRole::CHAMBER);
+        } else {
+            REQUIRE(config.role != TemperatureSensorRole::CHAMBER);
+        }
     }
 
-    // Discovery re-runs on every reconnect, so a warning here repeats forever
-    // for a printer whose config omits the object its preset names.
-    auto levels = log.levels_for("Manual chamber override");
+    // Adoption is a real behavioural decision the user can see in the log.
+    auto levels = log.levels_for("Chamber override");
     REQUIRE(levels.size() == 1);
-    REQUIRE(levels[0] == spdlog::level::debug);
+    REQUIRE(levels[0] == spdlog::level::info);
 }

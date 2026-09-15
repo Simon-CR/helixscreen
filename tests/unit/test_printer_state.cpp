@@ -1908,6 +1908,64 @@ TEST_CASE("PrinterState::set_hardware: a stale chamber sensor name leaves the re
     CHECK(role_of("temperature_sensor chamber") == TemperatureSensorRole::CHAMBER);
 }
 
+TEST_CASE("PrinterState::set_hardware: a stale chamber sensor override adopts the chamber sensor "
+          "the manager discovered",
+          "[state][hardware][chamber]") {
+    using helix::sensors::TemperatureSensorManager;
+    using helix::sensors::TemperatureSensorRole;
+
+    ChamberAssignmentsRestore restore;
+    PrinterState& state = state_before_discovery("auto", "temperature_sensor chamber_temp");
+
+    auto& sensors = TemperatureSensorManager::instance();
+    sensors.init_subjects();
+    // The manager is a singleton: leave it holding no sensors for later cases.
+    struct SensorsForget {
+        ~SensorsForget() {
+            TemperatureSensorManager::instance().discover({});
+        }
+    } forget;
+
+    const auto role_of = [&sensors](const std::string& klipper_name) {
+        for (const auto& sensor : sensors.get_sensors_sorted()) {
+            if (sensor.klipper_name == klipper_name) {
+                return std::optional<TemperatureSensorRole>(sensor.role);
+            }
+        }
+        return std::optional<TemperatureSensorRole>{};
+    };
+
+    // The override outlived the hardware it named: this printer's only chamber
+    // thermistor is a chamber-named temperature_fan, which PrinterDiscovery's
+    // sensor pick never considers.
+    PrinterDiscovery hw =
+        discovered_objects({"heater_generic chamber_heater", "temperature_fan chamber_exhaust_fans",
+                            "temperature_sensor mcu_temp", "extruder", "heater_bed"});
+    sensors.discover(hw.sensors());
+    REQUIRE(role_of("temperature_fan chamber_exhaust_fans") == TemperatureSensorRole::CHAMBER);
+
+    state.set_hardware(std::move(hw));
+
+    CHECK(state.temperature_state().chamber_sensor_name() ==
+          "temperature_fan chamber_exhaust_fans");
+    CHECK(has_chamber_sensor(state) == 1);
+    CHECK(role_of("temperature_fan chamber_exhaust_fans") == TemperatureSensorRole::CHAMBER);
+}
+
+TEST_CASE("PrinterState::set_hardware: a chamber sensor override the printer reports still wins "
+          "over a discovered chamber sensor",
+          "[state][hardware][chamber]") {
+    ChamberAssignmentsRestore restore;
+    PrinterState& state = state_before_discovery("auto", "temperature_sensor external_bme");
+
+    state.set_hardware(
+        discovered_objects({"temperature_fan chamber_exhaust_fans",
+                            "temperature_sensor external_bme", "extruder", "heater_bed"}));
+
+    CHECK(state.temperature_state().chamber_sensor_name() == "temperature_sensor external_bme");
+    CHECK(has_chamber_sensor(state) == 1);
+}
+
 // ============================================================================
 // Subscription-restricted-null safety
 // ============================================================================

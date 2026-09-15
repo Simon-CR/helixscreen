@@ -142,6 +142,12 @@ the heater's rule against discovery's sensor pick:
   does not report, such as one a model preset seeded, falls back to discovery's sensor pick, so the
   chamber reads the sensor the printer does have. The fallback is always discovery's sensor pick,
   never its heater pick; the heater keeps its own type-blind fallback above.
+- When that fallback is empty — the printer's only chamber thermistor is a chamber-named
+  `temperature_fan`, which the sensor pick never considers — `PrinterState::set_hardware` adopts
+  the strongest CHAMBER-role sensor the sensor manager classified
+  (`TemperatureSensorManager::get_discovered_chamber_sensor()`), and says so at info. The adoption
+  is runtime-only: the stored assignment stands, so a sensor absent for one boot (a disconnected
+  MCU, a config being edited) resumes its authority on the discovery that reports it again.
 
 `PrinterState::set_hardware` publishes the result as `temperature_state().chamber_sensor_name()`
 and the `printer_has_chamber_sensor` capability, and re-resolves it on every discovery (each klippy
