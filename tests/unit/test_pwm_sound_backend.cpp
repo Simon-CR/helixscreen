@@ -1,6 +1,7 @@
 // Copyright (C) 2025-2026 356C LLC
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+#include "../test_helpers/live_thread_count.h"
 #include "../test_helpers/pwm_sound_backend_test_access.h"
 #include "../test_helpers/scoped_env.h"
 #include "pwm_sound_backend.h"
@@ -1123,6 +1124,40 @@ TEST_CASE("a render source that fills nothing parks - stale buffer content is no
     });
 
     REQUIRE(wait_for([&] { return PWMSoundBackendTestAccess::parked(*run.backend); }));
+}
+
+TEST_CASE("clear_render_source joins the render thread even while parked", "[sound][pwm]") {
+    // stop_render_thread() unconditionally joins render_thread_, so once
+    // clear_render_source() returns the render thread has already run to
+    // completion - join() only returns after that. A freshly joined pthread's
+    // entry under /proc/<pid>/task can still be visible for a brief window
+    // after join() returns (kernel task teardown trails the join wakeup), so
+    // this settles on the thread count rather than asserting it drops the
+    // instant clear_render_source() does.
+    const int before = helix::test::live_thread_count();
+    REQUIRE(before >= 0);
+
+    std::atomic<int> full_buffers{0};
+    PwmVirtualRun run(2);
+    run.backend->set_render_source([&full_buffers](float* buf, size_t frames, int) {
+        if (frames != static_cast<size_t>(PWMSoundBackend::PCM_RENDER_BUFFER_FRAMES)) {
+            return;
+        }
+        if (full_buffers.fetch_add(1) == 0) {
+            for (size_t i = 0; i < frames; i++) {
+                buf[i] = 0.5f;
+            }
+        }
+    });
+
+    // Parked: the render loop polls through the same virtual-clock
+    // wait_until() this test drives, which returns instantly instead of
+    // sleeping, so any stop-latency regression shows up immediately rather
+    // than hiding behind a real sleep interval.
+    REQUIRE(wait_for([&] { return PWMSoundBackendTestAccess::parked(*run.backend); }));
+    run.backend->clear_render_source();
+
+    REQUIRE(wait_for([&] { return helix::test::live_thread_count() == before; }, 500));
 }
 
 // SCHED_IDLE is a Linux scheduling policy. On a host that has no such policy

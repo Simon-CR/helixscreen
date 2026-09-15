@@ -333,10 +333,21 @@ class IsolationListener : public Catch::EventListenerBase {
         // pool-adjusted on both sides (see
         // live_thread_count_beyond_thumbnail_pool), so the settle loop has to
         // re-read the same adjusted count.
+        //
+        // 2s, not 100ms: a std::thread::join() that has already returned
+        // guarantees the target ran to completion, but its entry under
+        // /proc/<pid>/task can stay enumerable for a stretch afterward while
+        // the kernel finishes reaping it, and a full sharded run's CPU
+        // oversubscription (every shard contending for the same cores)
+        // stretches that window well past 100ms often enough to misreport a
+        // thread that has already, correctly, joined. The loop exits the
+        // moment the count settles, so this only costs wall-clock time on
+        // the rare case that already has an elevated count to explain — the
+        // common, already-settled case pays one comparison.
         int now = live_thread_count_beyond_thumbnail_pool();
         if (threads_ >= 0 && now > threads_) {
-            for (int i = 0; i < 20 && live_thread_count_beyond_thumbnail_pool() > threads_; ++i) {
-                usleep(5000); // up to 100ms for a joining/exiting thread to clear
+            for (int i = 0; i < 400 && live_thread_count_beyond_thumbnail_pool() > threads_; ++i) {
+                usleep(5000); // up to 2s for a joined thread's task to clear
             }
             now = live_thread_count_beyond_thumbnail_pool();
             if (now > threads_) {
