@@ -239,6 +239,14 @@ PATCH_DIR := $(abspath patches)
 APPLY_PATCH := bash scripts/apply_submodule_patch.sh
 export HELIX_PATCHES_FROM_CLEAN
 
+# The recipe-start guard below writes "1" or "0" here, and the helper reads it
+# back on every stanza: the flag claims the run started from pristine
+# submodules, and the claim is verified once, before any stanza has dirtied a
+# shared file. Per-patch checks cannot answer it — after the first apply the
+# tree is legitimately dirty for the rest of the recipe.
+HELIX_FROM_CLEAN_SENTINEL := $(BUILD_DIR)/.patches-from-clean
+export HELIX_FROM_CLEAN_SENTINEL
+
 # Patches applied outside this file. Keep this list empty if you can; an entry
 # here means something applies the patch by hand, so nothing verifies it.
 # libnl-socket-time-include.patch (65d0ba93a, GCC 14+ libnl build fix) has no
@@ -437,6 +445,27 @@ $(PATCHES_STAMP): $(PATCH_FILES) $(LVGL_HEAD) $(LIBHV_HEAD) $(APPLIED_STAMP_ID)
 		python3 scripts/check_patch_drift.py --pre-apply; \
 	else \
 		echo "$(YELLOW)⚠ python3 not found - patch drift check skipped$(RESET)"; \
+	fi
+	@# HELIX_PATCHES_FROM_CLEAN=1 licenses the fatal verdict below, but only if
+	@# the run actually started from pristine submodules. `make clean` deletes
+	@# the stamp yet leaves the submodules patched, and on a patched tree a
+	@# healthy shared-file patch reads "neither" just like a dead one — so the
+	@# claim is settled once, here, before any stanza has dirtied anything, and
+	@# a tree that is not pristine downgrades to in-place verdicts with the
+	@# remedy named. A submodule git cannot read (non-git Docker rsync) also
+	@# downgrades rather than fail the build.
+	$(Q)if [ "$(HELIX_PATCHES_FROM_CLEAN)" = "1" ]; then \
+		ok=1; \
+		for pair in "$(LVGL_DIR)|$(LVGL_PATCHED_FILES) src/misc/lv_check_arg.h" \
+		            "$(LIBHV_DIR)|$(LIBHV_PATCHED_FILES)"; do \
+			dir=$${pair%%|*}; files=$${pair#*|}; \
+			if [ -n "$$($(GIT_NOENV) -C "$$dir" status --porcelain -- $$files 2>/dev/null)" ] || \
+			   ! $(GIT_NOENV) -C "$$dir" status --porcelain -- $$files >/dev/null 2>&1; then \
+				ok=0; \
+				echo "$(YELLOW)⚠ $$dir is not pristine, so this run cannot judge patches from clean — using in-place verdicts. Run 'make reapply-patches' to reset and judge from clean.$(RESET)"; \
+			fi; \
+		done; \
+		printf '%s' "$$ok" > $(HELIX_FROM_CLEAN_SENTINEL); \
 	fi
 	$(ECHO) "$(CYAN)Checking LVGL patches...$(RESET)"
 	$(Q)$(APPLY_PATCH) $(LVGL_DIR) $(PATCH_DIR)/lvgl_sdl_window.patch "LVGL SDL window patch"

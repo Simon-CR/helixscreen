@@ -17,6 +17,13 @@
 # submodule. Incremental runs warn instead, because there a sibling patch
 # earlier in the same recipe may legitimately have moved the context.
 #
+# The flag is a claim about the tree, and the claim is verified, not assumed:
+# `make clean` deletes the stamp but leaves the submodules patched, and on a
+# patched tree shared-file shadowing makes healthy patches read "neither", so
+# an unverified flag would fail a perfectly good checkout. A mk/patches.mk run
+# settles the claim once at recipe start into HELIX_FROM_CLEAN_SENTINEL; a
+# standalone invocation judges the submodule directly.
+#
 # Usage: apply_submodule_patch.sh <submodule-dir> <patch-file> <label>
 
 set -u
@@ -32,6 +39,21 @@ else
   green=$'\033[32m' yellow=$'\033[33m' red=$'\033[31m' reset=$'\033[0m'
 fi
 
+# Did this run actually start from a pristine checkout? The fatal verdict is
+# licensed by the answer, and the answer cannot come from the flag alone: on a
+# patched tree a healthy shared-file patch reads "neither" too.
+from_clean_verified() {
+  local sentinel="${HELIX_FROM_CLEAN_SENTINEL:-}"
+  if [ -n "$sentinel" ] && [ -f "$sentinel" ]; then
+    [ "$(cat "$sentinel" 2>/dev/null)" = "1" ]
+    return
+  fi
+  # Standalone invocation with no recipe guard: judge the submodule directly.
+  # A submodule whose state git cannot read is treated as not verifiable.
+  git -C "$submodule" status --porcelain >/dev/null 2>&1 || return 1
+  [ -z "$(git -C "$submodule" status --porcelain 2>/dev/null)" ]
+}
+
 if git -C "$submodule" apply --check "$patch_file" 2>/dev/null; then
   echo "${yellow}→ Applying ${label}...${reset}"
   if ! git -C "$submodule" apply "$patch_file"; then
@@ -41,7 +63,7 @@ if git -C "$submodule" apply --check "$patch_file" 2>/dev/null; then
   echo "${green}✓ ${label} applied${reset}"
 elif git -C "$submodule" apply --check --reverse "$patch_file" 2>/dev/null; then
   echo "${green}✓ ${label} already applied${reset}"
-elif [ "${HELIX_PATCHES_FROM_CLEAN:-0}" = "1" ]; then
+elif [ "${HELIX_PATCHES_FROM_CLEAN:-0}" = "1" ] && from_clean_verified; then
   echo "${red}✗ ${label} does not apply to a clean checkout — the patch and the submodule disagree." >&2
   echo "${red}  Regenerate it: patches/README.md § \"Regenerating a patch whose file is shared\"${reset}" >&2
   exit 1

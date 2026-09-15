@@ -156,6 +156,14 @@ cannot tell "already applied" from "drifted and will never apply" — both exit 
 file-dirty test breaks when a patch stops touching X or when another patch dirties it first.
 Patches that share a file can fail both checks on a correctly patched tree, so in-place runs
 warn and `make reapply-patches` is the run that judges: from clean, a patch that will not take
-its apply branch is fatal. CI runners are fresh clones, so every workflow's `make apply-patches`
-step passes `HELIX_PATCHES_FROM_CLEAN=1` — `scripts/check_workflow_submodules.py` fails a
-workflow whose apply step drops it.
+its apply branch is fatal.
+
+The flag is a claim about the tree — "this run started from pristine submodules" — and the
+claim is verified, not assumed. `mk/patches.mk` settles it once at recipe start (before any
+stanza has dirtied a shared file) by asking git whether the patched files are pristine, and
+writes the answer where the helper reads it. A checkout that is not pristine — the state
+`make clean` leaves behind, stamp gone but submodules still patched — downgrades the fatal to
+the in-place warn with the remedy named, instead of failing a healthy tree and telling you to
+regenerate correct patches. CI runners are fresh clones, so every workflow's `make
+apply-patches` step passes `HELIX_PATCHES_FROM_CLEAN=1` — `scripts/check_workflow_submodules.py`
+fails a workflow whose apply step drops it.

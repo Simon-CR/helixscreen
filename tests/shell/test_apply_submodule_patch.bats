@@ -14,6 +14,10 @@
 # apply branch. Incremental runs warn instead of failing, because a sibling
 # patch earlier in the same recipe may legitimately have moved the context a
 # shared-file patch needs.
+#
+# The flag is a claim about the tree, and the claim is verified, not assumed:
+# on a non-pristine checkout a healthy shared-file patch reads "neither" too,
+# so there the fatal downgrades to the warn branch.
 
 load helpers
 
@@ -86,6 +90,45 @@ EOF
     HELIX_PATCHES_FROM_CLEAN=1 run "$HELPER" "$SUB" "$ROOT/patches/good.patch" "fixture patch"
     [ "$status" -eq 0 ]
     grep -q 'fixture patch applied' <<<"$output"
+}
+
+@test "a dead patch on a non-pristine tree only warns, even under the flag" {
+    # The flag asserts the run started from pristine submodules; a checkout
+    # that cannot back that claim does not get the fatal. This is the state
+    # `make clean` leaves behind: stamp gone, submodules still patched.
+    git -C "$SUB" apply "$ROOT/patches/good.patch"
+    HELIX_PATCHES_FROM_CLEAN=1 run "$HELPER" "$SUB" "$ROOT/patches/dead.patch" "fixture patch"
+    [ "$status" -eq 0 ]
+    grep -q 'not verifiable in place' <<<"$output"
+}
+
+@test "a make run's sentinel settles the claim, not the tree's current state" {
+    # mk/patches.mk judges the claim once at recipe start - before any stanza
+    # has dirtied a shared file - and writes the answer where every stanza
+    # reads it back. The sentinel is authoritative in both directions: dirt
+    # from earlier stanzas must not read as "not pristine", and a "0" must
+    # keep the fatal holstered even on a tree that looks pristine now.
+    git -C "$SUB" apply "$ROOT/patches/good.patch"
+    printf 1 > "$ROOT/sentinel"
+    HELIX_PATCHES_FROM_CLEAN=1 HELIX_FROM_CLEAN_SENTINEL="$ROOT/sentinel" \
+        run "$HELPER" "$SUB" "$ROOT/patches/dead.patch" "fixture patch"
+    [ "$status" -eq 1 ]
+    grep -q 'does not apply to a clean checkout' <<<"$output"
+
+    printf 0 > "$ROOT/sentinel"
+    HELIX_PATCHES_FROM_CLEAN=1 HELIX_FROM_CLEAN_SENTINEL="$ROOT/sentinel" \
+        run "$HELPER" "$SUB" "$ROOT/patches/dead.patch" "fixture patch"
+    [ "$status" -eq 0 ]
+    grep -q 'not verifiable in place' <<<"$output"
+}
+
+@test "mk/patches.mk writes the sentinel from the tree's actual state" {
+    # The sentinel is only honest if the recipe guard writes it before the
+    # first stanza runs: the variable, the export, and the pristine check
+    # over the patched files.
+    grep -qF 'HELIX_FROM_CLEAN_SENTINEL := $(BUILD_DIR)/.patches-from-clean' mk/patches.mk
+    grep -qF 'export HELIX_FROM_CLEAN_SENTINEL' mk/patches.mk
+    grep -qF 'status --porcelain -- $$files' mk/patches.mk
 }
 
 @test "redirected output carries no ANSI escapes" {

@@ -1029,7 +1029,8 @@ check), or report that it matches no reachable state of the submodule.
 - `✓ <label> applied` - Patch was applied during this build
 - `✓ <label> already applied` - Reverse check recognized it; the tree keeps it
 - `⚠ <label> is not verifiable in place` - Neither check passes on an already-patched tree; run `make reapply-patches` to judge from clean
-- `✗ <label> does not apply to a clean checkout` - The patch and the submodule disagree; regenerate the patch
+- `⚠ <submodule> is not pristine, so this run cannot judge patches from clean` - `HELIX_PATCHES_FROM_CLEAN=1` was set but the submodule already carries changes (the state `make clean` leaves), so the fatal verdict is not available and every patch is judged in place; run `make reapply-patches` to reset and judge from clean
+- `✗ <label> does not apply to a clean checkout` - The patch and the submodule disagree, on a run verified to have started from pristine submodules; regenerate the patch
 
 ### Adding New Patches
 
