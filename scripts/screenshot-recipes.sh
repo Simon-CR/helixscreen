@@ -64,6 +64,8 @@ barcode-scanner    navigate settings; click row_hardware; click row_spoolman_set
 label-printer      navigate settings; click row_hardware; click row_spoolman_settings; click row_label_printer
 security           navigate settings; click row_system; click row_security
 safety             navigate settings; click row_safety
+help-about         navigate settings; click row_help
+help-qr            navigate settings; click row_help; click row_discord; click btn_ok
 
 # Advanced overlays
 input-shaper       navigate advanced; click row_input_shaping

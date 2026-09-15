@@ -1364,7 +1364,127 @@ clean-sanitizers:
 	$(Q)rm -f $(TEST_ASAN_BIN) $(TEST_TSAN_BIN)
 	$(Q)rm -f $(ASAN_PCH) $(TSAN_PCH)
 	$(Q)rm -rf $(ASAN_OBJ_DIR) $(TSAN_OBJ_DIR)
+	$(Q)rm -rf $(APP_ASAN_BIN_DIR) $(APP_TSAN_BIN_DIR)
+	$(Q)rm -rf $(APP_ASAN_OBJ_DIR) $(APP_TSAN_OBJ_DIR)
+	$(Q)rm -f $(APP_ASAN_PCH) $(APP_TSAN_PCH)
 	$(ECHO) "$(GREEN)✓ Sanitizer artifacts cleaned (normal build untouched)$(RESET)"
+
+# ============================================================================
+# App-level sanitizer runs: drive the real binary headlessly
+# ============================================================================
+# The targets above exercise helix-tests; these drive the actual app under
+# a sanitizer, via scripts/screenshot.sh (--test mock data, private socket,
+# recipe-driven navigation, no capture). The verdict reuses
+# report_sanitizer_result - the same two-sided check the suite targets use
+# (log grep for the report regex + exit status under pipefail) - because an
+# app run has the same two blind spots: a report with exit 0 (at-exit abort
+# after a successful drive) and a crash with no report.
+#
+# The drive runs at -vv: a sanitizer report is only actionable next to the
+# app's own debug log, and screenshot.sh otherwise leaves the app at its
+# default warn level, where nothing about the driven path is recorded.
+#
+# Usage:
+#   make asan-app                          # RECIPE=help-qr, REPEAT=25
+#   make tsan-app RECIPE=help-qr REPEAT=50
+
+# The app binary gets its own BIN_DIR so a sanitizer build never replaces
+# build/bin/helix-screen in place. OBJ_DIR and PCH are passed explicitly as
+# well: BIN_DIR alone would relink whatever objects are already up to date,
+# and those are uninstrumented (see the Makefile's SANITIZE block for the
+# exact trap).
+#
+# These get their OWN object dirs rather than sharing the test targets'. The
+# two ways of asking for a sanitizer do not produce interchangeable objects:
+# SANITIZE=address is applied in mk/cross.mk after SUBMODULE_CFLAGS merge, so
+# LVGL and helix-xml are instrumented too, and it strips _FORTIFY_SOURCE;
+# ASAN_MAKE_OVERRIDES appends to CXXFLAGS only, adds -g, and reaches no
+# submodule. One object dir for both would let make reuse the other spelling's
+# objects on timestamp alone, and a run whose LVGL is uninstrumented is blind
+# to exactly the draw-thread bugs these targets exist to find — while the
+# instrumentation guard below still passes, because the app's own objects
+# carry the symbols it greps for.
+APP_ASAN_OBJ_DIR := $(BUILD_DIR)/obj-asan-app
+APP_TSAN_OBJ_DIR := $(BUILD_DIR)/obj-tsan-app
+APP_ASAN_PCH := $(BUILD_DIR)/asan-app-lvgl_pch.h.gch
+APP_TSAN_PCH := $(BUILD_DIR)/tsan-app-lvgl_pch.h.gch
+APP_ASAN_BIN_DIR := $(BUILD_DIR)/bin-asan
+APP_TSAN_BIN_DIR := $(BUILD_DIR)/bin-tsan
+APP_ASAN_BIN := $(APP_ASAN_BIN_DIR)/helix-screen
+APP_TSAN_BIN := $(APP_TSAN_BIN_DIR)/helix-screen
+
+# Runtime options for the APP, not the suite; mirrors mk/cross.mk's
+# PI_ASAN_OPTIONS (reliable stacks, first error fatal, no leak gate). Leak
+# detection stays off because the app's panels/widgets/subjects are
+# process-scoped by design and the real WiFi backend leaves an unjoined
+# probe thread at exit. TSan takes the same shape plus the shared
+# suppressions file; leak rules would belong in LSAN_OPTIONS, never in
+# ASAN_OPTIONS:suppressions=.
+APP_ASAN_OPTIONS ?= detect_leaks=0:abort_on_error=1:fast_unwind_on_malloc=0:print_stacktrace=1:halt_on_error=1
+APP_TSAN_OPTIONS ?= detect_leaks=0:halt_on_error=1:abort_on_error=1:print_stacktrace=1:suppressions=$(CURDIR)/tests/tsan_suppressions.txt
+
+RECIPE ?= help-qr
+REPEAT ?= 25
+# An instrumented shutdown flushes an at-exit sanitizer pass; give it room.
+SAN_APP_SHUTDOWN_TIMEOUT ?= 30
+SAN_PASS_RE := ^\[screenshot\] recipe pass [0-9]+/[0-9]+$$
+
+# Assert that a run actually did what it claims: the binary is instrumented,
+# and the recipe completed every requested pass. Each guard names itself and
+# its fix - a run that exercised nothing must not read as a pass. Shared by
+# asan-app and tsan-app.
+#
+# app_instrumentation_check runs BEFORE the drive (fail fast - an
+# uninstrumented binary would otherwise burn a full run to conclude nothing).
+# $(1) = label, $(2) = binary, $(3) = symbol substring.
+define app_instrumentation_check
+	if [ "$$(nm "$(2)" 2>/dev/null | grep -c '$(3)' || true)" -eq 0 ]; then \
+		echo "$(RED)$(BOLD)✗ $(1) vacuity guard [instrumentation]: $(2) carries no $(3) symbols - not instrumented, so this run can prove nothing$(RESET)"; \
+		echo "$(RED)  Fix: build with SANITIZE= and BOTH BIN_DIR= and OBJ_DIR= set; relinking up-to-date objects yields an uninstrumented binary$(RESET)"; \
+		exit 1; \
+	fi
+endef
+
+# app_pass_count_check runs AFTER the drive. $(1) = label, $(2) = run log,
+# $(3) = expected pass count. "Reached the control socket" is not checked
+# here: screenshot.sh hard-fails on a socket timeout or an app that exits
+# before the socket appears, and the app's own exit status is propagated
+# through its EXIT trap into this pipeline.
+define app_pass_count_check
+	passes=$$(grep -cE '$(SAN_PASS_RE)' "$(2)" 2>/dev/null || true); \
+	if [ "$$passes" -ne "$(3)" ]; then \
+		echo "$(RED)$(BOLD)✗ $(1) vacuity guard [pass count]: expected $(3) completed recipe passes, counted $$passes$(RESET)"; \
+		echo "$(RED)  Fix: a pass only counts when every ctl step succeeded; the failed steps are named in $(2)$(RESET)"; \
+		exit 1; \
+	fi
+endef
+
+.PHONY: asan-app tsan-app
+asan-app:
+	$(ECHO) "$(CYAN)$(BOLD)Building the app with AddressSanitizer ($(APP_ASAN_BIN_DIR))...$(RESET)"
+	@$(MAKE) SANITIZE=address BIN_DIR=$(APP_ASAN_BIN_DIR) OBJ_DIR=$(APP_ASAN_OBJ_DIR) PCH=$(APP_ASAN_PCH) $(APP_ASAN_BIN)
+	@$(call app_instrumentation_check,asan-app,$(APP_ASAN_BIN),__asan)
+	$(ECHO) "$(CYAN)$(BOLD)Driving the app under AddressSanitizer (recipe '$(RECIPE)', $(REPEAT) passes)...$(RESET)"
+	@set -o pipefail; \
+	rm -f /tmp/asan-app-run.log /tmp/asan-app-app.log; \
+	ASAN_OPTIONS='$(APP_ASAN_OPTIONS)' scripts/screenshot.sh helix-screen asan-$(RECIPE) "$(RECIPE)" \
+	  --binary-path "$(APP_ASAN_BIN)" --no-capture --repeat "$(REPEAT)" \
+	  --log /tmp/asan-app-app.log --shutdown-timeout "$(SAN_APP_SHUTDOWN_TIMEOUT)" -vv 2>&1 | tee /tmp/asan-app-run.log; \
+	$(call report_sanitizer_result,ASAN app,/tmp/asan-app-app.log,$(ASAN_REPORT_RE)); \
+	$(call app_pass_count_check,asan-app,/tmp/asan-app-run.log,$(REPEAT))
+
+tsan-app:
+	$(ECHO) "$(CYAN)$(BOLD)Building the app with ThreadSanitizer ($(APP_TSAN_BIN_DIR))...$(RESET)"
+	@$(MAKE) SANITIZE=thread BIN_DIR=$(APP_TSAN_BIN_DIR) OBJ_DIR=$(APP_TSAN_OBJ_DIR) PCH=$(APP_TSAN_PCH) $(APP_TSAN_BIN)
+	@$(call app_instrumentation_check,tsan-app,$(APP_TSAN_BIN),__tsan)
+	$(ECHO) "$(CYAN)$(BOLD)Driving the app under ThreadSanitizer (recipe '$(RECIPE)', $(REPEAT) passes)...$(RESET)"
+	@set -o pipefail; \
+	rm -f /tmp/tsan-app-run.log /tmp/tsan-app-app.log; \
+	TSAN_OPTIONS='$(APP_TSAN_OPTIONS)' scripts/screenshot.sh helix-screen tsan-$(RECIPE) "$(RECIPE)" \
+	  --binary-path "$(APP_TSAN_BIN)" --no-capture --repeat "$(REPEAT)" \
+	  --log /tmp/tsan-app-app.log --shutdown-timeout "$(SAN_APP_SHUTDOWN_TIMEOUT)" -vv 2>&1 | tee /tmp/tsan-app-run.log; \
+	$(call report_sanitizer_result,TSAN app,/tmp/tsan-app-app.log,$(TSAN_REPORT_RE)); \
+	$(call app_pass_count_check,tsan-app,/tmp/tsan-app-run.log,$(REPEAT))
 
 # ============================================================================
 # Test Help

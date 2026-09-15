@@ -6,6 +6,12 @@
 #   scripts/zeus-run.sh asan '[1543]'               # AddressSanitizer, one tag
 #   scripts/zeus-run.sh asan                        # AddressSanitizer, full suite
 #   scripts/zeus-run.sh test '[netd]'               # plain suite, one tag
+#   scripts/zeus-run.sh asan-app help-qr --repeat 50  # the APP under ASAN
+#   scripts/zeus-run.sh tsan-app help-qr --repeat 50  # the APP under TSan
+#
+# The app modes are here for the same reason asan is: the run is long and
+# non-interactive, and the container's image (SDL, no ld.so.preload) is the
+# only place an instrumented desktop app runs cleanly.
 #
 # Why these two in particular:
 #
@@ -47,7 +53,7 @@ ARC_CAP_GB="${ZEUS_ARC_CAP_GB:-64}"     # 0 disables the cap entirely
 GB_PER_JOB="${ZEUS_GB_PER_JOB:-1}"      # asan overrides to 1.5 below
 
 WHAT="${1:-}"
-[ -n "$WHAT" ] || { sed -n '2,24p' "$0" | sed 's/^# \?//'; exit 2; }
+[ -n "$WHAT" ] || { sed -n '2,30p' "$0" | sed 's/^# \?//'; exit 2; }
 shift
 
 SHA=$(git rev-parse HEAD)
@@ -63,7 +69,34 @@ case "$WHAT" in
     mutate) CMD='python3 scripts/mutate_diff.py --jobs $HELIX_J '"$*" ;;
     asan)   CMD='make test-asan-one TEST="'"${1:-}"'" -j$HELIX_J' ; GB_PER_JOB=1.5 ;;
     test)   CMD='make test -j$HELIX_J && ./build/bin/helix-tests "'"${1:-}"'"' ;;
-    *)      echo "✗ unknown job '$WHAT' (mutate | asan | test)" >&2; exit 2 ;;
+    asan-app|tsan-app)
+        # RECIPE is the positional argument; --repeat N (default 25 in the
+        # make target) widens the drive. Both map onto the make target's
+        # RECIPE/REPEAT variables.
+        _recipe=""; _repeat=""
+        while [ $# -gt 0 ]; do
+            case "$1" in
+                --repeat)
+                    [ $# -ge 2 ] || { echo "✗ --repeat needs a value" >&2; exit 2; }
+                    _repeat="$2"; shift 2 ;;
+                --recipe)
+                    [ $# -ge 2 ] || { echo "✗ --recipe needs a value" >&2; exit 2; }
+                    _recipe="$2"; shift 2 ;;
+                *)
+                    if [ -n "$_recipe" ]; then
+                        echo "✗ unexpected argument '$1' (usage: $WHAT [RECIPE] --repeat N)" >&2
+                        exit 2
+                    fi
+                    _recipe="$1"; shift ;;
+            esac
+        done
+        _vars=""
+        if [ -n "$_recipe" ]; then _vars="RECIPE=$_recipe"; fi
+        if [ -n "$_repeat" ]; then _vars="$_vars REPEAT=$_repeat"; fi
+        CMD="make $WHAT $_vars"' -j$HELIX_J'
+        EXPECTED_REPEAT="${_repeat:-25}"
+        GB_PER_JOB=1.5 ;;
+    *)      echo "✗ unknown job '$WHAT' (mutate | asan | test | asan-app | tsan-app)" >&2; exit 2 ;;
 esac
 
 LOG="${TMPDIR:-/tmp}/zeus-$WHAT-$SHORT.log"
@@ -147,4 +180,22 @@ if [ "$WHAT" = asan ] && ! grep -qE 'All tests passed|test cases:|assertions:' "
     echo ""
     echo "✗ no Catch2 summary in $LOG — the suite did not run, so this is not a clean ASAN result" >&2
     exit 1
+fi
+
+# An app run has no Catch2 summary to check; its evidence is the verdict line
+# the make target prints and the per-pass lines the drive prints. The remote
+# make already enforces both; this re-checks the local log so an exit 0 that
+# somehow carried no verdict cannot be read as clean either.
+if [ "$WHAT" = asan-app ] || [ "$WHAT" = tsan-app ]; then
+    if ! grep -q 'clean — no sanitizer reports' "$LOG"; then
+        echo ""
+        echo "✗ no clean-verdict line in $LOG — the sanitizer verdict never ran" >&2
+        exit 1
+    fi
+    passes=$(grep -cE '^\[screenshot\] recipe pass [0-9]+/[0-9]+' "$LOG" || true)
+    if [ "$passes" -ne "$EXPECTED_REPEAT" ]; then
+        echo ""
+        echo "✗ expected $EXPECTED_REPEAT recipe passes in $LOG, found $passes — the drive did not complete" >&2
+        exit 1
+    fi
 fi
