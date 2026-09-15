@@ -126,6 +126,37 @@ TEST_CASE_METHOD(LVGLUITestFixture,
     lv_display_delete(stray);
 }
 
+// The sibling case above pins the geometry-moved arm of the reclaim. This one
+// pins the other way the derived state goes stale: with rotation, resolution
+// and the default slot all exactly home, the breakpoint subject alone can
+// still disagree — the shape a resize scope leaves when it republishes from
+// moved geometry and then restores the pixels only, or a direct subject write.
+// Every precondition below is REQUIREd, so the repaint that follows can only
+// have fired through the subject-disagreement arm; a reclaim that skipped the
+// refresh because "nothing moved" leaves the stale tier in place.
+TEST_CASE_METHOD(LVGLUITestFixture,
+                 "camera: a stale breakpoint subject is reclaimed without the pixels moving",
+                 "[1563][widget_size][camera]") {
+    lv_display_t* const disp = lv_display_get_default();
+    REQUIRE(disp == LVGLTestFixture::s_display);
+    REQUIRE(lv_display_get_rotation(disp) == LV_DISPLAY_ROTATION_0);
+    REQUIRE(lv_display_get_horizontal_resolution(disp) == TEST_DISPLAY_WIDTH);
+    REQUIRE(lv_display_get_vertical_resolution(disp) == TEST_DISPLAY_HEIGHT);
+
+    lv_subject_t* const breakpoint = theme_manager_get_breakpoint_subject();
+    REQUIRE(breakpoint != nullptr);
+    REQUIRE(breakpoint->type == LV_SUBJECT_TYPE_INT);
+    REQUIRE(lv_subject_get_int(breakpoint) == to_int(UiBreakpoint::Medium));
+
+    lv_subject_set_int(breakpoint, to_int(UiBreakpoint::XXLarge));
+    REQUIRE(w_normal() == w_normal(UiBreakpoint::XXLarge)); // stale tier is live
+
+    LVGLTestFixture::reclaim_display();
+
+    CHECK(lv_subject_get_int(breakpoint) == to_int(UiBreakpoint::Medium));
+    CHECK(w_normal() == w_normal(UiBreakpoint::Medium));
+}
+
 TEST_CASE_METHOD(LVGLUITestFixture,
                  "camera compact/live layout follows width alone, and stream "
                  "start/stop stays edge-triggered",

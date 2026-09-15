@@ -24,12 +24,14 @@ constexpr int TEST_DISPLAY_HEIGHT = 480;
  * theme_manager_refresh_layout_constants(), and the rest of the suite assumes
  * the fixture's TEST_DISPLAY_WIDTH x TEST_DISPLAY_HEIGHT.
  *
- * The destructor restores both halves: the resolution, and then the XML
- * constants and the ui_breakpoint / ui_breakpoint_v / ui_is_portrait subjects
- * that are derived from it. Those are process-global, and
+ * The destructor restores the pixels only. The derived state those pixels
+ * feed - XML px constants, the ui_breakpoint / ui_breakpoint_v /
+ * ui_is_portrait subjects, font tiers - is process-global, and
  * helix::widget_size::current_breakpoint() reads the subject rather than the
- * display, so a scope that put back only the pixels would decide layout for
- * every later test sharing this display.
+ * display, so a scope whose refresh outlives it would decide layout for every
+ * later test sharing this display; that repaint happens once, conditionally,
+ * at the next case boundary (LVGLTestFixture::reclaim_display()). Mid-case
+ * successors still see the scope's tier until then.
  *
  * It deliberately does NOT refresh on construction. The content-fit sweep
  * (test_widget_content_fits) measures widgets across eight geometries inside
@@ -107,11 +109,15 @@ class LVGLTestFixture : public HelixTestFixture {
      * @brief Put the shared display back the way a fresh process finds it
      *
      * Restores rotation, then resolution, then the default-display slot, then
-     * the derived layout state (breakpoint subjects, XML px tokens, fonts)
-     * republished from the display's geometry. Exactly what the constructor
-     * runs; public and static so a case that moves the display mid-body can
-     * hand whatever runs next the same state without constructing a second
-     * fixture inside a live one.
+     * (only when the geometry moved or the breakpoint subject disagrees with
+     * it - the repaint walks ui_xml seven times) the derived layout state:
+     * breakpoint subjects, XML px tokens, switch presets. Font tiers are the
+     * one derived thing NOT restored: AssetManager never unregisters faces,
+     * so a case that raised the tier leaves the extra faces available for
+     * the rest of the shard; only a fresh process gets the fixture-geometry
+     * font set back. Exactly what the constructor runs; public and static so
+     * a case that moves the display mid-body can hand whatever runs next the
+     * same state without constructing a second fixture inside a live one.
      */
     static void reclaim_display();
 

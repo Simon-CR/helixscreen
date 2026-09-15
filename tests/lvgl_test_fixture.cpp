@@ -69,28 +69,49 @@ static lv_obj_t* blank_screen() {
 // ROTATION_90/270 while lv_display_set_resolution() no-ops when the raw
 // pixel fields already match - so putting the geometry back from "what the
 // getters report" against a rotated display writes nothing and leaves the
-// axes swapped. Pixels and the default slot next. Last the derived layout
-// state (breakpoint subjects, XML px tokens, fonts): those are published
-// from the display by theme_manager_refresh_layout_constants(), they are
-// process-global, and widget_size::current_breakpoint() reads the subject
-// rather than the display, so putting back only the pixels leaves every
-// later test in this shard sizing widgets for a geometry that no longer
-// exists. The refresh is a no-op until the XML "globals" scope exists, so it
-// is safe from a plain fixture construction with no theme init behind it.
+// axes swapped. Pixels and the default slot next.
+//
+// The derived layout state (breakpoint subjects, XML px tokens, fonts) is
+// repainted only when something actually moved. Resolving the px tokens
+// walks ui_xml once per tier - seven scans - and dev/test builds read them
+// from disk by design (the compiled token table is installed-builds-only),
+// so an unconditional refresh would tax every fixture construction in the
+// shard. The repaint also cannot restore everything derived: font tiers are
+// monotonic (AssetManager never unregisters faces - static .rodata with live
+// widget pointers), so a case that raises the tier leaves the extra faces
+// available for the rest of the shard. That exclusion is by design and
+// process-wide; only a fresh process gets the 800x480 font set back.
 void LVGLTestFixture::reclaim_display() {
     if (s_display == nullptr) {
         return;
     }
+    bool geometry_moved = false;
     if (lv_display_get_rotation(s_display) != LV_DISPLAY_ROTATION_0) {
         lv_display_set_rotation(s_display, LV_DISPLAY_ROTATION_0);
+        geometry_moved = true;
     }
     const int32_t w = lv_display_get_horizontal_resolution(s_display);
     const int32_t h = lv_display_get_vertical_resolution(s_display);
     if (w != TEST_DISPLAY_WIDTH || h != TEST_DISPLAY_HEIGHT) {
         lv_display_set_resolution(s_display, TEST_DISPLAY_WIDTH, TEST_DISPLAY_HEIGHT);
+        geometry_moved = true;
     }
     if (lv_display_get_default() != s_display) {
         lv_display_set_default(s_display);
+    }
+    // A subject can go stale with the pixels untouched - a scope that
+    // republished from moved geometry and restored only the pixels, or a
+    // direct subject write (tests/test_helpers/scoped_breakpoint.h). One
+    // subject read is cheap; disagreeing with the display-derived tier
+    // means the derived state needs the repaint.
+    if (!geometry_moved) {
+        lv_subject_t* const bp = theme_manager_get_breakpoint_subject();
+        if (bp == nullptr || bp->type != LV_SUBJECT_TYPE_INT) {
+            return;
+        }
+        if (lv_subject_get_int(bp) == to_int(breakpoint_for(responsive_dimension(s_display)))) {
+            return;
+        }
     }
     theme_manager_refresh_layout_constants(s_display);
 }
