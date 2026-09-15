@@ -189,7 +189,7 @@ std::shared_ptr<PrintStartProfile> PrintStartProfile::make_builtin_default() {
         {"M190|M140\\s+S[1-9]|Heating bed|Heat Bed|BED_TEMP|bed.*heat",
          PrintStartPhase::HEATING_BED, lv_tr("Heating Bed..."), 20},
         {"(heat|bed|chamber).?soak|soaking|heating chamber|waiting for chamber",
-         PrintStartPhase::HEATING_BED, lv_tr("Heat Soak"), 20},
+         PrintStartPhase::SOAKING, lv_tr("Heat Soaking..."), 20},
         {"M109|M104\\s+S[1-9]|Heating (nozzle|hotend|extruder)|EXTRUDER_TEMP",
          PrintStartPhase::HEATING_NOZZLE, lv_tr("Heating Nozzle..."), 20},
         {"QUAD_GANTRY_LEVEL|quad.?gantry.?level|QGL",
@@ -257,10 +257,11 @@ std::shared_ptr<PrintStartProfile> PrintStartProfile::make_builtin_default() {
     }
 
     profile->phase_weights_ = {
-        {PrintStartPhase::HOMING, 10},         {PrintStartPhase::HEATING_BED, 20},
-        {PrintStartPhase::HEATING_NOZZLE, 20}, {PrintStartPhase::QGL, 15},
-        {PrintStartPhase::Z_TILT, 15},         {PrintStartPhase::BED_MESH, 10},
-        {PrintStartPhase::CLEANING, 5},        {PrintStartPhase::PURGING, 5},
+        {PrintStartPhase::HOMING, 10},   {PrintStartPhase::HEATING_BED, 20},
+        {PrintStartPhase::SOAKING, 20},  {PrintStartPhase::HEATING_NOZZLE, 20},
+        {PrintStartPhase::QGL, 15},      {PrintStartPhase::Z_TILT, 15},
+        {PrintStartPhase::BED_MESH, 10}, {PrintStartPhase::CLEANING, 5},
+        {PrintStartPhase::PURGING, 5},
     };
 
     spdlog::debug("[PrintStartProfile] Using built-in fallback profile");

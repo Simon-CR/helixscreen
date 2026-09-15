@@ -391,6 +391,7 @@ TEST_CASE("PrintStartProfile: phase weights match expected values", "[profile][p
     SECTION("Known phases have non-zero weights") {
         REQUIRE(profile->get_phase_weight(PrintStartPhase::HOMING) == 10);
         REQUIRE(profile->get_phase_weight(PrintStartPhase::HEATING_BED) == 20);
+        REQUIRE(profile->get_phase_weight(PrintStartPhase::SOAKING) == 20);
         REQUIRE(profile->get_phase_weight(PrintStartPhase::HEATING_NOZZLE) == 20);
         REQUIRE(profile->get_phase_weight(PrintStartPhase::QGL) == 15);
         REQUIRE(profile->get_phase_weight(PrintStartPhase::Z_TILT) == 15);
@@ -1381,10 +1382,11 @@ TEST_CASE("PrintStartProfile: default patterns match macro narration, not just c
         {"Cleaning nozzle...", PrintStartPhase::CLEANING},
         {"Bed mesh", PrintStartPhase::BED_MESH},
         {"Bed Mesh", PrintStartPhase::BED_MESH},
-        {"Heating chamber: 45c", PrintStartPhase::HEATING_BED},
-        {"Bed soak - 2 minutes remaining", PrintStartPhase::HEATING_BED},
-        {"Bed soak finished", PrintStartPhase::HEATING_BED},
-        {"Heat soak", PrintStartPhase::HEATING_BED},
+        {"Heating chamber: 45c", PrintStartPhase::SOAKING},
+        {"Waiting for chamber temp", PrintStartPhase::SOAKING},
+        {"Bed soak - 2 minutes remaining", PrintStartPhase::SOAKING},
+        {"Bed soak finished", PrintStartPhase::SOAKING},
+        {"Heat soak", PrintStartPhase::SOAKING},
     };
     for (const auto& row : rows) {
         CAPTURE(row.text);
@@ -1393,13 +1395,13 @@ TEST_CASE("PrintStartProfile: default patterns match macro narration, not just c
     }
 
     // Patterns resolve in array order, and the soak entry sits after the
-    // bed-heating one: ordinary bed narration keeps its own label. Both entries
-    // carry HEATING_BED, so the message is what separates them.
+    // bed-heating one: ordinary bed narration keeps its own phase and label.
     REQUIRE(profile->try_match_pattern("Heating Bed: 100c", result));
     CHECK(result.phase == PrintStartPhase::HEATING_BED);
     CHECK(result.message == "Heating Bed...");
     REQUIRE(profile->try_match_pattern("Heat soak", result));
-    CHECK(result.message == "Heat Soak");
+    CHECK(result.phase == PrintStartPhase::SOAKING);
+    CHECK(result.message == "Heat Soaking...");
 
     // A bare "bed mesh" is a mesh signal; the clear command still is not.
     REQUIRE_FALSE(profile->try_match_pattern("BED_MESH_CLEAR", result));
@@ -1859,6 +1861,7 @@ TEST_CASE("PrintStartProfile: the built-in fallback matches the shipped default.
             "Priming Nozzle",
             "Heating Bed: 100c",
             "Heating chamber: 45c",
+            "// waiting for chamber",
             "Bed soak - 2 minutes remaining",
             "Bed soak finished",
             "Heat soak",
@@ -1933,7 +1936,7 @@ TEST_CASE("PrintStartProfile: the built-in fallback matches the shipped default.
     SECTION("Both weigh the phases the same") {
         CHECK(builtin->progress_mode() == shipped->progress_mode());
         for (PrintStartPhase phase :
-             {PrintStartPhase::HOMING, PrintStartPhase::HEATING_BED,
+             {PrintStartPhase::HOMING, PrintStartPhase::HEATING_BED, PrintStartPhase::SOAKING,
               PrintStartPhase::HEATING_NOZZLE, PrintStartPhase::QGL, PrintStartPhase::Z_TILT,
               PrintStartPhase::BED_MESH, PrintStartPhase::CLEANING, PrintStartPhase::PURGING}) {
             CAPTURE(static_cast<int>(phase));

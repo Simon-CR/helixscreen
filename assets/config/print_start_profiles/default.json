@@ -10,7 +10,7 @@
   "response_patterns": [
     { "pattern": "G28|Homing|Home All|homing axes|homing all", "phase": "HOMING", "message": "Homing...", "weight": 10 },
     { "pattern": "M190|M140\\s+S[1-9]|Heating bed|Heat Bed|BED_TEMP|bed.*heat", "phase": "HEATING_BED", "message": "Heating Bed...", "weight": 20 },
-    { "pattern": "(heat|bed|chamber).?soak|soaking|heating chamber|waiting for chamber", "phase": "HEATING_BED", "message": "Heat Soak", "weight": 20 },
+    { "pattern": "(heat|bed|chamber).?soak|soaking|heating chamber|waiting for chamber", "phase": "SOAKING", "message": "Heat Soaking...", "weight": 20 },
     { "pattern": "M109|M104\\s+S[1-9]|Heating (nozzle|hotend|extruder)|EXTRUDER_TEMP", "phase": "HEATING_NOZZLE", "message": "Heating Nozzle...", "weight": 20 },
     { "pattern": "QUAD_GANTRY_LEVEL|quad.?gantry.?level|QGL", "phase": "QGL", "message": "Leveling Gantry...", "weight": 15 },
     { "pattern": "Z_TILT_ADJUST|z.?tilt.?adjust", "phase": "Z_TILT", "message": "Z Tilt Adjust...", "weight": 15 },
@@ -45,6 +45,7 @@
   "phase_weights": {
     "HOMING": 10,
     "HEATING_BED": 20,
+    "SOAKING": 20,
     "HEATING_NOZZLE": 20,
     "QGL": 15,
     "Z_TILT": 15,

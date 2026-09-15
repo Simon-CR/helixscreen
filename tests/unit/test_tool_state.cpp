@@ -226,6 +226,28 @@ TEST_CASE_METHOD(ToolStateFixture, "ToolState: init_tools with toolchanger creat
     REQUIRE(tools[2].extruder_name.value() == "extruder2");
 }
 
+TEST_CASE_METHOD(ToolStateFixture, "ToolState: extruder_name_for_tool", "[tool][tool-state]") {
+    lv_init_safe();
+
+    ToolState& ts = ToolState::instance();
+    ts.deinit_subjects();
+    ts.init_subjects(false);
+
+    helix::PrinterDiscovery hw;
+    nlohmann::json objects = nlohmann::json::array(
+        {"toolchanger", "tool T0", "tool T1", "tool T2", "extruder", "extruder1", "gcode_move"});
+    hw.parse_objects(objects);
+    ts.init_tools(hw);
+    REQUIRE(ts.tool_count() == 3);
+
+    CHECK(ts.extruder_name_for_tool(0) == "extruder");
+    CHECK(ts.extruder_name_for_tool(1) == "extruder1");
+    // Three tools on two extruders: T2 names none.
+    CHECK(ts.extruder_name_for_tool(2).empty());
+    CHECK(ts.extruder_name_for_tool(3).empty());
+    CHECK(ts.extruder_name_for_tool(-1).empty());
+}
+
 TEST_CASE_METHOD(ToolStateFixture, "ToolState: active_tool accessors", "[tool][tool-state]") {
     lv_init_safe();
 
@@ -1598,6 +1620,103 @@ TEST_CASE_METHOD(ToolStateFixture,
 
     // The tool should still have its original assignment
     REQUIRE(ts.tools()[0].spoolman_id == 99);
+
+    ams.set_backend(nullptr);
+    ams.deinit_subjects();
+    ts.deinit_subjects();
+}
+
+namespace {
+
+/// A two-tool changer in ToolState, and a mock tool changer behind AmsState
+/// whose slots name no spool and carry no weight. AmsState owns the mock.
+AmsBackendMock* install_unassigned_tool_changer() {
+    auto& ts = ToolState::instance();
+    ts.deinit_subjects();
+    ts.init_subjects(false);
+
+    PrinterDiscovery hw;
+    hw.parse_objects(nlohmann::json::array({"toolchanger", "tool T0", "tool T1", "extruder",
+                                            "extruder1", "heater_bed", "gcode_move"}));
+    ts.init_tools(hw);
+    REQUIRE(ts.tool_count() == 2);
+
+    auto mock = std::make_unique<AmsBackendMock>(2);
+    mock->set_tool_changer_mode(true);
+    mock->set_operation_delay(0);
+    auto* mock_ptr = mock.get();
+    for (int i = 0; i < 2; ++i) {
+        SlotInfo empty_slot = mock_ptr->get_slot_info(i);
+        empty_slot.spoolman_id = 0;
+        empty_slot.spool_name.clear();
+        empty_slot.remaining_weight_g = -1.0f;
+        empty_slot.total_weight_g = -1.0f;
+        mock_ptr->sync_external_identity(i, empty_slot);
+    }
+
+    auto& ams = AmsState::instance();
+    ams.set_moonraker_api(nullptr);
+    ams.deinit_subjects();
+    ams.init_subjects(false);
+    ams.set_backend(std::move(mock));
+    REQUIRE(ams.get_backend()->supports_per_tool_spool_assignment());
+    return mock_ptr;
+}
+
+} // namespace
+
+TEST_CASE_METHOD(
+    ToolStateFixture,
+    "ToolState: a reverse-synced toolchanger slot shows its spool by the end of the sync",
+    "[tool][tool-state][spool][ams]") {
+    lv_init_safe();
+    AmsBackendMock* mock_ptr = install_unassigned_tool_changer();
+    auto& ams = AmsState::instance();
+    auto& ts = ToolState::instance();
+
+    ams.sync_from_backend();
+    helix::ui::UpdateQueueTestAccess::drain_all(helix::ui::UpdateQueue::instance());
+    REQUIRE(lv_subject_get_int(ams.get_slot_fill_subject(0)) != 75);
+    REQUIRE(std::string(lv_subject_get_string(ams.get_slot_remaining_subject(0))).empty());
+
+    ts.assign_spool(0, 42, "Red PLA", 750.0f, 1000.0f);
+    ams.sync_from_backend();
+
+    // The reverse sync wrote the slot inside this pass.
+    REQUIRE(mock_ptr->get_slot_info(0).spoolman_id == 42);
+    REQUIRE(mock_ptr->get_slot_info(0).remaining_weight_g == 750.0f);
+
+    // Read with no drain in between, so these are the pass's own writes and not
+    // an update the backend's slot event queued.
+    CHECK(lv_subject_get_int(ams.get_slot_fill_subject(0)) == 75);
+    CHECK(std::string(lv_subject_get_string(ams.get_slot_remaining_subject(0))) == "750g");
+
+    ams.set_backend(nullptr);
+    ams.deinit_subjects();
+    ts.deinit_subjects();
+}
+
+TEST_CASE_METHOD(
+    ToolStateFixture,
+    "ToolState: an unlinked toolchanger slot does not take its spool back from ToolState",
+    "[tool][tool-state][spool][ams][commit]") {
+    lv_init_safe();
+    AmsBackendMock* mock_ptr = install_unassigned_tool_changer();
+    auto& ams = AmsState::instance();
+    auto& ts = ToolState::instance();
+
+    ts.assign_spool(0, 42, "Red PLA", 750.0f, 1000.0f);
+    ams.sync_from_backend();
+    REQUIRE(mock_ptr->get_slot_info(0).spoolman_id == 42);
+
+    const SlotInfo original = mock_ptr->get_slot_info(0);
+    SlotInfo unlinked = original;
+    unlinked.spoolman_id = 0;
+    unlinked.spool_name.clear();
+    REQUIRE(ams.commit_slot_edit(0, original, unlinked).success());
+
+    CHECK(mock_ptr->get_slot_info(0).spoolman_id == 0);
+    CHECK(ts.tools()[0].spoolman_id == 0);
 
     ams.set_backend(nullptr);
     ams.deinit_subjects();

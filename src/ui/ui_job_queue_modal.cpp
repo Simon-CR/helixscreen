@@ -14,6 +14,7 @@
 #include "job_queue_state.h"
 #include "lvgl/src/others/translation/lv_translation.h"
 #include "observer_factory.h"
+#include "print_start_checks.h"
 #include "printer_state.h"
 #include "theme_manager.h"
 
@@ -398,6 +399,8 @@ void JobQueueModal::start_job(const std::string& job_id, const std::string& file
     }
 
     spdlog::info("[JobQueueModal] Starting print: {}", filename);
+    helix::warn_printer_stop_check_skipped("the job queue", filename,
+                                           "a queued job is not scanned");
     auto token = lifetime_.token();
 
     // Remove from queue first, then start the print

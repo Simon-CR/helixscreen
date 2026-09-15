@@ -422,6 +422,8 @@ lv_xml_create(...);                           // 6. Create UI
 
 ⚠️ In `<styles>`: bare names (`bg_color`). On widgets: `style_` prefix (`style_bg_color`).
 
+A `<styles>` block is file-local. A style two files share goes in `ui_xml/styles.xml` and is borrowed as `<style name="styles.press_wash"/>` (see `LVGL9_XML_GUIDE.md` § "Defining Styles").
+
 ```xml
 <styles>
     <style name="my_style" bg_color="#ff0000"/>  <!-- NO prefix -->

@@ -16,6 +16,7 @@
 #include "ui_toast_manager.h"
 #include "ui_update_queue.h"
 
+#include "ams_bypass_policy.h"
 #include "i_moonraker_api.h"
 #include "i_moonraker_client.h"
 #include "lane_legacy_migration.h"
@@ -277,10 +278,23 @@ PathTopology AmsBackendAce::get_topology() const {
 PathSegment AmsBackendAce::get_filament_segment() const {
     std::lock_guard<std::mutex> lock(mutex_);
 
-    if (!system_info_.filament_loaded) {
-        return PathSegment::NONE;
+    // A seated tool is the whole answer, and outranks the sensors: both are
+    // still made with filament in the nozzle.
+    if (system_info_.filament_loaded) {
+        return PathSegment::NOZZLE;
     }
-    return PathSegment::NOZZLE;
+
+    // Nothing seated, so anything the sensors see is a strand in flight.
+    if (path_sensors_seen_) {
+        if (toolhead_sensor_) {
+            return PathSegment::TOOLHEAD;
+        }
+        if (rdm_sensor_) {
+            return PathSegment::OUTPUT;
+        }
+    }
+
+    return PathSegment::NONE;
 }
 
 PathSegment AmsBackendAce::get_slot_filament_segment(int slot_index) const {
@@ -342,8 +356,7 @@ AmsError AmsBackendAce::do_load_filament(int slot_index) {
     std::string gcode = "ACE_CHANGE_TOOL TOOL=" + std::to_string(slot_index);
     auto token = lifetime_.token();
 
-    spdlog::info("[ACE] Executing G-code: {}", gcode);
-    api_->execute_gcode(
+    return execute_gcode(
         gcode,
         [this, token, slot_index]() {
             // L081 Mechanism C: marshal member writes (system_info_) to main.
@@ -352,25 +365,27 @@ AmsError AmsBackendAce::do_load_filament(int slot_index) {
                 {
                     std::lock_guard<std::mutex> lock(mutex_);
                     system_info_.action = AmsAction::IDLE;
-                    seat_from_local_index_locked(slot_index);
 
-                    // Same derivation the parse paths use, so the next status
-                    // frame re-applies this stamp instead of erasing it.
-                    apply_seated_slot_stamp_locked();
+                    // Where firmware states the seat itself, the ack is only
+                    // "the command was accepted" and the seat waits for the
+                    // driver to confirm it moved.
+                    if (!manager_states_seat_) {
+                        seat_from_local_index_locked(slot_index);
+
+                        // Same derivation the parse paths use, so the next
+                        // status frame re-applies this stamp instead of
+                        // erasing it.
+                        apply_seated_slot_stamp_locked();
+                    }
                 }
                 PostOpCooldownManager::instance().schedule();
                 emit_event(EVENT_STATE_CHANGED);
             });
         },
-        [this, token, gcode](const MoonrakerError& err) {
-            // Log + reset to IDLE only — nothing here reaches the user, so the
-            // execute_gcode() call below declares caller_surfaces_errors=false.
-            token.defer("AmsBackendAce::load_err", [this, err, gcode]() {
-                if (err.type == MoonrakerErrorType::TIMEOUT) {
-                    spdlog::warn("[ACE] Load gcode timed out (may still be running): {}", gcode);
-                } else {
-                    spdlog::error("[ACE] Load gcode failed: {} - {}", gcode, err.message);
-                }
+        [this, token](const MoonrakerError&) {
+            // The send failed, so the optimistic LOADING has to be unwound or
+            // the sidebar waits on a transition that never starts.
+            token.defer("AmsBackendAce::load_err", [this]() {
                 {
                     std::lock_guard<std::mutex> lock(mutex_);
                     system_info_.action = AmsAction::IDLE;
@@ -378,13 +393,7 @@ AmsError AmsBackendAce::do_load_filament(int slot_index) {
                 emit_event(EVENT_STATE_CHANGED);
             });
         },
-        IMoonrakerAPI::AMS_OPERATION_TIMEOUT_MS, /*silent=*/false, /*on_queued=*/nullptr,
-        // See include/rpc_error_policy.h: a log-only error callback that claims
-        // the report silences GcodeErrorRouter's `!!` copy, which is the only
-        // surface that would have told the user the load failed.
-        /*caller_surfaces_errors=*/false);
-
-    return AmsErrorHelper::success();
+        /*silent=*/false);
 }
 
 AmsError AmsBackendAce::do_unload_filament(int /*slot_index*/) {
@@ -399,8 +408,7 @@ AmsError AmsBackendAce::do_unload_filament(int /*slot_index*/) {
     std::string gcode = "ACE_CHANGE_TOOL TOOL=-1";
     auto token = lifetime_.token();
 
-    spdlog::info("[ACE] Executing G-code: {}", gcode);
-    api_->execute_gcode(
+    return execute_gcode(
         gcode,
         [this, token]() {
             // L081 Mechanism C: marshal member writes (system_info_) to main.
@@ -409,26 +417,27 @@ AmsError AmsBackendAce::do_unload_filament(int /*slot_index*/) {
                 {
                     std::lock_guard<std::mutex> lock(mutex_);
                     system_info_.action = AmsAction::IDLE;
-                    seat_from_local_index_locked(-1);
 
-                    // Releases the stamp back to the status the parse wrote,
-                    // rather than assuming AVAILABLE for a slot firmware may
-                    // have called EMPTY.
-                    apply_seated_slot_stamp_locked();
+                    // Symmetric with the load path: a driver that states the
+                    // seat also clears it, and an unload it declined would
+                    // otherwise read as an empty toolhead.
+                    if (!manager_states_seat_) {
+                        seat_from_local_index_locked(-1);
+
+                        // Releases the stamp back to the status the parse
+                        // wrote, rather than assuming AVAILABLE for a slot
+                        // firmware may have called EMPTY.
+                        apply_seated_slot_stamp_locked();
+                    }
                 }
                 PostOpCooldownManager::instance().schedule();
                 emit_event(EVENT_STATE_CHANGED);
             });
         },
-        [this, token, gcode](const MoonrakerError& err) {
-            // Log + reset to IDLE only — nothing here reaches the user, so the
-            // execute_gcode() call below declares caller_surfaces_errors=false.
-            token.defer("AmsBackendAce::unload_err", [this, err, gcode]() {
-                if (err.type == MoonrakerErrorType::TIMEOUT) {
-                    spdlog::warn("[ACE] Unload gcode timed out (may still be running): {}", gcode);
-                } else {
-                    spdlog::error("[ACE] Unload gcode failed: {} - {}", gcode, err.message);
-                }
+        [this, token](const MoonrakerError&) {
+            // The send failed, so the optimistic UNLOADING has to be unwound or
+            // the sidebar waits on a transition that never starts.
+            token.defer("AmsBackendAce::unload_err", [this]() {
                 {
                     std::lock_guard<std::mutex> lock(mutex_);
                     system_info_.action = AmsAction::IDLE;
@@ -436,11 +445,7 @@ AmsError AmsBackendAce::do_unload_filament(int /*slot_index*/) {
                 emit_event(EVENT_STATE_CHANGED);
             });
         },
-        IMoonrakerAPI::AMS_OPERATION_TIMEOUT_MS, /*silent=*/false, /*on_queued=*/nullptr,
-        // Same reasoning as the load path above — see include/rpc_error_policy.h.
-        /*caller_surfaces_errors=*/false);
-
-    return AmsErrorHelper::success();
+        /*silent=*/false);
 }
 
 AmsError AmsBackendAce::do_select_slot(int slot_index) {
@@ -595,16 +600,78 @@ std::vector<int> AmsBackendAce::get_tool_mapping() const {
 // Bypass Mode (not supported)
 // ============================================================================
 
+void AmsBackendAce::set_bypass_macros(helix::BypassMacros macros) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    bypass_on_macro_ = std::move(macros.on);
+    bypass_off_macro_ = std::move(macros.off);
+    if (ace_pro_enabled_seen_) {
+        system_info_.supports_bypass = !bypass_on_macro_.empty() && !bypass_off_macro_.empty();
+    }
+}
+
 AmsError AmsBackendAce::enable_bypass() {
-    return AmsErrorHelper::not_supported("Bypass mode");
+    std::string gcode;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+
+        if (AmsError precondition = check_preconditions(); !precondition) {
+            return precondition;
+        }
+        // Checked before the availability predicate, which folds in a user
+        // override that can force the controls on. That override cannot supply
+        // a macro, and without one there is nothing to send.
+        if (bypass_on_macro_.empty()) {
+            return AmsError(AmsResult::WRONG_STATE, "Bypass not supported",
+                            lv_tr("This system does not support bypass mode"), "");
+        }
+        if (!helix::bypass_available_for(system_info_.supports_bypass)) {
+            return AmsError(AmsResult::WRONG_STATE, "Bypass not supported",
+                            lv_tr("This system does not support bypass mode"), "");
+        }
+        // The macro refuses a seated tool itself, but execute_gcode is
+        // fire-and-forget and reports success before Klipper answers, so a
+        // refusal there would reach the user as a toast contradicting a success
+        // already shown.
+        if (system_info_.filament_loaded) {
+            return AmsError(AmsResult::WRONG_STATE, "Unload filament first",
+                            lv_tr("Filament is still loaded. Unload it before enabling bypass."),
+                            "");
+        }
+        gcode = bypass_on_macro_;
+    }
+
+    spdlog::info("[ACE] Enabling bypass mode");
+    return execute_gcode(gcode);
 }
 
 AmsError AmsBackendAce::disable_bypass() {
-    return AmsErrorHelper::not_supported("Bypass mode");
+    std::string gcode;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+
+        if (AmsError precondition = check_preconditions(); !precondition) {
+            return precondition;
+        }
+        if (bypass_off_macro_.empty()) {
+            return AmsError(AmsResult::WRONG_STATE, "Bypass not supported",
+                            lv_tr("This system does not support bypass mode"), "");
+        }
+        if (!helix::bypass_available_for(system_info_.supports_bypass)) {
+            return AmsError(AmsResult::WRONG_STATE, "Bypass not supported",
+                            lv_tr("This system does not support bypass mode"), "");
+        }
+        gcode = bypass_off_macro_;
+    }
+
+    spdlog::info("[ACE] Disabling bypass mode");
+    return execute_gcode(gcode);
 }
 
 bool AmsBackendAce::is_bypass_active() const {
-    return false;
+    std::lock_guard<std::mutex> lock(mutex_);
+    // Only the ACE path being switched off means a hand-fed spool. A rig that
+    // never publishes the switch is not bypassing, it simply has no switch.
+    return ace_pro_enabled_seen_ && !ace_pro_enabled_;
 }
 
 // ============================================================================
@@ -737,6 +804,32 @@ void AmsBackendAce::apply_seated_slot_stamp_locked() {
     seated_stamp_slot_ = system_info_.current_slot;
     seated_stamp_prev_ = slot->status;
     slot->status = SlotStatus::LOADED;
+}
+
+void AmsBackendAce::apply_path_sensors_locked(const json& data) {
+    // Caller holds mutex_.
+    bool stated = false;
+    if (data.contains("rdm_sensor") && data["rdm_sensor"].is_boolean()) {
+        rdm_sensor_ = data["rdm_sensor"].get<bool>();
+        stated = true;
+    }
+    if (data.contains("toolhead_sensor") && data["toolhead_sensor"].is_boolean()) {
+        toolhead_sensor_ = data["toolhead_sensor"].get<bool>();
+        stated = true;
+    }
+    if (!stated) {
+        return;
+    }
+    path_sensors_seen_ = true;
+
+    // Publish them on the unit so the path canvas knows the hardware is there
+    // and can draw the sensor nodes.
+    if (!system_info_.units.empty()) {
+        auto& unit = system_info_.units[0];
+        unit.has_hub_sensor = true;
+        unit.hub_sensor_triggered = rdm_sensor_;
+        unit.has_toolhead_sensor = true;
+    }
 }
 
 void AmsBackendAce::apply_dryer_state_locked(const json& data) {
@@ -1074,7 +1167,18 @@ void AmsBackendAce::parse_ace_object(const json& data) {
     // would leave the previous slot reading loaded forever. Fourth and last
     // explicit signal; last one wins (#1069).
     if (data.contains("current_index") && data["current_index"].is_number_integer()) {
+        manager_states_seat_ = true;
         seat_from_global_index_locked(data["current_index"].get<int>());
+    }
+
+    apply_path_sensors_locked(data);
+
+    // The master switch. Presence is the capability, so a rig without one is
+    // left reporting no bypass rather than one that is permanently off.
+    if (data.contains("ace_pro_enabled") && data["ace_pro_enabled"].is_boolean()) {
+        ace_pro_enabled_seen_ = true;
+        ace_pro_enabled_ = data["ace_pro_enabled"].get<bool>();
+        system_info_.supports_bypass = !bypass_on_macro_.empty() && !bypass_off_macro_.empty();
     }
 
     // All four seated signals (the ValgACE "loaded" scan, loaded_slot, native
@@ -1499,6 +1603,8 @@ bool AmsBackendAce::parse_status_response(const json& data) {
     if (data.contains("ace_manager") && data["ace_manager"].is_object() &&
         data["ace_manager"].contains("current_index") &&
         data["ace_manager"]["current_index"].is_number_integer()) {
+        manager_states_seat_ = true;
+        apply_path_sensors_locked(data["ace_manager"]);
         changed |= seat_from_global_index_locked(data["ace_manager"]["current_index"].get<int>());
     }
 

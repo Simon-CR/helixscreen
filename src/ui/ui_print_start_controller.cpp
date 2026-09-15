@@ -421,9 +421,11 @@ void PrintStartController::initiate_reprint(const std::string& filename, const s
         return;
     }
 
-    // The reprint path skips the preparation manager, so it used to record no
-    // job identity at all and ran with whatever override the previous print
-    // left behind.
+    helix::warn_printer_stop_check_skipped("a reprint", filename,
+                                           "a reprint does not scan the file");
+
+    // The reprint path skips the preparation manager, so it records the job
+    // identity itself rather than running with the previous print's override.
     printer_state_.begin_preparing(helix::PrintJobRef{filename, path, ""});
 
     // Lightweight start — the file is already on the printer; no upload/prep.
@@ -541,6 +543,13 @@ helix::PrintStartContext PrintStartController::gather_print_start_context() cons
         ctx.tools_used = detail_view_->get_tools_used();
         ctx.effective_remap = detail_view_->get_effective_remap();
         ctx.tool_grams = detail_view_->get_tool_grams();
+        if (auto* prep = detail_view_->get_prep_manager()) {
+            ctx.printer_stop = prep->printer_stop_check_for(filename_);
+        } else {
+            ctx.printer_stop.not_run_reason = "no file scanner";
+        }
+    } else {
+        ctx.printer_stop.not_run_reason = "no file detail view";
     }
     if (ctx.ams_manages_filament && ctx.has_active_backend) {
         ctx.empty_required_lanes =
@@ -557,20 +566,14 @@ helix::PrintStartContext PrintStartController::gather_print_start_context() cons
 
 void PrintStartController::run_gates_from(size_t index) {
     const auto ctx = gather_print_start_context();
+    if (index == 0 && ctx.printer_stop.state == helix::PrinterStopCheck::State::NotRun) {
+        helix::warn_printer_stop_check_skipped("the print select panel", filename_,
+                                               ctx.printer_stop.not_run_reason);
+    }
     for (size_t i = index; i < gate_list_.size(); ++i) {
         const auto result = gate_list_[i].evaluate(ctx);
         if (result.verdict == helix::CheckResult::Verdict::Pass) {
             continue;
-        }
-        if (result.verdict == helix::CheckResult::Verdict::Block) {
-            // No Block gate exists yet (declared for future hard-stops). Fail
-            // closed: do not start, do not offer proceed.
-            spdlog::error("[PrintStartController] Gate '{}' returned Block - aborting print start",
-                          gate_list_[i].name);
-            if (update_print_button_) {
-                update_print_button_();
-            }
-            return;
         }
 
         if (print_gate_modal_) {
@@ -579,11 +582,31 @@ void PrintStartController::run_gates_from(size_t index) {
         }
         gate_resume_index_ = i;
         // The modal closes itself on a button press and deletes itself after
-        // any close. A dismissal resolves like Cancel: the user walked away
-        // from the gate chain, and every other terminal path re-enables the
-        // print button - leaving that to the buttons alone stranded it disabled
-        // on a backdrop tap or ESC, with the handle stale on top.
+        // any close. Every close that is not Proceed resolves like Cancel: the
+        // print button comes back and nothing starts, including a backdrop tap
+        // or ESC.
         auto cancel = [this] { on_gate_cancel(); };
+
+        if (result.verdict == helix::CheckResult::Verdict::Block) {
+            // A hard stop explains itself and offers only OK.
+            spdlog::warn("[PrintStartController] Gate '{}' blocked the print start",
+                         gate_list_[i].name);
+            helix::ui::AlertOptions alert_opts;
+            alert_opts.on_dismiss = cancel;
+            alert_opts.owner_token = lifetime_.token();
+            print_gate_modal_ =
+                helix::ui::modal_alert(result.title.c_str(), result.body.c_str(),
+                                       ModalSeverity::Error, lv_tr("OK"), cancel, alert_opts);
+            if (!print_gate_modal_) {
+                spdlog::error("[PrintStartController] Failed to create gate dialog for '{}'",
+                              gate_list_[i].name);
+                if (update_print_button_) {
+                    update_print_button_();
+                }
+            }
+            return;
+        }
+
         helix::ui::ConfirmOptions opts;
         opts.on_cancel = cancel;
         opts.on_dismiss = cancel;

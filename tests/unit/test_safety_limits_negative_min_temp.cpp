@@ -148,6 +148,18 @@ TEST_CASE("SafetyLimits: negative temperature floors clamp to zero", "[1353][saf
     CHECK(limits.min_extrude_temp_celsius == Catch::Approx(0.0));
 }
 
+TEST_CASE("SafetyLimits: a negative per-extruder extrusion floor clamps to zero",
+          "[1353][safety_limits]") {
+    SafetyLimits limits;
+    limits.set_min_extrude_temp_for("extruder1", REPORTED_MIN_TEMP);
+    limits.set_min_extrude_temp_for("extruder2", 190.0);
+
+    limits.clamp_temperature_floors();
+
+    CHECK(limits.min_extrude_temp_for("extruder1") == Catch::Approx(0.0));
+    CHECK(limits.min_extrude_temp_for("extruder2") == Catch::Approx(190.0));
+}
+
 TEST_CASE("SafetyLimits: a configured positive floor survives the clamp", "[1353][safety_limits]") {
     // The clamp must be a floor, not a reset - a printer that really does
     // require 190°C before it will extrude keeps that number.
@@ -241,6 +253,23 @@ TEST_CASE_METHOD(NegativeMinTempFixture, "set_temperature rejects a negative tar
     CHECK_FALSE(sane_rejected);
 
     helix::ui::UpdateQueue::instance().drain();
+}
+
+TEST_CASE_METHOD(NegativeMinTempFixture,
+                 "Each extruder section's min_extrude_temp is adopted for that extruder",
+                 "[safety_limits][multi_extruder]") {
+    mock_client_.set_extruder_min_extrude_temp(170.0);
+    mock_client_.set_config_settings_section(
+        "extruder1", {{"min_temp", 0.0}, {"max_temp", 250.0}, {"min_extrude_temp", 200.0}});
+
+    REQUIRE(run_update());
+
+    const SafetyLimits& limits = api_->get_safety_limits();
+    REQUIRE(limits.max_temp_for("extruder1") == Catch::Approx(250.0));
+    CHECK(limits.min_extrude_temp_for("extruder1") == Catch::Approx(200.0));
+    CHECK(limits.min_extrude_temp_for("extruder") == Catch::Approx(170.0));
+    // The global stays the primary extruder's.
+    CHECK(limits.min_extrude_temp_celsius == Catch::Approx(170.0));
 }
 
 TEST_CASE_METHOD(NegativeMinTempFixture, "A positive configured min_extrude_temp is preserved",

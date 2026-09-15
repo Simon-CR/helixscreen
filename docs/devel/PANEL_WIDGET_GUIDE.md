@@ -58,7 +58,10 @@ visibility, fonts — all `bind_flag_if_*` / `bind_style_if_*` off the
 subjects. A row created by a late rebuild reads the current values at
 creation and agrees with its siblings with no seeding pass. Prefer one
 threshold bind (`bind_flag_if_lt subject=... ref_value="2"`) over enumerated
-equality pairs; it reads as the predicate it is.
+equality pairs; it reads as the predicate it is. A style the binds apply lives in
+the widget's own `<styles>` block when one file uses it; when several widgets bind
+the same look, it lives once in `ui_xml/styles.xml` and every file binds it by
+dotted name (`bind_style_if_eq name="styles.<name>" ...`).
 
 ### Degradation design
 

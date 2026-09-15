@@ -13,10 +13,11 @@ namespace helix::test {
 class LaneMaterialBackend : public AmsBackendMock {
   public:
     /// @p lane is loaded and names the material. The selected tool maps to
-    /// @p selected_slot, which is @p lane unless given.
-    LaneMaterialBackend(int lane, int nozzle_c, int selected_slot = -1)
+    /// @p selected_slot, which is @p lane unless given. @p lane_tool is the tool
+    /// the lane itself maps to (SlotInfo::mapped_tool), none unless given.
+    LaneMaterialBackend(int lane, int nozzle_c, int selected_slot = -1, int lane_tool = -1)
         : AmsBackendMock(4), lane_(lane), nozzle_c_(nozzle_c),
-          selected_slot_(selected_slot < 0 ? lane : selected_slot) {}
+          selected_slot_(selected_slot < 0 ? lane : selected_slot), lane_tool_(lane_tool) {}
 
     [[nodiscard]] AmsSystemInfo get_system_info() const override {
         AmsSystemInfo sys;
@@ -34,6 +35,7 @@ class LaneMaterialBackend : public AmsBackendMock {
             info.material = "Lane Test Filament";
             info.nozzle_temp_min = nozzle_c_;
             info.nozzle_temp_max = nozzle_c_;
+            info.mapped_tool = lane_tool_;
         }
         return info;
     }
@@ -54,6 +56,7 @@ class LaneMaterialBackend : public AmsBackendMock {
     int lane_;
     int nozzle_c_;
     int selected_slot_;
+    int lane_tool_;
 };
 
 } // namespace helix::test

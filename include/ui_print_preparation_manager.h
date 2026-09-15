@@ -13,6 +13,7 @@
 #include "operation_timeout_guard.h"
 #include "preprint_predictor.h"
 #include "print_start_analyzer.h"
+#include "print_start_checks.h"
 #include "printer_detector.h"
 #include "printer_state.h"
 #include "thermal_rate_model.h"
@@ -296,6 +297,20 @@ class PrintPreparationManager {
     void clear_scan_cache();
 
     /**
+     * @brief What the last scan of @p filename found about printer-stopping commands
+     *
+     * NotRun until a scan of that file answers, or when its download failed or the
+     * printer's macros had not been read; not_run_reason says which.
+     */
+    [[nodiscard]] helix::PrinterStopCheck printer_stop_check_for(const std::string& filename) const;
+
+    /// Whether a scan of @p filename has answered, whatever the answer.
+    [[nodiscard]] bool has_printer_stop_answer_for(const std::string& filename) const;
+
+    /// Called on the main thread each time a scan answers, success or failure.
+    void set_on_scan_answered(std::function<void()> cb);
+
+    /**
      * @brief Check if scan result is available for a file
      */
     [[nodiscard]] bool has_scan_result_for(const std::string& filename) const;
@@ -518,6 +533,12 @@ class PrintPreparationManager {
     // === Scan Cache ===
     std::optional<gcode::ScanResult> cached_scan_result_;
     std::string cached_scan_filename_;
+    helix::PrinterStopCheck printer_stop_check_;
+    std::string printer_stop_check_filename_; ///< The file printer_stop_check_ answers for
+    std::function<void()> on_scan_answered_;
+
+    /// Record the scan's printer-stopping command answer for @p filename and report it.
+    void answer_printer_stop_check(const std::string& filename, helix::PrinterStopCheck check);
     std::optional<size_t> cached_file_size_; ///< File size from Moonraker metadata
     /// Job temps for {bed_temp}/{extruder_temp} come from the scan cache's
     /// print_start call (the file's own START_PRINT line) — see

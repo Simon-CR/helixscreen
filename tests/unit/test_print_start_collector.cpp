@@ -2595,6 +2595,54 @@ TEST_CASE_METHOD(PrintStartCollectorHeaterFixture,
 }
 
 TEST_CASE_METHOD(PrintStartCollectorHeaterFixture,
+                 "The generic profile moves a soak out of bed heating and keeps it there",
+                 "[print][collector][soak]") {
+    REQUIRE(PrintStartProfile::load_default()->name() == "Generic");
+    set_all_temps(300, 1050, 2650, 2650);
+    collector().start();
+    drain_async_updates();
+    reset_collector_to_idle();
+    collector().enable_fallbacks();
+
+    // The generic heating_bed rule enters bed heating on the climb.
+    client().dispatch_status_update({{"heater_bed", {{"temperature", 30.0}, {"target", 105.0}}}});
+    drain_async_updates();
+    REQUIRE(get_current_phase() == PrintStartPhase::HEATING_BED);
+
+    SECTION("a soak narrated once the bed arrives") {
+        set_bed_temps(1050, 1050);
+        client().dispatch_status_update(
+            {{"heater_bed", {{"temperature", 105.0}, {"target", 105.0}}}});
+        client().dispatch_status_update(
+            {{"display_status", {{"message", "Bed soak - 2 minutes remaining"}}}});
+        drain_async_updates();
+        REQUIRE(get_current_phase() == PrintStartPhase::SOAKING);
+        REQUIRE(get_current_message() == "Heat Soaking...");
+
+        // The bed sags past the 2C band during the dwell: the heating_bed rule
+        // re-arms and holds again, and the temperature tick sees a heating bed.
+        set_bed_temps(1020, 1050);
+        client().dispatch_status_update(
+            {{"heater_bed", {{"temperature", 102.0}, {"target", 105.0}}}});
+        drain_async_updates();
+        tick_fallbacks();
+        CHECK(get_current_phase() == PrintStartPhase::SOAKING);
+        CHECK(get_current_message() == "Heat Soaking...");
+    }
+
+    SECTION("a chamber wait while the bed is still climbing") {
+        send_gcode_response("// waiting for chamber");
+        REQUIRE(get_current_phase() == PrintStartPhase::SOAKING);
+
+        // Heater correction relabels only a heating phase, so the live bed
+        // shortfall leaves the wait alone.
+        set_bed_temps(600, 1050);
+        tick_fallbacks();
+        CHECK(get_current_phase() == PrintStartPhase::SOAKING);
+    }
+}
+
+TEST_CASE_METHOD(PrintStartCollectorHeaterFixture,
                  "A timeout completion keeps the heating rates it measured",
                  "[print][collector][timeout][thermal_rate]") {
     PreprintConfigScope config;

@@ -108,6 +108,7 @@ TEST_CASE("calibration plan: a command that cannot be named stores default, then
 
     SECTION("a shipped sequence without the placeholder") {
         slot.shipped_macro = "CLEAN_NOZZLE\nBED_MESH_CALIBRATE";
+        slot.shipped_self_prepares = true;
         const auto plan = plan_calibration(slot, "cold", 60);
         CHECK(plan.command == "CLEAN_NOZZLE\nBED_MESH_CALIBRATE");
         CHECK(plan.self_prepares);
@@ -131,12 +132,35 @@ TEST_CASE("calibration plan: a command that cannot be named stores default, then
     }
 }
 
+TEST_CASE("calibration plan: a shipped sequence prepares itself only when its entry says so",
+          "[bed_mesh][calibration_plan]") {
+    StandardMacroInfo slot;
+    slot.shipped_macro = "BED_MESH_CALIBRATE{profile_arg} BED_TEMP={bed_temp}";
+
+    SECTION("without the flag the panel preheats, homes and prepares the probe") {
+        const auto plan = plan_calibration(slot, "default", 60);
+        CHECK(plan.command == "BED_MESH_CALIBRATE BED_TEMP=60");
+        CHECK(plan.shipped);
+        CHECK_FALSE(plan.self_prepares);
+    }
+
+    SECTION("with the flag the sequence is sent alone") {
+        slot.shipped_self_prepares = true;
+        const auto plan = plan_calibration(slot, "default", 60);
+        CHECK(plan.shipped);
+        CHECK(plan.self_prepares);
+    }
+}
+
 TEST_CASE("calibration plan: the Centauri Carbon template, default and named",
           "[bed_mesh][calibration_plan][cc1]") {
     PrinterDetector::reload();
     StandardMacroInfo slot;
     slot.shipped_macro = PrinterDetector::get_bed_mesh_calibrate_gcode("Elegoo Centauri Carbon");
+    slot.shipped_self_prepares =
+        PrinterDetector::get_bed_mesh_self_prepares("Elegoo Centauri Carbon");
     REQUIRE_FALSE(slot.shipped_macro.empty());
+    REQUIRE(slot.shipped_self_prepares);
 
     SECTION("default") {
         const auto plan = plan_calibration(slot, "default", 60);

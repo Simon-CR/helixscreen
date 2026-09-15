@@ -947,6 +947,13 @@ void AmsOperationSidebar::fail_started_operation(const AmsError& error) {
     spdlog::warn("[AmsSidebar] Operation dispatch failed: {} ({})", error.user_msg,
                  error.technical_msg);
     helix::ui::notify_ams_error(error, lv_tr("Filament operation failed"));
+    // The dispatch this home consent was armed for never ran, and the arm is
+    // consumed single-shot by whichever operation dispatches next — leaving it
+    // set would home a later one without asking. Idempotent no-op when nothing
+    // was armed.
+    if (AmsBackend* backend = AmsState::instance().get_backend()) {
+        backend->clear_home_preconfirmed();
+    }
     target_load_slot_ = -1;
     AmsState::instance().set_pending_target_slot(-1);
     // Backend never left IDLE; pull its truth back into the UI so the action
@@ -1338,12 +1345,11 @@ AmsOperationSidebar::macro_temp_prefill(helix::ui::FilamentMacroOp op, int slot_
         spdlog::debug("[AmsSidebar] No API — no temperature prefilled for slot {}", slot_index);
         return {};
     }
-    const int target_c = temperature::deci_to_degrees(
-        lv_subject_get_int(printer_state_.get_active_extruder_target_subject()));
-    const SafetyLimits& limits = api->get_safety_limits();
-    return helix::ui::nozzle_temp_prefill(op, target_c, material_load_temp_for_slot(slot_index),
-                                          temperature::extrusion_floor_c(limits),
-                                          temperature::nozzle_max_temp_c(limits));
+    const helix::ui::OpNozzle nozzle = helix::ui::resolve_op_nozzle(
+        AmsState::instance().get_backend(), slot_index, printer_state_, api->get_safety_limits());
+    return helix::ui::nozzle_temp_prefill(op, nozzle.target_c,
+                                          material_load_temp_for_slot(slot_index), nozzle.floor_c,
+                                          nozzle.ceiling_c);
 }
 
 void AmsOperationSidebar::handle_load_with_preheat(int slot_index) {

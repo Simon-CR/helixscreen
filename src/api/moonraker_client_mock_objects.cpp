@@ -327,6 +327,9 @@ void register_object_handlers(std::unordered_map<std::string, MethodHandler>& re
                 const json chamber_sections = chamber_heater_configfile_sections(self);
                 status_obj["configfile"]["settings"].merge_patch(chamber_sections);
                 status_obj["configfile"]["config"].merge_patch(chamber_sections);
+                for (const auto& [name, settings] : self->extra_config_settings().items()) {
+                    status_obj["configfile"]["settings"][name] = settings;
+                }
 
                 // Whether a SAVE_CONFIG is owed, and for what. Klipper publishes
                 // these on configfile itself, not under settings/config, and
@@ -833,6 +836,9 @@ void register_object_handlers(std::unordered_map<std::string, MethodHandler>& re
                 const json chamber_sections = chamber_heater_configfile_sections(self);
                 status_obj["configfile"]["settings"].merge_patch(chamber_sections);
                 status_obj["configfile"]["config"].merge_patch(chamber_sections);
+                for (const auto& [name, settings] : self->extra_config_settings().items()) {
+                    status_obj["configfile"]["settings"][name] = settings;
+                }
 
                 // Whether a SAVE_CONFIG is owed, and for what. Klipper publishes
                 // these on configfile itself, not under settings/config, and

@@ -501,6 +501,10 @@ void SpoolmanManager::refresh_spoolman_weights() {
                             // commands per cycle on four AFC lanes.
                             owner->update_slot_weight(d->slot_index, new_remaining,
                                                       d->total_weight_g, /*persist=*/false);
+                            // A slot event the backend raises for this write is
+                            // only queued, so the subjects follow the weight in
+                            // the pass that wrote it.
+                            ams.update_slot_for_backend(d->backend_index, d->slot_index);
                             ams.bump_slots_version();
 
                             spdlog::debug(

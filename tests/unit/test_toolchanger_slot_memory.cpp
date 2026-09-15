@@ -25,9 +25,14 @@
 
 #include "ui_update_queue.h"
 
+#include "../lvgl_test_fixture.h"
 #include "../test_helpers/toolchanger_test_access.h"
+#include "../test_helpers/update_queue_test_access.h"
 #include "ams_backend_toolchanger.h"
+#include "ams_state.h"
 #include "ams_types.h"
+#include "app_globals.h"
+#include "consumption_sink.h"
 #include "filament_slot_override_store.h"
 #include "lane_source_store.h"
 #include "moonraker_api_mock.h"
@@ -36,8 +41,10 @@
 #include "test_helpers/registered_backend.h"
 #include "test_helpers/seeded_override.h"
 
+#include <cstdio>
 #include <cstdlib>
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <unistd.h>
 #include <vector>
@@ -255,6 +262,114 @@ TEST_CASE("An edit that also remaps a tool keeps both", "[ams][toolchanger][slot
     h.set_tools(4);
     CHECK(h.get_slot_info(1).color_rgb == 0x1E5AA8);
     CHECK(h.get_slot_info(1).material == "PETG");
+}
+
+// ============================================================================
+// A slot write reaches AmsState's slot subjects
+// ============================================================================
+
+namespace {
+
+/// A registered tool changer whose slots AmsState publishes, over the
+/// PrinterState subject AmsState::init_subjects() observes.
+struct PublishedToolChanger : LVGLTestFixture {
+    std::optional<helix::test::RegisteredBackend<SlotMemoryHelper>> registration;
+
+    PublishedToolChanger() {
+        auto& ams = helix::AmsState::instance();
+        ams.clear_backends();
+        ams.deinit_subjects();
+        get_printer_state().init_subjects(false);
+        ams.init_subjects(false);
+        registration.emplace(4);
+    }
+
+    ~PublishedToolChanger() override {
+        registration.reset();
+        helix::AmsState::instance().deinit_subjects();
+    }
+
+    [[nodiscard]] SlotMemoryHelper& backend() const {
+        return **registration;
+    }
+
+    /// Run every queued update, including the full sync a status frame asks for.
+    static void settle() {
+        helix::ui::UpdateQueueTestAccess::drain_all(helix::ui::UpdateQueue::instance());
+    }
+
+    /// One pass of the update queue: what a slot event queued, and nothing that
+    /// work queues in turn.
+    static void deliver_events() {
+        helix::ui::UpdateQueueTestAccess::drain(helix::ui::UpdateQueue::instance());
+    }
+};
+
+} // namespace
+
+TEST_CASE_METHOD(PublishedToolChanger, "a meter tick on a tool changer reaches the slot's subjects",
+                 "[ams][toolchanger][consumption_sink][slot_refresh]") {
+    SlotMemoryHelper& h = backend();
+    auto& ams = helix::AmsState::instance();
+
+    helix::SlotInfo seeded = h.get_slot_info(0);
+    seeded.material = "PLA";
+    seeded.remaining_weight_g = 500.0F;
+    seeded.total_weight_g = 1000.0F;
+    REQUIRE(h.sync_external_identity(0, seeded).success());
+    h.feed_ready(0);
+    ams.sync_from_backend();
+    settle();
+    REQUIRE(h.is_filament_loaded());
+    REQUIRE(h.get_current_slot() == 0);
+    REQUIRE(lv_subject_get_int(ams.get_slot_fill_subject(0)) == 50);
+    REQUIRE(std::string(lv_subject_get_string(ams.get_current_weight_text_subject())) == "500g");
+
+    helix::AmsSlotSink sink(0, 0);
+    sink.snapshot(0.0F);
+    REQUIRE(sink.is_trackable());
+    // About 100 g of 1.75 mm PLA, far past the sink's write threshold.
+    sink.apply_delta(33600.0F);
+    const helix::SlotInfo metered = h.get_slot_info(0);
+    REQUIRE(metered.remaining_weight_g < 450.0F);
+
+    deliver_events();
+
+    CHECK(lv_subject_get_int(ams.get_slot_fill_subject(0)) == metered.display_fill_pct());
+    CHECK(std::string(lv_subject_get_string(ams.get_slot_remaining_subject(0))) ==
+          metered.remaining_display());
+    char loaded_weight[32];
+    snprintf(loaded_weight, sizeof(loaded_weight), "%.0fg", metered.remaining_weight_g);
+    CHECK(std::string(lv_subject_get_string(ams.get_current_weight_text_subject())) ==
+          loaded_weight);
+}
+
+TEST_CASE_METHOD(PublishedToolChanger,
+                 "a person's edit on a tool changer reaches the slot's subjects",
+                 "[ams][toolchanger][slot_refresh]") {
+    SlotMemoryHelper& h = backend();
+    auto& ams = helix::AmsState::instance();
+    ams.sync_from_backend();
+    settle();
+    REQUIRE(lv_subject_get_int(ams.get_slot_color_subject(1)) ==
+            static_cast<int>(helix::AMS_DEFAULT_SLOT_COLOR));
+
+    SECTION("an identity edit") {
+        helix::test::edit_slot_as_user(h, 1, blue_petg());
+        REQUIRE(h.sent().empty());
+    }
+    SECTION("an edit that also remaps the tool through ASSIGN_TOOL") {
+        helix::SlotInfo remapped = blue_petg();
+        remapped.mapped_tool = 3;
+        helix::test::edit_slot_as_user(h, 1, remapped);
+        REQUIRE(h.sent().size() == 1);
+    }
+    REQUIRE(h.get_slot_info(1).color_rgb == 0x1E5AA8);
+
+    deliver_events();
+
+    CHECK(lv_subject_get_int(ams.get_slot_color_subject(1)) == 0x1E5AA8);
+    CHECK(std::string(lv_subject_get_string(ams.get_slot_material_subject(1))) == "PETG");
 }
 
 // ============================================================================

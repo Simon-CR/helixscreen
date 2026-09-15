@@ -532,25 +532,26 @@ TEST_CASE("material_mismatches_in: bypass falls back to palette materials",
 
 TEST_CASE("default gate list: names in behavior-preserving order", "[print-start][gate-pipeline]") {
     auto& gates = default_print_start_gates();
-    REQUIRE(gates.size() == 7);
-    CHECK(gates[0].name == "insufficient_spool_weight");
+    REQUIRE(gates.size() == 8);
+    CHECK(gates[0].name == "printer_stopping_command");
+    CHECK(gates[1].name == "insufficient_spool_weight");
     // The lane-fed counterpart sits beside its sibling; the two are mutually
     // exclusive by construction, so their relative order is not load-bearing.
-    CHECK(gates[1].name == "insufficient_lane_weight");
-    CHECK(gates[2].name == "bypass_engaged_lane_print");
-    CHECK(gates[3].name == "unaccounted_toolhead_filament");
-    CHECK(gates[4].name == "required_filament_present");
-    CHECK(gates[5].name == "unresolved_tools");
-    CHECK(gates[6].name == "material_compatibility");
+    CHECK(gates[2].name == "insufficient_lane_weight");
+    CHECK(gates[3].name == "bypass_engaged_lane_print");
+    CHECK(gates[4].name == "unaccounted_toolhead_filament");
+    CHECK(gates[5].name == "required_filament_present");
+    CHECK(gates[6].name == "unresolved_tools");
+    CHECK(gates[7].name == "material_compatibility");
 }
 
 TEST_CASE("default gate list: the two new gates keep their relative order",
           "[print-start][gate-pipeline]") {
     auto& gates = default_print_start_gates();
-    REQUIRE(gates.size() == 7);
-    CHECK(gates[2].name == "bypass_engaged_lane_print");
-    CHECK(gates[3].name == "unaccounted_toolhead_filament");
-    CHECK(gates[4].name == "required_filament_present"); // shifted, order otherwise preserved
+    REQUIRE(gates.size() == 8);
+    CHECK(gates[3].name == "bypass_engaged_lane_print");
+    CHECK(gates[4].name == "unaccounted_toolhead_filament");
+    CHECK(gates[5].name == "required_filament_present");
 }
 
 // ---------------------------------------------------------------------------
@@ -1242,4 +1243,97 @@ TEST_CASE("gate unaccounted_toolhead_filament: a missing capability entry reads 
     auto r = gate_named("unaccounted_toolhead_filament").evaluate(c);
     REQUIRE(r.verdict == CheckResult::Verdict::Warn);
     CHECK(r.body.find("Pull it out manually") != std::string::npos);
+}
+
+// ---------------------------------------------------------------------------
+// printer_stopping_command - a file that calls a command this printer turns
+// into an emergency stop
+// ---------------------------------------------------------------------------
+
+namespace {
+PrinterStopCheck stops_at(size_t line, const char* command, const char* message) {
+    PrinterStopCheck check;
+    check.state = PrinterStopCheck::State::Stops;
+    check.line_number = line;
+    check.command = command;
+    check.stop_message = message;
+    return check;
+}
+} // namespace
+
+TEST_CASE("gate printer_stopping_command: runs before every filament gate",
+          "[print-start][gate-pipeline][printer_stop]") {
+    REQUIRE_FALSE(default_print_start_gates().empty());
+    CHECK(default_print_start_gates().front().name == std::string("printer_stopping_command"));
+}
+
+TEST_CASE("gate printer_stopping_command: blocks a file that calls one",
+          "[print-start][gate-pipeline][printer_stop]") {
+    const auto& gate = gate_named("printer_stopping_command");
+
+    SECTION("with the printer's message") {
+        auto ctx = ctx_with([](PrintStartContext& c) {
+            c.printer_stop = stops_at(12, "m729", "M729 is not supported");
+        });
+        const auto r = gate.evaluate(ctx);
+        REQUIRE(r.verdict == CheckResult::Verdict::Block);
+        CHECK(r.severity == GateSeverity::Error);
+        CHECK(r.title == "File Will Stop the Printer");
+        CHECK(r.body == "Line 12 calls m729, which this printer treats as an emergency stop. "
+                        "Re-slice the file with a profile made for this printer.\n\n"
+                        "Printer message: M729 is not supported");
+        CHECK(r.proceed_label.empty());
+    }
+
+    SECTION("without one, no message line") {
+        auto ctx =
+            ctx_with([](PrintStartContext& c) { c.printer_stop = stops_at(3, "M8213", ""); });
+        const auto r = gate.evaluate(ctx);
+        REQUIRE(r.verdict == CheckResult::Verdict::Block);
+        CHECK(r.body == "Line 3 calls M8213, which this printer treats as an emergency stop. "
+                        "Re-slice the file with a profile made for this printer.");
+    }
+}
+
+TEST_CASE("gate printer_stopping_command: a clean or unchecked file passes",
+          "[print-start][gate-pipeline][printer_stop]") {
+    const auto& gate = gate_named("printer_stopping_command");
+
+    auto clean = ctx_with(
+        [](PrintStartContext& c) { c.printer_stop.state = PrinterStopCheck::State::Clean; });
+    CHECK(gate.evaluate(clean).verdict == CheckResult::Verdict::Pass);
+
+    auto unchecked = ctx_with([](PrintStartContext& c) {
+        c.printer_stop.state = PrinterStopCheck::State::NotRun;
+        c.printer_stop.not_run_reason = "the file could not be read";
+    });
+    CHECK(gate.evaluate(unchecked).verdict == CheckResult::Verdict::Pass);
+}
+
+TEST_CASE("gate runner: a block shows a dialog and never starts the print",
+          "[print-start][gate-pipeline][printer_stop]") {
+    GateRunnerFixture fx;
+    std::vector<PrintStartGate> gates;
+    gates.push_back({"toy_block", +[](const PrintStartContext&) {
+                         CheckResult r;
+                         r.verdict = CheckResult::Verdict::Block;
+                         r.title = "Stops";
+                         r.body = "body";
+                         r.severity = GateSeverity::Error;
+                         return r;
+                     }});
+    gates.push_back({"toy_after", +[](const PrintStartContext&) { return pass_result(); }});
+    PrintStartControllerTestAccess::set_gates(fx.controller, std::move(gates));
+
+    PrintStartControllerTestAccess::run_gates(fx.controller);
+    REQUIRE(PrintStartControllerTestAccess::print_gate_modal(fx.controller) != nullptr);
+    CHECK(PrintStartControllerTestAccess::gate_resume_index(fx.controller) == 0);
+    // Parked on the dialog: execute_print_start() would have re-enabled the button.
+    CHECK(fx.button_updates == 0);
+
+    // Its one button closes it the way Cancel does: button back, nothing started.
+    PrintStartControllerTestAccess::gate_cancel(fx.controller);
+    CHECK(PrintStartControllerTestAccess::print_gate_modal(fx.controller) == nullptr);
+    CHECK(fx.button_updates == 1);
+    CHECK(fx.cancelled == 1);
 }

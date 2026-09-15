@@ -1108,6 +1108,7 @@
   <translation tag="FilamentSensor" ru="Датчик филамента"/>
   <translation tag="File" ru="Файл"/>
   <translation tag="File Size" ru="Размер файла"/>
+  <translation tag="File Will Stop the Printer" ru="Файл остановит принтер"/>
   <translation tag="Filename" ru="Имя файла"/>
   <translation tag="Filter Fan" ru="Вентилятор фильтра"/>
   <translation tag="Filter Fan: Off" ru="Вентилятор фильтра: Выкл"/>
@@ -1440,6 +1441,7 @@
   <translation tag="Lifetime Print Stats" ru="Статистика за всё время"/>
   <translation tag="Light" ru="Подсветка"/>
   <translation tag="Light will switch when the current operation finishes" ru="Подсветка переключится после завершения текущей операции"/>
+  <translation tag="Line {} calls {}, which this printer treats as an emergency stop. Re-slice the file with a profile made for this printer." ru="Строка {} вызывает {}, что этот принтер считает аварийной остановкой. Нарежьте файл заново с профилем для этого принтера."/>
   <translation tag="Listen to all theme sounds" ru="Прослушать все звуки темы"/>
   <translation tag="Listening" ru="Прослушивание"/>
   <translation tag="Live view from your webcam" ru="Прямая трансляция с веб-камеры"/>
@@ -2028,6 +2030,7 @@
   <translation tag="Printer image set to auto-detect" ru="Изображение принтера — автоопределение"/>
   <translation tag="Printer is busy - {} stays in the queue" ru="Принтер занят – {} остаётся в очереди"/>
   <translation tag="Printer is not paired — pair it first" ru="Принтер не сопряжён — сначала выполните сопряжение"/>
+  <translation tag="Printer message: {}" ru="Сообщение принтера: {}"/>
   <translation tag="Printer name" ru="Название принтера"/>
   <translation tag="Printer not connected" ru="Принтер не подключен"/>
   <translation tag="Printer not ready" ru="Принтер не готов"/>
