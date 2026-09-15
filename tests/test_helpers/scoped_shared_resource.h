@@ -9,19 +9,19 @@
 namespace helix_test {
 
 /// RAII registration of a shared_ptr<T> as a PanelWidgetManager shared
-/// resource, cleared on scope exit.
+/// resource, unregistered on scope exit.
 ///
 /// PanelWidgetManager is a process-wide singleton, so a resource registered
-/// into it and never cleared dangles for every test that runs afterward in
+/// into it and never removed dangles for every test that runs afterward in
 /// the same binary once its owner is destroyed. Being a destructor rather
-/// than a trailing statement in the test body, the clear also runs when a
+/// than a trailing statement in the test body, the removal also runs when a
 /// REQUIRE fails partway through: Catch2 unwinds the stack on assertion
 /// failure, and a plain `mgr.clear_shared_resources()` written after the
 /// point of failure never executes.
 ///
-/// clear_shared_resources() drops every registered type, not just T's slot -
-/// matching how each caller already uses it: one shared resource live at a
-/// time, cleared at scope exit.
+/// The destructor removes only T's slot (unregister_shared_resource<T>()),
+/// not the whole map, so two of these for different T can be nested safely -
+/// unlike a bare `clear_shared_resources()`, which would wipe both.
 template <typename T> class ScopedSharedResource {
   public:
     explicit ScopedSharedResource(std::shared_ptr<T> resource) : resource_(std::move(resource)) {
@@ -29,7 +29,7 @@ template <typename T> class ScopedSharedResource {
     }
 
     ~ScopedSharedResource() {
-        helix::PanelWidgetManager::instance().clear_shared_resources();
+        helix::PanelWidgetManager::instance().unregister_shared_resource<T>();
     }
 
     ScopedSharedResource(const ScopedSharedResource&) = delete;

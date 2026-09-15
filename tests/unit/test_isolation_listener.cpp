@@ -342,7 +342,7 @@ class IsolationListener : public Catch::EventListenerBase {
         // stretches that window well past 100ms often enough to misreport a
         // thread that has already, correctly, joined. The loop exits the
         // moment the count settles, so this only costs wall-clock time on
-        // the rare case that already has an elevated count to explain — the
+        // the rare case that already has an elevated count to explain; the
         // common, already-settled case pays one comparison.
         int now = live_thread_count_beyond_thumbnail_pool();
         if (threads_ >= 0 && now > threads_) {

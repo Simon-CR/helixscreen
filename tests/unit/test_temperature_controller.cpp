@@ -27,8 +27,9 @@ namespace {
 // async subject-refresh callback whenever it has not yet processed a status
 // (or a sensor changed) and is not in sync mode - true even for an
 // otherwise-private, per-fixture PrinterState like `state` below.
-// feed_nozzle()'s calls into that path left one such callback stranded
-// between test cases before this fixture drained it at teardown.
+// feed_nozzle()'s calls into that path queue such a callback between test
+// cases; the HelixTestFixture base drains it at teardown so it can't leak
+// into the next test.
 struct ControllerFixture : public HelixTestFixture {
     MoonrakerClientMock client;
     helix::PrinterState state;
