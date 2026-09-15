@@ -5,6 +5,7 @@
 #include "app_globals.h"
 #include "config.h"
 #include "data_root_resolver.h"
+#include "klipper_extruder_naming.h"
 #include "printer_detector.h"
 #include "printer_discovery.h"
 #include "printer_state.h"
@@ -4685,6 +4686,38 @@ TEST_CASE_METHOD(PrinterDetectorFixture,
     REQUIRE(result.detected());
     REQUIRE(result.type_name == "FlashForge Adventurer 5X");
     REQUIRE(result.margin() >= PrinterDetector::DETECT_MIN_MARGIN);
+}
+
+TEST_CASE_METHOD(PrinterDetectorFixture,
+                 "PrinterDetector: tool_count counts only strict extruder names",
+                 "[printer][heuristics][tool_count][1502]") {
+    // extruder_mixing passes the loose "extruder"-prefix test discovery uses
+    // when building the heater list (printer_discovery.h keeps it deliberately:
+    // sensor enumeration), so a name like this reaches hardware.heaters — but
+    // it is not a numbered extruder, and a tool count is exactly what the
+    // strict grammar exists for. Counting it would inflate 3 real extruders to
+    // tool_count_4 and select the AD5X profile.
+    REQUIRE_FALSE(helix::is_extruder_name("extruder_mixing"));
+
+    PrinterHardwareData hardware{
+        .heaters = {"extruder", "extruder1", "extruder2", "extruder_mixing", "heater_bed"},
+        .sensors = {},
+        .fans = {},
+        .leds = {},
+        .hostname = "shop-printer-7",
+        .printer_objects = {},
+        .steppers = {},
+        .kinematics = "corexy"};
+
+    auto result = PrinterDetector::detect(hardware);
+    CAPTURE(result.type_name, result.confidence, result.runner_up_type_name,
+            result.runner_up_confidence, result.margin(), result.tied_count);
+
+    // Three extruders must not satisfy tool_count_4 through a loose-prefix
+    // heater name.
+    if (result.detected()) {
+        REQUIRE(result.type_name != "FlashForge Adventurer 5X");
+    }
 }
 
 // ============================================================================
