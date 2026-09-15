@@ -49,6 +49,7 @@ Genuinely un-declarative site? Annotate it: `// DECLARATIVE_OK: <reason>`.
 | **Colors** | `lv_color_hex(0xE0E0E0)` | `theme_manager_get_color("card_bg")` |
 | **Spacing** | `style_pad_all="12"` | `style_pad_all="#space_md"` |
 | **Typography** | `<lv_label style_text_font="...">` | `<text_heading>`, `<text_body>`, `<text_small>` |
+| **Shared styles** | The same `<style>` copied into a second file, or a theme-token style in `globals.xml` | Define it once in `ui_xml/styles.xml`; borrow it anywhere as `<style name="styles.press_wash"/>` or `<bind_style name="styles.invisible" .../>` |
 
 `theme_manager_get_color()` for tokens, `theme_manager_parse_hex_color()` for hex strings
 only (NOT tokens). `scripts/check_hardcoded_pixels.py` ratchets raw pixel literals.
