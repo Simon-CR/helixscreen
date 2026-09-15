@@ -606,12 +606,12 @@ lv_indev_t* DisplayBackendFbdev::create_input_pointer() {
     // LVGL turns every pointer sample by the display's rotation. That is what a
     // touch panel's samples need, but a relative pointer's position is already
     // on the picture. The hook fronts both and takes each kind from the device.
-    if (const auto kind = pointer_frames_.install(touch_, touch_path, true)) {
+    if (const auto kind = pointer_frames_.install(touch_, touch_path, true, &touch_)) {
         spdlog::info("[Fbdev Backend] Pointer frame hook installed on {} ({} device)", touch_path,
                      helix::input::pointer_kind_name(*kind));
     }
     if (mouse_ != nullptr) {
-        if (const auto kind = pointer_frames_.install(mouse_, mouse_path, true)) {
+        if (const auto kind = pointer_frames_.install(mouse_, mouse_path, true, &mouse_)) {
             spdlog::info("[Fbdev Backend] Mouse frame hook installed on {} ({} device)", mouse_path,
                          helix::input::pointer_kind_name(*kind));
         }

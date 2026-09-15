@@ -6,6 +6,7 @@
 #include "backlight_backend.h"
 #include "color_transform.h"
 #include "display_backend.h"
+#include "indev_delete_watch.h"
 #include "remote_screen_manager.h"
 #include "touch_calibration.h"
 #include "touch_calibration_session.h"
@@ -685,6 +686,11 @@ class DisplayManager : public helix::ICalibrationSink {
     lv_indev_t* m_pointer = nullptr;
     lv_indev_t* m_keyboard = nullptr;
     lv_group_t* m_input_group = nullptr;
+    // Clears m_pointer/m_keyboard the moment LVGL deletes the indev underneath
+    // them - lv_evdev on an unplugged panel's ENODEV, or lv_deinit() at
+    // shutdown - so a later swap or read never reaches a freed device through
+    // either member.
+    helix::IndevDeleteWatch m_indev_delete_watch;
 
     // Backlight control
     std::unique_ptr<BacklightBackend> m_backlight;
@@ -828,6 +834,35 @@ class DisplayManager : public helix::ICalibrationSink {
      * @brief Configure scroll behavior on pointer device
      */
     void configure_scroll(int scroll_throw, int scroll_limit);
+
+    /// Registers m_pointer/m_keyboard with m_indev_delete_watch. init() and
+    /// rebuild_input_after_backend_swap() both call these right after
+    /// creating the device, so the two paths watch it identically.
+    void watch_pointer();
+    void watch_keyboard();
+
+    /**
+     * @brief Create the debug-touch ripple timer
+     *
+     * No-op (returns nullptr) when m_pointer is null. The timer runs
+     * unconditionally once created; RuntimeConfig::debug_touches() is checked
+     * inside so the Settings toggle takes effect without a restart. Reads the
+     * pointer through pointer_input() on every tick rather than a copy
+     * captured at creation time, so an unplug (which clears m_pointer) is
+     * seen here too.
+     *
+     * @return The created timer, so a caller can force it ready (lv_timer_ready())
+     */
+    lv_timer_t* install_debug_touch_timer();
+
+    /// The debug-touch timer's tick, named so a test can call it directly
+    /// instead of only through lv_timer_handler().
+    static void debug_touch_tick(lv_timer_t* t);
+
+    /// The single assignment behind instance(): init() publishes this manager
+    /// through it, shutdown() clears it. Named so both call sites read as the
+    /// same action instead of a bare pointer write repeated twice.
+    static void set_active_instance(DisplayManager* dm);
 
     /**
      * @brief Recreate input devices on the current backend after a backend swap

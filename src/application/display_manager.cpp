@@ -449,6 +449,7 @@ bool DisplayManager::init(const Config& config) {
 
     // Configure scroll behavior and sleep-aware wrapper
     if (m_pointer) {
+        watch_pointer();
         configure_scroll(config.scroll_throw, config.scroll_limit);
         // Long-press threshold — user-configurable global setting (#1245), default
         // AppConstants::Input::LONG_PRESS_MS. Applied here and on backend swap;
@@ -468,6 +469,7 @@ bool DisplayManager::init(const Config& config) {
     // Create keyboard input device (optional)
     m_keyboard = m_backend->create_input_keyboard();
     if (m_keyboard) {
+        watch_keyboard();
         setup_keyboard_group();
         spdlog::trace("[DisplayManager] Physical keyboard input enabled");
     }
@@ -566,50 +568,11 @@ bool DisplayManager::init(const Config& config) {
     }
 
     // Debug touch visualization: draw ripple at each touch point.
-    // Timer runs unconditionally; flag is checked inside so the Settings
-    // toggle takes effect without a restart.
-    if (m_pointer) {
-        lv_timer_create(
-            [](lv_timer_t* t) {
-                if (!RuntimeConfig::debug_touches())
-                    return;
-
-                // Suppress while the touch-calibration UI is active: it draws
-                // its own (correct) ripple, and during point capture affine is
-                // disabled — so lv_indev_get_point() returns RAW coords and this
-                // would draw a Y-inverted ripple, which looks like a calibration
-                // bug but isn't (prestonbrown/helixscreen#943).
-                auto* cal_dm = DisplayManager::instance();
-                if (cal_dm && cal_dm->is_touch_calibration_active())
-                    return;
-
-                auto* indev = static_cast<lv_indev_t*>(lv_timer_get_user_data(t));
-                if (!indev)
-                    return;
-
-                lv_indev_state_t state = lv_indev_get_state(indev);
-                if (state != LV_INDEV_STATE_PRESSED)
-                    return;
-
-                lv_point_t point;
-                lv_indev_get_point(indev, &point);
-
-                static lv_coord_t last_x = -100, last_y = -100;
-                lv_coord_t dx = point.x - last_x;
-                lv_coord_t dy = point.y - last_y;
-                if (dx * dx + dy * dy < 25) // <5px movement
-                    return;
-
-                last_x = point.x;
-                last_y = point.y;
-                helix::ui::create_ripple(lv_layer_top(), point.x, point.y, 10, 40, 300);
-            },
-            30, m_pointer);
-    }
+    install_debug_touch_timer();
 
     spdlog::trace("[DisplayManager] Initialized: {}x{}", m_width, m_height);
     m_initialized = true;
-    s_instance = this;
+    set_active_instance(this);
 
     // Install framebuffer color transform hook AFTER the backend's flush_cb
     // is set, so the splash-suspend path captures our wrapper (#803).
@@ -647,13 +610,17 @@ DisplayManager* DisplayManager::instance() {
     return s_instance;
 }
 
+void DisplayManager::set_active_instance(DisplayManager* dm) {
+    s_instance = dm;
+}
+
 void DisplayManager::shutdown() {
     if (!m_initialized) {
         return;
     }
 
     m_shutting_down = true;
-    s_instance = nullptr;
+    set_active_instance(nullptr);
     spdlog::debug("[DisplayManager] Shutting down");
 
     // Stop the remote-screen mirror FIRST so no sink write races a freed
@@ -745,6 +712,64 @@ void DisplayManager::configure_scroll(int scroll_throw, int scroll_limit) {
     spdlog::trace("[DisplayManager] Scroll config: throw={}, limit={}", scroll_throw, scroll_limit);
 }
 
+void DisplayManager::watch_pointer() {
+    m_indev_delete_watch.watch(m_pointer, &m_pointer);
+}
+
+void DisplayManager::watch_keyboard() {
+    m_indev_delete_watch.watch(m_keyboard, &m_keyboard);
+}
+
+void DisplayManager::debug_touch_tick(lv_timer_t* /*t*/) {
+    if (!RuntimeConfig::debug_touches())
+        return;
+
+    auto* dm = DisplayManager::instance();
+    if (!dm)
+        return;
+
+    // Suppress while the touch-calibration UI is active: it draws its own
+    // (correct) ripple, and during point capture affine is disabled — so
+    // lv_indev_get_point() returns RAW coords and this would draw a
+    // Y-inverted ripple, which looks like a calibration bug but isn't
+    // (prestonbrown/helixscreen#943).
+    if (dm->is_touch_calibration_active())
+        return;
+
+    // Read the current pointer through the manager rather than a copy
+    // captured at timer-creation time, so an unplug (which clears m_pointer)
+    // is seen here too instead of reading a freed indev.
+    auto* indev = dm->pointer_input();
+    if (!indev)
+        return;
+
+    lv_indev_state_t state = lv_indev_get_state(indev);
+    if (state != LV_INDEV_STATE_PRESSED)
+        return;
+
+    lv_point_t point;
+    lv_indev_get_point(indev, &point);
+
+    static lv_coord_t last_x = -100, last_y = -100;
+    lv_coord_t dx = point.x - last_x;
+    lv_coord_t dy = point.y - last_y;
+    if (dx * dx + dy * dy < 25) // <5px movement
+        return;
+
+    last_x = point.x;
+    last_y = point.y;
+    helix::ui::create_ripple(lv_layer_top(), point.x, point.y, 10, 40, 300);
+}
+
+lv_timer_t* DisplayManager::install_debug_touch_timer() {
+    if (!m_pointer) {
+        return nullptr;
+    }
+    // Timer runs unconditionally; flag is checked inside so the Settings
+    // toggle takes effect without a restart.
+    return lv_timer_create(&DisplayManager::debug_touch_tick, 30, nullptr);
+}
+
 void DisplayManager::rebuild_input_after_backend_swap() {
     // A backend swap (DRM→fbdev rotation fallback) deleted the display and freed
     // the old backend. lv_display_delete() only detaches indevs (sets their
@@ -767,6 +792,7 @@ void DisplayManager::rebuild_input_after_backend_swap() {
 
     m_pointer = m_backend->create_input_pointer();
     if (m_pointer) {
+        watch_pointer();
         configure_scroll(m_scroll_throw, m_scroll_limit);
         const int long_press_ms = helix::Config::get_instance()->get<int>(
             "/input/long_press_time", static_cast<int>(AppConstants::Input::LONG_PRESS_MS));
@@ -778,6 +804,7 @@ void DisplayManager::rebuild_input_after_backend_swap() {
 
     m_keyboard = m_backend->create_input_keyboard();
     if (m_keyboard) {
+        watch_keyboard();
         setup_keyboard_group();
     }
 
@@ -1983,8 +2010,13 @@ void DisplayManager::run_rotation_probe() {
         m_height = lv_display_get_vertical_resolution(m_display);
     }
 
-    // Re-enable LVGL input processing for normal operation
-    lv_indev_enable(m_pointer, true);
+    // Re-enable LVGL input processing for normal operation. The probe loop
+    // above runs lv_timer_handler() repeatedly, so an unplug mid-probe can
+    // null m_pointer before this line runs; lv_indev_enable(NULL, true) would
+    // enable every indev instead of doing nothing.
+    if (m_pointer) {
+        lv_indev_enable(m_pointer, true);
+    }
 
     // Clean screen and reset background for normal UI init.
     // lv_obj_clean() only removes children — the screen's own bg style
