@@ -15,17 +15,23 @@ namespace helix {
  * touch panel is unplugged, and lv_deinit() deletes every remaining indev at
  * shutdown. A caller holding a raw copy of that pointer outside the object
  * that opened it - DisplayManager's m_pointer/m_keyboard mirror whatever
- * display backend created them - has no way to learn the device is gone
- * unless something is listening for LV_EVENT_DELETE.
+ * display backend created them, and PointerFrameHook fronts a device's read
+ * callback without owning it - has no way to learn the device is gone unless
+ * something is listening for LV_EVENT_DELETE.
  *
- * Same technique as PointerFrameHook's owner_slot (pointer_frame_hook.h),
- * which solves the identical problem for the devices that hook fronts. This
- * is the version for a caller with no frame transform to chain: it never
- * touches the device's read callback, only its own LV_EVENT_DELETE listener.
- * Main thread only, like every indev.
+ * The optional callback runs after the slot is cleared, so a caller with its
+ * own bookkeeping tied to the device (PointerFrameHook drops its frame
+ * transform entry) can fold that into the same delete notification instead
+ * of registering a second LV_EVENT_DELETE listener. Main thread only, like
+ * every indev.
  */
 class IndevDeleteWatch {
   public:
+    /// Runs after the matching slot (if any) has been cleared, with the
+    /// device that was deleted. Never dereferenced - the indev is being
+    /// freed - only used to identify which entry to drop.
+    using DeleteCallback = void (*)(void* ctx, const lv_indev_t* indev);
+
     IndevDeleteWatch() = default;
     IndevDeleteWatch(const IndevDeleteWatch&) = delete;
     IndevDeleteWatch& operator=(const IndevDeleteWatch&) = delete;
@@ -36,17 +42,22 @@ class IndevDeleteWatch {
     }
 
     /**
-     * @brief Clear *slot the moment LVGL deletes @p indev
+     * @brief Clear *slot the moment LVGL deletes @p indev, then run @p on_delete
      *
-     * @param indev a live device, never nullptr
-     * @param slot  the caller's own pointer to @p indev, cleared on delete
+     * @param indev      a live device, never nullptr
+     * @param slot       the caller's own pointer to @p indev, cleared on delete;
+     *                   nullptr when the caller only wants the callback
+     * @param on_delete  called after the slot is cleared, or nullptr for none
+     * @param ctx        passed back to @p on_delete unchanged
      */
-    void watch(lv_indev_t* indev, lv_indev_t** slot) {
+    void watch(lv_indev_t* indev, lv_indev_t** slot, DeleteCallback on_delete = nullptr,
+               void* ctx = nullptr) {
         lv_indev_add_event_cb(indev, on_deleted, LV_EVENT_DELETE, this);
-        watches_.push_back({indev, slot});
+        watches_.push_back({indev, slot, on_delete, ctx});
     }
 
-    /// Stop watching every device and forget them, without touching any slot.
+    /// Stop watching every device and forget them, without touching any slot
+    /// or running any callback.
     void forget_all() {
         for (const Watch& w : watches_) {
             lv_indev_remove_event_cb_with_user_data(w.indev, on_deleted, this);
@@ -58,6 +69,8 @@ class IndevDeleteWatch {
     struct Watch {
         lv_indev_t* indev;
         lv_indev_t** slot;
+        DeleteCallback on_delete;
+        void* ctx;
     };
 
     /// lv_indev_delete() sends this before it frees the device.
@@ -65,16 +78,21 @@ class IndevDeleteWatch {
         auto* self = static_cast<IndevDeleteWatch*>(lv_event_get_user_data(e));
         const auto* target = static_cast<const lv_indev_t*>(lv_event_get_target(e));
         for (auto it = self->watches_.begin(); it != self->watches_.end();) {
-            if (it->indev == target) {
-                // Only while the slot still names this device - a caller may
-                // already have pointed it at a fresh device (a backend swap)
-                // before this delete event reaches it.
-                if (it->slot != nullptr && *it->slot == target) {
-                    *it->slot = nullptr;
-                }
-                it = self->watches_.erase(it);
-            } else {
+            if (it->indev != target) {
                 ++it;
+                continue;
+            }
+            // Only while the slot still names this device - a caller may
+            // already have pointed it at a fresh device (a backend swap)
+            // before this delete event reaches it.
+            if (it->slot != nullptr && *it->slot == target) {
+                *it->slot = nullptr;
+            }
+            const DeleteCallback on_delete = it->on_delete;
+            void* ctx = it->ctx;
+            it = self->watches_.erase(it);
+            if (on_delete != nullptr) {
+                on_delete(ctx, target);
             }
         }
     }

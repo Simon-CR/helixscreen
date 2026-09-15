@@ -4,6 +4,7 @@
 #pragma once
 
 #include "drm_rotation_strategy.h"
+#include "indev_delete_watch.h"
 #include "indev_read_hook.h"
 #include "input_device_scanner.h"
 #include "touch_calibration.h"
@@ -65,13 +66,14 @@ inline PointerTransform pointer_transform_for(input::PointerKind kind, int plane
  * from which backend member holds it.
  *
  * A device can be deleted while the hook fronts it: lv_evdev deletes its own
- * device when a read fails, as it does when the device is unplugged. The hook
- * listens for each device's LV_EVENT_DELETE and forgets it then, so
- * restore_all() and the destructor only ever touch devices that are alive.
- * install() optionally takes the caller's own raw pointer to that same indev
- * and clears it at the same moment, so a backend destructor or accessor that
- * reads its pointer_/touch_/mouse_ member afterward sees null instead of a
- * dangling pointer into freed memory. Main thread only, like every indev.
+ * device when a read fails, as it does when the device is unplugged.
+ * IndevDeleteWatch listens for each device's LV_EVENT_DELETE, clears the
+ * caller's owner_slot (if install() was given one) and then runs
+ * forget_device() so restore_all() and the destructor only ever touch devices
+ * that are alive. install() optionally takes the caller's own raw pointer to
+ * that same indev (e.g. a backend's pointer_/touch_/mouse_ member), cleared
+ * the moment LVGL deletes the device so the caller never reads through it
+ * afterward. Main thread only, like every indev.
  */
 class PointerFrameHook {
   public:
@@ -114,8 +116,8 @@ class PointerFrameHook {
         if (!hook_.install(indev)) {
             return false;
         }
-        lv_indev_add_event_cb(indev, on_indev_deleted, LV_EVENT_DELETE, this);
-        devices_.push_back({indev, kind, std::move(raw_position), owner_slot});
+        devices_.push_back({indev, kind, std::move(raw_position)});
+        deletes_.watch(indev, owner_slot, &on_device_deleted, this);
         s_active = this;
         return true;
     }
@@ -171,9 +173,7 @@ class PointerFrameHook {
 
     /// Hand every device back the callback the hook replaced, then forget them.
     void restore_all() {
-        for (const Device& device : devices_) {
-            lv_indev_remove_event_cb_with_user_data(device.indev, on_indev_deleted, this);
-        }
+        deletes_.forget_all();
         hook_.restore_all();
         devices_.clear();
         if (s_active == this) {
@@ -186,26 +186,17 @@ class PointerFrameHook {
         lv_indev_t* indev;
         input::PointerKind kind;
         RawPosition raw_position;
-        lv_indev_t** owner_slot = nullptr;
     };
 
-    /// lv_indev_delete() sends this before it frees the device.
-    static void on_indev_deleted(lv_event_t* e) {
-        auto* self = static_cast<PointerFrameHook*>(lv_event_get_user_data(e));
-        self->forget(static_cast<const lv_indev_t*>(lv_event_get_target(e)));
+    /// IndevDeleteWatch calls this after it clears the owner_slot install()
+    /// was given (if any) and only while that slot still named @p indev.
+    static void on_device_deleted(void* ctx, const lv_indev_t* indev) {
+        static_cast<PointerFrameHook*>(ctx)->forget_device(indev);
     }
 
-    /// Drop @p indev from the hook without reading or writing it, and null out
-    /// the caller's own pointer to it, if install() was given one and it
-    /// still names @p indev.
-    void forget(const lv_indev_t* indev) {
+    /// Drop @p indev from the hook without reading or writing it.
+    void forget_device(const lv_indev_t* indev) {
         hook_.forget(indev);
-        for (Device& device : devices_) {
-            if (device.indev == indev && device.owner_slot != nullptr &&
-                *device.owner_slot == indev) {
-                *device.owner_slot = nullptr;
-            }
-        }
         devices_.erase(
             std::remove_if(devices_.begin(), devices_.end(),
                            [indev](const Device& device) { return device.indev == indev; }),
@@ -281,6 +272,7 @@ class PointerFrameHook {
 
     IndevReadHook hook_{read_cb};
     std::vector<Device> devices_;
+    IndevDeleteWatch deletes_;
     int plane_degrees_ = 0;
     int32_t panel_w_ = 0;
     int32_t panel_h_ = 0;
