@@ -76,8 +76,8 @@ enum class BindingVerdict {
 ///
 /// Firmware breaking a binding and a person changing one are one event with two
 /// triggers, so this is the one definition of the drop: reconcile_binding()
-/// calls it for the first and AmsState::commit_slot_edit() (ams_state.h) for
-/// the second.
+/// calls it for the first and AmsBackend::commit_user_edit() (ams_backend.h)
+/// for the second.
 ///
 /// A lane that is not a lane is dropped, silently, like drop_lane_source().
 void drop_previous_spool_declarations(LaneId lane);

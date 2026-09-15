@@ -236,8 +236,10 @@ void populate_temps_from_slot_info(FilamentSlotOverride& ovr, const SlotInfo& in
 // authorship is AMENDED onto that record's rather than replacing it: an
 // earlier choice the edit never mentioned stays the user's word while the
 // value it stood over is still the one the record holds. Without it a brand-
-// only edit would drop a colour declared before it. amend_authorship()
-// (lane_translation.h) is that rule.
+// only edit would drop a colour declared before it. An edit that changes the
+// binding is the exception: a different spool is on the lane, so no earlier
+// choice stands and the record declares only what that edit did.
+// amend_authorship() (lane_translation.h) is that rule.
 //
 // `material` is recorded in place of edited.material, for a backend that
 // persists firmware's normalized spelling rather than the string the user

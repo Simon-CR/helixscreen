@@ -489,6 +489,16 @@ RecordAuthorship amend_authorship(const Observation& observed, const FilamentSlo
                                   const FilamentSlotOverride& amended) {
     RecordAuthorship authorship;
 
+    // A changed binding says another spool is on the lane, so nothing the
+    // record declared describes what is loaded now, whichever values came
+    // through unchanged: this edit's own statement is all that stands.
+    // user_edit_observation() engages spoolman_id exactly when the binding
+    // moved. The prior record's id cannot answer the same question, because
+    // firmware can bind a spool without the record being rewritten.
+    const FilamentSlotOverride nothing_declared;
+    const FilamentSlotOverride& standing =
+        observed.spoolman_id.has_value() ? nothing_declared : prior;
+
     // A lock stands over a value, so the amended record has to carry one for
     // either half of the rule to reach the flag: every mirror policy reads a
     // lock and its value together, and a lock over nothing would stop firmware
@@ -499,12 +509,12 @@ RecordAuthorship amend_authorship(const Observation& observed, const FilamentSlo
     const bool colour_carried = amended.color_set && is_declarable_color(amended.color_rgb);
     authorship.user_locked_color =
         colour_carried &&
-        amended_declaration(observed.color_rgb.has_value(), prior.user_locked_color,
-                            prior.color_set && prior.color_rgb == amended.color_rgb);
+        amended_declaration(observed.color_rgb.has_value(), standing.user_locked_color,
+                            standing.color_set && standing.color_rgb == amended.color_rgb);
     authorship.user_locked_material =
         !amended.material.empty() &&
-        amended_declaration(observed.material.has_value(), prior.user_locked_material,
-                            prior.material == amended.material);
+        amended_declaration(observed.material.has_value(), standing.user_locked_material,
+                            standing.material == amended.material);
 
     // The same rule for the roster rows that keep their authorship in the
     // declared set. No per-kind rule for what this edit declares: the
@@ -515,8 +525,8 @@ RecordAuthorship amend_authorship(const Observation& observed, const FilamentSlo
     for_each_field_indexed([&](const auto& f, size_t index) {
         using Row = std::decay_t<decltype(f)>;
         if constexpr (Row::authorship == Authorship::DeclaredSet) {
-            if (amended_declaration((observed.*(f.obs)).has_value(), prior.declared.test(index),
-                                    prior.*(f.record) == amended.*(f.record))) {
+            if (amended_declaration((observed.*(f.obs)).has_value(), standing.declared.test(index),
+                                    standing.*(f.record) == amended.*(f.record))) {
                 authorship.declared.set(index);
             }
         }

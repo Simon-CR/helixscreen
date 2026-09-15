@@ -297,8 +297,9 @@ Spoolman on any of them.
 ([`include/lane_source_store.h#ingest`](../../../include/lane_source_store.h)) is the one way a
 machine reading reaches the store; `commit_slot_edit()`
 (`include/lane_source_store.h#commit_slot_edit`) is the one way a human edit does, called from
-`AmsState::commit_slot_edit` (`src/printer/ams_state.cpp#commit_slot_edit`) once the backend has
-accepted the edit, so a slot the backend refused gets no declaration. Each refuses the other's
+`AmsBackend::commit_user_edit` (`src/printer/ams_backend.cpp#AmsBackend::commit_user_edit`), which
+`AmsState::commit_slot_edit` (`src/printer/ams_state.cpp#commit_slot_edit`) runs, once the backend
+has accepted the edit, so a slot the backend refused gets no declaration. Each refuses the other's
 source. They also differ in what a write *means*: `ingest()` replaces that source's record
 whole, so a field the source did not observe this time stops contributing - which is what stops
 a stale frame re-asserting a value its author no longer stands behind, and why a guard that

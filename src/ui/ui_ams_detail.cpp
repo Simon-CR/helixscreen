@@ -788,6 +788,9 @@ bool ams_dispatch_backend_action(AmsContextMenu::MenuAction action, int slot,
         cleared.color_name.clear();
         cleared.multi_color_hexes.clear();
         cleared.brand.clear();
+        // The catalog pick names a product of the material cleared above.
+        cleared.catalog_id.clear();
+        cleared.product_name.clear();
         // Drops spoolman_id AND the filament/vendor handles — leaving
         // those behind fed a later repoint comparison against a spool
         // this lane is no longer linked to.

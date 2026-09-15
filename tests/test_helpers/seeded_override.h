@@ -59,21 +59,18 @@ inline void file_override_as_lane_records(const AmsBackend& backend, int slot_in
 
 /// Edit a slot the way the application does.
 ///
-/// AmsState::commit_slot_edit writes the backend and THEN records the user's
-/// statement in the lane model, using the same before/after pair the editor
-/// had. A fixture that calls set_slot_info alone performs only the first half,
-/// so the lane keeps whatever it held and the edit has nothing standing behind
-/// it.
+/// AmsState::commit_slot_edit hands the backend write and the lane record to
+/// AmsBackend::commit_user_edit(), and this calls that same method, so a
+/// fixture's edit passes the declaration to set_slot_info, drops what a
+/// binding change leaves stale, files the declaration and repaints exactly as
+/// production does. A fixture that calls set_slot_info alone performs only the
+/// backend write, so the lane keeps whatever it held and the edit has nothing
+/// standing behind it.
 ///
-/// Deliberately reuses user_edit_observation rather than filing every field:
-/// that function decides what a person actually claimed, and a fixture that
-/// claimed more than production does would pass on a stronger declaration than
-/// the application ever files.
+/// The editor's before-state is the slot as it stands, which is what the
+/// editor opens on.
 inline void edit_slot_as_user(AmsBackend& backend, int slot_index, const helix::SlotInfo& info) {
-    const helix::SlotInfo original = backend.get_slot_info(slot_index);
-    backend.set_slot_info(slot_index, info, /*persist=*/true);
-    helix::ams::commit_slot_edit(backend.lane_id(slot_index),
-                                 helix::ams::user_edit_observation(original, info));
+    (void)backend.commit_user_edit(slot_index, backend.get_slot_info(slot_index), info);
 }
 
 /// File what Spoolman says a linked spool is, the way the application does.

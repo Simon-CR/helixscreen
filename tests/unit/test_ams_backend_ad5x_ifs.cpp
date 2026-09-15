@@ -8096,10 +8096,13 @@ TEST_CASE("AD5X IFS RUN_ZCOLOR (display-only) leaves a locked override intact (#
 
 TEST_CASE("AD5X IFS external CHANGE_ZCOLOR retracts the user's colour, not their brand (#981)",
           "[ams][ad5x_ifs][981]") {
+    Ad5xIfsTmpJsonFile tmp("981_retracts_colour",
+                           R"({"FFMInfo":{"ffmColor1":"#898989","ffmType1":"PETG"}})");
     helix::test::RegisteredBackend<TestableAd5xIfsBackend> backend_reg;
     auto& backend = *backend_reg;
     Ad5xIfsTestAccess::set_running(backend, true);
     Ad5xIfsTestAccess::set_zcolor_supported(backend, false);
+    Ad5xIfsTestAccess::set_local_adventurer_json_path(backend, tmp.path.string());
 
     // A firmware frame first, so the lane exists before an edit can address it.
     Ad5xIfsTestAccess::set_port_presence(backend, 0, true);
@@ -8145,10 +8148,13 @@ TEST_CASE("AD5X IFS external CHANGE_ZCOLOR drops the catalog pick with the mater
     // this path distinguishes releasing the locks from releasing the values:
     // the auto-mirror refreshes colour and material either way, and the
     // catalog pick is the one field it cannot refresh.
+    Ad5xIfsTmpJsonFile tmp("981_drops_catalog_pick",
+                           R"({"FFMInfo":{"ffmColor1":"#898989","ffmType1":"PETG"}})");
     helix::test::RegisteredBackend<TestableAd5xIfsBackend> backend_reg;
     auto& backend = *backend_reg;
     Ad5xIfsTestAccess::set_running(backend, true);
     Ad5xIfsTestAccess::set_zcolor_supported(backend, false);
+    Ad5xIfsTestAccess::set_local_adventurer_json_path(backend, tmp.path.string());
 
     Ad5xIfsTestAccess::set_port_presence(backend, 0, true);
     Ad5xIfsTestAccess::set_color(backend, 0, "898989");
@@ -8220,10 +8226,13 @@ TEST_CASE("AD5X IFS a bare CHANGE_ZCOLOR retracts the lane with no firmware mirr
     // after the release. The release's own retraction is the only thing that
     // reaches the lane on this path, which is what makes this the case that
     // measures it.
+    Ad5xIfsTmpJsonFile tmp("981_bare_zcolor",
+                           R"({"FFMInfo":{"ffmColor1":"#898989","ffmType1":"PETG"}})");
     helix::test::RegisteredBackend<TestableAd5xIfsBackend> backend_reg;
     auto& backend = *backend_reg;
     Ad5xIfsTestAccess::set_running(backend, true);
     Ad5xIfsTestAccess::set_zcolor_supported(backend, false);
+    Ad5xIfsTestAccess::set_local_adventurer_json_path(backend, tmp.path.string());
 
     Ad5xIfsTestAccess::set_port_presence(backend, 0, true);
     Ad5xIfsTestAccess::set_color(backend, 0, "898989");
@@ -8263,10 +8272,13 @@ TEST_CASE("AD5X IFS a firmware frame that releases nothing leaves the user's col
     // The counterweight to the two above. Only a deliberate CHANGE_ZCOLOR
     // releases the locks; an ordinary firmware reading is what the locks exist
     // to outrank, so the user's choice has to survive one intact.
+    Ad5xIfsTmpJsonFile tmp("981_frame_releases_nothing",
+                           R"({"FFMInfo":{"ffmColor1":"#898989","ffmType1":"PETG"}})");
     helix::test::RegisteredBackend<TestableAd5xIfsBackend> backend_reg;
     auto& backend = *backend_reg;
     Ad5xIfsTestAccess::set_running(backend, true);
     Ad5xIfsTestAccess::set_zcolor_supported(backend, false);
+    Ad5xIfsTestAccess::set_local_adventurer_json_path(backend, tmp.path.string());
 
     Ad5xIfsTestAccess::set_port_presence(backend, 0, true);
     Ad5xIfsTestAccess::set_color(backend, 0, "898989");

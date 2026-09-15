@@ -1545,7 +1545,7 @@ class AmsBackend {
      * @param persist If true, persist changes to firmware. If false, update
      *               in-memory state only (for external data sync).
      * @param declared What the user declared in this edit. Every production
-     *               edit passes the observation AmsState::commit_slot_edit
+     *               edit passes the observation commit_user_edit()
      *               computed from the editor's own snapshot, which is also what it
      *               files on the lane, and a persist records its stored authorship
      *               from it. A persisting call without it re-derives authorship by
@@ -1563,19 +1563,50 @@ class AmsBackend {
     /**
      * @brief Repaint a slot from the lane model once an edit's declaration is on it.
      *
-     * AmsState::commit_slot_edit calls this after it files the user's
-     * declaration, which it does only once set_slot_info() has returned. A
-     * backend that paints the slot from the lane inside set_slot_info() painted
-     * the lane as it stood before that filing, so a field an earlier edit
-     * declared would go on showing the old value until the next frame. The
-     * default does nothing: a backend whose set_slot_info() writes the edit
-     * straight onto the slot already shows it.
+     * commit_user_edit() calls this after it files the user's declaration,
+     * which it does only once set_slot_info() has returned. A backend that
+     * paints the slot from the lane inside set_slot_info() painted the lane as
+     * it stood before that filing, so a field an earlier edit declared would go
+     * on showing the old value until the next frame. The default does nothing:
+     * a backend whose set_slot_info() writes the edit straight onto the slot
+     * already shows it.
      *
      * @param slot_index Slot the edit was written through (0-based, global)
      */
     virtual void repaint_slot_from_lane(int slot_index) {
         (void)slot_index;
     }
+
+    /**
+     * @brief Apply a person's edit to a slot and record it on the slot's lane.
+     *
+     * The backend and lane half of AmsState::commit_slot_edit, which wraps it
+     * with the Spoolman server's active spool, the identity cache and its own
+     * sync. One method, so a test that edits a slot the way the application
+     * does runs this code rather than a copy of it.
+     *
+     * The user's declaration is user_edit_observation(@p original, @p info),
+     * answered once: set_slot_info() records the stored record's authorship
+     * from it, and the lane files it. A refused edit stops at set_slot_info()
+     * with nothing filed; one marked AmsError::partially_applied carries on,
+     * because what reached firmware is applied.
+     *
+     * A binding change leaves the lane resolving what reloading the stored
+     * record resolves, the contract user_edit_observation() states: the
+     * records describing the previous spool are dropped, a different spool
+     * takes the catalog pick off the slot, and an unlink that kept the slot's
+     * identity files it back at the rungs the stored record reloads it on.
+     * Once filed, the slot is repainted from the lane.
+     *
+     * @warning Call without holding mutex_: set_slot_info() takes it, and so
+     *          does a backend's repaint_slot_from_lane().
+     *
+     * @param slot_index Slot to edit (0-based, global)
+     * @param original   The slot as the editor opened on it
+     * @param info       The slot as the editor committed it
+     * @return set_slot_info()'s result
+     */
+    AmsError commit_user_edit(int slot_index, const SlotInfo& original, const SlotInfo& info);
 
     /**
      * @brief Persist only a slot's filament weight (consumption tracking)

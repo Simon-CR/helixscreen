@@ -40,10 +40,12 @@
 #include "test_helpers/toolchanger_test_access.h"
 #include "toolchanger_addon.h"
 
+#include <filesystem>
 #include <map>
 #include <mutex>
 #include <optional>
 #include <string>
+#include <unistd.h>
 #include <vector>
 
 #include "../catch_amalgamated.hpp"
@@ -404,8 +406,17 @@ TEST_CASE_METHOD(LVGLTestFixture, "AD5X reads its stored colour with the shared 
 
 TEST_CASE_METHOD(LVGLTestFixture, "an override never reaches AD5X's vendor-cache record",
                  "[lane][ingest][ad5x]") {
+    struct RemoveOnExit {
+        std::filesystem::path path;
+        ~RemoveOnExit() {
+            std::error_code ec;
+            std::filesystem::remove(path, ec);
+        }
+    } adventurer_json{std::filesystem::temp_directory_path() /
+                      ("helix_lane_obs_ad5x_" + std::to_string(::getpid()) + ".json")};
     Ad5xHarness harness(nullptr, nullptr);
     Ad5xIfsTestAccess::set_ifs_status_ports_seen(*harness, true);
+    Ad5xIfsTestAccess::set_local_adventurer_json_path(*harness, adventurer_json.path.string());
 
     // A user colour that disagrees with what the vendor file goes on to say.
     // SlotInfo is persistent across frames and the lane re-layer rewrites it in

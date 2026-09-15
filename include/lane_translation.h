@@ -42,13 +42,27 @@ enum class LegacyLockKeys {
 ///     negative weight) that means "no reading", never a chosen value;
 ///   - catalog_id and product_name arrive from the editor's auto-highlighted
 ///     product, which is why AmsEditOverlay::is_dirty() excludes them too.
+///
+/// spoolman_id is engaged exactly when the binding changed, and nothing else is
+/// engaged alongside it. amend_authorship() reads its presence as "this edit
+/// changed the binding" and voids the stored record's earlier declarations on
+/// it, so engaging it on an edit that kept the spool would strip a record of
+/// authorship nobody withdrew.
+///
+/// This answer is what keeps a lane's two stores agreeing. After an edit that
+/// changes the binding (a link, a relink to a different spool, an unlink that
+/// keeps the slot's identity, or Clear Spool) commits through
+/// AmsState::commit_slot_edit(), the lane resolves what reloading the stored
+/// record resolves, for colour, brand, material, catalog_id and product_name.
+/// AmsBackend::commit_user_edit() (ams_backend.h) files the lane's half.
 [[nodiscard]] Observation user_edit_observation(const SlotInfo& original, const SlotInfo& edited);
 
 /// The declaration a backend records for an edit: @p declared when its caller
 /// passed one down, else user_edit_observation(original, edited).
 ///
-/// The caller's answer wins when there is one. AmsState computes it once from
-/// the editor's own snapshot and files that same answer on the lane, while a
+/// The caller's answer wins when there is one. AmsBackend::commit_user_edit()
+/// computes it once from the editor's own snapshot and files that same answer
+/// on the lane, while a
 /// backend's @p original is its own read of the slot at write time, which a
 /// frame landing while the editor was open has already moved. Every production
 /// edit passes @p declared; the diff exists only for callers not yet split into
@@ -111,6 +125,12 @@ classify_declaration(const FilamentSlotOverride& record, const nlohmann::json& w
 /// without this edit declaring it is no longer the user's word, and claiming
 /// it would hand the machine back its own reading as something it may not
 /// correct.
+///
+/// An edit that changes the binding, which @p observed says by carrying
+/// spoolman_id, keeps none of @p prior's declarations: a different spool is on
+/// the lane, so only what this edit declared stands, however many values came
+/// through it unchanged. @p prior's own spool id is not consulted, because
+/// firmware can bind a spool without the record being rewritten.
 ///
 /// @p observed rather than @p amended answers what THIS edit declared, so that
 /// question is decided once, by user_edit_observation(), rather than guessed

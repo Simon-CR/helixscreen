@@ -95,6 +95,38 @@ void feed_afc_lane(AmsBackendAfc& backend, const std::string& lane_name,
     AfcTestAccess::handle_status_update(backend, notification);
 }
 
+std::string shown(const std::optional<std::string>& text) {
+    return text ? "\"" + *text + "\"" : "none";
+}
+
+std::string shown(const std::optional<uint32_t>& rgb) {
+    if (!rgb) {
+        return "none";
+    }
+    static constexpr char digits[] = "0123456789ABCDEF";
+    std::string hex = "#000000";
+    for (int nibble = 0; nibble < 6; ++nibble) {
+        hex[6 - nibble] = digits[(*rgb >> (4 * nibble)) & 0xF];
+    }
+    return hex;
+}
+
+/// The identity fields a lane and its stored record have to agree on, in one
+/// line, so a disagreement names the field. Takes an Observation or a
+/// ResolvedLane, which spell these fields alike.
+template <typename Identity> std::string shown_identity(const Identity& identity) {
+    return "colour " + shown(identity.color_rgb) + " brand " + shown(identity.brand) +
+           " material " + shown(identity.material) + " catalog_id " + shown(identity.catalog_id) +
+           " product_name " + shown(identity.product_name);
+}
+
+/// A rung with no record states none of the fields, the same as a record that
+/// carries none of them.
+std::string shown_identity(const std::optional<helix::ams::Observation>& record) {
+    return shown_identity(
+        record.value_or(helix::ams::Observation(helix::ams::ObservationSource::Remembered)));
+}
+
 struct CommitFixture : LVGLTestFixture {
     MoonrakerClientMock client;
     MoonrakerAPIMock api;
@@ -193,17 +225,55 @@ struct AfcCommitFixture : CommitFixture {
 
     /// What lane 0's stored record resolves to when the next start files it.
     [[nodiscard]] helix::ams::ResolvedLane reloaded() const {
-        helix::ams::FilamentSlotOverride stored;
-        {
-            std::lock_guard<std::mutex> lock(AfcTestAccess::mutex(*afc));
-            const auto& overrides = AfcTestAccess::overrides(*afc);
-            const auto kept = overrides.find(0);
-            REQUIRE(kept != overrides.end());
-            stored = kept->second;
-        }
-        return helix::ams::resolve(
-            helix::ams::sources_from_record(stored, helix::ams::to_lane_data_record(0, stored),
-                                            helix::ams::LegacyLockKeys::LaneData));
+        return helix::ams::resolve(reloaded_sources());
+    }
+
+    /// The sources lane 0's stored record files when the next start reads it.
+    [[nodiscard]] helix::ams::LaneSources reloaded_sources() const {
+        const helix::ams::FilamentSlotOverride record = stored();
+        return helix::ams::sources_from_record(record, helix::ams::to_lane_data_record(0, record),
+                                               helix::ams::LegacyLockKeys::LaneData);
+    }
+
+    /// Lane 0's stored record as it stands.
+    [[nodiscard]] helix::ams::FilamentSlotOverride stored() const {
+        std::lock_guard<std::mutex> lock(AfcTestAccess::mutex(*afc));
+        const auto& overrides = AfcTestAccess::overrides(*afc);
+        const auto kept = overrides.find(0);
+        REQUIRE(kept != overrides.end());
+        return kept->second;
+    }
+
+    /// Link lane 0 to @p spool through the editor, the way the picker and the
+    /// QR scan do, and have Spoolman answer the fetch the link starts.
+    void link(const SpoolInfo& spool) {
+        edit([&spool](SlotInfo& slot) { apply_spool_to_slot(slot, spool); });
+        helix::test::spool_states(*afc, 0, spool);
+        REQUIRE(afc->get_slot_info(0).spoolman_id == spool.id);
+    }
+
+    /// A person picks a colour and a catalog product for whatever is on lane 0.
+    void pick_colour_and_product() {
+        edit([](SlotInfo& slot) {
+            slot.color_rgb = 0xBCBCBC;
+            slot.catalog_id = "sunlu-pla-plus-2-0";
+            slot.product_name = "PLA+ 2.0";
+        });
+        REQUIRE(afc->get_slot_info(0).catalog_id == "sunlu-pla-plus-2-0");
+    }
+
+    /// The lane shows what its stored record reloads as: the same resolved
+    /// identity, carried by the same declaring rungs. A value the lane holds
+    /// as Remembered and the record reloads as LocalUser resolves alike today
+    /// and parts at the next firmware frame, which may correct only the first.
+    void check_lane_matches_reload() const {
+        const helix::ams::LaneSources live = helix::ams::lane_sources(lane());
+        const helix::ams::LaneSources reload = reloaded_sources();
+        CHECK(shown_identity(helix::ams::resolve(live)) ==
+              shown_identity(helix::ams::resolve(reload)));
+        CHECK(shown_identity(live.spoolman) == shown_identity(reload.spoolman));
+        CHECK(shown_identity(live.local_user) == shown_identity(reload.local_user));
+        CHECK(shown_identity(live.remembered) == shown_identity(reload.remembered));
     }
 };
 
@@ -761,16 +831,22 @@ TEST_CASE("an unlink drops the colour the user picked for the unlinked spool",
         REQUIRE(picked.local_user->color_rgb == 0xBCBCBCu);
         REQUIRE(picked.remembered.has_value());
     }
+    const std::string kept_brand = f.afc->get_slot_info(0).brand;
+    REQUIRE_FALSE(kept_brand.empty());
 
     f.edit([](SlotInfo& slot) { slot.spoolman_id = 0; });
 
     const auto sources = helix::ams::lane_sources(f.lane());
     REQUIRE(sources.local_user.has_value());
     CHECK(sources.local_user->spoolman_id == 0);
-    // The colour and what we remembered described the spool that was bound,
-    // and an unlink stops saying which spool is loaded.
+    // The colour described the spool that was bound, and an unlink stops
+    // saying which spool is loaded.
     CHECK_FALSE(sources.local_user->color_rgb.has_value());
-    CHECK_FALSE(sources.remembered.has_value());
+    // After an unlink that keeps the slot's identity, that identity is remembered, not declared.
+    REQUIRE(sources.remembered.has_value());
+    CHECK(sources.remembered->color_rgb == 0xBCBCBCu);
+    CHECK(sources.remembered->brand == kept_brand);
+    f.check_lane_matches_reload();
 }
 
 TEST_CASE("an unlink and a relink to the same spool each drop the colour",
@@ -822,6 +898,166 @@ TEST_CASE("an edit that keeps the same spool leaves the user's earlier declarati
     CHECK(sources.remembered.has_value());
     REQUIRE(sources.spoolman.has_value());
     CHECK(sources.spoolman->spoolman_id == 42);
+}
+
+TEST_CASE("a binding change leaves the lane showing what its stored record reloads as",
+          "[ams][commit][lane][spoolman][afc][1653]") {
+    RememberedAfcLaneFixture f;
+    const SpoolInfo first = make_spool(42, "eSUN", "Silk Blue", "PETG");
+    const SpoolInfo second = make_spool(99, "Sunlu", "PLA Plus", "PLA");
+    // Nothing but a person produces a catalog pick, and it describes one
+    // spool's product. Only an unlink that keeps the rest of the slot keeps it.
+    std::string kept_product;
+    int bound = 0;
+
+    SECTION("a link") {
+        f.pick_colour_and_product();
+        f.link(first);
+        bound = first.id;
+    }
+    SECTION("a relink to a different spool") {
+        f.link(first);
+        f.pick_colour_and_product();
+        f.link(second);
+        bound = second.id;
+    }
+    SECTION("an unlink that keeps the slot identity") {
+        f.link(first);
+        f.pick_colour_and_product();
+        // The editor's Save-to-Spoolman-off unlink.
+        f.edit([](SlotInfo& slot) { slot.clear_spoolman_link(); });
+        kept_product = "sunlu-pla-plus-2-0";
+    }
+    SECTION("Clear Spool") {
+        f.link(first);
+        f.pick_colour_and_product();
+        REQUIRE(ui::ams_dispatch_backend_action(ui::AmsContextMenu::MenuAction::CLEAR_SPOOL, 0,
+                                                nullptr));
+    }
+
+    const SlotInfo slot = f.afc->get_slot_info(0);
+    REQUIRE(slot.spoolman_id == bound);
+    f.check_lane_matches_reload();
+    // The editor reopens on the slot's own pick, so the slot has to agree too.
+    CHECK(slot.catalog_id == kept_product);
+    CHECK(f.reloaded().catalog_id.value_or("") == kept_product);
+}
+
+TEST_CASE("a relink does not carry the previous spool's catalog pick onto the new spool",
+          "[ams][commit][lane][spoolman][afc][1653]") {
+    RestartedAfcLinkFixture f;
+    f.pick_colour_and_product();
+
+    f.link(make_spool(99, "Sunlu", "PLA Plus", "PLA"));
+
+    const SlotInfo slot = f.afc->get_slot_info(0);
+    const helix::ams::LaneSources reload = f.reloaded_sources();
+    INFO("slot catalog_id " << slot.catalog_id << " product_name " << slot.product_name
+                            << "; reloaded LocalUser " << shown_identity(reload.local_user));
+    CHECK(slot.catalog_id.empty());
+    CHECK(slot.product_name.empty());
+    CHECK(shown_identity(reload.local_user) ==
+          shown_identity(std::optional<helix::ams::Observation>{}));
+}
+
+TEST_CASE("an unlink that keeps the slot identity leaves it remembered and not declared",
+          "[ams][commit][lane][spoolman][afc][1653]") {
+    RememberedAfcLaneFixture f;
+    f.firmware_links(make_spool(42, "eSUN", "Silk Blue", "PETG"));
+    f.edit([](SlotInfo& slot) { slot.color_rgb = 0xBCBCBC; });
+    REQUIRE(f.stored().user_locked_color);
+
+    f.edit([](SlotInfo& slot) { slot.clear_spoolman_link(); });
+
+    const SlotInfo slot = f.afc->get_slot_info(0);
+    REQUIRE(slot.spoolman_id == 0);
+    REQUIRE_FALSE(slot.brand.empty());
+    const auto sources = helix::ams::lane_sources(f.lane());
+    REQUIRE(sources.local_user.has_value());
+    CHECK(sources.local_user->spoolman_id == 0);
+    // The person stopped tracking the spool, which says nothing about what is
+    // loaded. What the slot kept is still shown, but as what we remember, so
+    // the next firmware frame may correct it.
+    CHECK_FALSE(sources.local_user->color_rgb.has_value());
+    CHECK_FALSE(sources.local_user->brand.has_value());
+    REQUIRE(sources.remembered.has_value());
+    CHECK(sources.remembered->color_rgb == 0xBCBCBCu);
+    CHECK(sources.remembered->brand == slot.brand);
+
+    const helix::ams::FilamentSlotOverride stored = f.stored();
+    CHECK_FALSE(stored.user_locked_color);
+    CHECK_FALSE(stored.user_locked_material);
+    CHECK_FALSE(stored.declared.any());
+    f.check_lane_matches_reload();
+}
+
+TEST_CASE("a relink voids the authorship the stored record held for the previous spool",
+          "[ams][commit][lane][spoolman][afc][1653]") {
+    RestartedAfcLinkFixture f;
+    f.edit([](SlotInfo& slot) {
+        slot.color_rgb = 0xBCBCBC;
+        slot.brand = "Sunlu";
+    });
+    {
+        const helix::ams::FilamentSlotOverride picked = f.stored();
+        REQUIRE(picked.user_locked_color);
+        REQUIRE(picked.declared.any());
+    }
+
+    // The relink keeps every other value on the slot, so each lock still
+    // stands over the value it was set on.
+    f.relink(99);
+
+    const helix::ams::FilamentSlotOverride stored = f.stored();
+    REQUIRE(stored.spoolman_id == 99);
+    CHECK_FALSE(stored.user_locked_color);
+    CHECK_FALSE(stored.user_locked_material);
+    CHECK_FALSE(stored.declared.any());
+    // Spoolman has not answered for spool 99 yet, and what the slot still
+    // holds describes spool 42.
+    const auto sources = helix::ams::lane_sources(f.lane());
+    CHECK_FALSE(sources.spoolman.has_value());
+    CHECK_FALSE(sources.remembered.has_value());
+}
+
+TEST_CASE("Clear Spool on a linked lane leaves nothing remembered and no catalog pick",
+          "[ams][commit][lane][spoolman][afc][context-menu][1653]") {
+    RememberedAfcLaneFixture f;
+    f.firmware_links(make_spool(42, "eSUN", "Silk Blue", "PETG"));
+    f.pick_colour_and_product();
+
+    REQUIRE(
+        ui::ams_dispatch_backend_action(ui::AmsContextMenu::MenuAction::CLEAR_SPOOL, 0, nullptr));
+
+    const SlotInfo slot = f.afc->get_slot_info(0);
+    REQUIRE(slot.spoolman_id == 0);
+    const auto sources = helix::ams::lane_sources(f.lane());
+    REQUIRE(sources.local_user.has_value());
+    CHECK(sources.local_user->spoolman_id == 0);
+    CHECK_FALSE(sources.remembered.has_value());
+    CHECK_FALSE(helix::ams::resolve(sources).color_rgb.has_value());
+    // The pick names a product of the material the clear just removed.
+    CHECK(slot.catalog_id.empty());
+    CHECK(slot.product_name.empty());
+    CHECK_FALSE(f.reloaded().catalog_id.has_value());
+    CHECK_FALSE(f.reloaded().product_name.has_value());
+}
+
+TEST_CASE("an edit that keeps the same spool keeps the stored record's authorship",
+          "[ams][commit][lane][spoolman][afc][1653]") {
+    RestartedAfcLinkFixture f;
+    f.edit([](SlotInfo& slot) {
+        slot.color_rgb = 0xBCBCBC;
+        slot.brand = "Sunlu";
+    });
+
+    f.edit([](SlotInfo& slot) { slot.material = "ASA"; });
+
+    const helix::ams::FilamentSlotOverride stored = f.stored();
+    REQUIRE(stored.spoolman_id == 42);
+    CHECK(stored.user_locked_color);
+    CHECK(stored.user_locked_material);
+    CHECK(helix::ams::declared_field_names(stored.declared) == nlohmann::json::array({"brand"}));
 }
 
 TEST_CASE("a later edit amends the user's record instead of replacing it", "[ams][commit][lane]") {
