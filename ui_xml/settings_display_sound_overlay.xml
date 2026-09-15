@@ -178,8 +178,8 @@
         <setting_dropdown_row name="row_screensaver"
                               label="Screensaver" label_tag="Screensaver" icon="television_classic"
                               description="Show instead of dimming" description_tag="Show instead of dimming"
-                              options="Off&#10;Flying Toasters&#10;Starfield&#10;3D Pipes"
-                              options_tag="Off&#10;Flying Toasters&#10;Starfield&#10;3D Pipes"
+                              options="Off&#10;Flying Toasters&#10;Starfield&#10;3D Pipes&#10;Bouncing Printer"
+                              options_tag="Off&#10;Flying Toasters&#10;Starfield&#10;3D Pipes&#10;Bouncing Printer"
                               callback="on_screensaver_changed"/>
         <!-- Test Screensaver button (hidden when Off is selected) -->
         <lv_obj name="container_test_screensaver"

@@ -9,6 +9,7 @@
 #include "refresh_period_hold.h"
 #include "screen_hide_hold.h"
 #include "screensaver.h"
+#include "screensaver_bounce.h"
 #include "screensaver_pipes.h"
 #include "screensaver_starfield.h"
 
@@ -20,6 +21,26 @@ uint32_t helix::ui::screensaver_timer_period_ms() {
     return refr ? refr->period : LV_DEF_REFR_PERIOD;
 }
 
+namespace helix {
+
+ScreensaverType screensaver_type_from_env(const std::string& value, ScreensaverType configured) {
+    if (value == "toasters") {
+        return ScreensaverType::FLYING_TOASTERS;
+    }
+    if (value == "starfield") {
+        return ScreensaverType::STARFIELD;
+    }
+    if (value == "pipes") {
+        return ScreensaverType::PIPES_3D;
+    }
+    if (value == "bounce") {
+        return ScreensaverType::BOUNCING_PRINTER;
+    }
+    return (configured != ScreensaverType::OFF) ? configured : ScreensaverType::FLYING_TOASTERS;
+}
+
+} // namespace helix
+
 ScreensaverManager& ScreensaverManager::instance() {
     static ScreensaverManager mgr;
     return mgr;
@@ -30,6 +51,7 @@ ScreensaverManager::ScreensaverManager() {
     screensavers_.push_back(std::make_unique<FlyingToasterScreensaver>());
     screensavers_.push_back(std::make_unique<StarfieldScreensaver>());
     screensavers_.push_back(std::make_unique<PipesScreensaver>());
+    screensavers_.push_back(std::make_unique<helix::BouncingPrinterScreensaver>());
 }
 
 void ScreensaverManager::start(ScreensaverType type) {
@@ -122,7 +144,7 @@ bool ScreensaverManager::is_active() const {
 
 ScreensaverType ScreensaverManager::configured_type() {
     int type_int = helix::DisplaySettingsManager::instance().get_screensaver_type();
-    if (type_int < 0 || type_int > 3) {
+    if (type_int < 0 || type_int > 4) {
         return ScreensaverType::OFF;
     }
     return static_cast<ScreensaverType>(type_int);

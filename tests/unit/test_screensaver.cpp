@@ -48,6 +48,11 @@ TEST_CASE_METHOD(LVGLTestFixture, "Screensaver type set/get round trip",
         REQUIRE(DisplaySettingsManager::instance().get_screensaver_type() == 3);
     }
 
+    SECTION("set to Bouncing Printer") {
+        DisplaySettingsManager::instance().set_screensaver_type(4);
+        REQUIRE(DisplaySettingsManager::instance().get_screensaver_type() == 4);
+    }
+
     SECTION("set back to Flying Toasters") {
         DisplaySettingsManager::instance().set_screensaver_type(0);
         DisplaySettingsManager::instance().set_screensaver_type(1);
@@ -56,13 +61,44 @@ TEST_CASE_METHOD(LVGLTestFixture, "Screensaver type set/get round trip",
 
     SECTION("out of range clamped") {
         DisplaySettingsManager::instance().set_screensaver_type(99);
-        REQUIRE(DisplaySettingsManager::instance().get_screensaver_type() == 3);
+        REQUIRE(DisplaySettingsManager::instance().get_screensaver_type() == 4);
 
         DisplaySettingsManager::instance().set_screensaver_type(-1);
         REQUIRE(DisplaySettingsManager::instance().get_screensaver_type() == 0);
     }
 
     DisplaySettingsManager::instance().deinit_subjects();
+}
+
+TEST_CASE_METHOD(LVGLTestFixture, "Screensaver type survives a restart",
+                 "[screensaver][display_settings]") {
+    // The load path clamps independently of the setter, so a type the setter
+    // accepts can still be rewritten on the next boot — the user picks a
+    // screensaver, restarts, and finds a different one selected.
+    Config* config = Config::get_instance();
+    REQUIRE(config != nullptr);
+
+    // The fixture leaves the subjects initialized, and init_subjects() returns
+    // early in that state — so the config has to be seeded while they are down
+    // for the boot-time read to be the thing under test.
+    auto boot_with_type = [&](int persisted) {
+        DisplaySettingsManager::instance().deinit_subjects();
+        config->set<int>("/display/screensaver_type", persisted);
+        DisplaySettingsManager::instance().init_subjects();
+        return DisplaySettingsManager::instance().get_screensaver_type();
+    };
+
+    SECTION("Bouncing Printer is read back as itself") {
+        REQUIRE(boot_with_type(4) == 4);
+    }
+
+    SECTION("a type past the last one is clamped, not wrapped") {
+        REQUIRE(boot_with_type(99) == 4);
+    }
+
+    SECTION("a negative type falls back to Off") {
+        REQUIRE(boot_with_type(-7) == 0);
+    }
 }
 
 TEST_CASE_METHOD(LVGLTestFixture, "Screensaver type subject reflects setter",
@@ -413,8 +449,68 @@ TEST_CASE_METHOD(LVGLTestFixture,
 
 #include "screensaver.h"
 
+TEST_CASE("HELIX_SCREENSAVER_NOW names a screensaver", "[screensaver]") {
+    SECTION("each name selects its own screensaver") {
+        REQUIRE(screensaver_type_from_env("toasters", ScreensaverType::OFF) ==
+                ScreensaverType::FLYING_TOASTERS);
+        REQUIRE(screensaver_type_from_env("starfield", ScreensaverType::OFF) ==
+                ScreensaverType::STARFIELD);
+        REQUIRE(screensaver_type_from_env("pipes", ScreensaverType::OFF) ==
+                ScreensaverType::PIPES_3D);
+        REQUIRE(screensaver_type_from_env("bounce", ScreensaverType::OFF) ==
+                ScreensaverType::BOUNCING_PRINTER);
+    }
+
+    SECTION("a name wins over what is configured") {
+        REQUIRE(screensaver_type_from_env("bounce", ScreensaverType::STARFIELD) ==
+                ScreensaverType::BOUNCING_PRINTER);
+        REQUIRE(screensaver_type_from_env("starfield", ScreensaverType::BOUNCING_PRINTER) ==
+                ScreensaverType::STARFIELD);
+    }
+
+    SECTION("anything else means the configured one") {
+        REQUIRE(screensaver_type_from_env("1", ScreensaverType::BOUNCING_PRINTER) ==
+                ScreensaverType::BOUNCING_PRINTER);
+        REQUIRE(screensaver_type_from_env("yes", ScreensaverType::PIPES_3D) ==
+                ScreensaverType::PIPES_3D);
+    }
+
+    SECTION("with nothing configured it falls back to toasters") {
+        REQUIRE(screensaver_type_from_env("1", ScreensaverType::OFF) ==
+                ScreensaverType::FLYING_TOASTERS);
+        REQUIRE(screensaver_type_from_env("", ScreensaverType::OFF) ==
+                ScreensaverType::FLYING_TOASTERS);
+    }
+
+    SECTION("a name is matched exactly, not by prefix") {
+        REQUIRE(screensaver_type_from_env("bouncing", ScreensaverType::OFF) ==
+                ScreensaverType::FLYING_TOASTERS);
+        REQUIRE(screensaver_type_from_env("Bounce", ScreensaverType::OFF) ==
+                ScreensaverType::FLYING_TOASTERS);
+    }
+}
+
 TEST_CASE_METHOD(LVGLTestFixture, "ScreensaverManager starts inactive", "[screensaver]") {
     REQUIRE(ScreensaverManager::instance().is_active() == false);
+}
+
+TEST_CASE_METHOD(LVGLTestFixture, "ScreensaverManager routes the configured setting to a type",
+                 "[screensaver]") {
+    // configured_type() bounds the persisted int independently of the setter.
+    // A type the settings screen can select but this rejects reads as OFF, and
+    // the screensaver the user chose simply never starts.
+    auto configured_for = [](int setting) {
+        DisplaySettingsManager::instance().set_screensaver_type(setting);
+        return ScreensaverManager::configured_type();
+    };
+
+    REQUIRE(configured_for(0) == ScreensaverType::OFF);
+    REQUIRE(configured_for(1) == ScreensaverType::FLYING_TOASTERS);
+    REQUIRE(configured_for(2) == ScreensaverType::STARFIELD);
+    REQUIRE(configured_for(3) == ScreensaverType::PIPES_3D);
+    REQUIRE(configured_for(4) == ScreensaverType::BOUNCING_PRINTER);
+
+    DisplaySettingsManager::instance().set_screensaver_type(0);
 }
 
 TEST_CASE_METHOD(LVGLTestFixture, "ScreensaverManager start/stop lifecycle", "[screensaver]") {
@@ -441,6 +537,13 @@ TEST_CASE_METHOD(LVGLTestFixture, "ScreensaverManager start/stop lifecycle", "[s
 
     SECTION("start and stop 3D Pipes") {
         mgr.start(ScreensaverType::PIPES_3D);
+        REQUIRE(mgr.is_active() == true);
+        mgr.stop();
+        REQUIRE(mgr.is_active() == false);
+    }
+
+    SECTION("start and stop Bouncing Printer") {
+        mgr.start(ScreensaverType::BOUNCING_PRINTER);
         REQUIRE(mgr.is_active() == true);
         mgr.stop();
         REQUIRE(mgr.is_active() == false);
@@ -1047,6 +1150,232 @@ TEST_CASE_METHOD(LVGLTestFixture, "a screensaver that fails to start gives the r
     CHECK(running_saver_timer_period(ScreensaverType::FLYING_TOASTERS) == SAVER_PERIOD_MS);
     mgr.stop();
     CHECK(default_refr_timer_period() == GLOBAL_PERIOD_MS);
+}
+
+// ============================================================================
+// BouncingPrinterScreensaver Tests
+// ============================================================================
+
+#include "screensaver_bounce.h"
+
+TEST_CASE_METHOD(LVGLTestFixture, "BouncingPrinterScreensaver starts inactive", "[screensaver]") {
+    BouncingPrinterScreensaver ss;
+    REQUIRE(ss.is_active() == false);
+}
+
+TEST_CASE_METHOD(LVGLTestFixture, "BouncingPrinterScreensaver start/stop lifecycle",
+                 "[screensaver]") {
+    BouncingPrinterScreensaver ss;
+
+    SECTION("start activates screensaver") {
+        ss.start();
+        REQUIRE(ss.is_active() == true);
+        ss.stop();
+    }
+
+    SECTION("stop deactivates screensaver") {
+        ss.start();
+        ss.stop();
+        REQUIRE(ss.is_active() == false);
+    }
+
+    SECTION("double start is safe") {
+        ss.start();
+        ss.start();
+        REQUIRE(ss.is_active() == true);
+        ss.stop();
+    }
+
+    SECTION("double stop is safe") {
+        ss.start();
+        ss.stop();
+        ss.stop();
+        REQUIRE(ss.is_active() == false);
+    }
+
+    SECTION("stop without start is safe") {
+        ss.stop();
+        REQUIRE(ss.is_active() == false);
+    }
+}
+
+TEST_CASE_METHOD(LVGLTestFixture, "BouncingPrinterScreensaver creates overlay on lv_layer_top",
+                 "[screensaver]") {
+    BouncingPrinterScreensaver ss;
+
+    int children_before = lv_obj_get_child_count(lv_layer_top());
+    ss.start();
+    int children_after = lv_obj_get_child_count(lv_layer_top());
+    REQUIRE(children_after > children_before);
+
+    ss.stop();
+    REQUIRE_FALSE(ss.is_active());
+    int children_final = lv_obj_get_child_count(lv_layer_top());
+    REQUIRE(children_final <= children_after);
+}
+
+// The motion is a pure function of elapsed time, so the parts that decide where
+// the sprite is and whether it just hit something are testable without a display.
+
+TEST_CASE("Bouncing printer: fold keeps travel inside the wall", "[screensaver][bounce_math]") {
+    using helix::screensaver_bounce::fold;
+
+    SECTION("every point of a long run stays in range") {
+        for (float u = -5000.0f; u <= 5000.0f; u += 7.3f) {
+            const float x = fold(u, 400.0f);
+            REQUIRE(x >= 0.0f);
+            REQUIRE(x <= 400.0f);
+        }
+    }
+
+    SECTION("reflects at the wall and returns to the origin") {
+        REQUIRE(fold(0.0f, 400.0f) == Catch::Approx(0.0f));
+        REQUIRE(fold(400.0f, 400.0f) == Catch::Approx(400.0f));
+        REQUIRE(fold(600.0f, 400.0f) == Catch::Approx(200.0f));
+        REQUIRE(fold(800.0f, 400.0f) == Catch::Approx(0.0f).margin(0.001f));
+    }
+
+    SECTION("travelling backwards mirrors travelling forwards") {
+        REQUIRE(fold(-100.0f, 400.0f) == Catch::Approx(100.0f));
+        REQUIRE(fold(-500.0f, 400.0f) == Catch::Approx(300.0f));
+    }
+
+    SECTION("a zero range cannot divide by zero") {
+        REQUIRE(fold(123.0f, 0.0f) == Catch::Approx(0.0f));
+        REQUIRE(fold(123.0f, -5.0f) == Catch::Approx(0.0f));
+    }
+}
+
+TEST_CASE("Bouncing printer: fold_index counts one per wall", "[screensaver][bounce_math]") {
+    using helix::screensaver_bounce::fold_index;
+
+    REQUIRE(fold_index(0.0f, 400.0f) == 0);
+    REQUIRE(fold_index(399.0f, 400.0f) == 0);
+    REQUIRE(fold_index(401.0f, 400.0f) == 1);
+    REQUIRE(fold_index(801.0f, 400.0f) == 2);
+    REQUIRE(fold_index(-1.0f, 400.0f) == -1);
+    REQUIRE(fold_index(123.0f, 0.0f) == 0);
+}
+
+TEST_CASE("Bouncing printer: near_rational rejects short repeating paths",
+          "[screensaver][bounce_math]") {
+    using helix::screensaver_bounce::near_rational;
+
+    // Simple ratios close a loop the sprite would retrace forever.
+    REQUIRE(near_rational(1.0f, 6, 0.02f));
+    REQUIRE(near_rational(0.5f, 6, 0.02f));
+    REQUIRE(near_rational(2.0f / 3.0f, 6, 0.02f));
+    REQUIRE(near_rational(1.25f, 6, 0.02f));
+
+    // A ratio far from every p/q is what fills the screen instead of tracing a
+    // handful of lines.
+    REQUIRE_FALSE(near_rational(0.55f, 6, 0.02f));
+    REQUIRE_FALSE(near_rational(1.1f, 6, 0.02f));
+
+    // The band is wide enough to swallow irrationals that sit near a simple
+    // fraction: the golden ratio is 0.018 from 3/5, so it is rejected too. The
+    // seed loop redraws rather than insisting on any particular angle.
+    REQUIRE(near_rational(0.61803f, 6, 0.02f));
+}
+
+TEST_CASE("Bouncing printer: a corner needs both walls and both edges",
+          "[screensaver][bounce_math]") {
+    using helix::screensaver_bounce::is_corner_hit;
+
+    constexpr float RX = 400.0f;
+    constexpr float RY = 300.0f;
+    constexpr float TOL = 6.0f;
+
+    SECTION("both walls, sprite in the corner") {
+        REQUIRE(is_corner_hit(true, true, 0.0f, 0.0f, RX, RY, TOL));
+        REQUIRE(is_corner_hit(true, true, RX, RY, RX, RY, TOL));
+        REQUIRE(is_corner_hit(true, true, RX, 0.0f, RX, RY, TOL));
+        REQUIRE(is_corner_hit(true, true, 3.0f, 2.0f, RX, RY, TOL));
+    }
+
+    SECTION("one wall is just a wall") {
+        REQUIRE_FALSE(is_corner_hit(true, false, 0.0f, 0.0f, RX, RY, TOL));
+        REQUIRE_FALSE(is_corner_hit(false, true, 0.0f, 0.0f, RX, RY, TOL));
+        REQUIRE_FALSE(is_corner_hit(false, false, 0.0f, 0.0f, RX, RY, TOL));
+    }
+
+    SECTION("both axes turning far apart is not a corner") {
+        // The near miss a coarse tick would otherwise report: both fold indices
+        // moved, but the sprite is nowhere near a corner on one axis.
+        REQUIRE_FALSE(is_corner_hit(true, true, 0.0f, RY / 2.0f, RX, RY, TOL));
+        REQUIRE_FALSE(is_corner_hit(true, true, RX / 2.0f, 0.0f, RX, RY, TOL));
+        REQUIRE_FALSE(is_corner_hit(true, true, TOL + 1.0f, TOL + 1.0f, RX, RY, TOL));
+    }
+}
+
+TEST_CASE("Bouncing printer: sprite leaves room to bounce at every breakpoint",
+          "[screensaver][bounce_math]") {
+    using helix::screensaver_bounce::MIN_RANGE_PX;
+    using helix::screensaver_bounce::sprite_size_for;
+
+    struct Panel {
+        int w;
+        int h;
+    };
+    // The supported breakpoints, plus the micro layout.
+    const Panel panels[] = {{1024, 600}, {800, 480}, {480, 320}, {480, 272}, {600, 1024}};
+
+    for (const auto& panel : panels) {
+        const int sprite = sprite_size_for(panel.w, panel.h);
+        INFO("panel " << panel.w << "x" << panel.h << " sprite " << sprite);
+        REQUIRE(sprite > 0);
+        REQUIRE(panel.w - sprite >= MIN_RANGE_PX);
+        REQUIRE(panel.h - sprite >= MIN_RANGE_PX);
+    }
+
+    // A panel with no room to bounce declines rather than pinning the sprite.
+    REQUIRE(sprite_size_for(64, 64) == 0);
+}
+
+TEST_CASE("Bouncing printer: the sprite box is the shape of the artwork",
+          "[screensaver][bounce_math]") {
+    using helix::screensaver_bounce::fit_sprite;
+
+    int w = 0;
+    int h = 0;
+
+    SECTION("a tall render keeps its proportions inside the box") {
+        // voron-trident.png is 750x930.
+        fit_sprite(168, 750, 930, w, h);
+        REQUIRE(h == 168);
+        REQUIRE(w == 135);
+    }
+
+    SECTION("a wide render is bounded by its width") {
+        fit_sprite(100, 400, 200, w, h);
+        REQUIRE(w == 100);
+        REQUIRE(h == 50);
+    }
+
+    SECTION("a square render fills the box") {
+        fit_sprite(90, 1080, 1080, w, h);
+        REQUIRE(w == 90);
+        REQUIRE(h == 90);
+    }
+
+    SECTION("neither edge ever exceeds the box") {
+        const int box = 120;
+        const int dims[][2] = {{750, 930}, {1080, 1080}, {1920, 200}, {7, 4000}};
+        for (const auto& d : dims) {
+            fit_sprite(box, d[0], d[1], w, h);
+            INFO("src " << d[0] << "x" << d[1] << " -> " << w << "x" << h);
+            REQUIRE(w <= box);
+            REQUIRE(h <= box);
+            REQUIRE(w >= 1);
+            REQUIRE(h >= 1);
+        }
+    }
+
+    SECTION("an undecodable size falls back to the square box") {
+        fit_sprite(80, 0, 0, w, h);
+        REQUIRE(w == 80);
+        REQUIRE(h == 80);
+    }
 }
 
 #endif // HELIX_ENABLE_SCREENSAVER

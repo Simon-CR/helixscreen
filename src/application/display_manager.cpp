@@ -1231,25 +1231,16 @@ void DisplayManager::restore_flush_cb(lv_display_flush_cb_t flush_cb) {
 void DisplayManager::check_display_sleep() {
 #ifdef HELIX_ENABLE_SCREENSAVER
     // HELIX_SCREENSAVER_NOW — force-start screensaver immediately (for testing)
-    // Values: "1" (configured type, defaults to toasters), "starfield", "pipes"
+    // Values: "toasters", "starfield", "pipes", "bounce", or "1" / anything else
+    // (the configured type, falling back to toasters)
     static bool screensaver_force_checked = false;
     if (!screensaver_force_checked) {
         screensaver_force_checked = true;
         const char* env = std::getenv("HELIX_SCREENSAVER_NOW");
         if (env) {
             std::string val(env);
-            ScreensaverType force_type = ScreensaverType::FLYING_TOASTERS;
-            if (val == "starfield") {
-                force_type = ScreensaverType::STARFIELD;
-            } else if (val == "pipes") {
-                force_type = ScreensaverType::PIPES_3D;
-            } else {
-                // "1" or any other value: use configured type, fallback to toasters
-                auto configured = ScreensaverManager::configured_type();
-                force_type = (configured != ScreensaverType::OFF)
-                                 ? configured
-                                 : ScreensaverType::FLYING_TOASTERS;
-            }
+            const ScreensaverType force_type =
+                helix::screensaver_type_from_env(val, ScreensaverManager::configured_type());
             spdlog::info("[DisplayManager] HELIX_SCREENSAVER_NOW={}, forcing screensaver type {}",
                          val, static_cast<int>(force_type));
             m_display_dimmed = true;

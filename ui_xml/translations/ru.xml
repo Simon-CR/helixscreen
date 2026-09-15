@@ -310,6 +310,7 @@
   <translation tag="Both belts are overtightened." ru="Оба ремня перетянуты."/>
   <translation tag="Both belts need tightening." ru="Оба ремня нужно подтянуть."/>
   <translation tag="Both belts read the same to within what this measurement can resolve. Nothing to adjust." ru="Оба ремня показывают одинаковое значение в пределах точности этого измерения. Регулировка не требуется."/>
+  <translation tag="Bouncing Printer" ru="Прыгающий принтер"/>
   <translation tag="Bowden Length" ru="Длина боудена"/>
   <translation tag="Bowden tube length from hub to toolhead" ru="Длина боуден-трубки от хаба до печатающей головки"/>
   <translation tag="Brand" ru="Бренд"/>

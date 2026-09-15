@@ -310,6 +310,7 @@
   <translation tag="Both belts are overtightened." it="Entrambe le cinghie sono troppo tese."/>
   <translation tag="Both belts need tightening." it="Entrambe le cinghie devono essere tese."/>
   <translation tag="Both belts read the same to within what this measurement can resolve. Nothing to adjust." it="Entrambe le cinghie misurano lo stesso valore, entro la risoluzione di questa misurazione. Niente da regolare."/>
+  <translation tag="Bouncing Printer" it="Stampante rimbalzante"/>
   <translation tag="Bowden Length" it="Lunghezza del bowden"/>
   <translation tag="Bowden tube length from hub to toolhead" it="Lunghezza del tubo bowden dall&apos;hub alla testina"/>
   <translation tag="Brand" it="Marca"/>
