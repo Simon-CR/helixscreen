@@ -6,14 +6,10 @@
   <translation tag="&quot;%s&quot; failed to load" zh="&quot;%s&quot; 加载失败"/>
   <translation tag="%.0f Hz difference" zh="%.0f Hz 差异"/>
   <translation tag="%d additional fan%s" zh="%d 个额外风扇%s"/>
-  <translation tag="%d disabled" zh="%d 个已禁用"/>
-  <translation tag="%d failed to load - see details below" zh="%d 个加载失败 - 详见下方"/>
   <translation tag="%d feeders" zh="%d 个送料器"/>
   <translation tag="%d gates" zh="%d 个通道"/>
   <translation tag="%d lanes" zh="%d 个耗材通道"/>
   <translation tag="%d more sensors" zh="还有%d个传感器"/>
-  <translation tag="%d of %d plugins loaded" zh="已加载 %d / %d 个插件"/>
-  <translation tag="%d plugins loaded" zh="已加载 %d 个插件"/>
   <translation tag="%d slots" zh="%d 个槽位"/>
   <translation tag="%d toolheads" zh="%d 个工具头"/>
   <translation tag="%d tools" zh="%d 个工具"/>
@@ -61,7 +57,6 @@
   <translation tag="1 min ago" zh="1分钟前"/>
   <translation tag="1 minute" zh="1 分钟"/>
   <translation tag="1 more tap to {} beta features" zh="再点击 1 次以{}测试功能"/>
-  <translation tag="1 plugin loaded" zh="已加载 1 个插件"/>
   <translation tag="1. Printer homes and probes the bed" zh="1. 打印机归位并探测热床"/>
   <translation tag="1. Printer will home and probe each screw" zh="1. 打印机将归位并探测每个螺丝位置"/>
   <translation tag="10 minutes" zh="10 分钟"/>
@@ -173,7 +168,6 @@
   <translation tag="All Devices" zh="所有设备"/>
   <translation tag="All axes homed" zh="所有轴已归位"/>
   <translation tag="All fields are required" zh="所有字段均为必填项"/>
-  <translation tag="All plugins loaded successfully" zh="所有插件加载成功"/>
   <translation tag="Allow" zh="允许"/>
   <translation tag="Allow Home Screen Editing" zh="允许编辑主屏幕"/>
   <translation tag="Allow cold load/unload" zh="允许冷态加载/卸载"/>
@@ -393,11 +387,8 @@
   <translation tag="Calibration failed - touch targets more precisely." zh="校准失败 – 请更精确地触摸目标。"/>
   <translation tag="Calibration kept timing out. Your previous settings were kept." zh="校准反复超时，已保留您之前的设置。"/>
   <translation tag="Calibration may still be running — printer connection was interrupted" zh="校准可能仍在运行 — 打印机连接已中断"/>
-  <translation tag="Calibration may still be running — response timed out" zh="校准可能仍在运行 — 响应超时"/>
   <translation tag="Calibration move may still be running — printer connection was interrupted" zh="校准移动可能仍在运行 — 打印机连接已中断"/>
-  <translation tag="Calibration move may still be running — response timed out" zh="校准移动可能仍在运行 — 响应超时"/>
   <translation tag="Calibration saved but cannot apply on SDL display" zh="校准已保存，但无法在 SDL 显示上应用"/>
-  <translation tag="Calibration started" zh="校准已开始"/>
   <translation tag="Calibration succeeded, but the frequency chart data couldn&apos;t be read." zh="校准成功，但无法读取频率图表数据。"/>
   <translation tag="Calibration succeeded. The frequency chart is only available when HelixScreen runs on the printer." zh="校准成功。频率图表仅在 HelixScreen 运行于打印机上时可用。"/>
   <translation tag="Calibration timed out. Please try again." zh="校准超时。请重试。"/>
@@ -665,7 +656,6 @@
   <translation tag="Create New Vendor" zh="创建新供应商"/>
   <translation tag="Create Spool" zh="创建料盘"/>
   <translation tag="Create a 4-6 digit security PIN" zh="创建 4-6 位安全 PIN"/>
-  <translation tag="Create backup of %s before applying" zh="应用前创建 %s 的备份"/>
   <translation tag="Create video when print completes" zh="打印完成时创建视频"/>
   <translation tag="Creating bed mesh..." zh="正在创建热床网格..."/>
   <translation tag="Creating spool..." zh="正在创建料盘…"/>
@@ -713,7 +703,7 @@
   <translation tag="Default" zh="默认"/>
   <translation tag="Default border thickness" zh="默认边框厚度"/>
   <translation tag="Default: %d-%d°C nozzle, %d°C bed" zh="默认: 喷嘴 %d-%d°C,热床 %d°C"/>
-  <translation tag="Default: %d-%d°C nozzle, %d°C bed, %d°C chamber"/>
+  <translation tag="Default: %d-%d°C nozzle, %d°C bed, %d°C chamber" zh="默认: 喷嘴 %d-%d°C,热床 %d°C,腔体 %d°C"/>
   <translation tag="Defaults restored" zh="已恢复默认设置"/>
   <translation tag="Define macros in your printer.cfg" zh="在 printer.cfg 中定义宏"/>
   <translation tag="Delete" zh="删除"/>
@@ -1023,7 +1013,6 @@
   <translation tag="Failed to set temperature: {}" zh="设置温度失败: {}"/>
   <translation tag="Failed to set {} temp: {}" zh="设置 {} 温度失败: {}"/>
   <translation tag="Failed to show confirmation dialog" zh="显示确认对话框失败"/>
-  <translation tag="Failed to start calibration" zh="启动校准失败"/>
   <translation tag="Failed to start installer: " zh="启动安装程序失败: "/>
   <translation tag="Failed to start print: {}" zh="开始打印失败: {}"/>
   <translation tag="Failed to start uninstaller: " zh="启动卸载程序失败: "/>
@@ -1061,7 +1050,6 @@
   <translation tag="Filament" zh="耗材"/>
   <translation tag="Filament Control" zh="耗材控制"/>
   <translation tag="Filament Detected" zh="检测到耗材"/>
-  <translation tag="Filament Environment" zh="耗材环境"/>
   <translation tag="Filament Grade Mismatch" zh="耗材等级不匹配"/>
   <translation tag="Filament Humidity" zh="耗材湿度"/>
   <translation tag="Filament In The Toolhead" zh="工具头处有耗材"/>
@@ -1094,7 +1082,6 @@
   <translation tag="Filament is still present after the cut — the blade may be dull or misaligned" zh="切断后仍有耗材残留。刀片可能已钝或未对准"/>
   <translation tag="Filament jam detected" zh="检测到耗材堵塞"/>
   <translation tag="Filament jammed at the extruder gear" zh="耗材卡在挤出机齿轮处"/>
-  <translation tag="Filament load failed: {}" zh="耗材加载失败: {}"/>
   <translation tag="Filament never reached the CFS hub sensor" zh="耗材未到达 CFS 集线器传感器"/>
   <translation tag="Filament operation failed" zh="耗材操作失败"/>
   <translation tag="Filament operation timed out" zh="耗材操作超时"/>
@@ -1116,7 +1103,6 @@
   <translation tag="Filament tension is balanced" zh="耗材张力平衡"/>
   <translation tag="Filament tracking &amp; label printing" zh="耗材跟踪和标签打印"/>
   <translation tag="Filament tracking and inventory" zh="耗材跟踪和库存"/>
-  <translation tag="Filament unload failed: {}" zh="耗材卸载失败: {}"/>
   <translation tag="FilamentSensor" zh="耗材传感器"/>
   <translation tag="File" zh="文件"/>
   <translation tag="File Size" zh="文件大小"/>
@@ -1380,7 +1366,7 @@
   <translation tag="Job Queue" zh="任务队列"/>
   <translation tag="Jog failed: {}" zh="移动失败: {}"/>
   <translation tag="Join the HelixScreen community on Discord for discussion, tips, troubleshooting help, and feature requests." zh="加入 HelixScreen 的 Discord 社区，参与讨论、获取技巧、故障排除帮助和功能请求。"/>
-  <translation tag="Joining Wi-Fi disconnects the wired network."/>
+  <translation tag="Joining Wi-Fi disconnects the wired network." zh="加入 WiFi 会断开有线网络连接。"/>
   <translation tag="Just now" zh="刚刚"/>
   <translation tag="Just queued" zh="刚刚加入队列"/>
   <translation tag="KEYBOARD LAYOUT" zh="键盘布局"/>
@@ -1463,7 +1449,6 @@
   <translation tag="Load failed" zh="装载失败"/>
   <translation tag="Load filament" zh="装载耗材"/>
   <translation tag="Load filament first" zh="请先装载耗材"/>
-  <translation tag="Load may still be running — response timed out" zh="加载可能仍在运行 — 响应超时"/>
   <translation tag="Load or unload filament." zh="装载或卸载耗材。"/>
   <translation tag="Load the required filaments or start anyway?" zh="加载所需耗材还是直接开始？"/>
   <translation tag="Load, unload, and swap spools. View your multi-filament system at a glance, map colors to slots, and monitor runout sensors." zh="加载、卸载和更换料盘。一目了然地查看您的多耗材系统、将颜色映射到槽位，并监控耗材用尽传感器。"/>
@@ -1730,9 +1715,6 @@
   <translation tag="No networks found" zh="未找到网络"/>
   <translation tag="No notifications" zh="无通知"/>
   <translation tag="No objects defined for this print" zh="此次打印未定义对象"/>
-  <translation tag="No plugins" zh="无插件"/>
-  <translation tag="No plugins discovered" zh="未发现插件"/>
-  <translation tag="No plugins found" zh="未找到插件"/>
   <translation tag="No presets configured" zh="未配置预设"/>
   <translation tag="No preview" zh="无预览"/>
   <translation tag="No print history found" zh="未找到打印历史"/>
@@ -1915,8 +1897,6 @@
   <translation tag="Pill" zh="胶囊"/>
   <translation tag="Pixels before a press becomes a scroll (lower = scrolls engage sooner)" zh="按下转为滚动前的像素数(越低 = 滚动越快触发)"/>
   <translation tag="Place image files (PNG, JPEG, BMP, GIF) in config/custom_images/. Max size: 2048×2048 pixels." zh="将图片文件 (PNG, JPEG, BMP, GIF) 放入 config/custom_images/。最大尺寸: 2048×2048 像素。"/>
-  <translation tag="Place plugins in the plugins directory" zh="请将插件放入插件目录"/>
-  <translation tag="Place plugins in the plugins directory to extend HelixScreen" zh="将插件放在 plugins 目录中以扩展 HelixScreen"/>
   <translation tag="Placed" zh="已放置"/>
   <translation tag="Platform" zh="平台"/>
   <translation tag="Platform: " zh="平台: "/>
@@ -1935,10 +1915,8 @@
   <translation tag="Plugin installed successfully." zh="插件安装成功。"/>
   <translation tag="Plugin installed successfully. Moonraker is restarting..." zh="插件安装成功。Moonraker 正在重启..."/>
   <translation tag="Plugin not responding after restart.&#10;It may need more time to load." zh="重启后插件无响应。&#10;可能需要更多时间加载。"/>
-  <translation tag="Plugin removed. A config file needs attention - check the HelixScreen log for details."/>
+  <translation tag="Plugin removed. A config file needs attention - check the HelixScreen log for details." zh="插件已移除。配置文件需要处理 - 请查看 HelixScreen 日志了解详情。"/>
   <translation tag="Plugin uninstalled successfully." zh="插件卸载成功。"/>
-  <translation tag="Plugins" zh="插件"/>
-  <translation tag="Plugins are discovered on application startup" zh="插件在应用程序启动时被发现"/>
   <translation tag="Point camera at QR code on spool" zh="将摄像头对准料盘上的 QR 码"/>
   <translation tag="Polymaker" zh="Polymaker"/>
   <translation tag="Poor Accuracy" zh="精度较差"/>
@@ -2654,7 +2632,6 @@
   <translation tag="Temp" zh="温度"/>
   <translation tag="Temp Compensation" zh="温度补偿"/>
   <translation tag="Temp °C" zh="温度 °C"/>
-  <translation tag="Temp °C (%d–%d)" zh="温度 °C (%d–%d)"/>
   <translation tag="Temperature" zh="温度"/>
   <translation tag="Temperature Graph" zh="温度曲线"/>
   <translation tag="Temperature Graph Config" zh="温度图表配置"/>
@@ -2759,9 +2736,7 @@
   <translation tag="This plugin lets HelixScreen control print start options like bed mesh and QGL. Once installed, use Configure PRINT_START below to enable optional steps." zh="此插件让 HelixScreen 控制打印启动选项，如热床网格和 QGL。安装后，使用下面的配置 PRINT_START 启用可选步骤。"/>
   <translation tag="This print needs about %.0fg but the spool has about %.0fg remaining. Start anyway?" zh="本次打印需要约 %.0fg，但料盘仅剩约 %.0fg。仍要开始吗？"/>
   <translation tag="This printer looks like a {} ({}% confidence), but it is set up as a {}. A wrong type applies incorrect pre-print options and presets." zh="此打印机看起来是 {}（置信度 {}%），但当前设置为 {}。错误的类型会应用不正确的打印前选项和预设。"/>
-  <translation tag="This removes the plugin&apos;s Moonraker component and restarts Moonraker. The printer will briefly disconnect. If old phase-tracking lines are still in PRINT_START, they are removed too, with backups kept. A Klipper restart applies that."/>
-  <translation tag="This removes the plugin&apos;s Moonraker component. If old phase-tracking lines are still in PRINT_START, they are removed too, with backups kept. A Klipper restart applies that."/>
-  <translation tag="This removes the plugin&apos;s macros and its Moonraker component from the printer and restarts Klipper." zh="从打印机移除插件的宏及其 Moonraker 组件，并重启 Klipper。"/>
+  <translation tag="This removes the plugin&apos;s Moonraker component and restarts Moonraker. The printer will briefly disconnect. If old phase-tracking lines are still in PRINT_START, they are removed too, with backups kept. A Klipper restart applies that." zh="这会移除插件的 Moonraker 组件并重启 Moonraker。打印机将短暂断开连接。如果 PRINT_START 中仍有旧的阶段跟踪行，它们也会被移除，但会保留备份。重启 Klipper 后生效。"/>
   <translation tag="This replaces the printer&apos;s helper macros with the current version and restarts Klipper." zh="这会将打印机的帮助宏替换为当前版本并重启 Klipper。"/>
   <translation tag="This replaces the printer&apos;s helper macros with the current version. A print is running, so Klipper restarts after it finishes." zh="这会将打印机的帮助宏替换为当前版本。当前正在打印，Klipper 将在打印结束后重启。"/>
   <translation tag="This system does not support bypass mode" zh="此系统不支持旁通模式"/>
@@ -2881,13 +2856,12 @@
   <translation tag="Uninstall HelixPrint Plugin" zh="卸载 HelixPrint 插件"/>
   <translation tag="Uninstall HelixPrint Plugin?" zh="卸载 HelixPrint 插件？"/>
   <translation tag="Uninstall script not found." zh="未找到卸载脚本。"/>
-  <translation tag="Uninstall: Coming soon" zh="卸载: 即将推出"/>
   <translation tag="Uninstallation failed. Check logs for details." zh="卸载失败。请查看日志了解详情。"/>
   <translation tag="Uninstallation failed: " zh="卸载失败: "/>
   <translation tag="Uninstallation timed out. The script may be stuck." zh="卸载超时。脚本可能已卡住。"/>
   <translation tag="Unit" zh="单元"/>
   <translation tag="Unit " zh="单元 "/>
-  <translation tag="Units: %d   Boxes: %d   Dryers: %d"/>
+  <translation tag="Units: %d   Boxes: %d   Dryers: %d" zh="单元: %d   料盒: %d   干燥器: %d"/>
   <translation tag="Unknown" zh="未知"/>
   <translation tag="Unknown Error" zh="未知错误"/>
   <translation tag="Unknown Event" zh="未知事件"/>
@@ -2902,7 +2876,6 @@
   <translation tag="Unload filament" zh="卸载耗材"/>
   <translation tag="Unload from toolhead first" zh="请先从工具头卸载"/>
   <translation tag="Unload macro not configured" zh="卸载宏未配置"/>
-  <translation tag="Unload may still be running — response timed out" zh="卸载可能仍在运行 — 响应超时"/>
   <translation tag="Unload the CFS filament before enabling bypass" zh="启用旁通前请先卸载 CFS 耗材"/>
   <translation tag="Unloading" zh="卸载中"/>
   <translation tag="Unloading Start Speed" zh="卸载起始速度"/>
@@ -2968,9 +2941,8 @@
   <translation tag="View Full History" zh="查看完整历史"/>
   <translation tag="View Telemetry Data" zh="查看遥测数据"/>
   <translation tag="View Timelapse" zh="查看延时摄影"/>
-  <translation tag="View all boxes"/>
+  <translation tag="View all boxes" zh="查看所有料盒"/>
   <translation tag="View and rename fans" zh="查看和重命名风扇"/>
-  <translation tag="View installed plugins and status" zh="查看已安装的插件和状态"/>
   <translation tag="View live camera feed" zh="查看实时摄像头画面"/>
   <translation tag="View print statistics and job history" zh="查看打印统计和作业历史"/>
   <translation tag="Visits: " zh="访问次数: "/>
@@ -2987,9 +2959,9 @@
   <translation tag="Wait for the current operation to complete" zh="请等待当前操作完成"/>
   <translation tag="Wait for the current operation to complete or cancel it first" zh="请等待当前操作完成，或先将其取消"/>
   <translation tag="Wait until the print finishes" zh="请等待打印完成"/>
-  <translation tag="Waiting for %s to finish. One heater at a time."/>
+  <translation tag="Waiting for %s to finish. One heater at a time." zh="正在等待 %s 完成。一次只能使用一个加热器。"/>
   <translation tag="Waiting for Moonraker..." zh="正在等待 Moonraker..."/>
-  <translation tag="Waiting for another box to finish."/>
+  <translation tag="Waiting for another box to finish." zh="正在等待另一个料盒完成。"/>
   <translation tag="Waiting for bed to reach temperature for accurate calibration." zh="等待热床达到温度以进行精确校准。"/>
   <translation tag="Waiting for the filament system to report its state" zh="正在等待耗材系统报告状态"/>
   <translation tag="Warm Bed" zh="预热热床"/>
@@ -3124,7 +3096,7 @@
   <translation tag="off" zh="关闭"/>
   <translation tag="on unit {}" zh="在单元 {}"/>
   <translation tag="or type a macro name" zh="或输入宏名称"/>
-  <translation tag="passive"/>
+  <translation tag="passive" zh="被动"/>
   <translation tag="printer default" zh="打印机默认"/>
   <translation tag="prints" zh="打印次数"/>
   <translation tag="remaining" zh="剩余"/>
