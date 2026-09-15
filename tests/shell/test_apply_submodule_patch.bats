@@ -124,6 +124,9 @@ EOF
     [ "$status" -eq 1 ]
     grep -q 'does not apply to a clean checkout' <<<"$output"
     grep -q 'Regenerate it' <<<"$output"
+    # The fatal must name the other outcome a from-clean failure hides: a
+    # patch every file of which a later patch owns is deleted, not regenerated.
+    grep -q 'superseded' <<<"$output"
 }
 
 @test "a matching patch passes a from-clean run" {

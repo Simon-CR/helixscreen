@@ -149,6 +149,28 @@ Then `make reapply-patches` from clean and confirm every patch still reports as 
 folded patch usually still applies on a clean tree, so the duplication only surfaces later as
 a conflict or a doubled hunk.
 
+### A patch superseded by a later patch
+
+A from-clean fatal on a patch that regenerating does not fix is usually this: a later patch
+now owns every file the failing one touches — its guards were rewritten, its data structures
+replaced — so the old patch's hunks describe a tree that no longer exists anywhere. Because
+`git apply` is atomic, even one dead file kills the live hunks in the others.
+
+Distinguish it from ordinary drift before regenerating: for each file the failing patch
+touches, ask which patches also touch it and whether a later one now carries the same guard.
+
+```bash
+# which patches touch a file, in apply order (the order in mk/patches.mk)?
+grep -l "diff --git a/src/path/to/file.c" patches/*.patch
+```
+
+A wholly superseded patch is deleted — from `patches/`, from its `mk/patches.mk` stanza, and
+from `mk/patch-markers.tsv` (`make regen-patch-markers` after the first two) — not
+regenerated: regenerating it against the current tree just folds the later patch's hunks in.
+Keep the filename out of the graveyard debate entirely; a partially superseded patch (some
+files live, some dead) is reduced to its live sections and regenerated the shared-file way
+above, per file.
+
 **Apply verdicts:** each patch's block in `mk/patches.mk` calls
 `scripts/apply_submodule_patch.sh <submodule-dir> <patch> <label> [note]`, which decides three ways:
 apply it, recognize it as already applied (reverse check), or refuse. A bare `apply --check`

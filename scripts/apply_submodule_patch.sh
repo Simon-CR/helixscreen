@@ -117,6 +117,7 @@ elif git_submodule apply --check --reverse "$patch_file" 2>/dev/null; then
 elif [ "${HELIX_PATCHES_FROM_CLEAN:-0}" = "1" ] && from_clean_verified; then
   echo "${red}✗ ${label} does not apply to a clean checkout — the patch and the submodule disagree.${note:+ $note}" >&2
   echo "${red}  Regenerate it: patches/README.md § \"Regenerating a patch whose file is shared\"${reset}" >&2
+  echo "${red}  If a later patch now owns every file this one touches, it is superseded - delete it rather than regenerate it (patches/README.md § \"A patch superseded by a later patch\").${reset}" >&2
   exit 1
 else
   marker_rc=0; marker_state || marker_rc=$?
