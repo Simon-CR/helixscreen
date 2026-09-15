@@ -303,3 +303,16 @@ TEST_CASE("parse_unknown_command extracts the missing command", "[afc][narration
     CHECK_FALSE(parse_unknown_command("AFC_Brush: Clean Nozzle").has_value());
     CHECK_FALSE(parse_unknown_command("").has_value());
 }
+
+TEST_CASE("parse_unknown_command reads a whole console line, prefix and all",
+          "[afc][narration][corpus]") {
+    // Collectors see the raw notify_gcode_response line, `//` included.
+    CHECK(parse_unknown_command("// Unknown command:\"LOAD_CELL_SAVE_TARE\"") ==
+          std::optional<std::string>("LOAD_CELL_SAVE_TARE"));
+    CHECK(parse_unknown_command("//Unknown command:\"M729\"") ==
+          std::optional<std::string>("M729"));
+
+    CHECK_FALSE(parse_unknown_command("// Skipping Unknown command:\"FOO\"").has_value());
+    CHECK_FALSE(parse_unknown_command("//").has_value());
+    CHECK_FALSE(parse_unknown_command("// ").has_value());
+}

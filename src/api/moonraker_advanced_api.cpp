@@ -11,6 +11,7 @@
 #include "accel_sensor_manager.h"
 #include "app_globals.h"
 #include "bed_mesh_probe_parser.h"
+#include "gcode_unknown_command.h"
 #include "json_utils.h"
 #include "moonraker_api.h"
 #include "observer_factory.h"
@@ -2040,10 +2041,14 @@ class BedMeshProgressCollector : public std::enable_shared_from_this<BedMeshProg
             return;
         }
 
-        // Check for unknown command error
-        if (line.find("Unknown command") != std::string::npos &&
-            line.find("BED_MESH_CALIBRATE") != std::string::npos) {
-            complete_error("BED_MESH_CALIBRATE requires [bed_mesh] in printer.cfg");
+        // A command the firmware does not define. Klipper answers it with a console
+        // line rather than an error and carries on with the script, so this line is
+        // the only sign that a step of the calibration never ran.
+        if (auto missing = helix::parse_unknown_command(line)) {
+            complete_error(
+                missing->rfind("BED_MESH_CALIBRATE", 0) == 0
+                    ? std::string("BED_MESH_CALIBRATE requires [bed_mesh] in printer.cfg")
+                    : "Unknown command: " + *missing);
             return;
         }
 
