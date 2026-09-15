@@ -30,6 +30,19 @@ hotfix on 1.0 never looks like an upgrade to you, and `1.1.0` arriving does.
 **The belt tuner has never measured a real belt.** It stays beta-gated until the
 hardware matrix in `BELT_TUNER.md` § Validation status has been run.
 
+### Added
+
+**Display**
+
+- **Bouncing Printer screensaver** - the fourth screensaver, and the one everyone already
+  knows. Your printer drifts across a black screen and reflects off the edges, picking up a
+  new tint on every wall. Land a true corner and it celebrates. The sprite is whatever
+  printer this screen is attached to, auto-detected or picked by hand, so a Trident bounces
+  a Trident. One sprite on one timer, so it costs a fraction of what Flying Toasters does;
+  on Pi 3B-class and AD5M-class hardware the corner celebration is a backdrop flash rather
+  than confetti, to stay clear of the print loop. Select it under Settings -> Display &
+  Sound -> Screensaver.
+
 ## [1.0.0] - 2026-09-09
 
 <!-- whatsnew
