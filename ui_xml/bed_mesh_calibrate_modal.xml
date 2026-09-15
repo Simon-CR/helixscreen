@@ -33,7 +33,7 @@
       </spinner>
     </lv_obj>
     <!-- ============================================================ -->
-    <!-- STATE: NAMING (state=2) - Success + Profile name input -->
+    <!-- STATE: NAMING (state=2) - Name the profile the new mesh is probed into -->
     <!-- ============================================================ -->
     <lv_obj name="naming_container"
             width="100%" height="content" style_pad_left="#space_lg" style_pad_right="#space_lg"
@@ -41,19 +41,17 @@
             style_flex_main_place="start" style_flex_track_place="center" style_pad_gap="#space_md" hidden="true">
       <!-- Show only when state=2 -->
       <bind_flag_if_not_eq subject="bed_mesh_calibrate_state" flag="hidden" ref_value="2"/>
-      <!-- Success icon -->
-      <icon src="check_circle" size="lg" variant="success"/>
       <!-- Title -->
-      <text_heading width="100%" text="Mesh Complete" translation_tag="Mesh Complete" style_text_align="center"/>
+      <text_heading width="100%" text="Bed Mesh" translation_tag="Bed Mesh" style_text_align="center"/>
       <!-- Instructions -->
       <text_small width="100%"
-                  text="Enter a name to save this profile" translation_tag="Enter a name to save this profile"
+                  text="Enter a name for this profile" translation_tag="Enter a name for this profile"
                   style_text_align="center"/>
       <!-- Profile name input -->
       <text_input name="calibrate_profile_name_input"
-                  width="100%" height="#input_height" placeholder_text="Profile name (e.g., default)"
-                  placeholder_tag="Profile name (e.g., default)" translation_tag="Profile name (e.g., default)"
-                  style_margin_top="#space_xs"/>
+                  width="100%" height="#input_height" bind_text="bed_mesh_calibrate_name"
+                  placeholder_text="Profile name (e.g., default)" placeholder_tag="Profile name (e.g., default)"
+                  translation_tag="Profile name (e.g., default)" style_margin_top="#space_xs"/>
     </lv_obj>
     <!-- ============================================================ -->
     <!-- STATE: ERROR (state=3) - Error message -->
@@ -98,22 +96,21 @@
       <bind_flag_if_not_eq subject="bed_mesh_calibrate_state" flag="hidden" ref_value="1"/>
     </text_small>
     <!-- ============================================================ -->
-    <!-- Button row: NAMING state (state=2) - Don't Save | Save -->
+    <!-- Button row: NAMING state (state=2) - Cancel | Start -->
     <!-- ============================================================ -->
     <lv_obj name="naming_button_row"
             width="100%" height="#button_height" style_pad_all="0" style_pad_gap="0" flex_flow="row" hidden="true"
             scrollable="false">
       <bind_flag_if_not_eq subject="bed_mesh_calibrate_state" flag="hidden" ref_value="2"/>
-      <!-- Don't Save button -->
-      <ui_button name="btn_dont_save"
-                 height="100%" flex_grow="1" style_radius="0" text="Don't Save" translation_tag="Don't Save">
+      <!-- Cancel button -->
+      <ui_button name="btn_cancel" height="100%" flex_grow="1" style_radius="0" text="Cancel" translation_tag="Cancel">
         <event_cb trigger="clicked" callback="on_bed_mesh_calibrate_cancel"/>
       </ui_button>
       <!-- Vertical divider -->
       <divider_vertical/>
-      <!-- Save button -->
-      <ui_button name="btn_save" height="100%" flex_grow="1" style_radius="0" text="Save" translation_tag="Save">
-        <event_cb trigger="clicked" callback="on_bed_mesh_save_profile"/>
+      <!-- Start button -->
+      <ui_button name="btn_start" height="100%" flex_grow="1" style_radius="0" text="Start" translation_tag="Start">
+        <event_cb trigger="clicked" callback="on_bed_mesh_calibrate_start"/>
       </ui_button>
     </lv_obj>
     <!-- ============================================================ -->

@@ -180,8 +180,7 @@ reenable_disabled_services() {
                 # boot symlinks outlive the script they point at.
                 if [ -f "$target" ]; then
                     log_info "Removing HelixScreen init script: $target"
-                    if [ -x /etc/rc.common ] && \
-                       awk 'NR==1 {exit !/\/etc\/rc\.common/}' "$target" 2>/dev/null; then
+                    if [ -x /etc/rc.common ] && is_rc_common_script "$target"; then
                         $SUDO "$target" disable 2>/dev/null || true
                     fi
                     $SUDO "$target" stop 2>/dev/null || true
@@ -320,26 +319,22 @@ restore_previous_ui_platform() {
         # Drop any web-server the carve-out left running so the stock
         # instance app start is about to spawn can bind its port.
         kill_process_by_name web-server || true
-        $SUDO /etc/init.d/app enable 2>/dev/null || true
-        # rc.common's `enable` writes an S (boot) link and a K (shutdown) link
-        # and reports success if either was made, so its status says nothing
-        # about boot. Only the S link starts a service at boot, and the K link
-        # sorts ahead of it, so the glob admits S links alone; the slot number
-        # comes from the stock script's own START directive. A restore claimed
-        # without an S link leaves the K2 booting to the logo with no UI.
+        # enable_and_verify_rcd drops any rc.d entry an older install left
+        # and verifies the fresh pair by target against the script's own
+        # START/STOP slots — `enable` exits 0 even having made no (or only
+        # half the) links, which would otherwise read as a restored boot
+        # entry.
         local app_link app_target="" start_fix
-        for app_link in /etc/rc.d/S[0-9][0-9]app; do
-            [ -L "$app_link" ] || continue
-            if [ "$(readlink "$app_link" 2>/dev/null || true)" = "../init.d/app" ]; then
-                app_target="$app_link"
-                break
-            fi
-        done
-        if [ -z "$app_target" ]; then
+        if enable_and_verify_rcd /etc/init.d/app; then
+            # The helper dropped every other slot before enabling, so the
+            # first S??app link names exactly the entry it verified.
+            for app_link in /etc/rc.d/S??app; do
+                [ -L "$app_link" ] && { app_target="$app_link"; break; }
+            done
+            restored_ui="Creality stock UI (/etc/init.d/app, boot via $app_target)"
+        else
             log_warn "Stock UI boot symlink missing or wrong (no /etc/rc.d/S<nn>app -> ../init.d/app); run: /etc/init.d/app enable"
             restore_warned="Creality stock UI will not start at boot; run: /etc/init.d/app enable"
-        else
-            restored_ui="Creality stock UI (/etc/init.d/app, boot via $app_target)"
         fi
         # Start runs in both branches: the kill above already took the
         # carve-out's web-server down, so a missing boot symlink must leave
@@ -670,16 +665,14 @@ uninstall() {
             if [ -f "$init_script" ]; then
                 log_info "Stopping and removing $init_script..."
                 $SUDO "$init_script" stop 2>/dev/null || true
-                # K2 procd shim: only call disable if this is actually a
-                # rc.common-style script. CC1 installs a plain SysV script
-                # at the same /etc/init.d/helixscreen path, and CC1's BusyBox
-                # rejects `head -1` (only supports `head -n 1`), so we use
-                # awk for the shebang check (portable across all BusyBox
-                # variants we ship to). Also CC1 has no /etc/rc.common, so
-                # the first guard short-circuits anyway.
+                # K2 procd shim: only call disable if this is actually an
+                # rc.common script. CC1 installs a plain SysV script at
+                # the same /etc/init.d/helixscreen path and has no
+                # /etc/rc.common, so the first guard short-circuits there
+                # anyway.
                 if [ "$init_script" = "/etc/init.d/helixscreen" ] && \
                    [ -x /etc/rc.common ] && \
-                   awk 'NR==1 {exit !/\/etc\/rc\.common/}' "$init_script" 2>/dev/null; then
+                   is_rc_common_script "$init_script"; then
                     $SUDO "$init_script" disable 2>/dev/null || true
                     removed_procd_shim=true
                 fi
@@ -688,9 +681,10 @@ uninstall() {
         done
         # Belt-and-suspenders cleanup of rc.d symlinks, but only if we actually
         # removed a procd shim (avoid touching /etc/rc.d on platforms that
-        # don't use the procd boot iterator).
+        # don't use the procd boot iterator). Globbed across slots so a stale
+        # link in a different slot does not dangle beside the sweep.
         if [ "$removed_procd_shim" = "true" ]; then
-            $SUDO rm -f /etc/rc.d/S99helixscreen /etc/rc.d/K01helixscreen 2>/dev/null || true
+            $SUDO rm -f /etc/rc.d/S??helixscreen /etc/rc.d/K??helixscreen 2>/dev/null || true
         fi
     fi
 

@@ -38,6 +38,7 @@
 #include "printer_state.h"
 #include "standard_macros.h"
 
+#include <map>
 #include <memory>
 #include <string>
 
@@ -79,13 +80,13 @@ class IdleRunoutDispatchFixture : public LVGLTestFixture {
         // prompt. The only way to prove Suppress suppresses something.
         helix::MacroParamCache::instance().clear();
 
-        helix::ui::set_filament_param_prompter([this](const std::string& macro,
-                                                      const CachedMacroInfo&,
-                                                      MacroExecuteCallback on_execute) {
-            ++prompt_count;
-            prompted_macro = macro;
-            pending_execute = std::move(on_execute);
-        });
+        helix::ui::set_filament_param_prompter(
+            [this](const std::string& macro, const CachedMacroInfo&,
+                   const std::map<std::string, std::string>&, MacroExecuteCallback on_execute) {
+                ++prompt_count;
+                prompted_macro = macro;
+                pending_execute = std::move(on_execute);
+            });
     }
 
     ~IdleRunoutDispatchFixture() override {

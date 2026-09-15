@@ -7,6 +7,8 @@
 #include "ui_subscription_guard.h"
 
 #include "async_lifetime_guard.h"
+#include "bed_mesh_calibration_plan.h"
+#include "bed_mesh_probe_temp.h"
 #include "i_moonraker_api.h"
 #include "moonraker_types.h" // For BedMeshProfile
 #include "operation_timeout_guard.h"
@@ -15,6 +17,7 @@
 #include "subject_managed_panel.h"
 
 #include <array>
+#include <functional>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -47,7 +50,7 @@ constexpr int BED_MESH_MAX_PROFILES = 5;
 enum class BedMeshCalibrationState {
     IDLE = 0,    ///< Modal not shown
     PROBING = 1, ///< Actively probing (progress shown)
-    NAMING = 2,  ///< Probing complete, awaiting profile name
+    NAMING = 2,  ///< Awaiting the name of the profile to probe into
     ERROR = 3    ///< Error occurred
 };
 
@@ -104,18 +107,22 @@ class BedMeshPanel : public OverlayBase {
     void on_calibration_complete();
     void on_calibration_error(const std::string& message);
     void handle_emergency_stop();
-    void save_profile_with_name(const std::string& name);
     void start_calibration_probing();
 
-    // Name-field entry points. Each validates what was typed before acting, so
-    // an untouched field cannot silently resolve to "default" and overwrite a
-    // stored mesh (prestonbrown/helixscreen#1360). The modal callbacks read the
-    // textarea and call these; the policy lives here, the decision in
+    // Name-field entry points. Each validates what was typed before acting: an
+    // emptied field is refused rather than read as "default"
+    // (prestonbrown/helixscreen#1360), and a stored profile other than default is
+    // replaced only once the user confirms. The modal callbacks read the field and
+    // call these; the policy lives here, the decision in
     // helix::ui::bed_mesh::check_profile_name().
-    void save_profile_checked(std::string_view typed);
+    /// The calibrate dialog's name: the profile the new mesh is probed into.
+    void submit_calibration_name(std::string_view typed);
     void rename_profile_checked(std::string_view typed);
 
-    /// Profiles the printer currently stores, minus the internal "_hs_temp".
+    /// The calibrate dialog's name field, as its Start button submits it.
+    void submit_calibration_name_field();
+
+    /// Profiles the printer currently stores.
     std::vector<std::string> stored_profile_names() const;
 
     /// Confirmation answers (called from the overwrite dialog's callbacks).
@@ -123,10 +130,30 @@ class BedMeshPanel : public OverlayBase {
     void cancel_overwrite();
 
   private:
-    /// The gcode this printer's mesh calibration runs, resolved through
-    /// StandardMacros so a printer-shipped sequence, a user's Settings override
-    /// and a plain BED_MESH_CALIBRATE are all reached the same way.
-    [[nodiscard]] IAdvancedAPI::BedMeshCommand resolve_calibration_command();
+    /// Plan a calibration into @p name through StandardMacros, so a
+    /// printer-shipped sequence, a user's Settings override and a plain
+    /// BED_MESH_CALIBRATE are all reached the same way.
+    [[nodiscard]] helix::bed_mesh::CalibrationPlan
+    plan_calibration_into(const std::string& name) const;
+
+    /// The calibrate dialog is on screen. A backdrop tap or ESC closes it without
+    /// telling the panel, so the calibration state alone cannot say.
+    [[nodiscard]] bool calibration_dialog_is_open() const;
+
+    void begin_calibration(const std::string& name);
+    /// Heat and home as the plan needs, then probe.
+    void prepare_and_probe();
+    /// Query the profiles the printer stores. Both callbacks run on the main thread.
+    void read_stored_meshes(std::function<void(helix::bed_mesh::StoredMeshes)> on_read,
+                            std::function<void(const std::string&)> on_failed);
+    void copy_calibrated_mesh(const std::string& from, const std::string& to);
+    void finish_calibration(const std::string& profile);
+
+    /// BED_MESH_PROFILE SAVE under @p name. Klipper declines a save on the console
+    /// and still answers the request ok, so a refusal there is reported through
+    /// @p on_failed, never as success.
+    void save_profile_as(const std::string& name, std::function<void()> on_saved,
+                         std::function<void(const std::string&)> on_failed);
 
     void launch_calibration(IMoonrakerAPI* api, int expected_probes, int probe_samples = 1);
     // ========== Subject Manager (RAII cleanup) ==========
@@ -177,9 +204,11 @@ class BedMeshPanel : public OverlayBase {
     lv_subject_t bed_mesh_probe_text_;          ///< "Probing point 5 of 25"
     lv_subject_t bed_mesh_probe_indeterminate_; ///< 1 = spinner (total unknown), 0 = progress bar
     lv_subject_t bed_mesh_error_message_;       ///< Error message if failed
+    lv_subject_t bed_mesh_calibrate_name_;      ///< Profile name field of the calibrate dialog
 
     char probe_text_buf_[64];     ///< Buffer for probe_text_ subject
     char error_message_buf_[256]; ///< Buffer for error_message_ subject
+    char calibrate_name_buf_[64]; ///< Buffer for calibrate_name_ subject
 
     // ========== Modal Widget Pointers (uses ui_modal_show pattern) ==========
     lv_obj_t* calibrate_modal_widget_ = nullptr;
@@ -197,7 +226,6 @@ class BedMeshPanel : public OverlayBase {
     // Nulled by on_content_deleted_cb, same dangling guard as canvas_.
     lv_obj_t* content_ = nullptr;
     lv_obj_t* profile_dropdown_ = nullptr;
-    lv_obj_t* calibrate_name_input_ = nullptr;
     lv_obj_t* rename_name_input_ = nullptr;
 
     // ========== State ==========
@@ -206,12 +234,14 @@ class BedMeshPanel : public OverlayBase {
     std::string pending_rename_new_;
 
     /// Which action the overwrite confirmation is holding, and under what name.
-    enum class OverwriteTarget { None, Save, Rename };
+    enum class OverwriteTarget { None, Calibrate, Rename };
     OverwriteTarget pending_overwrite_ = OverwriteTarget::None;
     std::string pending_overwrite_name_;
 
-    /// Ask before replacing a stored profile, then run the held action.
-    void ask_before_overwrite(OverwriteTarget target, const std::string& name);
+    /// Ask before replacing the stored profiles @p replaced (one or two), then run
+    /// the held action under @p name.
+    void ask_before_overwrite(OverwriteTarget target, const std::string& name,
+                              const std::vector<std::string>& replaced);
     enum class PendingOperation { None, Delete, Rename, Calibrate };
     PendingOperation pending_operation_ = PendingOperation::None;
 
@@ -226,8 +256,9 @@ class BedMeshPanel : public OverlayBase {
         120000; // load, save_config (Klipper restart)
     static constexpr uint32_t CALIBRATION_TIMEOUT_MS = 300000; // 5 min for BED_MESH_CALIBRATE
     static constexpr double PROBE_NOZZLE_TEMP =
-        150.0;                                     // °C — warm nozzle prevents ooze interference
-    static constexpr double PROBE_BED_TEMP = 60.0; // °C — thermal expansion for accurate mesh
+        150.0; // °C — warm nozzle prevents ooze interference
+    static constexpr double PROBE_BED_TEMP =
+        helix::bed_mesh::DEFAULT_PROBE_BED_TEMP_C; // °C — thermal expansion for accurate mesh
 
     // RAII subscription guard - auto-unsubscribes from Moonraker on destruction
     SubscriptionGuard subscription_;
@@ -254,11 +285,21 @@ class BedMeshPanel : public OverlayBase {
     lv_obj_t* parent_screen_ = nullptr;
     bool callbacks_registered_ = false;
 
-    // Preheat tracking — true when we turned on a heater that was off before probing
+    /// What begin_calibration() planned: launch_calibration() sends its command,
+    /// and on_calibration_complete() finishes where it says the mesh went.
+    helix::bed_mesh::CalibrationPlan calibration_plan_;
+
+    /// The profiles the printer stored when the calibration began.
+    helix::bed_mesh::StoredMeshes meshes_before_;
+
+    // True for a heater that was off when probing began. The panel's preheat or a
+    // self-preparing sequence turns it on; cooldown_after_probing() turns it off.
     bool preheat_turned_on_nozzle_ = false;
     bool preheat_turned_on_bed_ = false;
 
     // ========== Private Methods ==========
+    /// Record which heaters are off now, for cooldown_after_probing() to restore.
+    void remember_heaters_probing_turns_on();
     void preheat_for_probing();
     void cooldown_after_probing();
     void start_home_and_probe();

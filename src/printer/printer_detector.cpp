@@ -14,6 +14,7 @@
 #include "printer_discovery.h"
 #include "printer_state.h"
 #include "probe_preparation.h"
+#include "thermal_rate_model.h"
 #include "wizard_config_paths.h"
 
 #include <spdlog/spdlog.h>
@@ -1886,101 +1887,105 @@ double PrinterDetector::get_belt_span_offset_mm(const std::string& printer_name)
 }
 
 // ============================================================================
-// Print Start Profile Lookup
+// Pre-print lookups: profile, default phases, heating rates
 // ============================================================================
 
-std::string PrinterDetector::get_print_start_profile(const std::string& printer_name) {
-    // Load database if not already loaded
+namespace {
+/// The database entry named `printer_name` (case-insensitive), or nullptr.
+const json* find_printer_entry(const std::string& printer_name) {
     if (!g_database.load()) {
-        spdlog::warn("[PrinterDetector] Cannot lookup print_start_profile without database");
-        return "";
+        spdlog::warn("[PrinterDetector] Cannot look up '{}' without the printer database",
+                     printer_name);
+        return nullptr;
     }
-
     if (!g_database.data.contains("printers") || !g_database.data["printers"].is_array()) {
-        return "";
+        return nullptr;
     }
-
-    // Case-insensitive search by printer name
-    std::string name_lower = printer_name;
-    std::transform(name_lower.begin(), name_lower.end(), name_lower.begin(),
-                   [](unsigned char c) { return std::tolower(c); });
-
-    for (const auto& printer : g_database.data["printers"]) {
-        std::string db_name = printer.value("name", "");
-        std::string db_name_lower = db_name;
-        std::transform(db_name_lower.begin(), db_name_lower.end(), db_name_lower.begin(),
+    const auto lower = [](std::string s) {
+        std::transform(s.begin(), s.end(), s.begin(),
                        [](unsigned char c) { return std::tolower(c); });
-
-        if (db_name_lower == name_lower) {
-            std::string profile = printer.value("print_start_profile", "");
-            if (!profile.empty()) {
-                spdlog::debug("[PrinterDetector] Found print_start_profile '{}' for printer '{}'",
-                              profile, printer_name);
-            }
-            return profile;
+        return s;
+    };
+    const std::string wanted = lower(printer_name);
+    for (const auto& printer : g_database.data["printers"]) {
+        if (lower(printer.value("name", "")) == wanted) {
+            return &printer;
         }
     }
-
-    spdlog::debug("[PrinterDetector] No print_start_profile found for printer '{}'", printer_name);
-    return "";
+    return nullptr;
 }
+} // namespace
 
-// ============================================================================
-// Pre-print Phase Defaults
-// ============================================================================
+std::string PrinterDetector::get_print_start_profile(const std::string& printer_name) {
+    const json* printer = find_printer_entry(printer_name);
+    const std::string profile =
+        printer != nullptr ? printer->value("print_start_profile", "") : std::string();
+    if (profile.empty()) {
+        spdlog::debug("[PrinterDetector] No print_start_profile found for printer '{}'",
+                      printer_name);
+    } else {
+        spdlog::debug("[PrinterDetector] Found print_start_profile '{}' for printer '{}'", profile,
+                      printer_name);
+    }
+    return profile;
+}
 
 std::map<int, int>
 PrinterDetector::get_print_start_default_phases(const std::string& printer_name) {
     std::map<int, int> result;
-    if (!g_database.load()) {
-        spdlog::warn("[PrinterDetector] Cannot lookup print_start_default_phases without database");
+    const json* printer = find_printer_entry(printer_name);
+    if (printer == nullptr || !printer->contains("print_start_default_phases") ||
+        !printer->at("print_start_default_phases").is_object()) {
         return result;
     }
-
-    if (!g_database.data.contains("printers") || !g_database.data["printers"].is_array()) {
-        return result;
-    }
-
-    std::string name_lower = printer_name;
-    std::transform(name_lower.begin(), name_lower.end(), name_lower.begin(),
-                   [](unsigned char c) { return std::tolower(c); });
-
-    for (const auto& printer : g_database.data["printers"]) {
-        std::string db_name = printer.value("name", "");
-        std::string db_name_lower = db_name;
-        std::transform(db_name_lower.begin(), db_name_lower.end(), db_name_lower.begin(),
-                       [](unsigned char c) { return std::tolower(c); });
-        if (db_name_lower != name_lower) {
+    const auto& phases = printer->at("print_start_default_phases");
+    for (auto it = phases.begin(); it != phases.end(); ++it) {
+        // Only phases the prediction history keeps a duration for: a default
+        // for anything else would be a number nothing consults.
+        const auto phase = helix::print_start_phase_from_name(it.key());
+        if (!phase || !helix::print_start_phase_stores_duration(*phase)) {
+            spdlog::warn(
+                "[PrinterDetector] Unknown print_start_default_phase '{}' for printer '{}'",
+                it.key(), printer_name);
             continue;
         }
-        if (!printer.contains("print_start_default_phases") ||
-            !printer["print_start_default_phases"].is_object()) {
-            return result;
+        if (!it.value().is_number_integer()) {
+            spdlog::warn("[PrinterDetector] Non-integer duration for phase '{}' on '{}'", it.key(),
+                         printer_name);
+            continue;
         }
-        const auto& phases = printer["print_start_default_phases"];
-        for (auto it = phases.begin(); it != phases.end(); ++it) {
-            // Only phases the prediction history keeps a duration for: a
-            // default for anything else would be a number nothing consults.
-            const auto phase = helix::print_start_phase_from_name(it.key());
-            if (!phase || !helix::print_start_phase_stores_duration(*phase)) {
-                spdlog::warn(
-                    "[PrinterDetector] Unknown print_start_default_phase '{}' for printer '{}'",
-                    it.key(), printer_name);
-                continue;
-            }
-            if (!it.value().is_number_integer()) {
-                spdlog::warn("[PrinterDetector] Non-integer duration for phase '{}' on '{}'",
-                             it.key(), printer_name);
-                continue;
-            }
-            result[static_cast<int>(*phase)] = it.value().get<int>();
-        }
-        spdlog::debug("[PrinterDetector] print_start_default_phases for '{}': {} entries",
-                      printer_name, result.size());
-        return result;
+        result[static_cast<int>(*phase)] = it.value().get<int>();
     }
-
+    spdlog::debug("[PrinterDetector] print_start_default_phases for '{}': {} entries", printer_name,
+                  result.size());
     return result;
+}
+
+std::map<std::string, float> PrinterDetector::get_thermal_rates(const std::string& printer_name) {
+    std::map<std::string, float> rates;
+    const json* printer = find_printer_entry(printer_name);
+    if (printer == nullptr || !printer->contains("thermal_rates") ||
+        !printer->at("thermal_rates").is_object()) {
+        return rates;
+    }
+    const auto& persisted = ThermalRateManager::PERSISTED_HEATERS;
+    for (const auto& [heater, rate] : printer->at("thermal_rates").items()) {
+        if (std::none_of(persisted.begin(), persisted.end(),
+                         [&heater](const char* name) { return heater == name; })) {
+            spdlog::warn("[PrinterDetector] Ignoring thermal rate for '{}' on '{}': not a heater "
+                         "the rate model keeps (extruder, heater_bed)",
+                         heater, printer_name);
+            continue;
+        }
+        if (!rate.is_number() || rate.get<float>() <= 0.0f) {
+            spdlog::warn("[PrinterDetector] Ignoring thermal rate '{}' for '{}': not a positive "
+                         "number",
+                         heater, printer_name);
+            continue;
+        }
+        rates[heater] = rate.get<float>();
+    }
+    return rates;
 }
 
 // ============================================================================

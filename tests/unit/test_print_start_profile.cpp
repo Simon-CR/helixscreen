@@ -1324,6 +1324,43 @@ TEST_CASE("PrintStartProfile: declared state patterns win over response patterns
     CHECK(result.phase == PrintStartPhase::HOMING);
 }
 
+TEST_CASE("PrintStartProfile: a pattern's hold comes from the capture group it names",
+          "[profile][print][pattern][hold]") {
+    auto profile = PrintStartProfileTestAccess::parse(nlohmann::json::parse(
+        R"({"name":"hold",)"
+        R"("response_patterns":[)"
+        R"({"pattern":"Soak: ([0-9.]+)m","phase":"SOAKING","message":"Heat Soaking...",)"
+        R"("hold_minutes_group":1},)"
+        R"({"pattern":"Wait: ([0-9.]+)m","phase":"SOAKING","hold_minutes_group":2},)"
+        R"({"pattern":"G28","phase":"HOMING"}],)"
+        R"("state_patterns":[)"
+        R"({"pattern":"Dwell ([0-9]+) min","phase":"SOAKING","hold_minutes_group":1}]})"));
+    REQUIRE(profile != nullptr);
+    PrintStartProfile::MatchResult result;
+
+    SECTION("minutes are read with a decimal point") {
+        REQUIRE(profile->try_match_pattern("// Soak: 2.5m", result));
+        REQUIRE(result.hold_seconds == 150);
+    }
+
+    SECTION("a group the pattern does not have holds nothing") {
+        REQUIRE(profile->try_match_pattern("// Wait: 3m", result));
+        REQUIRE(result.phase == PrintStartPhase::SOAKING);
+        REQUIRE(result.hold_seconds == 0);
+    }
+
+    SECTION("a state pattern carries its hold through try_match_state") {
+        REQUIRE(profile->try_match_state("Dwell 4 min", result));
+        REQUIRE(result.hold_seconds == 240);
+    }
+
+    SECTION("a match without a hold clears the last one") {
+        REQUIRE(profile->try_match_pattern("// Soak: 2.5m", result));
+        REQUIRE(profile->try_match_pattern("G28", result));
+        REQUIRE(result.hold_seconds == 0);
+    }
+}
+
 TEST_CASE("PrintStartProfile: default patterns match macro narration, not just commands",
           "[profile][print][pattern]") {
     auto profile = get_default_profile();

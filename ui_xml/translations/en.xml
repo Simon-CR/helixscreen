@@ -26,6 +26,7 @@
   <translation tag="%zu events queued" en="%zu events queued"/>
   <translation tag="%zu plugins failed to load" en="%zu plugins failed to load"/>
   <translation tag="&apos;{}&apos; already exists. Replace the stored mesh?" en="&apos;{}&apos; already exists. Replace the stored mesh?"/>
+  <translation tag="&apos;{}&apos; and &apos;{}&apos; already exist. Replace the stored meshes?" en="&apos;{}&apos; and &apos;{}&apos; already exist. Replace the stored meshes?"/>
   <translation tag="(different grade)" en="(different grade)"/>
   <translation tag="(incompatible)" en="(incompatible)"/>
   <translation tag="(multi-tool)" en="(multi-tool)"/>
@@ -641,6 +642,7 @@
   <translation tag="Could not read the screw adjustments from the printer" en="Could not read the screw adjustments from the printer"/>
   <translation tag="Could not resolve printer RFCOMM channel" en="Could not resolve printer RFCOMM channel"/>
   <translation tag="Could not save filament" en="Could not save filament"/>
+  <translation tag="Could not save the mesh as &apos;{}&apos;: {}" en="Could not save the mesh as &apos;{}&apos;: {}"/>
   <translation tag="Could not start Bluetooth discovery" en="Could not start Bluetooth discovery"/>
   <translation tag="Could not update filaments" en="Could not update filaments"/>
   <translation tag="Could not verify Spoolman status. Moonraker may still be restarting." en="Could not verify Spoolman status. Moonraker may still be restarting."/>
@@ -853,7 +855,6 @@
   <translation tag="Enter a multiplier between 0.5 and 2.0" en="Enter a multiplier between 0.5 and 2.0"/>
   <translation tag="Enter a name for this profile" en="Enter a name for this profile"/>
   <translation tag="Enter a name for your custom theme:" en="Enter a name for your custom theme:"/>
-  <translation tag="Enter a name to save this profile" en="Enter a name to save this profile"/>
   <translation tag="Enter network name" en="Enter network name"/>
   <translation tag="Enter password" en="Enter password"/>
   <translation tag="Enter printer IP address first" en="Enter printer IP address first"/>
@@ -1000,7 +1001,6 @@
   <translation tag="Failed to save fan configuration" en="Failed to save fan configuration"/>
   <translation tag="Failed to save heater configuration" en="Failed to save heater configuration"/>
   <translation tag="Failed to save printer configuration" en="Failed to save printer configuration"/>
-  <translation tag="Failed to save profile" en="Failed to save profile"/>
   <translation tag="Failed to save setup completion" en="Failed to save setup completion"/>
   <translation tag="Failed to save spool" en="Failed to save spool"/>
   <translation tag="Failed to save theme file" en="Failed to save theme file"/>
@@ -1384,6 +1384,7 @@
   <translation tag="Klipper firmware has disconnected from the host. Try restarting Klipper or performing a firmware restart." en="Klipper firmware has disconnected from the host. Try restarting Klipper or performing a firmware restart."/>
   <translation tag="Klipper has entered an error state. This is typically caused by an MCU connection failure or configuration error. Try a firmware restart." en="Klipper has entered an error state. This is typically caused by an MCU connection failure or configuration error. Try a firmware restart."/>
   <translation tag="Klipper has entered shutdown state. This may be due to an emergency stop, thermal runaway, or configuration error." en="Klipper has entered shutdown state. This may be due to an emergency stop, thermal runaway, or configuration error."/>
+  <translation tag="Klipper reserves &apos;default&apos; for new calibrations. Choose another name." en="Klipper reserves &apos;default&apos; for new calibrations. Choose another name."/>
   <translation tag="Klipper restarting - macros activating" en="Klipper restarting - macros activating"/>
   <translation tag="Klipper will restart to apply changes" en="Klipper will restart to apply changes"/>
   <translation tag="Klipper will restart to apply changes." en="Klipper will restart to apply changes."/>
@@ -1580,7 +1581,6 @@
   <translation tag="Memory" en="Memory"/>
   <translation tag="Memory (MB)" en="Memory (MB)"/>
   <translation tag="Memory Snapshot" en="Memory Snapshot"/>
-  <translation tag="Mesh Complete" en="Mesh Complete"/>
   <translation tag="Mesh saved as &apos;{}&apos;" en="Mesh saved as &apos;{}&apos;"/>
   <translation tag="Method" en="Method"/>
   <translation tag="Min" en="Min"/>
@@ -1713,6 +1713,7 @@
   <translation tag="No multi-filament system detected" en="No multi-filament system detected"/>
   <translation tag="No network. Scan QR code to report on your phone." en="No network. Scan QR code to report on your phone."/>
   <translation tag="No networks found" en="No networks found"/>
+  <translation tag="No new mesh was stored as &apos;{}&apos;" en="No new mesh was stored as &apos;{}&apos;"/>
   <translation tag="No notifications" en="No notifications"/>
   <translation tag="No objects defined for this print" en="No objects defined for this print"/>
   <translation tag="No presets configured" en="No presets configured"/>
@@ -2018,6 +2019,7 @@
   <translation tag="Printer connection unavailable" en="Printer connection unavailable"/>
   <translation tag="Printer database format error" en="Printer database format error"/>
   <translation tag="Printer database is corrupt" en="Printer database is corrupt"/>
+  <translation tag="Printer default" en="Printer default"/>
   <translation tag="Printer didn&apos;t respond — make sure it&apos;s on and in range" en="Printer didn&apos;t respond — make sure it&apos;s on and in range"/>
   <translation tag="Printer doesn&apos;t expose the expected service — wrong device?" en="Printer doesn&apos;t expose the expected service — wrong device?"/>
   <translation tag="Printer hardware detected" en="Printer hardware detected"/>
@@ -2061,6 +2063,7 @@
   <translation tag="Processing..." en="Processing..."/>
   <translation tag="Profile deleted" en="Profile deleted"/>
   <translation tag="Profile name (e.g., default)" en="Profile name (e.g., default)"/>
+  <translation tag="Profile names cannot contain &apos;;&apos;" en="Profile names cannot contain &apos;;&apos;"/>
   <translation tag="Profile renamed" en="Profile renamed"/>
   <translation tag="Profiles" en="Profiles"/>
   <translation tag="Progress, file, and time remaining" en="Progress, file, and time remaining"/>
@@ -2172,7 +2175,6 @@
   <translation tag="Rename Mesh Profile" en="Rename Mesh Profile"/>
   <translation tag="Rename failed at load step" en="Rename failed at load step"/>
   <translation tag="Rename failed at remove step" en="Rename failed at remove step"/>
-  <translation tag="Rename failed at save step" en="Rename failed at save step"/>
   <translation tag="Render Now" en="Render Now"/>
   <translation tag="Rendering timelapse..." en="Rendering timelapse..."/>
   <translation tag="Replace" en="Replace"/>

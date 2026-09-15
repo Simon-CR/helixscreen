@@ -26,6 +26,7 @@
   <translation tag="%zu events queued" es="%zu eventos en cola"/>
   <translation tag="%zu plugins failed to load" es="%zu plugins no se cargaron"/>
   <translation tag="&apos;{}&apos; already exists. Replace the stored mesh?" es="&apos;{}&apos; ya existe. ¿Reemplazar la malla guardada?"/>
+  <translation tag="&apos;{}&apos; and &apos;{}&apos; already exist. Replace the stored meshes?" es="&apos;{}&apos; y &apos;{}&apos; ya existen. ¿Reemplazar las mallas guardadas?"/>
   <translation tag="(different grade)" es="(grado diferente)"/>
   <translation tag="(incompatible)" es="(incompatible)"/>
   <translation tag="(multi-tool)" es="(multiherramienta)"/>
@@ -641,6 +642,7 @@
   <translation tag="Could not read the screw adjustments from the printer" es="No se pudieron leer los ajustes de los tornillos desde la impresora"/>
   <translation tag="Could not resolve printer RFCOMM channel" es="No se pudo resolver el canal RFCOMM de la impresora"/>
   <translation tag="Could not save filament" es="No se pudo guardar el filamento"/>
+  <translation tag="Could not save the mesh as &apos;{}&apos;: {}" es="No se pudo guardar la malla como &apos;{}&apos;: {}"/>
   <translation tag="Could not start Bluetooth discovery" es="No se pudo iniciar el descubrimiento Bluetooth"/>
   <translation tag="Could not update filaments" es="No se pudieron actualizar los filamentos"/>
   <translation tag="Could not verify Spoolman status. Moonraker may still be restarting." es="No se pudo verificar el estado de Spoolman. Moonraker puede estar reiniciándose."/>
@@ -853,7 +855,6 @@
   <translation tag="Enter a multiplier between 0.5 and 2.0" es="Introduzca un multiplicador entre 0.5 y 2.0"/>
   <translation tag="Enter a name for this profile" es="Ingrese un nombre para este perfil"/>
   <translation tag="Enter a name for your custom theme:" es="Ingrese un nombre para su tema personalizado:"/>
-  <translation tag="Enter a name to save this profile" es="Ingrese un nombre para guardar este perfil"/>
   <translation tag="Enter network name" es="Ingrese el nombre de la red"/>
   <translation tag="Enter password" es="Ingrese contraseña"/>
   <translation tag="Enter printer IP address first" es="Ingrese la dirección IP de la impresora primero"/>
@@ -1000,7 +1001,6 @@
   <translation tag="Failed to save fan configuration" es="Error al guardar configuración de ventilador"/>
   <translation tag="Failed to save heater configuration" es="Error al guardar configuración de calentador"/>
   <translation tag="Failed to save printer configuration" es="Error al guardar configuración de impresora"/>
-  <translation tag="Failed to save profile" es="Error al guardar perfil"/>
   <translation tag="Failed to save setup completion" es="Error al guardar finalización de configuración"/>
   <translation tag="Failed to save spool" es="Error al guardar bobina"/>
   <translation tag="Failed to save theme file" es="Error al guardar archivo de tema"/>
@@ -1384,6 +1384,7 @@
   <translation tag="Klipper firmware has disconnected from the host. Try restarting Klipper or performing a firmware restart." es="El firmware de Klipper se ha desconectado del host. Intente reiniciar Klipper o realizar un reinicio de firmware."/>
   <translation tag="Klipper has entered an error state. This is typically caused by an MCU connection failure or configuration error. Try a firmware restart." es="Klipper ha entrado en un estado de error. Esto generalmente es causado por un fallo de conexión del MCU o un error de configuración. Intente un reinicio de firmware."/>
   <translation tag="Klipper has entered shutdown state. This may be due to an emergency stop, thermal runaway, or configuration error." es="Klipper ha entrado en estado de apagado. Esto puede ser debido a una parada de emergencia, descontrol térmico o error de configuración."/>
+  <translation tag="Klipper reserves &apos;default&apos; for new calibrations. Choose another name." es="Klipper reserva &apos;default&apos; para nuevas calibraciones. Elija otro nombre."/>
   <translation tag="Klipper restarting - macros activating" es="Reiniciando Klipper - activando macros"/>
   <translation tag="Klipper will restart to apply changes" es="Klipper se reiniciará para aplicar los cambios"/>
   <translation tag="Klipper will restart to apply changes." es="Klipper se reiniciará para aplicar los cambios."/>
@@ -1580,7 +1581,6 @@
   <translation tag="Memory" es="Memoria"/>
   <translation tag="Memory (MB)" es="Memoria (MB)"/>
   <translation tag="Memory Snapshot" es="Instantánea de memoria"/>
-  <translation tag="Mesh Complete" es="Malla Completa"/>
   <translation tag="Mesh saved as &apos;{}&apos;" es="Malla guardada como &apos;{}&apos;"/>
   <translation tag="Method" es="Método"/>
   <translation tag="Min" es="Mín"/>
@@ -1713,6 +1713,7 @@
   <translation tag="No multi-filament system detected" es="No se detectó ningún sistema multifilamento"/>
   <translation tag="No network. Scan QR code to report on your phone." es="Sin red. Escanee el código QR para reportar desde su teléfono."/>
   <translation tag="No networks found" es="No se encontraron redes"/>
+  <translation tag="No new mesh was stored as &apos;{}&apos;" es="No se guardó ninguna malla nueva como &apos;{}&apos;"/>
   <translation tag="No notifications" es="Sin notificaciones"/>
   <translation tag="No objects defined for this print" es="No hay objetos definidos para esta impresión"/>
   <translation tag="No presets configured" es="No hay preajustes configurados"/>
@@ -2018,6 +2019,7 @@
   <translation tag="Printer connection unavailable" es="Conexión con la impresora no disponible"/>
   <translation tag="Printer database format error" es="Error de formato de la base de datos de impresoras"/>
   <translation tag="Printer database is corrupt" es="La base de datos de impresoras está corrupta"/>
+  <translation tag="Printer default" es="Valor por defecto de la impresora"/>
   <translation tag="Printer didn&apos;t respond — make sure it&apos;s on and in range" es="La impresora no respondió — asegúrate de que esté encendida y al alcance"/>
   <translation tag="Printer doesn&apos;t expose the expected service — wrong device?" es="La impresora no expone el servicio esperado — ¿dispositivo equivocado?"/>
   <translation tag="Printer hardware detected" es="Hardware de impresora detectado"/>
@@ -2061,6 +2063,7 @@
   <translation tag="Processing..." es="Procesando..."/>
   <translation tag="Profile deleted" es="Perfil eliminado"/>
   <translation tag="Profile name (e.g., default)" es="Nombre del perfil (ej., default)"/>
+  <translation tag="Profile names cannot contain &apos;;&apos;" es="Los nombres de perfil no pueden contener &apos;;&apos;"/>
   <translation tag="Profile renamed" es="Perfil renombrado"/>
   <translation tag="Profiles" es="Perfiles"/>
   <translation tag="Progress, file, and time remaining" es="Progreso, archivo y tiempo restante"/>
@@ -2172,7 +2175,6 @@
   <translation tag="Rename Mesh Profile" es="Renombrar Perfil de Malla"/>
   <translation tag="Rename failed at load step" es="Error al renombrar en paso de carga"/>
   <translation tag="Rename failed at remove step" es="Error al renombrar en paso de eliminación"/>
-  <translation tag="Rename failed at save step" es="Error al renombrar en paso de guardado"/>
   <translation tag="Render Now" es="Renderizar Ahora"/>
   <translation tag="Rendering timelapse..." es="Renderizando timelapse..."/>
   <translation tag="Replace" es="Reemplazar"/>

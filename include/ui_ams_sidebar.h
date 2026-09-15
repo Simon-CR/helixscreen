@@ -17,6 +17,7 @@
 
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -267,6 +268,15 @@ class AmsOperationSidebar {
 
     // Preheat methods
     int get_load_temp_for_slot(int slot_index);
+    /// get_load_temp_for_slot() without its default: nullopt when neither the slot
+    /// nor the external spool names a material.
+    std::optional<int> material_load_temp_for_slot(int slot_index);
+    /// Nozzle-temperature parameter values for @p op's macro acting on @p slot_index,
+    /// from the live extruder target and material_load_temp_for_slot(), held above the
+    /// printer's extrusion minimum and at most the hotend's max_temp
+    /// (helix::ui::nozzle_temp_prefill()).
+    std::map<std::string, std::string> macro_temp_prefill(helix::ui::FilamentMacroOp op,
+                                                          int slot_index);
     void check_pending_load();
     void handle_load_complete();
     void show_preheat_feedback(int slot_index, int target_temp);
@@ -292,7 +302,7 @@ class AmsOperationSidebar {
     // Reached when there is no AMS backend, or when bypass hands the load to the
     // user's LOAD_FILAMENT macro. Neither tier has an AMS operation to narrate,
     // so they run without the stepper / pending-target-slot bookkeeping.
-    void dispatch_unload_outside_backend(const helix::ui::FilamentOpPlan& plan);
+    void dispatch_unload_outside_backend(const helix::ui::FilamentOpPlan& plan, int slot_index);
     /// This sidebar's half of a shared dispatch: which parameter policy it wants,
     /// how a rejected dispatch unwinds the stepper, and the lifetime wrapper the
     /// macro-parameter modal needs (this object dies with the AMS panel, and the
@@ -301,7 +311,10 @@ class AmsOperationSidebar {
     /// on_begin is deliberately unset: the stepper is armed BEFORE the preheat,
     /// which is earlier than the executor's dispatch, so re-arming there would
     /// double-count.
-    [[nodiscard]] helix::ui::FilamentOpSurface op_surface(const char* tag);
+    ///
+    /// @p slot_index is the lane the op acts on: its material is what
+    /// macro_temp_prefill() offers the macro.
+    [[nodiscard]] helix::ui::FilamentOpSurface op_surface(const char* tag, int slot_index);
 
     void send_standard_filament_macro(bool is_load,
                                       const std::map<std::string, std::string>& params);

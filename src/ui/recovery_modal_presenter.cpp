@@ -293,12 +293,12 @@ bool RecoveryModalPresenter::nozzle_ready_for_extrusion() const {
     if (helix::SafetySettingsManager::instance().get_allow_cold_extrude()) {
         return true;
     }
-    const int min_extrude = static_cast<int>(api_->get_safety_limits().min_extrude_temp_celsius);
+    const int min_extrude = helix::ui::temperature::extrusion_floor_c(api_->get_safety_limits());
     return helix::ui::temperature::is_extrusion_safe(nozzle_current_c(), min_extrude);
 }
 
 int RecoveryModalPresenter::resolve_preheat_target() const {
-    const int floor_c = static_cast<int>(api_->get_safety_limits().min_extrude_temp_celsius);
+    const int floor_c = helix::ui::temperature::extrusion_floor_c(api_->get_safety_limits());
 
     // 1. What this printer was last told to hold. A filament fault interrupts an
     //    operation that had already chosen a material temperature, and the latch

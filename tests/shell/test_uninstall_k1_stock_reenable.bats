@@ -185,9 +185,14 @@ run_copied_uninstaller() {
 # --- --clean: the ledger rides out the user-config wipe ---
 
 @test "clean install mode wipes user config but carries the disabled-services ledger" {
-    unset _HELIX_UNINSTALL_SOURCED _HELIX_COMMON_SOURCED
+    unset _HELIX_UNINSTALL_SOURCED _HELIX_COMMON_SOURCED _HELIX_SERVICE_SOURCED
     # shellcheck disable=SC1090
     . "$WORKTREE_ROOT/scripts/lib/installer/common.sh"
+    # service.sh before uninstall.sh, the order every production entry
+    # point uses: uninstall.sh's rc.common shebang checks call
+    # is_rc_common_script from service.sh.
+    # shellcheck disable=SC1090
+    . "$WORKTREE_ROOT/scripts/lib/installer/service.sh"
     # shellcheck disable=SC1090
     . "$WORKTREE_ROOT/scripts/lib/installer/uninstall.sh"
 
@@ -223,9 +228,14 @@ run_copied_uninstaller() {
 }
 
 @test "clean carry warns when it cannot set the ledger aside" {
-    unset _HELIX_UNINSTALL_SOURCED _HELIX_COMMON_SOURCED
+    unset _HELIX_UNINSTALL_SOURCED _HELIX_COMMON_SOURCED _HELIX_SERVICE_SOURCED
     # shellcheck disable=SC1090
     . "$WORKTREE_ROOT/scripts/lib/installer/common.sh"
+    # service.sh before uninstall.sh, the order every production entry
+    # point uses: uninstall.sh's rc.common shebang checks call
+    # is_rc_common_script from service.sh.
+    # shellcheck disable=SC1090
+    . "$WORKTREE_ROOT/scripts/lib/installer/service.sh"
     # shellcheck disable=SC1090
     . "$WORKTREE_ROOT/scripts/lib/installer/uninstall.sh"
 
@@ -263,9 +273,14 @@ run_copied_uninstaller() {
 }
 
 @test "clean install mode rescues a keep file a killed carry left stranded" {
-    unset _HELIX_UNINSTALL_SOURCED _HELIX_COMMON_SOURCED
+    unset _HELIX_UNINSTALL_SOURCED _HELIX_COMMON_SOURCED _HELIX_SERVICE_SOURCED
     # shellcheck disable=SC1090
     . "$WORKTREE_ROOT/scripts/lib/installer/common.sh"
+    # service.sh before uninstall.sh, the order every production entry
+    # point uses: uninstall.sh's rc.common shebang checks call
+    # is_rc_common_script from service.sh.
+    # shellcheck disable=SC1090
+    . "$WORKTREE_ROOT/scripts/lib/installer/service.sh"
     # shellcheck disable=SC1090
     . "$WORKTREE_ROOT/scripts/lib/installer/uninstall.sh"
 

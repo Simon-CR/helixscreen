@@ -142,6 +142,15 @@ void set_test_notification_error_hook(std::function<void(const std::string&)> ho
 void set_test_notification_info_hook(std::function<void(const std::string&)> hook);
 
 /**
+ * @brief Install a hook invoked by the test ui_notification_success() stubs.
+ *
+ * The fourth of the set, for flows whose outcome is a success toast: a test that
+ * a failure is never reported as success needs to see the success path too.
+ * Pass nullptr to clear.
+ */
+void set_test_notification_success_hook(std::function<void(const std::string&)> hook);
+
+/**
  * @brief Install a hook invoked by the test ToastManager stub's show paths.
  *
  * Same purpose as the notification hooks, one layer down: code that calls

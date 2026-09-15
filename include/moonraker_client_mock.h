@@ -909,6 +909,10 @@ class MoonrakerClientMock : public helix::MoonrakerClient {
         return bed_mesh_profiles_;
     }
 
+    /// The bed_mesh object as Klipper reports it: the active mesh and every stored
+    /// profile with its points.
+    [[nodiscard]] json bed_mesh_status() const;
+
     /**
      * @brief Check if bed mesh data is available
      * @return true if a valid bed mesh profile has been loaded
@@ -1123,6 +1127,9 @@ class MoonrakerClientMock : public helix::MoonrakerClient {
      * Variation is deterministic based on profile name.
      */
     void generate_mock_bed_mesh_with_variation();
+
+    /// Probe a fresh mesh, store it as @p profile_name, and publish bed_mesh.
+    void calibrate_mock_mesh(const std::string& profile_name);
 
     /**
      * @brief Dispatch bed mesh update notification
@@ -1406,6 +1413,44 @@ class MoonrakerClientMock : public helix::MoonrakerClient {
         return true;
     }
 
+    /// Test helper: when the next printer.gcode.script containing @p script_substr
+    /// runs, emit @p line as a gcode response before its RPC answers, the way
+    /// Klipper declines a command on the console and still answers `ok`. One-shot.
+    void force_next_gcode_console_reply(const std::string& script_substr, const std::string& line) {
+        std::lock_guard<std::mutex> lock(forced_gcode_error_mutex_);
+        forced_console_reply_ = std::make_pair(script_substr, line);
+    }
+
+    /// Test helper: the next gcode line containing @p script_substr probes a mesh and
+    /// stores it in @p profile whatever PROFILE= it names, the way G29 or a wrapper
+    /// macro that drops its parameters stores in default. One-shot.
+    void force_next_mesh_calibration(const std::string& script_substr, const std::string& profile) {
+        std::lock_guard<std::mutex> lock(forced_gcode_error_mutex_);
+        forced_mesh_calibration_ = std::make_pair(script_substr, profile);
+    }
+
+    /// Consume a pending forced mesh calibration if @p line matches; the profile it stores in.
+    std::optional<std::string> take_forced_mesh_calibration(const std::string& line) {
+        std::lock_guard<std::mutex> lock(forced_gcode_error_mutex_);
+        if (!forced_mesh_calibration_ ||
+            line.find(forced_mesh_calibration_->first) == std::string::npos)
+            return std::nullopt;
+        std::string profile = forced_mesh_calibration_->second;
+        forced_mesh_calibration_.reset();
+        return profile;
+    }
+
+    /// Consume a pending forced console reply if it matches @p script.
+    std::optional<std::string> take_forced_console_reply(const std::string& script) {
+        std::lock_guard<std::mutex> lock(forced_gcode_error_mutex_);
+        if (!forced_console_reply_ ||
+            script.find(forced_console_reply_->first) == std::string::npos)
+            return std::nullopt;
+        std::string line = forced_console_reply_->second;
+        forced_console_reply_.reset();
+        return line;
+    }
+
     /// Test inspection: every gcode script string passed through the
     /// printer.gcode.script handler, in order. Lets tests assert multi-step
     /// gcode sequences (e.g. the #991 split config-reassert + heat/feed chain).
@@ -1465,6 +1510,11 @@ class MoonrakerClientMock : public helix::MoonrakerClient {
     // One-shot forced response-drop for printer.gcode.script (test helper). Holds the
     // script substring filter; empty string matches any script. Shares the mutex above.
     std::optional<std::string> forced_gcode_drop_;
+    // One-shot console reply for a matching printer.gcode.script: {script substring,
+    // line}. Shares the mutex below.
+    std::optional<std::pair<std::string, std::string>> forced_console_reply_;
+    // One-shot forced mesh calibration: {line substring, profile it stores in}.
+    std::optional<std::pair<std::string, std::string>> forced_mesh_calibration_;
     mutable std::mutex forced_gcode_error_mutex_;
 
     // Temperature simulation state

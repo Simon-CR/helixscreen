@@ -60,6 +60,66 @@ class DisplayManagerTestAccess {
         dm.enter_sleep(timeout_sec);
     }
 
+    // Deletes the current m_pointer/m_keyboard and recreates them from the
+    // manager's backend, mirroring init()'s input setup. Production calls this
+    // after a DRM-to-fbdev rotation fallback; a test drives it directly against
+    // an injected backend to prove the indev-delete watch it installs.
+    static void rebuild_input_after_backend_swap(DisplayManager& dm) {
+        dm.rebuild_input_after_backend_swap();
+    }
+
+    // Assigns m_pointer/m_keyboard directly, without creating a device, deleting
+    // one, or registering a delete watch. Lets a test move the member to a second
+    // live device while the first stays alive, which no production path does.
+    static void set_pointer(DisplayManager& dm, lv_indev_t* pointer) {
+        dm.m_pointer = pointer;
+    }
+    static void set_keyboard(DisplayManager& dm, lv_indev_t* keyboard) {
+        dm.m_keyboard = keyboard;
+    }
+
+    // Registers the manager's current m_pointer/m_keyboard with its
+    // IndevDeleteWatch, the same call init() and rebuild_input_after_backend_swap()
+    // both make right after creating the device.
+    static void watch_pointer(DisplayManager& dm) {
+        dm.watch_pointer();
+    }
+    static void watch_keyboard(DisplayManager& dm) {
+        dm.watch_keyboard();
+    }
+
+    // Creates the debug-touch ripple timer against the manager's current
+    // m_pointer. init() calls this once; a test drives it directly so it can
+    // exist against an injected pointer without a full init().
+    static lv_timer_t* install_debug_touch_timer(DisplayManager& dm) {
+        return dm.install_debug_touch_timer();
+    }
+
+    // Runs the debug-touch timer's tick directly, without going through
+    // lv_timer_handler(), which would also run every other timer live in the
+    // process.
+    static void debug_touch_tick(lv_timer_t* t) {
+        DisplayManager::debug_touch_tick(t);
+    }
+
+    // Publishes (or clears, with nullptr) the manager DisplayManager::instance()
+    // returns. init()/shutdown() call this as part of a full lifecycle; a test
+    // that never runs init() calls it directly so a lambda that can only reach
+    // state through instance() (lv_timer_create takes a plain function
+    // pointer, so it cannot capture a test's manager) reaches the right one.
+    static void set_active_instance(DisplayManager* dm) {
+        DisplayManager::set_active_instance(dm);
+    }
+
+    // Runs the interactive rotation-detection flow directly against the
+    // manager's current backend/pointer, without a full init(). The probe
+    // reads m_pointer's read callback itself (poll_pointer/drain_until_release
+    // in run_rotation_probe()) rather than through LVGL's own indev polling, so
+    // a scripted read callback drives it exactly as a real touch would.
+    static void run_rotation_probe(DisplayManager& dm) {
+        dm.run_rotation_probe();
+    }
+
     // Which branch the last enter_sleep() actually took (#1245). Not the same as
     // re-running select_sleep_mechanism(): the power-off branch can degrade to the
     // overlay at runtime, so this is the only way to prove enter_sleep() honored

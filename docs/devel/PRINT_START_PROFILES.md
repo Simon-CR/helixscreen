@@ -239,6 +239,8 @@ Malformed entries warn in the log and are skipped - one bad rule never takes dow
 
 **`response_patterns`** - Best for catching G-code commands and freeform console output. Patterns are compiled with `std::regex::icase`. Capture groups (`$1`, `$2`, etc.) in the message template are substituted with matched groups. Each pattern is checked via `std::regex_search` (partial match, not full line). When several patterns match the same line, the first one in file order wins.
 
+**`hold_minutes_group`** - For text that announces a wait nobody will narrate, such as a heat soak printed before a silent `G4`. Set on a `response_patterns` or `state_patterns` entry, it names the capture group holding a number of minutes (`.` decimal, e.g. `10.0`); a group the pattern does not have is ignored with a warning, a zero or unparseable capture holds nothing, and a hold longer than a day is read as a day. Until the hold ends the printer counts as talking, so no timeout fires, and the held time is left out of the elapsed time the ceiling measures (the backstop leaves out at most one ceiling of it). A console line and its `display_status` copy announce one hold, not two. Declare it only for a wait of known length: a wait on a sensor (`M191`, `TEMPERATURE_WAIT`) has none.
+
 **`phase_object` + `state_patterns`** - Best for a printer that publishes its phase as a status string rather than, or as well as, printing it to the console. Two shapes qualify. Firmware or a mod may expose an operation-context object with a state field, which Forge-X does. Stock Klipper always exposes `display_status.message`, which is where a `PRINT_START` macro's own `SET_DISPLAY_TEXT` / `M117` narration lands - and since Klipper does not echo the commands a macro runs, that field is often the only place a macro-driven start is legible at all, which is why the generic profile declares it.
 
 The declared object is subscribed automatically during discovery. Klipper notifies on every field change in the object, so an unchanged state re-arrives regularly; only a NEW state applies, and the latch keeps the last MATCHED state - an unmapped state between two mapped ones is not a change of phase. The state string is matched by `state_patterns`, which share the exact `pattern`/`phase`/`message`/`weight` contract with `response_patterns` (first pattern in file order wins).
@@ -331,6 +333,17 @@ In `assets/config/printer_database.json`, add the `print_start_profile` field to
 ```
 
 The value must match the JSON filename without the `.json` extension.
+
+Two more fields give a printer's first print a measured estimate instead of a generic one:
+
+```json
+{
+  "print_start_default_phases": { "HOMING": 25, "SOAKING": 60, "BED_MESH": 2, "PURGING": 15 },
+  "thermal_rates": { "heater_bed": 6.0, "extruder": 0.4 }
+}
+```
+
+`print_start_default_phases` is seconds per phase the prediction history keeps a duration for (HOMING, SOAKING, QGL, Z_TILT, BED_MESH, CLEANING, PURGING); any other name is ignored with a warning. Its HOMING value is also the homing time the print details estimate shows, never below 20s. The printer's own phase timings replace these from the next completed print on. `thermal_rates` is seconds per degree C per heater (`extruder` or `heater_bed`; any other name is ignored with a warning), used by `ThermalRateManager::apply_archetype_defaults()` in place of its guess from the bed size. The rate a print saves is its whole measured climb, seconds over degrees, with a hold between two climbs (a probing temperature, then the print temperature) left out, blended 70/30 with the saved rate loaded at startup. A completed pre-print, a timeout completion included, saves the rates it measured, but the app loads saved rates only at startup (`Application` calls `ThermalRateManager::load_from_config()`), so until the next restart the database rates stay in use.
 
 If a printer has no `print_start_profile` field, or the profile fails to load, the system falls back to `default.json`, then to the compiled-in profile `make_builtin_default()` builds. This three-level fallback chain means nothing ever breaks. The compiled-in copy is hand-maintained, and the `[parity]` test described under "Existing Profiles" below is the only thing holding it level with the JSON.
 
@@ -450,6 +463,7 @@ Run the app with `-vv`: `PrintStartProfile` logs every signal-format match (`Sig
 | **Anycubic Kobra** | `anycubic_kobra.json`, `anycubic_kobra_s1.json` | weighted | Kobra 2 Pro / 3 family, Kobra S1 (+ Max) | 6 regex patterns each |
 | **Artillery M1** | `artillery_m1.json` | sequential | Artillery M1 Pro | 1 signal format + 4 regex patterns |
 | **Snapmaker U1** | `snapmaker_u1.json` | weighted | Snapmaker U1 | 2 signal formats + `adaptive_meshing`; patterns captured live, none invented for silent steps |
+| **COSMOS** | `cosmos_cc1.json` | weighted | Elegoo Centauri Carbon on OpenCentauri COSMOS | 7 response patterns read on the console and through `phase_object` (display_status); the heat soak declares `hold_minutes_group`; the skew check completes the pre-print |
 | **Built-in fallback** | `make_builtin_default()` | weighted | Emergency fallback when `default.json` is unreadable | Same decisions as `default.json`, compiled into the binary and pinned there by the `[parity]` test below |
 
 The generic profile exists twice, once as JSON and once as C++, so something has to hold the
@@ -475,13 +489,13 @@ For printers that don't emit any G-code layer markers (like Forge-X), the system
 |----------|-----------|------|
 | Layer edge | `print_stats.info.current_layer` 0 -> 1 (or the counter advancing) while >= 1 | Authoritative when the printer reports layers; the gate rejects a stale value carried over from the previous print |
 | First extrusion | `print_stats.print_duration > 0` | Printers that never report a layer field |
-| Adaptive timeout + temps | Elapsed past the predicted total (x1.5 margin) AND temps >= 90% of target AND quiet for 90s | Predictions available |
-| Predicted ceiling | Elapsed past `max(predicted x2.5, 1800s)` AND quiet for 90s, no temp gate | Predictions available |
-| Flat timeout + temps | Elapsed > 300s, same temp and quiet gates | No prediction data |
-| Absolute ceiling | 1800s regardless of chatter or temperature | No prediction data - stuck detection, the one timeout with no quiet requirement |
+| Adaptive timeout + temps | Elapsed past the predicted total (x1.5 margin) AND both heaters at target (within 2°C) AND 90s without pre-print activity | Predictions available |
+| Flat timeout + temps | Elapsed > 300s, same temp and activity gates | No prediction data |
+| Ceiling | Elapsed past `max(predicted x2.5, 1800s)` AND 90s without a matched line or probe line, no temp gate | Always - stuck detection for a heater that never settles |
+| Backstop | Twice the ceiling, regardless of chatter or temperature | Always - the one timeout with no quiet requirement |
 | Macro variables | `_START_PRINT.print_started`, `START_PRINT.preparation_done`, `_HELIX_STATE.print_started` | Subscribed via Moonraker |
 
-Timeouts are deliberately reluctant: active mesh probing suppresses them, and a pre-print that is still narrating itself is never timed out on the clock alone (only the absolute ceiling ignores that).
+Timeouts are deliberately reluctant: active mesh probing suppresses every one but the backstop, and a pre-print that is still narrating itself is never timed out on the clock alone (only the backstop ignores that). Activity for the two deadline timeouts is a matched line, a probe line, a `status_signals` rule firing, or a heater reading a degree above its highest yet under its current target; a heater swinging back up to an earlier reading is not a climb. The ceiling counts only matched lines and probe lines: a rule or a heater reads the same frames a stuck heater produces, so neither holds it open.
 
 ---
 

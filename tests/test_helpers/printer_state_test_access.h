@@ -175,6 +175,11 @@ class PrinterNetworkStateTestAccess {
 // PrinterStateTestAccess must be in namespace helix to match friend declaration in PrinterState
 class PrinterStateTestAccess {
   public:
+    /// printer_has_chamber_sensor: 1 while the resolved chamber sensor name is set.
+    static lv_subject_t* has_chamber_sensor_subject(PrinterState& ps) {
+        return ps.capabilities_state_.get_printer_has_chamber_sensor_subject();
+    }
+
     /// Full teardown: clear the data AND tear the subjects down.
     ///
     /// Only for tests that genuinely want the subject tree gone (they are about

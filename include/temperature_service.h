@@ -288,6 +288,8 @@ class TemperatureService {
     const char* xml_component_name(helix::HeaterType type) const;
 
   private:
+    friend struct TemperatureServiceTestAccess;
+
     // ── Generic instance methods ────────────────────────────────────────
     void on_temp_changed(helix::HeaterType type, int temp_deci);
     void on_target_changed(helix::HeaterType type, int target_deci);

@@ -5,6 +5,8 @@ How to get HelixScreen onto an Elegoo Centauri Carbon: flash the community [Open
 ## Tested With
 
 > **Tested and working.** Prebuilt binaries ship in releases and the installer has auto-detection support. Requires the community [OpenCentauri COSMOS firmware](https://docs.opencentauri.cc/klipper-conversion/cosmos/cosmos/); stock Elegoo firmware is not supported (no SSH, no Klipper, no Moonraker).
+>
+> **Minimum COSMOS version: 26.07.0.** Tested on COSMOS 26.08.0. COSMOS 0.0.7 and earlier are not supported: they lack the calibration and filament macros HelixScreen drives.
 
 ## Prerequisites
 
@@ -13,7 +15,7 @@ How to get HelixScreen onto an Elegoo Centauri Carbon: flash the community [Open
   - Network connection (WiFi or Ethernet)
   - A USB stick formatted FAT32 (for the firmware flash in Step 1)
 - **Software:**
-  - [OpenCentauri COSMOS firmware](https://github.com/OpenCentauri/cosmos/releases) installed (replaces stock Elegoo firmware; ships Klipper + Moonraker + grumpyscreen/atomscreen/guppyscreen)
+  - [OpenCentauri COSMOS firmware](https://github.com/OpenCentauri/cosmos/releases) **26.07.0 or newer** installed (replaces stock Elegoo firmware; ships Klipper + Moonraker + grumpyscreen/atomscreen/guppyscreen)
   - SSH access: `root` / default password `OpenCentauri` (change it after install)
 
 ## Installation
@@ -28,6 +30,15 @@ OpenCentauri COSMOS is a full firmware replacement for the Centauri Carbon. It s
 4. From the stock Elegoo UI, navigate to the firmware-update menu and apply the update
 5. **First boot takes 5-10 minutes** while it reflashes the toolhead and bed boards; be patient
 6. After reboot, connect to WiFi from the COSMOS UI and note the printer's IP address
+
+Already running COSMOS? Check the version before installing HelixScreen:
+
+```bash
+curl -s http://<ip>/printer/info | grep -o '"software_version": *"[^"]*"'
+# "software_version": "Release - 26.08.0"
+```
+
+Mainsail shows the same string on its Machine page. Anything older than `Release - 26.07.0` needs the COSMOS update above first.
 
 If the update fails or the device won't boot, consult the OpenCentauri [install guide](https://docs.opencentauri.cc/klipper-conversion/cosmos/install/) and [emergency USB recovery](https://docs.opencentauri.cc/software/updates/) docs.
 
@@ -96,6 +107,7 @@ The uninstaller reverses the `gui-switcher` registration, including the allowlis
 
 ## Quirks and Notes
 
+- **Slice with the COSMOS printer profile.** Elegoo's stock Centauri Carbon start G-code calls `M729`, and COSMOS turns `M729` into an emergency stop (26.08 shows "Use COSMOS OrcaSlicer profile (or COSMOS start/end machine gcode)"; 26.07 shows "Use COSMOS start/end machine gcode"). A file sliced with the stock profile halts the printer as soon as it starts, and Klipper needs a `FIRMWARE_RESTART`. Re-slice with the COSMOS OrcaSlicer profile, whose start G-code is a single `PRINT_START EXTRUDER=... BED=... CHAMBER=...` line
 - **Moonraker listens on port `80`** on COSMOS directly (no nginx). Enter `80` as the port at the wizard's connection step; the `7125` default does not apply on this printer
 - **Factory white-balance calibration**: the `cc1` preset ships with per-channel panel gain so colors look neutral out of the box on the Centauri Carbon's 4.3" panel. No manual tuning needed
 - **The `config-manager` allowlist**: COSMOS's `config-manager` has a fixed allowlist for the `screen_ui` slot. The installer handles this automatically via an init-script wrapper so HelixScreen can be selected without patching COSMOS itself; the uninstaller fully reverses it

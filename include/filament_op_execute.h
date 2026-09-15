@@ -26,6 +26,8 @@
 #include "standard_macros.h"
 
 #include <functional>
+#include <map>
+#include <string>
 
 namespace helix {
 class AmsBackend;
@@ -202,6 +204,14 @@ struct FilamentOpSurface {
     /// wrapper here, or a macro-parameter modal answered after the teardown
     /// reaches freed memory.
     std::function<void(std::function<void()>)> guard;
+
+    /// Parameter values this surface already knows for the macro @p op runs, keyed
+    /// by parameter name (nozzle_temp_prefill() in filament_op_router.h). Called
+    /// once, on the dispatching thread, just before the macro tier asks
+    /// dispatch_filament_macro(), which sends only the names the macro reads and
+    /// skips the prompt when they fill every one. Unset offers nothing, and under
+    /// ParamPolicy::Suppress the values are not used.
+    std::function<std::map<std::string, std::string>(FilamentMacroOp op)> macro_prefill;
 };
 
 /// @note **`log_tag` must have static storage duration.** All three functions
@@ -242,7 +252,7 @@ void execute_filament_unload(AmsBackend* backend, int slot, bool target_is_loade
 /// purge dispatch that was NOT entangled with panel UI state; that method now
 /// calls this. FilamentPanel::execute_purge() was deliberately not the source:
 /// it drives that panel's operation_guard_ spinner and a macro-parameter modal
-/// with active-material temperature prefill, none of which apply here — and it
+/// with a nozzle-temperature prefill, none of which apply here — and it
 /// remains an unconverted third copy for that reason.
 void execute_filament_purge(const char* log_tag);
 

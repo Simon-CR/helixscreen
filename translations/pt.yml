@@ -26,6 +26,7 @@ translations:
   '%zu events queued': '%zu eventos na fila'
   '%zu plugins failed to load': '%zu plugins falharam ao carregar'
   "'{}' already exists. Replace the stored mesh?": "'{}' já existe. Substituir a malha salva?"
+  "'{}' and '{}' already exist. Replace the stored meshes?": "'{}' e '{}' já existem. Substituir as malhas salvas?"
   (different grade): (grau diferente)
   (incompatible): (incompatível)
   (multi-tool): (multiferramenta)
@@ -724,6 +725,7 @@ translations:
   Could not resolve printer RFCOMM channel: Não foi possível resolver o canal RFCOMM
     da impressora
   Could not save filament: Não foi possível salvar o filamento
+  "Could not save the mesh as '{}': {}": "Não foi possível salvar a malha como '{}': {}"
   Could not start Bluetooth discovery: Não foi possível iniciar a descoberta Bluetooth
   Could not update filaments: Não foi possível atualizar os filamentos
   Could not verify Spoolman status. Moonraker may still be restarting.: Não foi possível
@@ -944,7 +946,6 @@ translations:
   Enter a multiplier between 0.5 and 2.0: 'Insira um multiplicador entre 0.5 e 2.0'
   Enter a name for this profile: "Digite um nome para este perfil"
   'Enter a name for your custom theme:': 'Digite um nome para seu tema personalizado:'
-  Enter a name to save this profile: Digite um nome para salvar este perfil
   Enter network name: Digite o nome da rede
   Enter password: Digite a senha
   Enter printer IP address first: Insira o endereço IP da impressora primeiro
@@ -1106,7 +1107,6 @@ translations:
   Failed to save fan configuration: Falha ao salvar configuração da ventoinha
   Failed to save heater configuration: Falha ao salvar configuração do aquecedor
   Failed to save printer configuration: Falha ao salvar configuração da impressora
-  Failed to save profile: Falha ao salvar perfil
   Failed to save setup completion: Falha ao salvar conclusão da configuração
   Failed to save spool: Falha ao salvar carretel
   Failed to save theme file: Falha ao salvar arquivo do tema
@@ -1546,6 +1546,7 @@ translations:
   Klipper has entered shutdown state. This may be due to an emergency stop, thermal runaway, or configuration error.: O
     Klipper entrou em estado de desligamento. Isso pode ser devido a uma parada de
     emergência, fuga térmica ou erro de configuração.
+  Klipper reserves 'default' for new calibrations. Choose another name.: "O Klipper reserva 'default' para novas calibrações. Escolha outro nome."
   Klipper restarting - macros activating: 'Reiniciando o Klipper - ativando macros'
   Klipper will restart to apply changes: O Klipper será reiniciado para aplicar as
     alterações
@@ -1757,7 +1758,6 @@ translations:
   Memory: Memória
   Memory (MB): Memória (MB)
   Memory Snapshot: Captura de Memória
-  Mesh Complete: Malha Concluída
   Mesh saved as '{}': Malha salva como '{}'
   Method: Método
   Min: Mín
@@ -1905,6 +1905,7 @@ translations:
   No network. Scan QR code to report on your phone.: Sem rede. Escaneie o QR code
     para reportar pelo celular.
   No networks found: Nenhuma rede encontrada
+  No new mesh was stored as '{}': "Nenhuma malha nova foi salva como '{}'"
   No notifications: Sem notificações
   No objects defined for this print: Nenhum objeto definido para esta impressão
   No presets configured: Nenhuma predefinição configurada
@@ -2233,6 +2234,7 @@ translations:
   Printer connection unavailable: Conexão com a impressora indisponível
   Printer database format error: Erro de formato do banco de dados de impressoras
   Printer database is corrupt: O banco de dados de impressoras está corrompido
+  Printer default: Padrão da impressora
   Printer didn't respond — make sure it's on and in range: A impressora não respondeu
     — certifique-se de que está ligada e ao alcance
   Printer doesn't expose the expected service — wrong device?: A impressora não expõe
@@ -2284,6 +2286,7 @@ translations:
   Processing...: 'Processando...'
   Profile deleted: Perfil excluído
   Profile name (e.g., default): 'Nome do perfil (ex.: padrão)'
+  Profile names cannot contain ';': "Os nomes de perfil não podem conter ';'"
   Profile renamed: Perfil renomeado
   Profiles: Perfis
   Progress, file, and time remaining: Progresso, arquivo e tempo restante
@@ -2404,7 +2407,6 @@ translations:
   Rename Mesh Profile: Renomear Perfil de Malha
   Rename failed at load step: Falha ao renomear na etapa de carga
   Rename failed at remove step: Falha ao renomear na etapa de remoção
-  Rename failed at save step: Falha ao renomear na etapa de salvamento
   Render Now: Renderizar Agora
   Rendering timelapse...: Renderizando timelapse...
   Replace: "Substituir"

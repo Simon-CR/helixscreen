@@ -205,7 +205,12 @@ teardown() {
 }
 
 @test "recorded webrtc disables are reversed by reenable_disabled_services" {
-    unset _HELIX_UNINSTALL_SOURCED
+    unset _HELIX_UNINSTALL_SOURCED _HELIX_SERVICE_SOURCED
+    # service.sh before uninstall.sh, the order every production entry
+    # point uses: uninstall.sh's rc.common shebang checks call
+    # is_rc_common_script from service.sh.
+    # shellcheck disable=SC1090
+    . "$WORKTREE_ROOT/scripts/lib/installer/service.sh"
     . "$WORKTREE_ROOT/scripts/lib/installer/uninstall.sh"
 
     local w1 w2
