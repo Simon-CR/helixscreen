@@ -63,6 +63,15 @@ class PanelWidgetManager {
         return static_cast<T*>(it->second.get());
     }
 
+    /// Remove only T's slot, leaving every other registered type untouched -
+    /// the scoped counterpart to register_shared_resource<T>(), for a caller
+    /// that owns exactly one type's registration and must not disturb the
+    /// others (e.g. an RAII guard unregistering itself while a sibling
+    /// guard for a different T is still in scope).
+    template <typename T> void unregister_shared_resource() {
+        shared_resources_.erase(type_tag<T>());
+    }
+
     void clear_shared_resources();
 
     // -- Per-panel rebuild callbacks --

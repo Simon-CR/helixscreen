@@ -1,6 +1,8 @@
 // Copyright (C) 2025-2026 356C LLC
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "../../include/moonraker_client_mock.h"
+#include "../helix_test_fixture.h"
+#include "../test_helpers/scoped_shared_resource.h"
 #include "../test_helpers/temperature_controller_test_access.h"
 #include "app_globals.h"
 #include "macro_param_cache.h"
@@ -11,13 +13,24 @@
 #include "settings_manager.h"
 #include "temperature_controller.h"
 
+#include <memory>
+
 #include "../catch_amalgamated.hpp"
 
 using helix::HeaterType;
 using helix::TemperatureController;
 
 namespace {
-struct ControllerFixture {
+// HelixTestFixture base drains UpdateQueue on both construction and
+// destruction. PrinterState::update_from_status() unconditionally forwards
+// every status update to the FilamentSensorManager singleton, which queues an
+// async subject-refresh callback whenever it has not yet processed a status
+// (or a sensor changed) and is not in sync mode - true even for an
+// otherwise-private, per-fixture PrinterState like `state` below.
+// feed_nozzle()'s calls into that path queue such a callback between test
+// cases; the HelixTestFixture base drains it at teardown so it can't leak
+// into the next test.
+struct ControllerFixture : public HelixTestFixture {
     MoonrakerClientMock client;
     helix::PrinterState state;
     MoonrakerAPI api;
@@ -346,8 +359,7 @@ TEST_CASE("TemperatureController swap-preheat guard holds the previous filament 
 
 TEST_CASE("get_temperature_controller returns the registered shared resource",
           "[temp_controller][globals]") {
-    helix::TemperatureController ctrl(get_printer_state(), nullptr);
-    helix::PanelWidgetManager::instance().register_shared_resource<helix::TemperatureController>(
-        &ctrl);
-    REQUIRE(get_temperature_controller() == &ctrl);
+    helix_test::ScopedSharedResource<helix::TemperatureController> scope(
+        std::make_shared<helix::TemperatureController>(get_printer_state(), nullptr));
+    REQUIRE(get_temperature_controller() == scope.ptr());
 }

@@ -25,6 +25,7 @@
 #include "panel_widget_manager.h"
 #include "static_panel_registry.h"
 #include "temperature_controller.h"
+#include "test_helpers/scoped_shared_resource.h"
 #include "test_helpers/temperature_controller_test_access.h"
 
 #include <cstdio>
@@ -72,20 +73,14 @@ bool hidden(lv_obj_t* obj) {
 class ControllerScope {
   public:
     explicit ControllerScope(XMLTestFixture& f)
-        : controller_(std::make_shared<helix::TemperatureController>(f.state(), &f.api())) {
-        helix::PanelWidgetManager::instance().register_shared_resource(controller_);
-    }
-
-    ~ControllerScope() {
-        helix::PanelWidgetManager::instance().clear_shared_resources();
-    }
+        : scope_(std::make_shared<helix::TemperatureController>(f.state(), &f.api())) {}
 
     helix::TemperatureController& controller() {
-        return *controller_;
+        return scope_.get();
     }
 
   private:
-    std::shared_ptr<helix::TemperatureController> controller_;
+    helix_test::ScopedSharedResource<helix::TemperatureController> scope_;
 };
 
 /// Open the ABS edit view against a printer that has a chamber heater.
