@@ -14,6 +14,7 @@
 #include <fcntl.h>
 #include <filesystem>
 #include <fstream>
+#include <ios>
 #include <sstream>
 #include <unistd.h>
 
@@ -350,7 +351,16 @@ std::vector<ProcMatch> find_moonraker_processes() {
         std::ifstream cmd(entry.path() / "cmdline", std::ios::binary);
         if (!cmd.is_open())
             continue; // the process exited between the readdir and the open
-        std::string raw((std::istreambuf_iterator<char>(cmd)), std::istreambuf_iterator<char>());
+        std::string raw;
+        try {
+            raw.assign((std::istreambuf_iterator<char>(cmd)), std::istreambuf_iterator<char>());
+        } catch (const std::ios_base::failure&) {
+            // The process exited between the open and the read: the dentry still
+            // resolved, so is_open() succeeded, and the kernel then answered the
+            // read with ESRCH. libstdc++ raises that from basic_filebuf::underflow
+            // whatever the stream's exception mask says, so it has to be caught.
+            continue;
+        }
 
         ProcMatch m;
         m.cmdline = decode_proc_cmdline(raw);
