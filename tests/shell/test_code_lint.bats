@@ -2008,6 +2008,7 @@ EOF
     [ "$status" -eq 0 ]  # the gate above can go red
 }
 
+
 # --- a getenv() pointer must not be read after a setenv may have replaced it --
 #
 # setenv() may reallocate the environ block and the strings it points at, so a
@@ -2015,8 +2016,16 @@ EOF
 # setenv()/unsetenv() reads whatever bytes live at that address now — a
 # corrupted variable inherited by every std::system() child the test spawns
 # (prestonbrown/helixscreen#1537). Copy the value into a std::string at capture
-# (helix::ScopedEnv in tests/test_helpers/scoped_env.h does this) and restore
-# from the copy.
+# (helix::ScopedEnv in tests/test_helpers/scoped_env.h does this, and its
+# (name, value) constructor owns the set too) and restore from the copy.
+#
+# Scope: all first-party C++ outside lib/ — the roots named in the @test below.
+# lib/ is vendored submodules; scripts/ is not C++. A save/setenv/restore that
+# crosses a function boundary is out of reach by construction (a pointer does
+# not outlive its function), and the 400-line backstop window exists only so a
+# pathological single function cannot pin a name forever; a same-named local in
+# a NESTED scope of the same function (a for-loop shadowing the capture) is the
+# one residual false-positive shape.
 
 getenv_pointer_live_across_setenv_files() {
     python3 - "$@" <<'EOF'
@@ -2024,11 +2033,58 @@ import pathlib
 import re
 import sys
 
-CAPTURE = re.compile(r'(?:const\s+)?char\s*\*\s*([A-Za-z_]\w*)\s*=\s*[^;]*\bgetenv\s*\(')
+# (const )?char( const)? * (const )? NAME =  — west-const, east-const and
+# pointer-const spellings; (?!=) keeps == comparisons out.
+DECL = re.compile(r'(?:const\s+)?char\s*(?:const\s*)?\*\s*(?:const\s*)?'
+                  r'([A-Za-z_]\w*)\s*=(?!=)')
+GETENV = re.compile(r'\bgetenv\s*\(')
 SETENV = re.compile(r'\b(?:setenv|unsetenv)\s*\(')
-# A save -> setenv -> restore inside one test or guard spans a few dozen lines.
-# The window keeps a same-named local in a later function out of the match.
-WINDOW = 60
+WINDOW = 400
+WRAP_MAX = 5  # continuation lines scanned for getenv() in a wrapped initializer
+
+def strip_comments(lines):
+    """Blank out // and /* */ comments, quote-aware, so commented-out code
+    cannot trip the scan and a '//' inside a string literal keeps its line."""
+    out = []
+    in_block = False
+    for raw in lines:
+        kept = []
+        i = 0
+        quote = None  # '"' or "'" while inside that literal
+        while i < len(raw):
+            c = raw[i]
+            if in_block:
+                if raw[i:i + 2] == '*/':
+                    in_block = False
+                    i += 2
+                    continue
+                i += 1
+                continue
+            if quote:
+                if c == '\\':
+                    kept.append(raw[i:i + 2])
+                    i += 2
+                    continue
+                if c == quote:
+                    quote = None
+                kept.append(c)
+                i += 1
+                continue
+            if c in '"\'':
+                quote = c
+                kept.append(c)
+                i += 1
+                continue
+            if raw[i:i + 2] == '//':
+                break
+            if raw[i:i + 2] == '/*':
+                in_block = True
+                i += 2
+                continue
+            kept.append(c)
+            i += 1
+        out.append(''.join(kept))
+    return out
 
 bad = 0
 for arg in sys.argv[1:]:
@@ -2038,21 +2094,43 @@ for arg in sys.argv[1:]:
         if path.suffix not in ('.cpp', '.h', '.cc', '.hpp'):
             continue
         try:
-            lines = path.read_text(errors='replace').splitlines()
+            lines = strip_comments(path.read_text(errors='replace').splitlines())
         except OSError:
             continue
         active = {}  # name -> [capture line index, setenv seen since capture]
-        for i, raw in enumerate(lines):
-            line = raw.split('//', 1)[0]
-            for m in CAPTURE.finditer(line):
-                active[m.group(1)] = [i, False]
+        for i, line in enumerate(lines):
+            for m in DECL.finditer(line):
+                name = m.group(1)
+                initializer = line[m.end():]
+                # '{' ends an initializer the same way ';' does: a parameter
+                # default like `const char* value = nullptr) : m_(m) {` must
+                # not swallow the constructor body's getenv() as its own
+                terminated = (';' in initializer) or ('{' in initializer)
+                if not terminated:
+                    for cont in lines[i + 1:i + 1 + WRAP_MAX]:
+                        stop = re.search(r'[;{]', cont)
+                        if stop:
+                            initializer += ' ' + cont[:stop.start() + 1]
+                            break
+                        initializer += ' ' + cont
+                if GETENV.search(initializer):
+                    # a redeclaration of the same name starts a new capture
+                    active[name] = [i, False]
             if SETENV.search(line):
                 for state in active.values():
                     state[1] = True
+            if line.startswith('}'):
+                # a function, class or TEST_CASE closes at column 0 in this
+                # codebase; every pointer local in it dies here with its scope
+                active.clear()
+                continue
             for name, state in list(active.items()):
                 if i <= state[0] or i > state[0] + WINDOW:
                     continue
-                if state[1] and re.search(r'\b' + re.escape(name) + r'\b', line):
+                # cfg.name and ptr->name are different entities, not uses of
+                # the captured local
+                remainder = re.sub(r'(?:\.|->)\s*' + re.escape(name) + r'\b', '', line)
+                if state[1] and re.search(r'\b' + re.escape(name) + r'\b', remainder):
                     print(f"{path}:{state[0] + 1}: '{name}' from getenv() is read at "
                           f"line {i + 1}, after a setenv() between the two; copy the "
                           f"value into a std::string at capture (helix::ScopedEnv)")
@@ -2063,7 +2141,10 @@ EOF
 }
 
 @test "no getenv pointer is read after a setenv may have replaced it" {
-    run getenv_pointer_live_across_setenv_files tests/ src/ include/
+    # Scope is every first-party C++ root; lib/ is vendored submodules and
+    # scripts/ is not C++, so neither belongs here.
+    run getenv_pointer_live_across_setenv_files \
+        tests/ src/ include/ tools/ firmware/ android/ plugins/ server/ moonraker-plugin/
     [ "$status" -eq 0 ]
     [ -z "$output" ]
 }
@@ -2086,6 +2167,53 @@ EOF
     [ "$status" -ne 0 ]
     contains "restore.cpp" "$output"
     contains "std::string" "$output"
+}
+
+@test "the getenv/setenv gate catches wrapped declarations and east-const" {
+    # clang-format splits a long declaration across lines, and `char const*`
+    # spells the same type; the capture regex has to see both.
+    local d="${BATS_TEST_TMPDIR}/spelled"
+    mkdir -p "$d"
+    cat > "$d/wrapped.cpp" <<'EOF'
+TEST_CASE("declaration wraps past the getenv") {
+    const char* original_environment_path =
+        std::getenv("PATH");
+    setenv("PATH", "", 1);
+    run_thing();
+    setenv("PATH", original_environment_path, 1);
+}
+EOF
+    cat > "$d/east_const.cpp" <<'EOF'
+TEST_CASE("east const") {
+    char const* original = std::getenv("PATH");
+    setenv("PATH", "", 1);
+    run_thing();
+    setenv("PATH", original, 1);
+}
+EOF
+    run getenv_pointer_live_across_setenv_files "$d"
+    [ "$status" -ne 0 ]
+    contains "wrapped.cpp" "$output"
+    contains "east_const.cpp" "$output"
+}
+
+@test "the getenv/setenv gate fires on a long same-function save/restore span" {
+    # The window is a backstop, not the coverage edge: a save at the top of a
+    # long Catch2 case and its restore at the bottom are one function and must
+    # be caught however many lines sit between them.
+    local d="${BATS_TEST_TMPDIR}/longspan"
+    mkdir -p "$d"
+    {
+        echo 'TEST_CASE("long span") {'
+        echo '    const char* original = std::getenv("PATH");'
+        echo '    setenv("PATH", "", 1);'
+        for _ in $(seq 70); do echo ''; done
+        echo '    setenv("PATH", original, 1);'
+        echo '}'
+    } > "$d/long.cpp"
+    run getenv_pointer_live_across_setenv_files "$d"
+    [ "$status" -ne 0 ]
+    contains "long.cpp" "$output"
 }
 
 @test "the getenv/setenv gate stays quiet on capture-time copies and immediate reads" {
@@ -2120,22 +2248,62 @@ EOF
 }
 
 @test "the getenv/setenv gate stays quiet on a same-named local in a later function" {
-    # The window keeps the scan inside one function's span: a `v` declared as a
-    # JSON iterator a hundred lines below a `const char* v` from getenv() is a
-    # different variable, not a stale restore.
+    # The scope of a capture ends at the column-0 brace that closes its
+    # function or class, so an unrelated `v` in the next function is a
+    # different variable however near it sits.
     local d="${BATS_TEST_TMPDIR}/shadow"
     mkdir -p "$d"
-    {
-        echo 'void guard(const char* name) {'
-        echo '    const char* v = getenv(name);'
-        echo '    std::string saved = v;'
-        echo '    setenv(name, "", 1);'
-        echo '}'
-        for _ in $(seq 80); do echo ''; done
-        echo 'void far_below() {'
-        echo '    for (auto v = table.begin(); v != table.end(); ++v) use(*v);'
-        echo '}'
-    } > "$d/shadow.cpp"
+    cat > "$d/shadow.cpp" <<'EOF'
+void guard(const char* name) {
+    const char* v = getenv(name);
+    std::string saved = v;
+    setenv(name, "", 1);
+}
+
+void unrelated_below() {
+    for (auto v = table.begin(); v != table.end(); ++v) {
+        use(*v);
+    }
+}
+EOF
+    cat > "$d/qualified.cpp" <<'EOF'
+TEST_CASE("a member access on another object") {
+    const char* original = std::getenv("PATH");
+    std::string saved = original;
+    setenv("PATH", "", 1);
+    REQUIRE(cfg.original == 1);
+    setenv("PATH", saved.c_str(), 1);
+}
+EOF
+    run getenv_pointer_live_across_setenv_files "$d"
+    [ "$status" -eq 0 ]
+    [ -z "$output" ]
+}
+
+@test "the getenv/setenv gate stays quiet on commented-out code and in-string slashes" {
+    # Dead code inside /* */ cannot be a live bug, and a URL in a string
+    # literal must not truncate the line's remaining text.
+    local d="${BATS_TEST_TMPDIR}/deadcode"
+    mkdir -p "$d"
+    cat > "$d/commented.cpp" <<'EOF'
+TEST_CASE("commented out") {
+    setenv("X", "1", 1);
+    /*
+    const char* old = getenv("X");
+    setenv("X", "", 1);
+    setenv("X", old, 1);
+    */
+    do_work();
+}
+EOF
+    cat > "$d/url.cpp" <<'EOF'
+TEST_CASE("slashes inside a string literal") {
+    const char* base = getenv("HELIX_URL");
+    std::string saved = base;
+    setenv("HELIX_URL", "https://example.invalid/a//b", 1);
+    use(saved);
+}
+EOF
     run getenv_pointer_live_across_setenv_files "$d"
     [ "$status" -eq 0 ]
     [ -z "$output" ]
