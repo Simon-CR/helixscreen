@@ -723,6 +723,13 @@ class PrintStartCollectorHeaterFixture : public LVGLTestFixture {
         drain_async_updates();            // Process the IDLE update
     }
 
+    /// One fallback check as the ETA timer runs it, with the updates it queues applied.
+    void tick_fallbacks() {
+        collector_->check_fallback_completion();
+        drain_async_updates();
+        drain_async_updates();
+    }
+
   protected:
     PrinterState state_;
     std::unique_ptr<MoonrakerClientMock> client_;
@@ -1576,11 +1583,11 @@ TEST_CASE_METHOD(PrintStartCollectorHeaterFixture,
 // ============================================================================
 
 TEST_CASE_METHOD(PrintStartCollectorHeaterFixture,
-                 "Fallback completion: layer count no longer triggers COMPLETE",
+                 "Fallback completion: layer count does not trigger COMPLETE",
                  "[print][collector][fallback][completion]") {
-    // Layer count heuristic has been removed — authoritative signals (RESPOND match
-    // and Moonraker state=printing) now handle dismissal. These sections verify the
-    // heuristic no longer fires.
+    // Layer count is not a completion signal: authoritative signals (a RESPOND
+    // match and Moonraker state=printing) handle dismissal. These sections
+    // verify a layer count alone never completes the pre-print.
 
     // Initialize temps to prevent proactive detection
     set_all_temps(0, 0, 0, 0);
@@ -1679,10 +1686,11 @@ TEST_CASE_METHOD(PrintStartCollectorHeaterFixture,
 }
 
 TEST_CASE_METHOD(PrintStartCollectorHeaterFixture,
-                 "Fallback completion: progress threshold no longer triggers COMPLETE",
+                 "Fallback completion: progress threshold does not trigger COMPLETE",
                  "[print][collector][fallback][completion]") {
-    // Progress-threshold heuristic has been removed — authoritative signals handle
-    // dismissal. These sections verify the heuristic no longer fires.
+    // Print progress is not a completion signal: authoritative signals handle
+    // dismissal. These sections verify a progress threshold alone never
+    // completes the pre-print.
 
     // Initialize temps to prevent proactive detection
     set_all_temps(0, 0, 0, 0);
@@ -2134,8 +2142,8 @@ TEST_CASE_METHOD(PrintStartCollectorHeaterFixture,
     // Force no predictions so FALLBACK_TIMEOUT (300s) applies directly
     PrintStartCollectorTestAccess::set_predicted_total(collector(), 0.0f);
 
-    // Both heaters within 5°C tolerance (not "heating") AND above 90% of target
-    set_all_temps(1050, 1050, 2610, 2650);
+    // Both heaters at their targets (within 2°C)
+    set_all_temps(1050, 1050, 2640, 2650);
     // Simulate 310s elapsed (past FALLBACK_TIMEOUT of 300s)
     PrintStartCollectorTestAccess::set_elapsed_seconds(collector(), 310);
 
@@ -2157,8 +2165,8 @@ TEST_CASE_METHOD(PrintStartCollectorHeaterFixture,
     // Set predicted total to 500s (adaptive timeout = 500 * 1.5 = 750s)
     PrintStartCollectorTestAccess::set_predicted_total(collector(), 500.0f);
 
-    // Both heaters within tolerance (not "heating") and above 90% of target
-    set_all_temps(1050, 1050, 2610, 2650);
+    // Both heaters at their targets
+    set_all_temps(1050, 1050, 2650, 2650);
 
     SECTION("Does not fire before adaptive timeout") {
         // 400s elapsed — past FALLBACK_TIMEOUT but before adaptive (750s)
@@ -2187,10 +2195,9 @@ TEST_CASE_METHOD(PrintStartCollectorHeaterFixture,
     reset_collector_to_idle();
     collector().enable_fallbacks();
 
-    // Set predicted total to 400s. The absolute ceiling is
-    // max(400*2.5, ABSOLUTE_MAX_TIMEOUT) and ABSOLUTE_MAX_TIMEOUT is now 1800s,
-    // raised because the old 900s cut off legitimate long pre-prints (the K2
-    // Plus runs ~1140s: heat, ~390s mesh, purge).
+    // Predicted total 400s: the ceiling is max(400*2.5, 1800s), above the
+    // longest legitimate pre-print (the K2 Plus runs ~1140s: heat, ~390s mesh,
+    // purge).
     PrintStartCollectorTestAccess::set_predicted_total(collector(), 400.0f);
 
     // Nozzle target still 0 — temps_near will be false
@@ -2236,9 +2243,8 @@ TEST_CASE_METHOD(PrintStartCollectorHeaterFixture, "Absolute max timeout fires w
     }
 
     SECTION("ABSOLUTE_MAX_TIMEOUT fires as hard ceiling") {
-        // Ungated backstop: fires on elapsed time alone, without needing the
-        // printer to have gone quiet, so a firmware that chatters forever still
-        // leaves Preparing.
+        // Past the 1800s ceiling with nothing said for as long, whatever the
+        // temperatures read.
         PrintStartCollectorTestAccess::set_elapsed_seconds(collector(), 1850);
         collector().check_fallback_completion();
         drain_async_updates();
@@ -2269,7 +2275,7 @@ TEST_CASE_METHOD(PrintStartCollectorHeaterFixture,
 }
 
 TEST_CASE_METHOD(PrintStartCollectorHeaterFixture,
-                 "Nozzle within tolerance and above 90% satisfies temps_near",
+                 "Nozzle within 2C of its target counts as at target",
                  "[print][collector][timeout]") {
     collector().start();
     drain_async_updates();
@@ -2279,15 +2285,309 @@ TEST_CASE_METHOD(PrintStartCollectorHeaterFixture,
     // Force no predictions so FALLBACK_TIMEOUT (300s) applies directly
     PrintStartCollectorTestAccess::set_predicted_total(collector(), 0.0f);
 
-    // Nozzle at 261°C with target 265°C: within 5°C tolerance (not "heating")
-    // and above 90% of target (238.5°C). This satisfies temps_near.
-    set_all_temps(1050, 1050, 2610, 2650);
+    // Nozzle at 264°C with target 265°C: inside the 2°C at-target band.
+    set_all_temps(1050, 1050, 2640, 2650);
     PrintStartCollectorTestAccess::set_elapsed_seconds(collector(), 400);
 
     collector().check_fallback_completion();
     drain_async_updates();
     drain_async_updates();
 
+    REQUIRE(get_current_phase() == PrintStartPhase::COMPLETE);
+}
+
+/**
+ * A heater short of its target is still heating, however far past the
+ * prediction the clock has run, so the timeout waits for the target itself
+ * rather than a fraction of it. Numbers are a Centauri Carbon cold start
+ * predicted at 180s: 390s in, its 105C bed reads 94.6 with most of a ~620s
+ * pre-print still to run.
+ */
+TEST_CASE_METHOD(PrintStartCollectorHeaterFixture,
+                 "Timeout fallback waits for the heaters to reach their targets",
+                 "[print][collector][timeout]") {
+    const auto tick_at = [this](int bed_decideg, int elapsed_s) {
+        set_all_temps(bed_decideg, 1050, 1400, 1400);
+        collector().start();
+        drain_async_updates();
+        reset_collector_to_idle();
+        collector().enable_fallbacks();
+        PrintStartCollectorTestAccess::set_predicted_total(collector(), 180.0f);
+        PrintStartCollectorTestAccess::set_elapsed_seconds(collector(), elapsed_s);
+        // A heating bed takes the proactive branch on the first tick, which
+        // returns before the completion checks; the second tick reaches them.
+        tick_fallbacks();
+        tick_fallbacks();
+    };
+
+    SECTION("A bed at 94.6 of 105 is still heating") {
+        tick_at(946, 390);
+        REQUIRE(get_current_phase() == PrintStartPhase::HEATING_BED);
+    }
+
+    SECTION("A bed within 2C of its target completes") {
+        tick_at(1040, 390);
+        REQUIRE(get_current_phase() == PrintStartPhase::COMPLETE);
+    }
+
+    SECTION("A bed that never settles within 2C is not at target") {
+        // 100 of 105 is inside the 5C band the proactive detector calls
+        // heating, and outside the 2C band that counts as at target.
+        tick_at(1000, 1000);
+        REQUIRE(get_current_phase() != PrintStartPhase::COMPLETE);
+    }
+
+    SECTION("A bed that never settles within 2C completes at the ceiling") {
+        tick_at(1000, 1850);
+        REQUIRE(get_current_phase() == PrintStartPhase::COMPLETE);
+    }
+}
+
+TEST_CASE_METHOD(PrintStartCollectorHeaterFixture,
+                 "A heater still closing on its target counts as activity",
+                 "[print][collector][timeout]") {
+    // M190 waits out the last degree or two with nothing on the console, and
+    // that stretch is already inside the at-target band.
+    helix::sim::SimulatedClock::ManualScope clock(helix::sim::SimSpeed::of(1.0));
+    set_all_temps(1020, 1050, 1400, 1400);
+    collector().start();
+    drain_async_updates();
+    reset_collector_to_idle();
+    collector().enable_fallbacks();
+    PrintStartCollectorTestAccess::set_predicted_total(collector(), 0.0f);
+    PrintStartCollectorTestAccess::set_elapsed_seconds(collector(), 400);
+
+    tick_fallbacks(); // 102.0: short of the band
+    REQUIRE(get_current_phase() != PrintStartPhase::COMPLETE);
+
+    set_all_temps(1035, 1050, 1400, 1400); // 103.5: in the band and still rising
+    tick_fallbacks();
+    REQUIRE(get_current_phase() != PrintStartPhase::COMPLETE);
+
+    // Once it stops rising and the printer stays quiet, the timeout is back.
+    clock.advance(std::chrono::seconds(91));
+    tick_fallbacks();
+    REQUIRE(get_current_phase() == PrintStartPhase::COMPLETE);
+}
+
+TEST_CASE_METHOD(PrintStartCollectorHeaterFixture,
+                 "A heater cycling under its target is not climbing",
+                 "[print][collector][timeout]") {
+    // A bed held near its target swings a degree or so for as long as it is
+    // held. Only a reading above the highest yet under the current target is
+    // progress toward it.
+    helix::sim::SimulatedClock::ManualScope clock(helix::sim::SimSpeed::of(1.0));
+    set_all_temps(950, 1050, 2650, 2650);
+    collector().start();
+    drain_async_updates();
+    reset_collector_to_idle();
+    collector().enable_fallbacks();
+    PrintStartCollectorTestAccess::set_predicted_total(collector(), 0.0f);
+    PrintStartCollectorTestAccess::set_elapsed_seconds(collector(), 400);
+
+    const auto tick_after = [&](int seconds, int bed, int bed_target) {
+        clock.advance(std::chrono::seconds(seconds));
+        set_all_temps(bed, bed_target, 2650, 2650);
+        tick_fallbacks();
+    };
+
+    // The approach, each reading a new high: 95.0, 99.0, 103.0 of 105.
+    tick_after(0, 950, 1050);
+    tick_after(30, 990, 1050);
+    tick_after(30, 1030, 1050);
+    REQUIRE(get_current_phase() != PrintStartPhase::COMPLETE);
+
+    SECTION("a swing back up to the highest reading is not a climb") {
+        tick_after(60, 1020, 1050);
+        REQUIRE(get_current_phase() != PrintStartPhase::COMPLETE);
+        tick_after(60, 1030, 1050);
+        REQUIRE(get_current_phase() == PrintStartPhase::COMPLETE);
+    }
+
+    SECTION("a new high under the target is still a climb") {
+        tick_after(60, 1020, 1050);
+        tick_after(60, 1040, 1050);
+        REQUIRE(get_current_phase() != PrintStartPhase::COMPLETE);
+        tick_after(91, 1040, 1050);
+        REQUIRE(get_current_phase() == PrintStartPhase::COMPLETE);
+    }
+
+    SECTION("a new target starts its own highest reading") {
+        // Held at 104.0, set to cool toward 60, then set back to 105.
+        tick_after(40, 1040, 1050);
+        tick_after(40, 1000, 600);
+        tick_after(40, 1000, 1050);
+        tick_after(40, 1010, 1050);
+        tick_after(40, 1030, 1050);
+        REQUIRE(get_current_phase() != PrintStartPhase::COMPLETE);
+    }
+}
+
+TEST_CASE_METHOD(PrintStartCollectorHeaterFixture,
+                 "The ceiling ends a pre-print whose heater never settles",
+                 "[print][collector][timeout][ceiling]") {
+    // A heater that keeps climbing without reaching its target holds every
+    // other timeout open. The ceiling ignores it.
+    helix::sim::SimulatedClock::ManualScope clock(helix::sim::SimSpeed::of(1.0));
+    set_all_temps(1000, 1050, 1400, 1400);
+    collector().start();
+    drain_async_updates();
+    reset_collector_to_idle();
+    collector().enable_fallbacks();
+
+    SECTION("with a prediction") {
+        PrintStartCollectorTestAccess::set_predicted_total(collector(), 180.0f);
+    }
+    SECTION("without a prediction") {
+        PrintStartCollectorTestAccess::set_predicted_total(collector(), 0.0f);
+    }
+
+    PrintStartCollectorTestAccess::set_elapsed_seconds(collector(), 1790);
+    tick_fallbacks();
+    REQUIRE(get_current_phase() != PrintStartPhase::COMPLETE);
+
+    // Past the 1800s ceiling, a degree warmer than the last reading.
+    clock.advance(std::chrono::seconds(20));
+    set_all_temps(1010, 1050, 1400, 1400);
+    tick_fallbacks();
+    REQUIRE(get_current_phase() == PrintStartPhase::COMPLETE);
+}
+
+TEST_CASE_METHOD(PrintStartCollectorHeaterFixture,
+                 "The ceiling waits for a narrating printer to go quiet",
+                 "[print][collector][timeout][ceiling]") {
+    // A long chamber soak says so more often than every 90s. The bed never
+    // comes within 2C of its target, so only the ceiling can end this
+    // pre-print, and a printer still narrating is not stuck.
+    helix::sim::SimulatedClock::ManualScope clock(helix::sim::SimSpeed::of(1.0));
+    set_all_temps(1000, 1050, 2650, 2650);
+    collector().start();
+    drain_async_updates();
+    reset_collector_to_idle();
+    collector().enable_fallbacks();
+
+    SECTION("with a prediction") {
+        PrintStartCollectorTestAccess::set_predicted_total(collector(), 180.0f);
+    }
+    SECTION("without a prediction") {
+        PrintStartCollectorTestAccess::set_predicted_total(collector(), 0.0f);
+    }
+    PrintStartCollectorTestAccess::set_elapsed_seconds(collector(), 1700);
+
+    const auto tick_after = [&](int seconds, const char* line) {
+        clock.advance(std::chrono::seconds(seconds));
+        if (line != nullptr) {
+            send_gcode_response(line);
+        }
+        tick_fallbacks();
+    };
+
+    for (int elapsed_s = 1760; elapsed_s <= 2060; elapsed_s += 60) {
+        CAPTURE(elapsed_s);
+        tick_after(60, "// waiting for chamber");
+        REQUIRE(get_current_phase() != PrintStartPhase::COMPLETE);
+    }
+
+    tick_after(60, nullptr);
+    REQUIRE(get_current_phase() != PrintStartPhase::COMPLETE);
+    tick_after(31, nullptr);
+    REQUIRE(get_current_phase() == PrintStartPhase::COMPLETE);
+}
+
+TEST_CASE_METHOD(PrintStartCollectorHeaterFixture,
+                 "A printer that never stops narrating ends at the backstop",
+                 "[print][collector][timeout][ceiling]") {
+    // At twice the 1800s ceiling the collector stops waiting for quiet too: a
+    // firmware that chatters forever still leaves Preparing.
+    helix::sim::SimulatedClock::ManualScope clock(helix::sim::SimSpeed::of(1.0));
+    set_all_temps(1000, 1050, 2650, 2650);
+    collector().start();
+    drain_async_updates();
+    reset_collector_to_idle();
+    collector().enable_fallbacks();
+    PrintStartCollectorTestAccess::set_predicted_total(collector(), 180.0f);
+    PrintStartCollectorTestAccess::set_elapsed_seconds(collector(), 3590);
+
+    send_gcode_response("// waiting for chamber");
+    tick_fallbacks();
+    REQUIRE(get_current_phase() != PrintStartPhase::COMPLETE);
+
+    clock.advance(std::chrono::seconds(20));
+    send_gcode_response("// waiting for chamber");
+    tick_fallbacks();
+    REQUIRE(get_current_phase() == PrintStartPhase::COMPLETE);
+}
+
+TEST_CASE_METHOD(PrintStartCollectorHeaterFixture, "The ceiling stretches for a long prediction",
+                 "[print][collector][timeout][ceiling]") {
+    // 2.5x a 1000s prediction is 2500s, so a quiet printer whose bed is still
+    // creeping up is not cut at 1800s.
+    helix::sim::SimulatedClock::ManualScope clock(helix::sim::SimSpeed::of(1.0));
+    set_all_temps(1000, 1050, 2650, 2650);
+    collector().start();
+    drain_async_updates();
+    reset_collector_to_idle();
+    collector().enable_fallbacks();
+    PrintStartCollectorTestAccess::set_predicted_total(collector(), 1000.0f);
+    PrintStartCollectorTestAccess::set_elapsed_seconds(collector(), 1840);
+    tick_fallbacks();
+
+    clock.advance(std::chrono::seconds(10));
+    set_all_temps(1010, 1050, 2650, 2650);
+    tick_fallbacks();
+    REQUIRE(get_current_phase() != PrintStartPhase::COMPLETE);
+
+    PrintStartCollectorTestAccess::set_elapsed_seconds(collector(), 2510);
+    tick_fallbacks();
+    REQUIRE(get_current_phase() == PrintStartPhase::COMPLETE);
+}
+
+TEST_CASE_METHOD(PrintStartCollectorHeaterFixture,
+                 "A status-signal rule is not a line the ceiling waits out",
+                 "[print][collector][timeout][ceiling]") {
+    // A rule infers from the same heater frames the collector already reads;
+    // the printer said nothing. Past the ceiling it does not hold Preparing
+    // open the way a matched line does.
+    set_all_temps(1000, 1050, 2650, 2650);
+    collector().start();
+    drain_async_updates();
+    reset_collector_to_idle();
+    collector().enable_fallbacks();
+    PrintStartCollectorTestAccess::set_predicted_total(collector(), 180.0f);
+    PrintStartCollectorTestAccess::set_elapsed_seconds(collector(), 1850);
+
+    // The generic profile's heating_bed rule: a target, and the bed more than 2C short.
+    client().dispatch_status_update({{"heater_bed", {{"temperature", 100.0}, {"target", 105.0}}}});
+    drain_async_updates();
+    REQUIRE(get_current_phase() == PrintStartPhase::HEATING_BED);
+
+    tick_fallbacks();
+    REQUIRE(get_current_phase() == PrintStartPhase::COMPLETE);
+}
+
+TEST_CASE_METHOD(PrintStartCollectorHeaterFixture,
+                 "A status-signal rule holds the timeout like a climbing heater",
+                 "[print][collector][timeout]") {
+    // The deadline timeouts wait for 90s past any sign of work, and a rule
+    // firing is one.
+    helix::sim::SimulatedClock::ManualScope clock(helix::sim::SimSpeed::of(1.0));
+    set_all_temps(1050, 1050, 2650, 2650);
+    collector().start();
+    drain_async_updates();
+    reset_collector_to_idle();
+    collector().enable_fallbacks();
+    PrintStartCollectorTestAccess::set_predicted_total(collector(), 0.0f);
+    PrintStartCollectorTestAccess::set_elapsed_seconds(collector(), 400);
+
+    client().dispatch_status_update({{"heater_bed", {{"temperature", 23.5}, {"target", 60.0}}}});
+    drain_async_updates();
+    REQUIRE(get_current_phase() == PrintStartPhase::HEATING_BED);
+
+    tick_fallbacks();
+    REQUIRE(get_current_phase() != PrintStartPhase::COMPLETE);
+
+    clock.advance(std::chrono::seconds(91));
+    tick_fallbacks();
     REQUIRE(get_current_phase() == PrintStartPhase::COMPLETE);
 }
 
@@ -2478,11 +2778,10 @@ TEST_CASE_METHOD(K2TagStreamFixture, "Stock Klipper purge-line text falls throug
 }
 
 // ============================================================================
-// QGL / bed-mesh conflation regression — Voron 2.4 PRINT_START runs
-// QUAD_GANTRY_LEVEL before BED_MESH_CALIBRATE. QGL probes 4 pads with
-// `samples: 3` (default) = 12 `probe at X,Y is z=Z` lines. The collector
-// previously entered BED_MESH on the 3rd probe line and counted QGL pads
-// against the bed_mesh probe total, throwing the "X/Y" count off.
+// QGL / bed-mesh conflation — Voron 2.4 PRINT_START runs QUAD_GANTRY_LEVEL
+// before BED_MESH_CALIBRATE. QGL probes 4 pads with `samples: 3` (default) =
+// 12 `probe at X,Y is z=Z` lines, which must neither enter BED_MESH nor count
+// against the bed_mesh probe total and throw the "X/Y" count off.
 // ============================================================================
 
 namespace {
@@ -2721,8 +3020,8 @@ TEST_CASE_METHOD(SnapmakerCollectorFixture,
     feed_gcode("// Success: Set action code PRINT_SWITCH_CHECKING");
     REQUIRE(get_current_phase() == PrintStartPhase::INITIALIZING);
 
-    // Bed and nozzle both well below target — pre-fix this would have driven
-    // the phase to HEATING_BED. It must NOT: the firmware phase stands.
+    // Bed and nozzle both well below target, which alone reads as HEATING_BED.
+    // The firmware phase stands.
     set_all_temps(/*bed*/ 200, 600, /*ext*/ 1000, 2000);
     collector().check_fallback_completion();
     drain_async_updates();
@@ -3107,7 +3406,7 @@ TEST_CASE_METHOD(K2PrintStartReplayFixture,
     settle();
     collector().enable_fallbacks();
 
-    // 12:18:50 — G28. The old profile matched nothing here.
+    // 12:18:50 — G28, announced only by a debug line.
     send_gcode_response("// [DEBUG]_handle_home_rails_begin");
     settle();
     REQUIRE(get_current_phase() == PrintStartPhase::HOMING);
@@ -3176,7 +3475,8 @@ TEST_CASE_METHOD(K2PrintStartReplayFixture,
     const std::string expected = "Bed Mesh (" + std::to_string(g.size()) + ")";
     REQUIRE(get_current_message() == expected);
 
-    // 12:34:39 — CFS purge. The old BOX_MATERIAL_FLUSH pattern never matched.
+    // 12:34:39 — CFS purge, announced by its flush temperature; no
+    // BOX_MATERIAL_FLUSH line appears.
     send_gcode_response("// flush_temp: 220");
     settle();
     REQUIRE(get_current_phase() == PrintStartPhase::PURGING);
@@ -3391,15 +3691,10 @@ TEST_CASE_METHOD(K1CPrintStartReplayFixture,
 // ============================================================================
 
 /**
- * The adaptive timeout used to fire on (elapsed > threshold && temps_near).
- * On any printer that meshes AFTER heating, temps_near goes true minutes before
- * the pre-print is actually over, so the timeout fired mid-sequence. That set
- * fallback_completion_, which makes save_prediction_entry() skip, so the
- * prediction never grew and the next run timed out at the same point — a
- * deadlock the collector could not learn its way out of.
- *
- * Observed on a K2 Plus 2026-08-16: predicted 185s, timeout at 278s, real
- * pre-print ~1140s. Every run in a 38-hour log ended on this timeout.
+ * On any printer that meshes after heating, the heaters sit at target minutes
+ * before the pre-print is over. A timeout there ends Preparing mid-sequence
+ * and saves no phase timings, so the prediction that set the deadline cannot
+ * grow: a K2 Plus predicted at 185s runs ~1140s.
  *
  * A printer still narrating its pre-print is not stuck, however long it takes.
  */
@@ -3412,7 +3707,7 @@ TEST_CASE_METHOD(PrintStartCollectorHeaterFixture,
     collector().enable_fallbacks();
 
     PrintStartCollectorTestAccess::set_predicted_total(collector(), 0.0f);
-    set_all_temps(1050, 1050, 2610, 2650); // temps_near = true
+    set_all_temps(1050, 1050, 2650, 2650); // both heaters at target
     PrintStartCollectorTestAccess::set_elapsed_seconds(collector(), 400);
     // ...but the printer spoke 10 seconds ago.
     PrintStartCollectorTestAccess::set_last_activity_seconds_ago(collector(), 10);
@@ -3432,7 +3727,7 @@ TEST_CASE_METHOD(PrintStartCollectorHeaterFixture, "Timeout fires once the print
     collector().enable_fallbacks();
 
     PrintStartCollectorTestAccess::set_predicted_total(collector(), 0.0f);
-    set_all_temps(1050, 1050, 2610, 2650);
+    set_all_temps(1050, 1050, 2650, 2650);
     PrintStartCollectorTestAccess::set_elapsed_seconds(collector(), 400);
     // Nothing heard for well over the quiet window — this one really is stuck.
     PrintStartCollectorTestAccess::set_last_activity_seconds_ago(collector(), 300);
@@ -3445,18 +3740,17 @@ TEST_CASE_METHOD(PrintStartCollectorHeaterFixture, "Timeout fires once the print
 }
 
 TEST_CASE_METHOD(PrintStartCollectorHeaterFixture,
-                 "A long but active pre-print survives past the old ceilings",
+                 "A long pre-print that is still talking outlives a short prediction",
                  "[print][collector][timeout][k2]") {
-    // The K2 Plus pre-print runs ~1140s: heat, then a ~390s mesh, then purge.
-    // Both the old adaptive ceiling (predicted * 2.5) and ABSOLUTE_MAX_TIMEOUT
-    // (900s) cut it off while the printer was still working.
+    // The K2 Plus pre-print runs ~1140s: heat, then a ~390s mesh, then purge,
+    // well past 2.5x a 185s prediction.
     collector().start();
     drain_async_updates();
     reset_collector_to_idle();
     collector().enable_fallbacks();
 
     PrintStartCollectorTestAccess::set_predicted_total(collector(), 185.0f);
-    set_all_temps(1050, 1050, 2610, 2650);
+    set_all_temps(1050, 1050, 2650, 2650);
     PrintStartCollectorTestAccess::set_elapsed_seconds(collector(), 1100);
     PrintStartCollectorTestAccess::set_last_activity_seconds_ago(collector(), 3);
 
@@ -3465,6 +3759,35 @@ TEST_CASE_METHOD(PrintStartCollectorHeaterFixture,
     drain_async_updates();
 
     REQUIRE(get_current_phase() != PrintStartPhase::COMPLETE);
+}
+
+TEST_CASE_METHOD(PrintStartCollectorHeaterFixture,
+                 "A heater sampled during the last print is not climbing on the next",
+                 "[print][collector][timeout]") {
+    // The last print's final fallback sample caught the bed mid-climb.
+    collector().start();
+    drain_async_updates();
+    reset_collector_to_idle();
+    collector().enable_fallbacks();
+    set_all_temps(500, 1050, 2650, 2650);
+    tick_fallbacks();
+    REQUIRE(get_current_phase() != PrintStartPhase::COMPLETE);
+    collector().stop();
+    drain_async_updates();
+
+    // The next print starts with the bed hot, just short of its target, and quiet.
+    collector().start();
+    drain_async_updates();
+    reset_collector_to_idle();
+    collector().enable_fallbacks();
+    PrintStartCollectorTestAccess::set_predicted_total(collector(), 0.0f);
+    set_all_temps(1040, 1050, 2650, 2650);
+    PrintStartCollectorTestAccess::set_elapsed_seconds(collector(), 400);
+
+    tick_fallbacks();
+
+    // Nothing climbed since this print began, so the quiet timeout ends it.
+    REQUIRE(get_current_phase() == PrintStartPhase::COMPLETE);
 }
 
 TEST_CASE_METHOD(PrintStartCollectorHeaterFixture, "A probe line counts as pre-print activity",
@@ -3477,7 +3800,7 @@ TEST_CASE_METHOD(PrintStartCollectorHeaterFixture, "A probe line counts as pre-p
     collector().enable_fallbacks();
 
     PrintStartCollectorTestAccess::set_predicted_total(collector(), 0.0f);
-    set_all_temps(1050, 1050, 2610, 2650);
+    set_all_temps(1050, 1050, 2650, 2650);
     PrintStartCollectorTestAccess::set_elapsed_seconds(collector(), 400);
 
     send_gcode_response("// probe at 100.000,100.000 is z=-0.031000");

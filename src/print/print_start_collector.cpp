@@ -78,6 +78,21 @@ const char* phase_signal_message(helix::PrintStartPhase phase) {
 }
 } // namespace
 
+bool PrintStartCollector::heater_climbed(int temp, int target, HeaterHighWater& mark) {
+    constexpr int CLIMB_DECIDEGREES = 10;
+    if (target <= 0 || mark.high < 0 || target != mark.target) {
+        mark.high = temp;
+        mark.target = target;
+        return false;
+    }
+    if (temp < mark.high + CLIMB_DECIDEGREES) {
+        return false;
+    }
+    mark.high = temp;
+    // At or past the target the heater has arrived; the at-target test owns it.
+    return temp < target;
+}
+
 // ============================================================================
 // STATIC PATTERN DEFINITIONS
 // ============================================================================
@@ -137,7 +152,8 @@ void PrintStartCollector::start() {
         std::lock_guard<std::mutex> lock(state_mutex_);
         // Record start time for timeout fallback
         printing_state_start_ = helix::sim::SimulatedClock::now();
-        last_activity_time_ = printing_state_start_;
+        last_signal_time_ = printing_state_start_;
+        last_inferred_activity_time_ = printing_state_start_;
         // Assume the narrower window until something says otherwise.
         window_ = helix::PreprintWindow::PrinterEdge;
         detected_phases_.clear();
@@ -193,6 +209,9 @@ void PrintStartCollector::start() {
                              std::memory_order_relaxed);
     last_remaining_ = 0;
     fallback_completion_ = false;
+    // A mark left from the last print would count its climb since then as activity.
+    bed_climb_ = {};
+    ext_climb_ = {};
 
     // Position inference starts with a clean slate and a fresh sample clock
     position_classifier_.reset();
@@ -377,7 +396,8 @@ void PrintStartCollector::reset() {
         print_start_detected_ = false;
         max_sequential_progress_ = 0;
         printing_state_start_ = helix::sim::SimulatedClock::now();
-        last_activity_time_ = printing_state_start_;
+        last_signal_time_ = printing_state_start_;
+        last_inferred_activity_time_ = printing_state_start_;
         phase_enter_times_.clear();
         mesh_probe_current_ = 0;
         mesh_probe_total_ = 0;
@@ -580,6 +600,34 @@ void PrintStartCollector::check_fallback_completion() {
     cached_bed_target_.store(helix::ui::temperature::deci_to_degrees(bed_target),
                              std::memory_order_relaxed);
 
+    // A heater still climbing toward its target is the printer working even
+    // when the console is silent: M190 and M109 print nothing a profile can
+    // match, and they spend their last degree or two inside the at-target band.
+    const bool bed_climbed = heater_climbed(bed_temp, bed_target, bed_climb_);
+    const bool ext_climbed = heater_climbed(ext_temp, ext_target, ext_climb_);
+    if (bed_climbed || ext_climbed) {
+        note_inferred_activity();
+    }
+
+    // The ceiling this pre-print is measured against: ABSOLUTE_MAX_TIMEOUT,
+    // stretched for a long prediction. The backstop, a multiple of it, runs
+    // before any branch below can return, so nothing the heaters or the
+    // console do holds Preparing open forever.
+    std::chrono::seconds ceiling = ABSOLUTE_MAX_TIMEOUT;
+    if (predicted_total > 0) {
+        ceiling = std::max(ceiling, std::chrono::seconds(static_cast<int>(
+                                        predicted_total * ABSOLUTE_TIMEOUT_MARGIN)));
+    }
+    const auto elapsed = helix::sim::SimulatedClock::now() - start_time;
+    const auto elapsed_sec = std::chrono::duration_cast<std::chrono::seconds>(elapsed).count();
+    if (elapsed > ceiling * BACKSTOP_CEILING_MULTIPLE) {
+        spdlog::warn("[PrintStartCollector] Fallback: backstop ({} sec, ceiling={}s)", elapsed_sec,
+                     ceiling.count());
+        fallback_completion_ = true;
+        update_phase(PrintStartPhase::COMPLETE, lv_tr("Starting Print..."));
+        return;
+    }
+
     // Recompute predicted weights when heater targets increase from 0.
     // This handles macros that heat bed first, then issue M109 later —
     // at start() time the nozzle target is 0, so HEATING_NOZZLE gets no weight.
@@ -752,7 +800,7 @@ void PrintStartCollector::check_fallback_completion() {
 
     // Suppress timeout while mesh probing is actively progressing.
     // During mesh, the nozzle target may be 0 (macro cleared it for cooldown),
-    // making temps_near unreliable. Active probing = we're making real progress.
+    // making the temperature check unreliable. Active probing = we're making real progress.
     {
         std::lock_guard<std::mutex> lock(state_mutex_);
         if (current_phase_ == PrintStartPhase::BED_MESH &&
@@ -764,85 +812,64 @@ void PrintStartCollector::check_fallback_completion() {
         }
     }
 
-    // Fallback 3: Adaptive timeout with temp awareness
+    // Fallback 3: timeouts.
     //
     // ext_target == 0 during macro execution means the nozzle heat command (M109)
     // hasn't been issued yet — NOT that no nozzle heating is needed. Bed-first
     // macros (common on AD5M with ABS) heat bed, then home + mesh, then heat
     // nozzle. Treating ext_target=0 as "nozzle satisfied" causes premature timeout.
-    bool nozzle_target_set = ext_target > 0;
-    bool nozzle_near = nozzle_target_set && ext_temp >= static_cast<int>(ext_target * 0.9);
-    bool bed_near = bed_target <= 0 || bed_temp >= static_cast<int>(bed_target * 0.9);
-    // temps_near requires nozzle target to be set AND near — unknown nozzle
-    // target (ext_target=0) means we can't confirm temps are ready
-    bool temps_near = nozzle_near && bed_near;
-
-    auto now = helix::sim::SimulatedClock::now();
-    auto elapsed = now - start_time;
-    auto elapsed_sec = std::chrono::duration_cast<std::chrono::seconds>(elapsed).count();
-
-    // A pre-print that is still narrating itself is not stuck, however long it
-    // runs. Every timeout below therefore requires the printer to have gone
-    // quiet as well as the clock to have run out; only ABSOLUTE_MAX_TIMEOUT
-    // fires unconditionally. Keying purely on elapsed time made the collector
-    // give up mid-sequence on any printer that meshes after heating, and
-    // because a timeout completion skips the prediction save, the too-small
-    // estimate that set the deadline could never grow.
-    helix::sim::SimulatedClock::duration quiet_for;
+    //
+    // Temps count only at target, the same 2C test that completes a heating
+    // phase: a bed at 90% of its target can be minutes short of it. An unknown
+    // nozzle target (ext_target=0) cannot be confirmed, so it never counts.
+    const bool nozzle_target_set = ext_target > 0;
+    bool temps_at_target;
     {
         std::lock_guard<std::mutex> lock(state_mutex_);
-        quiet_for = now - last_activity_time_;
+        temps_at_target = nozzle_target_set &&
+                          heating_target_reached_locked(PrintStartPhase::HEATING_NOZZLE) &&
+                          heating_target_reached_locked(PrintStartPhase::HEATING_BED);
+    }
+
+    // A pre-print that is still narrating itself is not stuck, however long it
+    // runs, and a timeout that ends it saves no phase timings, so a deadline
+    // set by a short prediction could not grow. Every timeout therefore waits
+    // for PREPRINT_QUIET_TIMEOUT without activity as well as for the clock. The
+    // ceiling ignores temperatures and inferred activity, since a heater that
+    // never settles must not hold Preparing open, but still waits that long
+    // without a matched line or probe line.
+    const auto now = helix::sim::SimulatedClock::now();
+    helix::sim::SimulatedClock::duration quiet_for;
+    helix::sim::SimulatedClock::duration signal_quiet_for;
+    {
+        std::lock_guard<std::mutex> lock(state_mutex_);
+        signal_quiet_for = now - last_signal_time_;
+        quiet_for = now - std::max(last_signal_time_, last_inferred_activity_time_);
     }
     const bool quiet = quiet_for >= PREPRINT_QUIET_TIMEOUT;
     const auto quiet_sec = std::chrono::duration_cast<std::chrono::seconds>(quiet_for).count();
 
-    // Determine effective timeout: use prediction data when available,
-    // FALLBACK_TIMEOUT only when we have no information at all
-    if (predicted_total > 0) {
-        // Adaptive timeout from prediction data (with margin for variance)
-        auto adaptive_timeout =
-            std::chrono::seconds(static_cast<int>(predicted_total * ADAPTIVE_TIMEOUT_MARGIN));
+    // A prediction sets the deadline; FALLBACK_TIMEOUT stands in without one.
+    const std::chrono::seconds deadline =
+        predicted_total > 0
+            ? std::chrono::seconds(static_cast<int>(predicted_total * ADAPTIVE_TIMEOUT_MARGIN))
+            : FALLBACK_TIMEOUT;
+    if (elapsed > deadline && temps_at_target && quiet) {
+        spdlog::info("[PrintStartCollector] Fallback: timeout ({} sec, predicted={:.0f}s, "
+                     "quiet={}s)",
+                     elapsed_sec, predicted_total, quiet_sec);
+        fallback_completion_ = true;
+        update_phase(PrintStartPhase::COMPLETE, lv_tr("Starting Print..."));
+        return;
+    }
 
-        if (elapsed > adaptive_timeout && temps_near && quiet) {
-            spdlog::info("[PrintStartCollector] Fallback: adaptive timeout ({} sec, "
-                         "predicted={:.0f}s, quiet={}s)",
-                         elapsed_sec, predicted_total, quiet_sec);
-            fallback_completion_ = true;
-            update_phase(PrintStartPhase::COMPLETE, lv_tr("Starting Print..."));
-            return;
-        }
-
-        // Absolute ceiling based on predictions (something is seriously wrong)
-        auto absolute_timeout =
-            std::chrono::seconds(static_cast<int>(predicted_total * ABSOLUTE_TIMEOUT_MARGIN));
-        absolute_timeout = std::max(absolute_timeout, ABSOLUTE_MAX_TIMEOUT);
-        if (elapsed > absolute_timeout && quiet) {
-            spdlog::warn("[PrintStartCollector] Fallback: absolute timeout ({} sec, "
-                         "predicted={:.0f}s)",
-                         elapsed_sec, predicted_total);
-            fallback_completion_ = true;
-            update_phase(PrintStartPhase::COMPLETE, lv_tr("Starting Print..."));
-            return;
-        }
-    } else {
-        // No prediction data — FALLBACK_TIMEOUT is the last resort
-        if (elapsed > FALLBACK_TIMEOUT && temps_near && quiet) {
-            spdlog::info("[PrintStartCollector] Fallback: timeout ({} sec, no predictions)",
-                         elapsed_sec);
-            fallback_completion_ = true;
-            update_phase(PrintStartPhase::COMPLETE, lv_tr("Starting Print..."));
-            return;
-        }
-
-        // Hard ceiling when we have no predictions AND nozzle target unknown
-        if (elapsed > ABSOLUTE_MAX_TIMEOUT) {
-            spdlog::warn("[PrintStartCollector] Fallback: absolute timeout ({} sec, "
-                         "no predictions, nozzle_target_set={})",
-                         elapsed_sec, nozzle_target_set);
-            fallback_completion_ = true;
-            update_phase(PrintStartPhase::COMPLETE, lv_tr("Starting Print..."));
-            return;
-        }
+    if (elapsed > ceiling && signal_quiet_for >= PREPRINT_QUIET_TIMEOUT) {
+        spdlog::warn("[PrintStartCollector] Fallback: ceiling ({} sec, ceiling={}s, "
+                     "nozzle_target_set={})",
+                     elapsed_sec, ceiling.count(), nozzle_target_set);
+        fallback_completion_ = true;
+        update_phase(PrintStartPhase::COMPLETE, lv_tr("Starting Print..."));
+        return;
     }
 }
 
@@ -951,7 +978,7 @@ void PrintStartCollector::on_gcode_response(const json& msg) {
     // matches no profile pattern, so without this the quiet gate would expire
     // mid-sweep on exactly the printers that need it most.
     if (helix::is_probe_result_line(line) || helix::parse_probe_progress(line)) {
-        note_activity();
+        note_signal();
     }
 
     // Check for bed mesh probe progress (sub-phase tracking within BED_MESH).
@@ -1158,9 +1185,14 @@ void PrintStartCollector::on_gcode_response(const json& msg) {
     check_phase_patterns(line);
 }
 
-void PrintStartCollector::note_activity() {
+void PrintStartCollector::note_signal() {
     std::lock_guard<std::mutex> lock(state_mutex_);
-    last_activity_time_ = helix::sim::SimulatedClock::now();
+    last_signal_time_ = helix::sim::SimulatedClock::now();
+}
+
+void PrintStartCollector::note_inferred_activity() {
+    std::lock_guard<std::mutex> lock(state_mutex_);
+    last_inferred_activity_time_ = helix::sim::SimulatedClock::now();
 }
 
 void PrintStartCollector::check_phase_patterns(const std::string& line) {
@@ -1178,8 +1210,10 @@ void PrintStartCollector::apply_profile_match(const PrintStartProfile::MatchResu
                                               bool marks_real_signal) {
     if (marks_real_signal) {
         real_signal_seen_.store(true, std::memory_order_relaxed);
+        note_signal();
+    } else {
+        note_inferred_activity();
     }
-    note_activity();
     // match.message arrives already translated: the profile matchers
     // resolve the template through the loaded pack before substituting
     // $1 capture groups.

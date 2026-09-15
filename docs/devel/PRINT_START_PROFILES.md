@@ -475,13 +475,13 @@ For printers that don't emit any G-code layer markers (like Forge-X), the system
 |----------|-----------|------|
 | Layer edge | `print_stats.info.current_layer` 0 -> 1 (or the counter advancing) while >= 1 | Authoritative when the printer reports layers; the gate rejects a stale value carried over from the previous print |
 | First extrusion | `print_stats.print_duration > 0` | Printers that never report a layer field |
-| Adaptive timeout + temps | Elapsed past the predicted total (x1.5 margin) AND temps >= 90% of target AND quiet for 90s | Predictions available |
-| Predicted ceiling | Elapsed past `max(predicted x2.5, 1800s)` AND quiet for 90s, no temp gate | Predictions available |
-| Flat timeout + temps | Elapsed > 300s, same temp and quiet gates | No prediction data |
-| Absolute ceiling | 1800s regardless of chatter or temperature | No prediction data - stuck detection, the one timeout with no quiet requirement |
+| Adaptive timeout + temps | Elapsed past the predicted total (x1.5 margin) AND both heaters at target (within 2°C) AND 90s without pre-print activity | Predictions available |
+| Flat timeout + temps | Elapsed > 300s, same temp and activity gates | No prediction data |
+| Ceiling | Elapsed past `max(predicted x2.5, 1800s)` AND 90s without a matched line or probe line, no temp gate | Always - stuck detection for a heater that never settles |
+| Backstop | Twice the ceiling, regardless of chatter or temperature | Always - the one timeout with no quiet requirement |
 | Macro variables | `_START_PRINT.print_started`, `START_PRINT.preparation_done`, `_HELIX_STATE.print_started` | Subscribed via Moonraker |
 
-Timeouts are deliberately reluctant: active mesh probing suppresses them, and a pre-print that is still narrating itself is never timed out on the clock alone (only the absolute ceiling ignores that).
+Timeouts are deliberately reluctant: active mesh probing suppresses every one but the backstop, and a pre-print that is still narrating itself is never timed out on the clock alone (only the backstop ignores that). Activity for the two deadline timeouts is a matched line, a probe line, a `status_signals` rule firing, or a heater reading a degree above its highest yet under its current target; a heater swinging back up to an earlier reading is not a climb. The ceiling counts only matched lines and probe lines: a rule or a heater reads the same frames a stuck heater produces, so neither holds it open.
 
 ---
 
