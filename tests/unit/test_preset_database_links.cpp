@@ -168,3 +168,36 @@ TEST_CASE("each preset names at most one printer_database.json default",
         CHECK(names.size() == 1);
     }
 }
+
+// A preset shared by only one database entry has nothing to disambiguate: the
+// no-evidence answer can only ever be that entry. Once a second entry joins the
+// family, get_name_for_preset()'s no-evidence answer floats with array order
+// unless one entry is marked. Named ids here (rather than "size() == 1" as
+// above) so removing a marker fails this test even when the array happens to
+// already list the base model first.
+TEST_CASE("every preset family with more than one database entry names a default",
+          "[printer_detector][presets][assets]") {
+    json db = load_json(DB_PATH);
+    std::map<std::string, std::vector<std::string>> ids_by_preset;
+    std::map<std::string, int> defaults_by_preset;
+    for (const auto& printer : db["printers"]) {
+        std::string preset = printer.value("preset", "");
+        if (preset.empty()) {
+            continue;
+        }
+        ids_by_preset[preset].push_back(printer.value("id", ""));
+        if (printer.value("preset_default", false)) {
+            ++defaults_by_preset[preset];
+        }
+    }
+    for (const auto& [preset, ids] : ids_by_preset) {
+        if (ids.size() < 2) {
+            continue;
+        }
+        CAPTURE(preset, ids);
+        INFO("preset '" << preset << "' has " << ids.size()
+                        << " database entries and no preset_default marker (or more than "
+                           "one); its no-evidence default floats with array order");
+        CHECK(defaults_by_preset[preset] == 1);
+    }
+}

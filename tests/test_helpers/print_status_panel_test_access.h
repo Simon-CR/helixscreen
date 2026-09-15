@@ -32,6 +32,28 @@
 // adding _for_testing() accessors to the production API.
 class PrintStatusPanelTestAccess {
   public:
+    /// Stand in the memory reading the close-time decision samples. Pass
+    /// helix::get_system_memory_info to put the real one back.
+    static void set_memory_info_source(helix::MemoryInfo (*source)()) {
+        PrintStatusPanel::memory_info_source_ = source;
+    }
+
+    /// Queue what the kept tree's job watch queues when the job lets go of the
+    /// machine. The release checks everything again when it lands.
+    static void queue_job_end_release() {
+        PrintStatusPanel::release_kept_tree_after_job();
+    }
+
+    /// True between on_activate() and the next on_deactivate().
+    static bool is_active(const PrintStatusPanel& panel) {
+        return panel.is_active_;
+    }
+
+    /// The G-code viewer the XML build found, or null once the tree is gone.
+    static lv_obj_t* gcode_viewer(const PrintStatusPanel& panel) {
+        return panel.gcode_viewer_;
+    }
+
     static void recompute_aux_composites(PrintStatusPanel& panel, int density, bool aux_present) {
         panel.recompute_aux_composites_for_measurement(density, aux_present);
     }
@@ -93,6 +115,13 @@ class PrintStatusPanelTestAccess {
     /// and the Snapmaker reprint preamble are both built from.
     static std::set<int> tools_used(const PrintStatusPanel& panel) {
         return panel.get_tools_used();
+    }
+
+    /// The runout-sensor-edge and AMS-slots-version observers' entry point, so a
+    /// test can drive it directly instead of threading a subject update through
+    /// FilamentSensorManager or AmsState.
+    static void recompute_scoped_runout(PrintStatusPanel& panel) {
+        panel.recompute_scoped_runout();
     }
 
     /// The deferred gcode load's entry point: fetch @p filename's gcode and

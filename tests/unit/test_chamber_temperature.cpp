@@ -270,13 +270,8 @@ TEST_CASE("Manual chamber sensor override", "[chamber][override]") {
 
     settings.set_chamber_sensor_assignment("temperature_sensor enclosure_bme");
 
-    std::string resolved_sensor = settings.get_chamber_sensor_assignment();
-    if (resolved_sensor == "auto") {
-        resolved_sensor = discovery.chamber_sensor_name();
-    } else if (resolved_sensor == "none") {
-        resolved_sensor = "";
-    }
-    temp_state.set_chamber_sensor_name(resolved_sensor);
+    temp_state.set_chamber_sensor_name(
+        helix::chamber::resolve_sensor(settings.get_chamber_sensor_assignment(), discovery));
 
     nlohmann::json status = {{"temperature_sensor enclosure_bme", {{"temperature", 33.7}}}};
     temp_state.update_from_status(status);
@@ -302,13 +297,8 @@ TEST_CASE("Chamber sensor 'none' disables detection", "[chamber][override]") {
 
     settings.set_chamber_sensor_assignment("none");
 
-    std::string resolved_sensor = settings.get_chamber_sensor_assignment();
-    if (resolved_sensor == "auto") {
-        resolved_sensor = discovery.chamber_sensor_name();
-    } else if (resolved_sensor == "none") {
-        resolved_sensor = "";
-    }
-    temp_state.set_chamber_sensor_name(resolved_sensor);
+    temp_state.set_chamber_sensor_name(
+        helix::chamber::resolve_sensor(settings.get_chamber_sensor_assignment(), discovery));
 
     nlohmann::json status = {{"temperature_sensor chamber", {{"temperature", 45.3}}}};
     temp_state.update_from_status(status);
@@ -475,12 +465,8 @@ TEST_CASE("Chamber assignment full round trip", "[chamber][integration]") {
     settings.set_chamber_heater_assignment("heater_generic custom_heater");
 
     // Resolve as PrinterState::set_hardware does
-    std::string sensor = settings.get_chamber_sensor_assignment();
-    if (sensor == "auto")
-        sensor = discovery.chamber_sensor_name();
-    else if (sensor == "none")
-        sensor = "";
-
+    const std::string sensor =
+        helix::chamber::resolve_sensor(settings.get_chamber_sensor_assignment(), discovery);
     const std::string heater =
         helix::chamber::resolve_heater(settings.get_chamber_heater_assignment(), discovery);
 

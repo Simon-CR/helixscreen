@@ -73,16 +73,20 @@ std::string parse_file_version(const std::string& content) {
  */
 std::vector<std::string> parse_macro_names(const std::string& content) {
     std::vector<std::string> names;
-    static const std::regex macro_pattern(R"(\[gcode_macro\s+(\w+)\])");
+    // Anchored to line start: a real Klipper section header always starts in
+    // column 0, so this does not also match one quoted inside a comment.
+    static const std::regex macro_pattern(R"(^\[gcode_macro\s+(\w+)\])");
 
-    auto it = std::sregex_iterator(content.begin(), content.end(), macro_pattern);
-    auto end = std::sregex_iterator();
-
-    for (; it != end; ++it) {
-        std::string name = (*it)[1].str();
-        // Skip internal state macros
-        if (name[0] != '_') {
-            names.push_back(name);
+    std::istringstream stream(content);
+    std::string line;
+    while (std::getline(stream, line)) {
+        std::smatch match;
+        if (std::regex_search(line, match, macro_pattern)) {
+            std::string name = match[1].str();
+            // Skip internal state macros
+            if (!name.empty() && name[0] != '_') {
+                names.push_back(name);
+            }
         }
     }
 

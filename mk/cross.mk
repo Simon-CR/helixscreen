@@ -1750,9 +1750,18 @@ define deploy-common
 	@if [ -d build/assets/images/printers/prerendered ]; then \
 		rsync $(DEPLOY_RSYNC_FLAGS) build/assets/images/printers/prerendered/ $(1):$(2)/assets/images/printers/prerendered/; \
 	fi
-	@# Fix ownership - rsync preserves macOS uid:gid which prevents writes on target
+	@# Fix ownership - rsync preserves macOS uid:gid which prevents writes on target.
+	@# A plain chown is a no-op once every file already belongs to the connecting
+	@# user - true for most of the fleet, where SSH lands as a non-root account
+	@# that can only chown what it already owns - so escalation only fires when
+	@# that fails: a root-connected target, or root-owned leftovers from an
+	@# earlier install. -n (non-interactive) means a device with no passwordless
+	@# sudo warns and lets the deploy continue instead of hanging here and
+	@# never reaching the restart step below.
 	@echo "$(DIM)Fixing file ownership...$(RESET)"
-	@ssh $(1) "if [ \$$(id -u) -ne 0 ]; then sudo chown -R \$$(id -u):\$$(id -g) $(2); else chown -R \$$(id -u):\$$(id -g) $(2)/config 2>/dev/null || true; fi"
+	@ssh $(1) "if [ \$$(id -u) -eq 0 ]; then chown -R \$$(id -u):\$$(id -g) $(2)/config 2>/dev/null; true; else chown -R \$$(id -u):\$$(id -g) $(2); fi" 2>/dev/null \
+		|| ssh $(1) "sudo -n chown -R \$$(id -u):\$$(id -g) $(2)" 2>/dev/null \
+		|| echo "$(YELLOW)⚠ Could not fix ownership of $(2) (sudo needs a password) - continuing$(RESET)"
 	$(call sync-device-features,$(1),$(2),$(3))
 	$(call deploy-platform-hooks,$(1),$(2),$(4))
 endef

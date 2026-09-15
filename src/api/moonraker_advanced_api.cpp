@@ -11,6 +11,7 @@
 #include "accel_sensor_manager.h"
 #include "app_globals.h"
 #include "bed_mesh_probe_parser.h"
+#include "gcode_unknown_command.h"
 #include "json_utils.h"
 #include "moonraker_api.h"
 #include "observer_factory.h"
@@ -1985,10 +1986,11 @@ class BedMeshProgressCollector : public std::enable_shared_from_this<BedMeshProg
     BedMeshProgressCollector(IMoonrakerClient& client, ProgressCallback on_progress,
                              MoonrakerAdvancedAPI::SuccessCallback on_complete,
                              MoonrakerAdvancedAPI::ErrorCallback on_error, int expected_probes = 0,
-                             int probe_samples = 1)
+                             int probe_samples = 1, bool unknown_command_fails = false)
         : core_(client, "bed_mesh_collector_"), on_progress_(std::move(on_progress)),
           on_complete_(std::move(on_complete)), on_error_(std::move(on_error)),
-          expected_probes_(expected_probes), point_counter_(probe_samples) {}
+          expected_probes_(expected_probes), unknown_command_fails_(unknown_command_fails),
+          point_counter_(probe_samples) {}
 
     void start() {
         auto self = shared_from_this();
@@ -2040,10 +2042,23 @@ class BedMeshProgressCollector : public std::enable_shared_from_this<BedMeshProg
             return;
         }
 
-        // Check for unknown command error
-        if (line.find("Unknown command") != std::string::npos &&
-            line.find("BED_MESH_CALIBRATE") != std::string::npos) {
-            complete_error("BED_MESH_CALIBRATE requires [bed_mesh] in printer.cfg");
+        // A command the firmware does not define. Klipper answers it with a console
+        // line rather than an error and carries on with the script, so this line is
+        // the only sign that a step of the calibration never ran.
+        if (auto missing = helix::parse_unknown_command(line)) {
+            const bool calibrate_missing = missing->rfind("BED_MESH_CALIBRATE", 0) == 0;
+            if (calibrate_missing || unknown_command_fails_) {
+                complete_error(
+                    calibrate_missing
+                        ? std::string("BED_MESH_CALIBRATE requires [bed_mesh] in printer.cfg")
+                        : "Unknown command: " + *missing);
+                return;
+            }
+            // A user's or a detected macro may call something optional; what the
+            // calibration stores decides whether it worked.
+            spdlog::warn("[BedMeshProgressCollector] Calibration called undefined '{}'; still "
+                         "waiting for it to finish",
+                         *missing);
             return;
         }
 
@@ -2140,6 +2155,8 @@ class BedMeshProgressCollector : public std::enable_shared_from_this<BedMeshProg
     int current_probe_ = 0;
     int total_probes_ = 0;
     int expected_probes_ = 0; // hint from configfile (0 = unknown)
+    // Every command the script calls is meant to exist (a shipped sequence).
+    bool unknown_command_fails_ = false;
     // Dedupes "probe at X,Y is z=Z" samples into mesh points. Seeded with the
     // configured sample count, which it uses only when a line's coordinates
     // cannot be parsed.
@@ -2171,14 +2188,13 @@ void MoonrakerAdvancedAPI::start_bed_mesh_calibrate(const BedMeshCommand& comman
                  expected_probes, probe_samples);
 
     // Create collector to track progress
-    auto collector = std::make_shared<BedMeshProgressCollector>(client_, std::move(on_progress),
-                                                                std::move(on_complete), on_error,
-                                                                expected_probes, probe_samples);
+    auto collector = std::make_shared<BedMeshProgressCollector>(
+        client_, std::move(on_progress), std::move(on_complete), on_error, expected_probes,
+        probe_samples, command.shipped);
 
     collector->start();
 
-    // No PROFILE= parameter — the user names the mesh after completion, and
-    // save_profile_with_name() writes it then.
+    // command.script already names the profile the finished mesh is stored in.
     uint32_t prep_timeout_ms = 0;
     const std::string script =
         command.self_prepares
@@ -2212,7 +2228,7 @@ void MoonrakerAdvancedAPI::calculate_screws_tilt(ScrewTiltCallback on_success,
     // make the slot a silent no-op. Falls back to the stock command when the slot
     // is empty, which is every printer that predates this setting.
     const StandardMacroInfo& slot = StandardMacros::instance().get(StandardMacroSlot::ScrewsTilt);
-    const ResolvedMacroScript resolved = resolve_macro_script(slot, /*profile=*/"");
+    const ResolvedMacroScript resolved = resolve_macro_script(slot, {});
     const std::string command = resolved.script.empty() ? "SCREWS_TILT_CALCULATE" : resolved.script;
     spdlog::info("[Moonraker API] Starting {}", command);
 

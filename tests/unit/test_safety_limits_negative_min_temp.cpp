@@ -264,16 +264,13 @@ TEST_CASE_METHOD(LVGLUITestFixture,
     SafetyTextHarness h(*this);
 
     // Push the reporter's numbers through the API the way discovery does, then
-    // hand the panel the ints application.cpp casts them to.
+    // hand the panel the adopted limits, as application.cpp does.
     SafetyLimits limits;
     limits.min_temperature_celsius = REPORTED_MIN_TEMP;
     limits.min_extrude_temp_celsius = REPORTED_MIN_TEMP;
     api()->set_safety_limits(limits);
 
-    const SafetyLimits& adopted = api()->get_safety_limits();
-    h.panel->set_limits(static_cast<int>(adopted.min_temperature_celsius),
-                        static_cast<int>(adopted.max_temperature_celsius),
-                        static_cast<int>(adopted.min_extrude_temp_celsius));
+    h.panel->set_limits(api()->get_safety_limits());
     process_lvgl(10);
 
     const std::string text = h.safety_text();

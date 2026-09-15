@@ -12,17 +12,34 @@
 
 namespace helix {
 
+struct MacroParamModalTestAccess; // test-only friend (tests/test_helpers/)
+
+/// What a parameter's |default(...) filter holds.
+enum class MacroDefaultKind {
+    Absent,     ///< No |default(...) filter
+    Literal,    ///< A number, a quoted string, or true/false/none: usable as the value itself
+    Expression, ///< Evaluated by Klipper when the macro runs (a variable lookup, arithmetic)
+};
+
 /// Parsed macro parameter with optional default value
 struct MacroParam {
-    std::string name;          ///< Parameter name (uppercase, e.g., "EXTRUDER_TEMP")
-    std::string default_value; ///< Default value from |default(VALUE), empty if none
-    bool is_variable = false;  ///< True for Klipper variable_* fields (SET_GCODE_VARIABLE)
+    std::string name; ///< Parameter name (uppercase, e.g., "EXTRUDER_TEMP")
+    /// Text inside |default(...): a literal with its quotes stripped, an expression
+    /// verbatim. Empty if none.
+    std::string default_value;
+    bool is_variable = false; ///< True for Klipper variable_* fields (SET_GCODE_VARIABLE)
+    MacroDefaultKind default_kind = MacroDefaultKind::Absent;
 };
 
 /// Parse macro parameters from a Klipper gcode_macro template.
 /// Detects params.NAME, params['NAME'], params["NAME"] references and
 /// extracts |default(VALUE) when present. Deduplicates by name.
 [[nodiscard]] std::vector<MacroParam> parse_macro_params(const std::string& gcode_template);
+
+/// The hint an empty field for @p param shows: its literal default, a translated
+/// "Printer default" when the macro computes its own, or the parameter name when
+/// it has no default.
+[[nodiscard]] std::string macro_param_placeholder(const MacroParam& param);
 
 /// Parse raw "KEY=VALUE KEY2=VALUE2" text into a parameter map.
 /// Keys are uppercased to match Klipper convention.
@@ -57,8 +74,11 @@ class MacroParamModal : public Modal {
     /// @param macro_name Display name for the subtitle
     /// @param params Detected parameters with defaults
     /// @param on_execute Called when user clicks Run with collected values
+    /// @param prefill Values typed into the fields of the parameters they name. They
+    ///        are sent on Run unless the user clears them.
     void show_for_macro(lv_obj_t* parent, const std::string& macro_name,
-                        const std::vector<MacroParam>& params, MacroExecuteCallback on_execute);
+                        const std::vector<MacroParam>& params, MacroExecuteCallback on_execute,
+                        const std::map<std::string, std::string>& prefill = {});
 
     /// Show the modal for a macro with unknown parameters (raw text input).
     /// @param parent Parent object (usually lv_screen_active())
@@ -77,10 +97,14 @@ class MacroParamModal : public Modal {
     void on_cancel() override;
 
   private:
+    friend struct MacroParamModalTestAccess;
+
     std::string macro_name_;
     std::vector<MacroParam> params_;
+    std::map<std::string, std::string> prefill_; ///< Initial field text, by parameter name
     MacroExecuteCallback on_execute_;
-    std::vector<lv_obj_t*> textareas_; ///< One textarea per param, in order
+    /// textareas_[i] is params_[i]'s field, nullptr when it could not be built.
+    std::vector<lv_obj_t*> textareas_;
     bool raw_mode_ = false;            ///< True when showing raw text input (UNKNOWN macros)
     lv_obj_t* raw_textarea_ = nullptr; ///< Textarea for raw param input
 

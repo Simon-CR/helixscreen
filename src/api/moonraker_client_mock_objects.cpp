@@ -344,6 +344,11 @@ void register_object_handlers(std::unordered_map<std::string, MethodHandler>& re
                 }
             }
 
+            // bed_mesh (stored profiles, read around a mesh calibration)
+            if (objects.contains("bed_mesh")) {
+                status_obj["bed_mesh"] = self->bed_mesh_status();
+            }
+
             // toolhead (for get_machine_limits)
             if (objects.contains("toolhead")) {
                 status_obj["toolhead"] = {{"max_velocity", 500.0},

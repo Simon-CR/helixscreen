@@ -32,6 +32,27 @@ TEST_CASE("PreprintPredictor: defaults without history", "[print][predictor]") {
     REQUIRE(predictor.predicted_total() > 0);
 }
 
+TEST_CASE("PreprintPredictor: homing estimate never drops below the floor", "[print][predictor]") {
+    PreprintPredictor predictor;
+    const int homing = static_cast<int>(PrintStartPhase::HOMING);
+
+    SECTION("history that barely saw homing") {
+        predictor.load_entries({{120, 1700000000, {{homing, 3}}}});
+        REQUIRE(predictor.predicted_homing_seconds() == PreprintPredictor::MIN_HOMING_SECONDS);
+    }
+
+    SECTION("history with no homing phase at all") {
+        predictor.load_entries(
+            {{120, 1700000000, {{static_cast<int>(PrintStartPhase::BED_MESH), 60}}}});
+        REQUIRE(predictor.predicted_homing_seconds() == PreprintPredictor::MIN_HOMING_SECONDS);
+    }
+
+    SECTION("history with a real homing time") {
+        predictor.load_entries({{120, 1700000000, {{homing, 45}}}});
+        REQUIRE(predictor.predicted_homing_seconds() == 45);
+    }
+}
+
 TEST_CASE("PreprintPredictor: default_phase_durations returns expected phases",
           "[print][predictor]") {
     auto defaults = PreprintPredictor::default_phase_durations();

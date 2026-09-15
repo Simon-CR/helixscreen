@@ -96,6 +96,8 @@ import sys
 from pathlib import Path
 from typing import Iterable
 
+from staged_content import staged_files
+
 HANDLER_RE = re.compile(
     r'(?:^|\s)(?:[\w:<>~]+\s+)+'
     r'(?P<qual>[\w:]*::)?'
@@ -154,6 +156,13 @@ def scan_file(path: Path) -> list[str]:
         text = path.read_text()
     except Exception:
         return []
+    return scan_source(str(path), text)
+
+
+def scan_source(path: str, text: str) -> list[str]:
+    """scan_file's body, operating on already-sourced text - disk, or the
+    STAGED blob a --staged-only caller reads instead. `path` is only carried
+    into the report."""
     violations: list[str] = []
     bodies = find_handler_bodies(text)
     if not bodies:
@@ -409,6 +418,12 @@ def scan_file_const_subscript(path: Path) -> list[tuple[str, str, int, str]]:
         src = path.read_text(errors='replace')
     except Exception:
         return []
+    return scan_source_const_subscript(path.as_posix(), src)
+
+
+def scan_source_const_subscript(rel: str, src: str) -> list[tuple[str, str, int, str]]:
+    """scan_file_const_subscript's body, operating on already-sourced text -
+    disk, or the STAGED blob a --staged-only caller reads instead."""
     # Cheap bail-out: every finding needs a string-literal subscript somewhere.
     # Do NOT also require the token `const` — the canonical shape acquires its
     # constness from a non-mutable lambda's by-value capture, which spells no
@@ -440,7 +455,6 @@ def scan_file_const_subscript(path: Path) -> list[tuple[str, str, int, str]]:
         proofs.setdefault(tuple([root] + keys + [m.group('key')]), []).append(m.start())
 
     findings: list[tuple[str, str, int, str]] = []
-    rel = path.as_posix()
 
     def line_of(off: int) -> int:
         return src.count('\n', 0, off) + 1
@@ -559,36 +573,42 @@ def report_const_subscript(findings: list[tuple[str, str, int, str]],
     return 0
 
 
-def collect_files(args: argparse.Namespace, suffixes=('.cpp',)) -> Iterable[Path]:
+def collect_files(args: argparse.Namespace, suffixes=('.cpp',)) -> Iterable[tuple[str, str]]:
+    """Yield (path, text) for every file to scan, content already sourced.
+
+    --staged-only reads each staged file's INDEX content - what the commit
+    will contain, not whatever the working tree holds right now.
+    """
     if args.staged_only:
-        out = subprocess.run(
-            ['git', 'diff', '--cached', '--name-only', '--diff-filter=ACM'],
-            capture_output=True, text=True, check=False,
-        )
-        for line in out.stdout.splitlines():
-            if line.endswith(suffixes) and Path(line).exists():
-                yield Path(line)
+        yield from staged_files(suffixes=suffixes)
         return
     if args.files:
         for f in args.files:
             p = Path(f)
             if p.suffix in suffixes and p.exists():
-                yield p
+                try:
+                    yield (str(p), p.read_text())
+                except OSError:
+                    continue
         return
     roots = ['src'] if suffixes == ('.cpp',) else ['src', 'include']
     seen: set[Path] = set()
     for root in roots:
         for suf in suffixes:
             for p in Path(root).rglob('*' + suf):
-                if p not in seen:
-                    seen.add(p)
-                    yield p
+                if p in seen:
+                    continue
+                seen.add(p)
+                try:
+                    yield (str(p), p.read_text())
+                except OSError:
+                    continue
 
 
 def run_rule1(args: argparse.Namespace) -> int:
     all_violations: list[str] = []
-    for path in collect_files(args):
-        all_violations.extend(scan_file(path))
+    for path, text in collect_files(args):
+        all_violations.extend(scan_source(path, text))
 
     count = len(all_violations)
 
@@ -635,8 +655,8 @@ def run_rule1(args: argparse.Namespace) -> int:
 
 def run_rule2(args: argparse.Namespace) -> int:
     findings: list[tuple[str, str, int, str]] = []
-    for path in collect_files(args, suffixes=('.cpp', '.h')):
-        findings.extend(scan_file_const_subscript(path))
+    for path, text in collect_files(args, suffixes=('.cpp', '.h')):
+        findings.extend(scan_source_const_subscript(path, text))
     if args.const_subscript_list:
         for key, expr, ln, text in sorted(findings):
             print(f"{key.split('::', 1)[0]}:{ln}: {expr}")

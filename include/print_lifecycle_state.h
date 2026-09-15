@@ -37,6 +37,13 @@ enum class PrintState {
  */
 PrintState derive_print_state(helix::PrintJobState job_state, int start_phase);
 
+namespace helix {
+
+/// The state's name as log lines spell it ("Printing", "Complete", ...).
+const char* print_state_name(PrintState state);
+
+} // namespace helix
+
 /**
  * @brief Does a job own the machine right now?
  *

@@ -531,7 +531,7 @@ class FilamentSensorManager : public helix::sensors::ISensorManager {
      * @brief Enable synchronous mode for testing
      *
      * When enabled, update_from_status() calls update_subjects() synchronously
-     * instead of using lv_async_call(). This avoids LVGL timer dependencies in unit tests.
+     * instead of using queue_update(). This avoids LVGL timer dependencies in unit tests.
      *
      * @param enabled true to enable synchronous updates
      */
@@ -628,7 +628,7 @@ class FilamentSensorManager : public helix::sensors::ISensorManager {
     StateChangeCallback state_change_callback_;
 
     // Test mode: when true, update_from_status() calls update_subjects() synchronously
-    // instead of using lv_async_call(). This avoids LVGL timer dependencies in unit tests.
+    // instead of using queue_update(). This avoids LVGL timer dependencies in unit tests.
     bool sync_mode_ = false;
 
     // Tracks whether we've received the first status update from Moonraker.

@@ -106,25 +106,29 @@
       "reason": "ZMOD probes with a load cell whose zero drifts when bed screws or thermal preload change. ZMOD tares on its print path (_PREPARE_PRINT, _START_PRINT) but not on any calibration entry point, so an untared probe reports 'Probe triggered prior to movement'. BED_LEVEL_SCREWS_TUNE tares itself, hence skip_if_macro_in."
     },
     {
-      "id": "cc1_load_cell_save_tare",
+      "id": "cosmos_load_cell_tare",
       "when": [
         {
           "type": "object_exists",
           "field": "printer_objects",
           "pattern": "load_cell_probe"
+        },
+        {
+          "type": "macro_match",
+          "field": "macros",
+          "pattern": "_COSMOS_SETTINGS"
         }
       ],
       "operations": [
-        "screws_tilt",
         "probe_accuracy",
         "z_offset_calibrate"
       ],
       "gcode": [
-        "LOAD_CELL_SAVE_TARE"
+        "LOAD_CELL_TARE"
       ],
       "label": "Zeroing load cell",
       "timeout_s": 60,
-      "reason": "The Centauri Carbon's load_cell module publishes LOAD_CELL_SAVE_TARE as a mux command, never a gcode_macro, so macro_match cannot see it. The load_cell_probe object keys the rule instead. No skip_if_macro_in: COSMOS's Bed_Level_Screws_Tune clears the mesh and homes without taring, so it must not suppress the tare."
+      "reason": "COSMOS probes with a load cell whose zero drifts between calibrations. Its load_cell module registers LOAD_CELL_TARE as a command, never a gcode_macro, so macro_match cannot see it: the load_cell_probe object keys the rule, and COSMOS's _COSMOS_SETTINGS macro keeps it off other firmware whose load cell may not define that command. COSMOS's SCREWS_TILT_CALCULATE and BED_MESH_CALIBRATE tare the load cell themselves, so only probe accuracy and Z-offset calibration get it."
     }
   ],
   "printers": [
@@ -1064,6 +1068,8 @@
       "image": "creality-k1.png",
       "probe_type": "prtouch_v2",
       "preset": "k1",
+      "preset_default": true,
+      "_preset_default_comment": "The k1 family's default: a K1 preset install whose detection names no K1 machine persists this entry, the base model, rather than database order",
       "print_start_profile": "creality_k1",
       "pre_print_options": {
         "macro_name": "START_PRINT",
@@ -2113,6 +2119,8 @@
       "image": "creality-k1c.png",
       "probe_type": "prtouch_v2",
       "preset": "k1c",
+      "preset_default": true,
+      "_preset_default_comment": "The k1c family's default: a K1C preset install whose detection names no K1C machine persists this entry, the base model without CFS, rather than database order",
       "print_start_profile": "creality_k1",
       "_print_start_default_phases_comment": "Measured on a K1C 2026-08-19 (flowrate print, full prep chain): homing via CX_ROUGH_G28 ran 60s vs the 30s generic default; the nozzle wipe (CLEAR_NOZZLE_QUICK rounds) ran ~85s; a check-passed mesh (4-corner validation + 25-point sweep at 5.5s/point) ran 123s. Heating phases are omitted - the thermal model owns those.",
       "print_start_default_phases": {
@@ -2824,12 +2832,22 @@
       "manufacturer": "Elegoo",
       "image": "elegoo-centauri-carbon.png",
       "preset": "cc1",
+      "_calibration_comment": "COSMOS's BED_MESH_CALIBRATE is a macro that heats the bed to BED_TEMP, homes, cleans the nozzle, tares the load cell, probes, then measures the Z offset. It needs nothing sent ahead of it; its M190/M109 wait for a hot bed to cool, so BED_TEMP never asks for less than a bed above 60C already has, even when a lower target is set. {profile_arg} stores the mesh under the chosen name as it completes; the Z-offset step clears the active mesh right after, so it cannot be saved from there.",
       "calibration": {
-        "bed_mesh_gcode": "MOVE_TO_TRAY\nM140 S60\nM104 S220\nM109 S220\nM190 S60\nM729\nG28\nM400\nLOAD_CELL_SAVE_TARE\nG4 P2000\nBED_MESH_CALIBRATE_WITH_WIPE\nBED_MESH_PROFILE SAVE={profile}"
+        "bed_mesh_gcode": "BED_MESH_CALIBRATE{profile_arg} BED_TEMP={bed_temp}"
       },
-      "_print_start_default_phases_comment": "CC1's slicer start-gcode only heats + G28 + loads a stored BED_MESH_PROFILE (<1s). No QGL/Z_TILT/mesh-calibrate/wipe. Loadcell homing is slower than endstop homing, so 30s covers G28 alone.",
+      "print_start_profile": "cosmos_cc1",
+      "_print_start_default_phases_comment": "COSMOS PRINT_START, measured on a CC1 running 26.08 (2026-09-14, cold start, 105C bed / 260C nozzle): both heaters set without waiting, G28 through homing_override ~23s, M190, a heat soak of cosmos.conf heatsoak minutes (60s by default; cosmos_cc1.json holds the pre-print open for the minutes it announces), the stored default mesh loaded in under a second (adaptive_mesh probes a new mesh instead, which the history learns), SMART_PARK, M109, then a KAMP line purge ~13s. Heating is omitted: the thermal model owns it.",
       "print_start_default_phases": {
-        "HOMING": 30
+        "HOMING": 25,
+        "SOAKING": 60,
+        "BED_MESH": 2,
+        "PURGING": 15
+      },
+      "_thermal_rates_comment": "Seconds per degree C for a first print, from the same COSMOS cold start: the bed took ~484s from 24.5C to 105C (about 4.3 s/C below 60C and 8 in the last 20C), the nozzle ~48s from 140C to 260C.",
+      "thermal_rates": {
+        "heater_bed": 6.0,
+        "extruder": 0.4
       },
       "heuristics": [
         {
@@ -2874,7 +2892,7 @@
           "field": "macros",
           "pattern": "ELEGOO_PURGE",
           "confidence": 85,
-          "reason": "ELEGOO_PURGE purge macro (Elegoo stock firmware)"
+          "reason": "ELEGOO_PURGE purge macro (COSMOS kamp.cfg)"
         },
         {
           "type": "hostname_match",
@@ -5296,6 +5314,8 @@
       "manufacturer": "Anycubic",
       "image": "anycubic-kobra-3.png",
       "preset": "anycubic_kobra_3",
+      "preset_default": true,
+      "_preset_default_comment": "The anycubic_kobra_3 family's default: a preset install whose detection names no Kobra 3 machine persists this entry, the base model rather than the V2, rather than database order",
       "print_start_profile": "anycubic_kobra",
       "heuristics": [
         {

@@ -18,6 +18,7 @@
 
 #include <spdlog/spdlog.h>
 
+#include <map>
 #include <string>
 
 namespace helix::ui {
@@ -170,6 +171,12 @@ void begin(const FilamentOpSurface& surface, const FilamentOpPlan& plan) {
     }
 }
 
+/// What the surface knows for @p op's macro; nothing when it offers no prefill.
+std::map<std::string, std::string> known_values(const FilamentOpSurface& surface,
+                                                FilamentMacroOp op) {
+    return surface.macro_prefill ? surface.macro_prefill(op) : std::map<std::string, std::string>{};
+}
+
 /// Tier-1 rejection: let the surface unwind, and report unless it did.
 void unwind_backend(const FilamentOpSurface& surface, const FilamentOpPlan& plan,
                     const AmsError& err) {
@@ -320,7 +327,8 @@ void execute_filament_load(AmsBackend* backend, int slot, const FilamentOpSurfac
                         unwind_async(s, plan);
                     }
                 });
-            });
+            },
+            known_values(surface, FilamentMacroOp::Load));
         return;
     }
 
@@ -437,7 +445,8 @@ void execute_filament_unload(AmsBackend* backend, int slot, bool target_is_loade
                         unwind_async(s, plan);
                     }
                 });
-            });
+            },
+            known_values(surface, FilamentMacroOp::Unload));
         return;
     }
 
@@ -477,8 +486,8 @@ void execute_filament_unload(AmsBackend* backend, int slot, bool target_is_loade
 // the one pre-existing purge dispatch NOT entangled with panel UI state.
 // FilamentPanel::execute_purge() (ui_panel_filament.cpp) was deliberately not
 // the source for this extraction: it drives that panel's operation_guard_
-// spinner state and a macro-parameter modal with active-material temperature
-// prefill, neither of which has an equivalent on a home-tile modal.
+// spinner state and a macro-parameter modal with a nozzle-temperature prefill,
+// neither of which has an equivalent on a home-tile modal.
 void execute_filament_purge(const char* log_tag) {
     auto* api = get_moonraker_api();
     if (!api) {

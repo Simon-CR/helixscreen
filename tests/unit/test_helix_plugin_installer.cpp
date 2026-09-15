@@ -274,6 +274,8 @@ TEST_CASE("HelixPluginInstaller install_local_sync error handling", "[plugin_ins
 // ============================================================================
 
 TEST_CASE("HelixPluginInstaller uninstall_local error handling", "[plugin_installer]") {
+    using Outcome = helix::UninstallOutcome;
+
     SECTION("uninstall_local fails when not connected to local Moonraker") {
         helix::HelixPluginInstaller installer;
 
@@ -281,17 +283,17 @@ TEST_CASE("HelixPluginInstaller uninstall_local error handling", "[plugin_instal
         installer.set_websocket_url("ws://192.168.1.100:7125/websocket");
 
         bool callback_called = false;
-        bool callback_success = true;
+        Outcome callback_outcome = Outcome::SUCCESS;
         std::string callback_message;
 
-        installer.uninstall_local([&](bool success, const std::string& msg) {
+        installer.uninstall_local([&](Outcome outcome, const std::string& msg) {
             callback_called = true;
-            callback_success = success;
+            callback_outcome = outcome;
             callback_message = msg;
         });
 
         REQUIRE(callback_called);
-        REQUIRE(callback_success == false);
+        REQUIRE(callback_outcome == Outcome::FAILED);
         REQUIRE(callback_message.find("local Moonraker") != std::string::npos);
         // State should remain IDLE since uninstall never started
         REQUIRE(installer.get_state() == helix::PluginInstallState::IDLE);
@@ -302,15 +304,15 @@ TEST_CASE("HelixPluginInstaller uninstall_local error handling", "[plugin_instal
         // No URL set - should fail with "local Moonraker" message
 
         bool callback_called = false;
-        bool callback_success = true;
+        Outcome callback_outcome = Outcome::SUCCESS;
 
-        installer.uninstall_local([&](bool success, const std::string&) {
+        installer.uninstall_local([&](Outcome outcome, const std::string&) {
             callback_called = true;
-            callback_success = success;
+            callback_outcome = outcome;
         });
 
         REQUIRE(callback_called);
-        REQUIRE(callback_success == false);
+        REQUIRE(callback_outcome == Outcome::FAILED);
     }
 
     SECTION("uninstall_local handles nullptr callback safely") {
@@ -331,12 +333,12 @@ TEST_CASE("HelixPluginInstaller uninstall_local error handling", "[plugin_instal
         installer.set_websocket_url("ws://localhost:7125/websocket");
 
         bool callback_called = false;
-        bool callback_success = true;
+        Outcome callback_outcome = Outcome::SUCCESS;
         std::string callback_message;
 
-        installer.uninstall_local([&](bool success, const std::string& msg) {
+        installer.uninstall_local([&](Outcome outcome, const std::string& msg) {
             callback_called = true;
-            callback_success = success;
+            callback_outcome = outcome;
             callback_message = msg;
         });
 
@@ -344,7 +346,7 @@ TEST_CASE("HelixPluginInstaller uninstall_local error handling", "[plugin_instal
         REQUIRE(callback_called);
 
         // If script not found, should fail with appropriate message
-        if (!callback_success) {
+        if (callback_outcome != Outcome::SUCCESS) {
             REQUIRE((callback_message.find("not found") != std::string::npos ||
                      callback_message.find("failed") != std::string::npos ||
                      callback_message.find("Failed") != std::string::npos));

@@ -3,6 +3,8 @@
 
 #include "ui_temperature_utils.h"
 
+#include "moonraker_types.h"
+
 #include "../catch_amalgamated.hpp"
 
 using namespace helix::ui::temperature;
@@ -655,5 +657,41 @@ TEST_CASE("Temperature Utils: format_temperature_range - AMS material temps",
     SECTION("Zero range") {
         format_temperature_range(0, 0, buf, sizeof(buf));
         REQUIRE(std::string(buf) == "0-0°C");
+    }
+}
+
+// ============================================================================
+// SafetyLimits in whole degrees
+// ============================================================================
+
+TEST_CASE("Temperature Utils: extrusion_floor_c rounds a fractional minimum up",
+          "[temp_utils][safety]") {
+    SafetyLimits limits;
+    limits.min_extrude_temp_celsius = 180.5;
+    CHECK(extrusion_floor_c(limits) == 181);
+
+    limits.min_extrude_temp_celsius = 180.0;
+    CHECK(extrusion_floor_c(limits) == 180);
+
+    limits.min_extrude_temp_celsius = 0.0;
+    CHECK(extrusion_floor_c(limits) == 0);
+}
+
+TEST_CASE("Temperature Utils: nozzle_max_temp_c is the extruder's own max_temp",
+          "[temp_utils][safety]") {
+    SafetyLimits limits;
+    limits.set_max_temp_for("heater_bed", 120.0);
+    REQUIRE(limits.max_temperature_celsius > 290.0);
+
+    SECTION("before the extruder section is read, the global ceiling") {
+        CHECK(nozzle_max_temp_c(limits) == static_cast<int>(limits.max_temperature_celsius));
+    }
+    SECTION("the extruder's max_temp, not the global ceiling or another heater's") {
+        limits.set_max_temp_for("extruder", 280.0);
+        CHECK(nozzle_max_temp_c(limits) == 280);
+    }
+    SECTION("a fractional max_temp rounds down, so a whole degree never exceeds it") {
+        limits.set_max_temp_for("extruder", 280.5);
+        CHECK(nozzle_max_temp_c(limits) == 280);
     }
 }

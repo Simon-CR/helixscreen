@@ -94,14 +94,12 @@ void schedule_settle_heal(uint32_t delay_ms) {
 // runs UNDER this scrim — one mechanism, not two). ctor shows the scrim and
 // forces it to paint BEFORE the blocking transition body (the LVGL thread is
 // about to block; a state that only appears after is useless). dtor paints the
-// now-un-hidden new panel under the scrim, then lifts the scrim on the next
-// UpdateQueue drain via safe_delete_deferred — the transition runs from an
-// lv_async_call queued context where a sync delete can corrupt LVGL's event
-// list (#776). The new panel is painted before the scrim lifts, so there is no
-// old-panel flash. The one-tick gap between the dtor refresh and the deferred
-// reveal is safe: process_pending runs every lv_timer_handler tick and nothing
-// in a nav transition wedges the queue between them (revisit if Stage B adds a
-// long synchronous op inside a transition). Only the OUTERMOST transition owns a
+// now-un-hidden new panel under the scrim, then lifts the scrim with
+// safe_delete_deferred, an LVGL async delete: the transition can run inside a
+// queued callback, where a sync delete can corrupt LVGL's event list (#776). The
+// new panel is painted before the scrim lifts, so there is no old-panel flash.
+// The async delete runs in the same or the next lv_timer_handler() pass, not at
+// an UpdateQueue drain. Only the OUTERMOST transition owns a
 // scrim — switch_to_panel_impl can cascade into handle_active_panel_change via
 // the active_panel subject, and we must not nest two.
 class NavTransitionScrim {
@@ -1001,7 +999,7 @@ NavigationManager::PanelRequest NavigationManager::request_panel(PanelId panel_i
     }
 
     if (dispatch == SwitchDispatch::Queued) {
-        // Queue for REFR_START - guarantees we never modify widgets during render phase
+        // Queued: the switch runs in a later UpdateQueue drain, never during a render
         spdlog::trace("[NavigationManager] Queuing switch to panel {}", id);
         helix::ui::queue_update([id]() { NavigationManager::instance().switch_to_panel_impl(id); });
     } else {

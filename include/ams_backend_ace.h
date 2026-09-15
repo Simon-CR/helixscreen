@@ -434,8 +434,8 @@ class AmsBackendAce : public AmsSubscriptionBackend {
     // are zeroed in place so the cleared state is visible in the very next
     // get_slot_info() read.
     //
-    // Called from parse_ace_object BEFORE apply_overrides, so the check
-    // decides based on parsed firmware status (not override-masked data). The
+    // Called from parse_ace_object BEFORE apply_resolved_lane, so the check
+    // decides based on parsed firmware status (not the resolved view). The
     // caller is responsible for skipping the very first observation (no prior
     // prev_slot_status_ entry) — first-observation is a baseline and never
     // fires. Limitation: a LOADED -> EMPTY -> LOADED sequence (user unloaded
@@ -492,7 +492,8 @@ class AmsBackendAce : public AmsSubscriptionBackend {
     // User-provided per-slot metadata (brand, spool name, spoolman IDs,
     // remaining weight, etc.) layered over firmware-reported state.
     // Both writers (on_started initial load, set_slot_info persist path) hold
-    // mutex_; apply_overrides reads inside the parse path under mutex_.
+    // mutex_; so do the readers (set_slot_info's re-read of the staged record,
+    // clear_override_locked).
     std::unique_ptr<helix::ams::FilamentSlotOverrideStore> override_store_;
     std::unordered_map<int, helix::ams::FilamentSlotOverride> overrides_;
 

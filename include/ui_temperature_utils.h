@@ -3,6 +3,7 @@
 #pragma once
 
 #include "lvgl/lvgl.h"
+#include "moonraker_types.h"
 #include "printer_temperature_state.h"
 #include "unit_conversions.h"
 
@@ -151,6 +152,24 @@ bool validate_and_clamp_pair(int& current, int& target, int min_temp, int max_te
  * @return true if safe to extrude, false otherwise
  */
 bool is_extrusion_safe(int current_temp, int min_extrusion_temp);
+
+/**
+ * @brief The lowest whole-degree nozzle temperature Klipper extrudes at
+ *
+ * Klipper refuses extrusion below min_extrude_temp, which may be fractional, so the
+ * whole-degree floor rounds up: a 180.5 minimum is 181, because 180 is refused. Every
+ * surface that holds an int extrusion minimum takes it from here.
+ */
+int extrusion_floor_c(const SafetyLimits& limits);
+
+/**
+ * @brief The hotend's max_temp in whole degrees
+ *
+ * The primary extruder's own ceiling, SafetyLimits::max_temp_for("extruder"), the
+ * section min_extrude_temp is read from too. Rounded down, so a whole-degree target
+ * never exceeds it. Until that section has been read it is the global sanity ceiling.
+ */
+int nozzle_max_temp_c(const SafetyLimits& limits);
 
 /**
  * @brief Gets a human-readable safety status message

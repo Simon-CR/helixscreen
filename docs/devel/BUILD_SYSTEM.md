@@ -1877,7 +1877,12 @@ tier list of the smallest device that will run it.
 for the high-DPI UI scale factor to step into on phone-class panels. No printer target
 declares the `xxlarge` tier, so none of them links these (~11MB of `.rodata`). Android
 does not build through this Makefile at all: `android/app/jni/CMakeLists.txt` globs
-`assets/fonts/*.c` wholesale, so it picks them up without a tier declaration.
+`assets/fonts/*.c` wholesale, so every face including these six is linked, and its
+`target_compile_definitions` declares `HELIX_MAX_FONT_TIER=6` and
+`HELIX_HAS_HIDPI_FONTS=1` to match, since both macros default to a conservative fallback
+when a build path leaves them undefined (`HELIX_HAS_HIDPI_FONTS` to 0), which would
+otherwise drop these six faces' mappings and asset registrations for a build that
+did link them.
 
 ### Feature gates
 

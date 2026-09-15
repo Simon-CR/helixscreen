@@ -1673,7 +1673,7 @@ static void ui_gcode_viewer_load_file_async(lv_obj_t* obj, const char* file_path
         st->streaming_controller_ = std::make_unique<helix::gcode::GCodeStreamingController>();
 
         // Launch async index building with completion callback
-        // The callback runs on the background thread, so we use lv_async_call to marshal to UI
+        // The callback can run on a background thread; queue_update marshals it to the UI thread
         std::string path_copy = file_path;
         st->streaming_controller_->open_file_async(path_copy, [obj, path_copy, gen](bool success) {
             // Marshal completion to UI thread

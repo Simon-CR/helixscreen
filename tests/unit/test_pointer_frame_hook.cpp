@@ -12,7 +12,9 @@
 
 #include "../lvgl_test_fixture.h"
 #include "../mock_input_tree.h"
+#include "indev_delete_watch.h"
 #include "pointer_frame_hook.h"
+#include "touch_calibration_wrapper.h"
 
 #include <algorithm>
 #include <string>
@@ -283,6 +285,69 @@ TEST_CASE_METHOD(PointerFrameHookFixture,
     CHECK(lv_indev_get_event_count(touch) == touch_events);
 }
 
+TEST_CASE_METHOD(PointerFrameHookFixture,
+                 "A backend's own pointer to a deleted device is cleared, not left dangling",
+                 "[display][indev][calibration]") {
+    // Stands in for a backend's touch_/pointer_ member: the calibration wrapper
+    // sits beneath the frame hook, exactly as DisplayBackendDRM and
+    // DisplayBackendFbdev install both on create_input_pointer().
+    lv_indev_t* touch = make_pointer(touch_driver_read);
+    lv_indev_t* owner = touch;
+    // A second device with its own slot, standing in for a backend's mouse_
+    // member: proves forget() matches the deleted device, not every slot it
+    // knows about.
+    lv_indev_t* mouse = make_pointer(mouse_driver_read);
+    lv_indev_t* mouse_owner = mouse;
+
+    helix::CalibrationContext ctx;
+    helix::TouchCalibration cal;
+    helix::install_calibration_wrapper(touch, ctx, cal, PANEL_W, PANEL_H);
+    REQUIRE(hook.install(touch, PointerKind::PanelAbsolute, {}, &owner));
+    REQUIRE(hook.install(mouse, PointerKind::Relative, {}, &mouse_owner));
+    REQUIRE(owner == touch);
+    REQUIRE(mouse_owner == mouse);
+
+    // lv_evdev deletes its own device when a read fails, as it does on unplug.
+    delete_pointer(touch);
+
+    // The owner's own pointer is cleared the moment LVGL deletes the device,
+    // not left pointing at freed memory until a destructor runs later. A
+    // REQUIRE here, not a CHECK: a regression must stop before the next line
+    // reads through a dangling owner instead of merely reporting one.
+    REQUIRE(owner == nullptr);
+    // The other device's slot is untouched - forget() matched the device that
+    // was actually deleted, not every slot the hook knows about.
+    REQUIRE(mouse_owner == mouse);
+
+    // A backend destructor reaches its member through uninstall_calibration_wrapper()
+    // before calibration_context_ is destroyed. With owner cleared this call
+    // never touches the freed indev.
+    helix::uninstall_calibration_wrapper(owner, ctx);
+}
+
+TEST_CASE_METHOD(
+    PointerFrameHookFixture,
+    "A slot repointed to a new device before the old one is deleted keeps the new device",
+    "[display][indev]") {
+    lv_indev_t* first = make_pointer(mouse_driver_read);
+    lv_indev_t* second = make_pointer(mouse_driver_read);
+
+    helix::IndevDeleteWatch watch;
+    lv_indev_t* slot = first;
+    watch.watch(first, &slot);
+
+    // A backend swap (rebuild_input_after_backend_swap()) points the slot at a
+    // freshly created device before the old one's own delete event arrives.
+    slot = second;
+
+    // lv_evdev deletes its own device when a read fails, as it does on unplug.
+    delete_pointer(first);
+
+    // The slot names a live device, not the one that was just deleted, so it
+    // is left alone rather than nulled out from under that live device.
+    CHECK(slot == second);
+}
+
 TEST_CASE_METHOD(PointerFrameHookFixture, "A hook that goes away stops listening to its devices",
                  "[display][indev][rotation]") {
     lv_indev_t* mouse = make_pointer(mouse_driver_read);
@@ -305,9 +370,9 @@ TEST_CASE_METHOD(PointerFrameHookFixture,
 
     lv_indev_t* touch = make_pointer(touch_driver_read);
     lv_indev_t* mouse = make_pointer(mouse_driver_read);
-    CHECK(hook.install(touch, tree.dev_dir + "/event2", true, tree.sysfs_dir,
+    CHECK(hook.install(touch, tree.dev_dir + "/event2", true, nullptr, tree.sysfs_dir,
                        fake_evdev_last_raw) == PointerKind::PanelAbsolute);
-    CHECK(hook.install(mouse, tree.dev_dir + "/event5", true, tree.sysfs_dir,
+    CHECK(hook.install(mouse, tree.dev_dir + "/event5", true, nullptr, tree.sysfs_dir,
                        fake_evdev_last_raw) == PointerKind::Relative);
     REQUIRE(hook.fronts(touch));
     REQUIRE(hook.fronts(mouse));
@@ -332,10 +397,10 @@ TEST_CASE_METHOD(PointerFrameHookFixture,
 
     lv_indev_t* evdev_mouse = make_pointer(portrait_mouse_driver_read);
     lv_indev_t* other_mouse = make_pointer(portrait_mouse_driver_read);
-    REQUIRE(hook.install(evdev_mouse, mouse_path, true, tree.sysfs_dir, fake_evdev_last_raw) ==
-            PointerKind::Relative);
-    REQUIRE(hook.install(other_mouse, mouse_path, false, tree.sysfs_dir, fake_evdev_last_raw) ==
-            PointerKind::Relative);
+    REQUIRE(hook.install(evdev_mouse, mouse_path, true, nullptr, tree.sysfs_dir,
+                         fake_evdev_last_raw) == PointerKind::Relative);
+    REQUIRE(hook.install(other_mouse, mouse_path, false, nullptr, tree.sysfs_dir,
+                         fake_evdev_last_raw) == PointerKind::Relative);
 
     g_evdev_raw_reads = 0;
     const lv_point_t pointed = read(evdev_mouse);

@@ -123,7 +123,7 @@ integration branch", so main stays red without anything stopping a release.)
 
 ### C++ tests
 ```bash
-make test-run
+make full-test-run
 ```
 
 - If tests pass → continue

@@ -20,7 +20,7 @@ The Bed Mesh panel has two parts: a 3D visualization of your bed surface on the 
 
 **Current Mesh card (right):** shows the active profile name, mesh size (probe-point grid), highest and lowest points, and the overall Z range (variance).
 
-**Probe a new mesh:** tap **Probe** in the panel header to run a fresh bed mesh calibration.
+**Probe a new mesh:** tap **Probe** in the panel header. HelixScreen first asks which profile to store the new mesh in. The name starts as `default`, the profile Klipper loads at startup; type another name to keep the new mesh separate. Tap **Start** to probe. When probing finishes, HelixScreen asks whether to save the printer configuration so the mesh survives a restart.
 
 The visualization mode (3D, 2D, or Auto) can be changed in **Settings > Display**.
 
@@ -40,7 +40,7 @@ Tapping a row (or its Load icon) loads that profile.
 
 1. Tap the **pencil** icon on the active profile
 2. The rename dialog shows the current name and a field for the new name
-3. Enter a new profile name and tap **Rename**
+3. Enter a new profile name and tap **Rename**. Klipper reserves `default` for new calibrations, so a profile cannot be renamed to it.
 
 **After renaming or deleting**, HelixScreen asks **"Save changes to persist them across restarts?"** Profile changes only live in memory until saved:
 

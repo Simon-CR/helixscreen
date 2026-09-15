@@ -1291,8 +1291,9 @@ class AmsBackendAfc : public AmsSubscriptionBackend {
     /// so a record assembled from one frame alone narrows the lane to whatever
     /// that frame happened to mention: a frame carrying only `status` would
     /// erase the lane's identity, and one carrying only `color` would drop its
-    /// material. SlotInfo cannot stand in for this, because apply_overrides()
-    /// folds the user's own declarations into it and those are not readings.
+    /// material. SlotInfo cannot stand in for this, because
+    /// apply_resolved_lane() folds the user's own declarations into it and
+    /// those are not readings.
     /// Nothing writes an override here, so what this holds is firmware's word
     /// by construction.
     struct LaneFirmwareReadings {

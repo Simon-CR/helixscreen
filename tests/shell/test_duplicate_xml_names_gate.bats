@@ -325,3 +325,48 @@ run_gate() {
     [ "$status" -eq 1 ]
     [[ "$output" == *'brand_new_dup'* ]]
 }
+
+# ------------------------------------------------------- --staged-only content
+#
+# --staged-only picks its file SET from `git diff --cached`, but must read
+# each file's STAGED content (the index blob), not the working tree. Stage a
+# violation and then revert the working file to something clean, and a gate
+# that reads the working tree reports nothing while the bad blob commits.
+
+GATE_ABS="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)/scripts/check_duplicate_xml_names.py"
+
+setup_tmp_repo() {
+    TMP_REPO="$(mktemp -d "${BATS_TEST_TMPDIR:-${BATS_TMPDIR:-/tmp}}/dup-names-XXXXXX")"
+    cd "$TMP_REPO" || return 1
+    git init -q
+    git config user.email "test@example.com"
+    git config user.name "Test"
+    mkdir -p ui_xml
+    printf '<component><view>\n  <lv_label name="a"/>\n</view></component>\n' > ui_xml/base.xml
+    git add -A && git commit -qm base
+}
+
+@test "--staged-only catches a violation in the STAGED blob, not a reverted working file" {
+    setup_tmp_repo
+    printf '<component><view>\n  <lv_label name="dup"/>\n  <lv_label name="dup"/>\n</view></component>\n' \
+        > ui_xml/base.xml
+    git add ui_xml/base.xml
+    printf '<component><view>\n  <lv_label name="a"/>\n</view></component>\n' > ui_xml/base.xml
+    run python3 "$GATE_ABS" --staged-only
+    [ "$status" -eq 1 ]
+    [[ "$output" == *'name="dup"'* ]]
+}
+
+@test "--staged-only stays silent on a clean staged file with a dirty violation on disk" {
+    setup_tmp_repo
+    # Genuinely different from the base commit (an added second unique name),
+    # so the file shows up as staged at all - content byte-identical to HEAD
+    # stages nothing for git to report, which would pass this test for free.
+    printf '<component><view>\n  <lv_label name="a"/>\n  <lv_label name="b"/>\n</view></component>\n' \
+        > ui_xml/base.xml
+    git add ui_xml/base.xml
+    printf '<component><view>\n  <lv_label name="dup"/>\n  <lv_label name="dup"/>\n</view></component>\n' \
+        > ui_xml/base.xml
+    run python3 "$GATE_ABS" --staged-only
+    [ "$status" -eq 0 ]
+}

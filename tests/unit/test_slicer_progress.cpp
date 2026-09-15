@@ -19,6 +19,7 @@
  * - Time estimation uses slicer progress when active
  */
 
+#include "../helix_test_fixture.h"
 #include "../test_helpers/printer_state_test_access.h"
 #include "../ui_test_utils.h"
 #include "app_globals.h"
@@ -33,8 +34,9 @@ using json = nlohmann::json;
 // Slicer Preference When Active
 // ============================================================================
 
-TEST_CASE("Slicer progress: display_status overrides virtual_sdcard when non-zero",
-          "[print][progress][slicer]") {
+TEST_CASE_METHOD(HelixTestFixture,
+                 "Slicer progress: display_status overrides virtual_sdcard when non-zero",
+                 "[print][progress][slicer]") {
     lv_init_safe();
 
     PrinterState& state = get_printer_state();
@@ -55,8 +57,9 @@ TEST_CASE("Slicer progress: display_status overrides virtual_sdcard when non-zer
     REQUIRE(lv_subject_get_int(state.get_print_progress_subject()) == 30);
 }
 
-TEST_CASE("Slicer progress: activates on first non-zero display_status value",
-          "[print][progress][slicer]") {
+TEST_CASE_METHOD(HelixTestFixture,
+                 "Slicer progress: activates on first non-zero display_status value",
+                 "[print][progress][slicer]") {
     lv_init_safe();
 
     PrinterState& state = get_printer_state();
@@ -84,8 +87,9 @@ TEST_CASE("Slicer progress: activates on first non-zero display_status value",
     REQUIRE(lv_subject_get_int(state.get_print_progress_subject()) == 8);
 }
 
-TEST_CASE("Slicer progress: virtual_sdcard-only updates do not override slicer once active",
-          "[print][progress][slicer]") {
+TEST_CASE_METHOD(HelixTestFixture,
+                 "Slicer progress: virtual_sdcard-only updates do not override slicer once active",
+                 "[print][progress][slicer]") {
     lv_init_safe();
 
     PrinterState& state = get_printer_state();
@@ -111,7 +115,8 @@ TEST_CASE("Slicer progress: virtual_sdcard-only updates do not override slicer o
     REQUIRE(lv_subject_get_int(state.get_print_progress_subject()) == 15);
 }
 
-TEST_CASE("Slicer progress: slicer-only update advances progress", "[print][progress][slicer]") {
+TEST_CASE_METHOD(HelixTestFixture, "Slicer progress: slicer-only update advances progress",
+                 "[print][progress][slicer]") {
     lv_init_safe();
 
     PrinterState& state = get_printer_state();
@@ -139,8 +144,9 @@ TEST_CASE("Slicer progress: slicer-only update advances progress", "[print][prog
 // Fallback -- No Slicer Data
 // ============================================================================
 
-TEST_CASE("Slicer progress: virtual_sdcard used when display_status never appears",
-          "[print][progress][slicer]") {
+TEST_CASE_METHOD(HelixTestFixture,
+                 "Slicer progress: virtual_sdcard used when display_status never appears",
+                 "[print][progress][slicer]") {
     lv_init_safe();
 
     PrinterState& state = get_printer_state();
@@ -159,8 +165,9 @@ TEST_CASE("Slicer progress: virtual_sdcard used when display_status never appear
     REQUIRE(lv_subject_get_int(state.get_print_progress_subject()) == 45);
 }
 
-TEST_CASE("Slicer progress: virtual_sdcard used when display_status.progress stays at 0",
-          "[print][progress][slicer]") {
+TEST_CASE_METHOD(HelixTestFixture,
+                 "Slicer progress: virtual_sdcard used when display_status.progress stays at 0",
+                 "[print][progress][slicer]") {
     lv_init_safe();
 
     PrinterState& state = get_printer_state();
@@ -184,7 +191,8 @@ TEST_CASE("Slicer progress: virtual_sdcard used when display_status.progress sta
 // Reset on New Print
 // ============================================================================
 
-TEST_CASE("Slicer progress: slicer active flag resets on new print", "[print][progress][slicer]") {
+TEST_CASE_METHOD(HelixTestFixture, "Slicer progress: slicer active flag resets on new print",
+                 "[print][progress][slicer]") {
     lv_init_safe();
 
     PrinterState& state = get_printer_state();
@@ -224,7 +232,8 @@ TEST_CASE("Slicer progress: slicer active flag resets on new print", "[print][pr
 // Terminal State Guard
 // ============================================================================
 
-TEST_CASE("Slicer progress: cannot go backward in COMPLETE state", "[print][progress][slicer]") {
+TEST_CASE_METHOD(HelixTestFixture, "Slicer progress: cannot go backward in COMPLETE state",
+                 "[print][progress][slicer]") {
     lv_init_safe();
 
     PrinterState& state = get_printer_state();
@@ -254,8 +263,9 @@ TEST_CASE("Slicer progress: cannot go backward in COMPLETE state", "[print][prog
 // Time Estimation Uses Slicer Progress
 // ============================================================================
 
-TEST_CASE("Slicer progress: time estimation uses slicer progress when active",
-          "[print][progress][slicer]") {
+TEST_CASE_METHOD(HelixTestFixture,
+                 "Slicer progress: time estimation uses slicer progress when active",
+                 "[print][progress][slicer]") {
     lv_init_safe();
 
     PrinterState& state = get_printer_state();
@@ -280,8 +290,9 @@ TEST_CASE("Slicer progress: time estimation uses slicer progress when active",
     REQUIRE(lv_subject_get_int(state.get_print_time_left_subject()) == 600);
 }
 
-TEST_CASE("Slicer progress: time estimation uses file progress when slicer inactive",
-          "[print][progress][slicer]") {
+TEST_CASE_METHOD(HelixTestFixture,
+                 "Slicer progress: time estimation uses file progress when slicer inactive",
+                 "[print][progress][slicer]") {
     lv_init_safe();
 
     PrinterState& state = get_printer_state();

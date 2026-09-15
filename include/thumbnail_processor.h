@@ -300,7 +300,11 @@ class ThumbnailProcessor {
     void clear_cache();
 
     /**
-     * @brief Get number of pending processing tasks
+     * @brief Get number of tasks still queued or executing
+     *
+     * Counts both: a task a worker has already picked up but not yet
+     * finished is still "pending" for any caller polling this to learn when
+     * the pool has genuinely gone quiet.
      */
     size_t pending_tasks() const;
 
@@ -310,6 +314,16 @@ class ThumbnailProcessor {
      * Useful for testing or graceful shutdown.
      */
     void wait_for_completion();
+
+    /**
+     * @brief Submit an arbitrary task to the worker pool, bypassing PNG processing
+     *
+     * Test/mock-scenario hook: gives pending_tasks() a deterministic nonzero
+     * window without needing a real thumbnail to decode, mirroring
+     * HttpExecutor::submit() for the same purpose. See mock_scenarios.cpp's
+     * "thumbnail_busy" scenario.
+     */
+    void submit_test_task(std::function<void()> task);
 
     /**
      * @brief Shutdown the processor

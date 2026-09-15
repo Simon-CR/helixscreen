@@ -4,10 +4,12 @@
 #include "ui_temperature_utils.h"
 
 #include "lvgl/src/others/translation/lv_translation.h"
+#include "moonraker_types.h"
 #include "spdlog/spdlog.h"
 #include "theme_manager.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 
@@ -35,6 +37,14 @@ bool validate_and_clamp_pair(int& current, int& target, int min_temp, int max_te
 
 bool is_extrusion_safe(int current_temp, int min_extrusion_temp) {
     return current_temp >= min_extrusion_temp;
+}
+
+int extrusion_floor_c(const SafetyLimits& limits) {
+    return static_cast<int>(std::ceil(limits.min_extrude_temp_celsius));
+}
+
+int nozzle_max_temp_c(const SafetyLimits& limits) {
+    return static_cast<int>(std::floor(limits.max_temp_for("extruder")));
 }
 
 const char* get_extrusion_safety_status(int current_temp, int min_extrusion_temp) {

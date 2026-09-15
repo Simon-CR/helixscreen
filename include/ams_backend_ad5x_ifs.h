@@ -724,8 +724,8 @@ class AmsBackendAd5xIfs : public AmsSubscriptionBackend {
     //     update baseline only, no sync. Eject is handled separately by
     //     parse_adventurer_json calling clear_override_locked directly.
     //
-    // Called from update_slot_from_state BEFORE apply_overrides, so the check
-    // sees firmware-truth (not the override-masked value). First observation
+    // Called from update_slot_from_state BEFORE apply_resolved_lane, so the
+    // check sees firmware-truth (not the resolved value). First observation
     // on a given slot is a baseline and never fires a sync.
     //
     // `observed_color = nullopt` is the explicit "no color reading" signal —
@@ -745,10 +745,10 @@ class AmsBackendAd5xIfs : public AmsSubscriptionBackend {
     // Material counterpart to check_external_color_change. A firmware TYPE
     // change that leaves the color unchanged (user picks a new material on the
     // zmod COLOR menu / LCD, or an external CHANGE_ZCOLOR ... TYPE=) never
-    // trips the color detector, so a non-locked override's baked material used
-    // to go stale and mask firmware truth forever — color updated, type stuck
-    // (raza616, prestonbrown/helixscreen#981/#1065). Same contract as the
-    // color detector: called BEFORE apply_overrides, first observation is a
+    // trips the color detector, so a non-locked override's baked material would
+    // otherwise go stale and mask firmware truth forever — color updated, type
+    // stuck (raza616, prestonbrown/helixscreen#981/#1065). Same contract as the
+    // color detector: called BEFORE apply_resolved_lane, first observation is a
     // baseline, empty material is the "no reading" signal (ignored), and on a
     // real delta it fires sync_override_to_firmware_locked() which refreshes
     // the override's material via the OverwriteAlways mirror — user-locked
@@ -778,8 +778,8 @@ class AmsBackendAd5xIfs : public AmsSubscriptionBackend {
     // full clear_override_locked() would silently drop the user's saved vendor
     // on every physical load (Bug B / #981 regression). This helper instead
     // releases the color/material user-locks and strips the firmware-carryable
-    // override fields (color_set/color_rgb/color_name/material) so
-    // apply_overrides lets firmware truth through, while RETAINING the identity
+    // override fields (color_set/color_rgb/color_name/material) so the lane
+    // stops declaring them and firmware truth resolves, while RETAINING the identity
     // metadata — mirroring the #1071 insert/eject retention. If nothing but
     // firmware fields were in the override (no identity to keep), it falls back
     // to a full clear_override_locked() erase so a locked-but-no-brand override

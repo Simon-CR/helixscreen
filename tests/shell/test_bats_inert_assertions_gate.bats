@@ -334,3 +334,54 @@ EOF
     [ "$status" -eq 0 ]
     contains 'python3 scripts/check_bats_inert_assertions.py' "$output"
 }
+
+@test "quality-checks.sh passes --staged-only through when STAGED_ONLY is true" {
+    run bash -c "sed -n '/^qc_bats_inert() {/,/^}/p' scripts/quality-checks.sh"
+    [ "$status" -eq 0 ]
+    contains 'BATS_INERT_ARGS="--staged-only"' "$output"
+}
+
+# ------------------------------------------------------- --staged-only content
+#
+# --staged-only picks its file SET from `git diff --cached`, but must read
+# each file's STAGED content (the index blob), not the working tree. Stage a
+# violation and then revert the working file to something clean, and a gate
+# that reads the working tree reports nothing while the bad blob commits.
+
+GATE_ABS="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)/scripts/check_bats_inert_assertions.py"
+
+setup_tmp_repo() {
+    TMP_REPO="$(mktemp -d "${BATS_TEST_TMPDIR:-${BATS_TMPDIR:-/tmp}}/bats-inert-XXXXXX")"
+    cd "$TMP_REPO" || return 1
+    git init -q
+    git config user.email "test@example.com"
+    git config user.name "Test"
+    mkdir -p tests/shell
+    printf '#!/usr/bin/env bats\n@test "clean" {\n    [ -f foo ]\n}\n' > tests/shell/foo.bats
+    git add -A && git commit -qm base
+}
+
+@test "--staged-only catches a violation in the STAGED blob, not a reverted working file" {
+    setup_tmp_repo
+    printf '#!/usr/bin/env bats\n@test "bad" {\n    [[ "$x" == "y" ]]\n    echo done\n}\n' \
+        > tests/shell/foo.bats
+    git add tests/shell/foo.bats
+    printf '#!/usr/bin/env bats\n@test "clean" {\n    [ -f foo ]\n}\n' > tests/shell/foo.bats
+    run python3 "$GATE_ABS" --staged-only --list
+    [ "$status" -eq 1 ]
+    contains 'tests/shell/foo.bats' "$output"
+}
+
+@test "--staged-only stays silent on a clean staged file with a dirty violation on disk" {
+    setup_tmp_repo
+    # Genuinely different from the base commit (a second clean @test), so the
+    # file shows up as staged at all - content byte-identical to HEAD stages
+    # nothing for git to report.
+    printf '#!/usr/bin/env bats\n@test "clean" {\n    [ -f foo ]\n}\n@test "also clean" {\n    [ -f bar ]\n}\n' \
+        > tests/shell/foo.bats
+    git add tests/shell/foo.bats
+    printf '#!/usr/bin/env bats\n@test "bad" {\n    [[ "$x" == "y" ]]\n    echo done\n}\n' \
+        > tests/shell/foo.bats
+    run python3 "$GATE_ABS" --staged-only --list
+    [ "$status" -eq 0 ]
+}

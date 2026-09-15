@@ -12,9 +12,10 @@
 | `tests/test_helpers/` | `*TestAccess` friend classes for reaching private members |
 
 ```bash
+make t F='[tag]'               # build, then run ONE tag or case (the inner loop)
 make test                      # build tests only (does NOT run them)
-make test-run                  # build AND run in parallel
-./build/bin/helix-tests "[tag]"  # run one tag
+make full-test-run             # build AND run the whole suite in parallel
+./build/bin/helix-tests "[tag]"  # one tag with NO dependency scan, 0.05-0.6s
 ```
 
 `make -j` builds **only** the app binary. Run `make test` before `./build/bin/helix-tests`
@@ -124,6 +125,85 @@ NavigationManager::instance().set_active(PanelId::Advanced);
 **Overlays must be registered before push.** `register_overlay_instance(widget, lifecycle)` —
 or `(widget, nullptr)` for an intentional lifecycle-less overlay. Tests run with
 `HELIX_STRICT_OVERLAY_CHECK`, so an unregistered push **aborts** rather than warning.
+
+---
+
+## What to run when
+
+Key the choice on the question you actually have, not on a phase of work:
+
+| The question you actually have | Command | Cost |
+|---|---|---|
+| Does the thing I just wrote work, and I edited code | `make t F='exact case name'` | 5 to 18s |
+| Same, and nothing has changed since the last build | `./build/bin/helix-tests 'exact case name'` | **0.05s** |
+| Did I break this area | `make t F='[tag]'`, or the binary directly | 5 to 18s, or 0.6s |
+| **Can this test fail at all?** | break the line it covers, rerun that one case, restore | one `make t` cycle |
+| Do any assertions only look like assertions? | `make check-tautology`, `make test-vacuous` | 3s, seconds |
+| Does any test even reach this code? | `make cov-diff` | minutes |
+| Do my changed lines have detection? | `make mutate-diff` | 2-4 min per hunk |
+| Did I break something elsewhere? | `make full-test-run` | 25s idle, minutes loaded, **once, at the end** |
+
+The rule the table encodes: **a full run cannot tell you your feature works.** It can only
+tell you something else broke, and that question is not interesting until you are done. A
+96-shard run mid-feature costs a minute of attention to answer a question nobody has yet.
+
+`make t` takes a tag, an exact case name, or any Catch2 expression, so one variable covers
+every way of naming what you want. With no `F` it refuses rather than running everything.
+`make test-run` runs nothing at all now: it prints this choice and exits non-zero, because
+the shortest name that ran anything is the one people type.
+
+Rows four through seven are the evidence ladder below. "Proving a test can fail" is where
+each one's cost and blind spot is set out; read it there rather than picking from this
+table.
+
+### The wrapper costs more than the test
+
+Measured on the build host at load average 37, with five other sessions compiling:
+
+| | |
+|---|---|
+| `make test`, nothing to rebuild | 11.2s |
+| `make t F='[lane]'`, nothing changed | 5.3 to 6.7s over four runs |
+| `./build/bin/helix-tests '[lane]'`, 223 cases | **0.58s**, four runs, no variance |
+| `./build/bin/helix-tests '<one case>'` | **0.05s**, four runs, no variance |
+
+`make`'s dependency scan over this tree is the entire cost, and it is the part that moves
+with load: the same warm `make t` measures about 4s on an idle box and 18s on a busy one.
+The tests do not move at all. Read these as ratios rather than absolutes.
+
+So `make t` buys exactly one thing, the guarantee that the binary matches your source, and
+that guarantee is what the seconds are for.
+
+**When you have edited code it is not optional.** `make -j` builds only the app binary, so
+running `./build/bin/helix-tests` after an edit silently tests the previous build and
+reports the previous run's numbers. That is a green that means nothing.
+
+**When you have not edited code, skip it.** Re-running a failure, trying a different
+filter, checking a neighbouring tag, reading what an assertion actually said: the binary
+already matches your source, and those are 0.05s questions.
+
+### Four checks the ladder does not make for you
+
+`make mutate-diff` reports that a hunk died or survived. Reading what that verdict means is
+still yours:
+
+1. **Does the test stage the thing it is proving gets produced?** A case that calls a
+   `TestAccess` hook to record the expectation it then asserts stays green when
+   production's own recording is deleted. It graded evidence it wrote itself.
+
+2. **Under your mutation, does an EXISTING test stay green?** A new test going red only
+   shows that it reaches the code. An existing test *not* going red is what shows the new
+   one adds cover rather than duplicating cover that was already there.
+
+3. **For a shared function, does the mutation redden EVERY call site?** One caller's test
+   reddening while another's stays green means the second path is untested. That asymmetry
+   is how an enum parameter no case varies, or a parser no case feeds, becomes visible.
+
+4. **Before trusting "no existing test reddened", does any existing test reach the path?**
+   A gate nothing can reach never reddens, so silence there is absence of a test, not
+   evidence of one. This matters most for a hard stop whose whole justification is that
+   existing tests would catch a regression. `make cov-diff` answers it for one run instead
+   of one build per hunk.
 
 ---
 

@@ -57,6 +57,29 @@ struct MacroConfig {
 };
 
 /**
+ * @brief The default (no-chamber) Cool Down gcode this and every preset ship.
+ *
+ * Single source of truth for `get_default_macros()`'s seeded "cooldown" text
+ * and every preset's own `default_macros.cooldown`. A caller that wants to
+ * append a dynamically-resolved chamber-off command compares the macro in use
+ * against this via `is_default_cooldown_gcode()` to tell an unmodified
+ * default from a user's own edit or a single-model preset's own hardcoded
+ * chamber line.
+ */
+extern const char* const kDefaultCooldownGcode;
+
+/**
+ * @brief True when `gcode` is exactly the shared default Cool Down text.
+ *
+ * The one place both `FilamentPanel::handle_cooldown()` and
+ * `PreheatWidget::handle_cooldown()` ask before appending a
+ * dynamically-resolved chamber-off command, so a user-customized macro (or a
+ * single-model preset's own hardcoded chamber line) always runs exactly as
+ * written.
+ */
+bool is_default_cooldown_gcode(const std::string& gcode);
+
+/**
  * @brief Application configuration manager (singleton)
  *
  * Loads and manages application configuration from JSON file.

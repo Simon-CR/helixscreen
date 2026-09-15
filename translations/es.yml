@@ -6,14 +6,10 @@ translations:
   '"%s" failed to load': '"%s" no se pudo cargar'
   '%.0f Hz difference': Diferencia de %.0f Hz
   '%d additional fan%s': '%d ventilador%s adicional'
-  '%d disabled': '%d desactivados'
-  '%d failed to load - see details below': '%d no se cargaron - ver detalles abajo'
   '%d feeders': '%d alimentadores'
   '%d gates': '%d Gates'
   '%d lanes': '%d carriles'
   '%d more sensors': '%d sensores más'
-  '%d of %d plugins loaded': '%d de %d plugins cargados'
-  '%d plugins loaded': '%d plugins cargados'
   '%d slots': '%d ranuras'
   '%d toolheads': '%d cabezales'
   '%d tools': '%d herramientas'
@@ -30,6 +26,7 @@ translations:
   '%zu events queued': '%zu eventos en cola'
   '%zu plugins failed to load': '%zu plugins no se cargaron'
   "'{}' already exists. Replace the stored mesh?": "'{}' ya existe. ¿Reemplazar la malla guardada?"
+  "'{}' and '{}' already exist. Replace the stored meshes?": "'{}' y '{}' ya existen. ¿Reemplazar las mallas guardadas?"
   (different grade): (grado diferente)
   (incompatible): (incompatible)
   (multi-tool): (multiherramienta)
@@ -62,7 +59,6 @@ translations:
   1 min ago: hace 1 min
   1 minute: 1 minuto
   1 more tap to {} beta features: 1 toque más para {} funciones beta
-  1 plugin loaded: 1 plugin cargado
   1. Printer homes and probes the bed: 1. La impresora hace origen y sondea la cama
   1. Printer will home and probe each screw: 1. La impresora hará origen y sondeará
     cada tornillo
@@ -183,7 +179,6 @@ translations:
   All Devices: Todos los Dispositivos
   All axes homed: Todos los ejes en origen
   All fields are required: Todos los campos son obligatorios
-  All plugins loaded successfully: Todos los plugins se cargaron correctamente
   Allow: 'Permitir'
   Allow Home Screen Editing: 'Permitir editar la pantalla de inicio'
   Allow cold load/unload: Permitir carga/descarga en frío
@@ -430,14 +425,9 @@ translations:
     objetivos con más precisión.
   Calibration kept timing out. Your previous settings were kept.: La calibración siguió agotando el tiempo de espera. Se conservó su configuración anterior.
   Calibration may still be running — printer connection was interrupted: 'La calibración puede seguir en curso — se interrumpió la conexión con la impresora'
-  Calibration may still be running — response timed out: La calibración puede seguir
-    en curso — tiempo de espera agotado
   Calibration move may still be running — printer connection was interrupted: 'El movimiento de calibración puede seguir en curso — se interrumpió la conexión con la impresora'
-  Calibration move may still be running — response timed out: El movimiento de calibración
-    puede seguir en curso — tiempo de espera agotado
   Calibration saved but cannot apply on SDL display: Calibración guardada pero no
     se puede aplicar en pantalla SDL
-  Calibration started: Calibración iniciada
   Calibration succeeded, but the frequency chart data couldn't be read.: La calibración
     se completó correctamente, pero no se pudieron leer los datos del gráfico de frecuencia.
   Calibration succeeded. The frequency chart is only available when HelixScreen runs on the printer.: La
@@ -735,6 +725,7 @@ translations:
   Could not resolve printer RFCOMM channel: No se pudo resolver el canal RFCOMM de
     la impresora
   Could not save filament: No se pudo guardar el filamento
+  "Could not save the mesh as '{}': {}": "No se pudo guardar la malla como '{}': {}"
   Could not start Bluetooth discovery: No se pudo iniciar el descubrimiento Bluetooth
   Could not update filaments: No se pudieron actualizar los filamentos
   Could not verify Spoolman status. Moonraker may still be restarting.: No se pudo
@@ -752,7 +743,6 @@ translations:
   Create New Vendor: Crear Nuevo Proveedor
   Create Spool: Crear Bobina
   Create a 4-6 digit security PIN: Cree un PIN de seguridad de 4-6 dígitos
-  Create backup of %s before applying: Crear respaldo de %s antes de aplicar
   Create video when print completes: Crear video cuando termine la impresión
   Creating bed mesh...: Creando malla de cama...
   Creating spool...: Creando bobina...
@@ -800,7 +790,7 @@ translations:
   Default: 'Predeterminado'
   Default border thickness: Grosor de borde predeterminado
   'Default: %d-%d°C nozzle, %d°C bed': 'Predeterminado: boquilla %d-%d°C, cama %d°C'
-  'Default: %d-%d°C nozzle, %d°C bed, %d°C chamber': ''
+  'Default: %d-%d°C nozzle, %d°C bed, %d°C chamber': 'Predeterminado: boquilla %d-%d°C, cama %d°C, cámara %d°C'
   Defaults restored: Valores predeterminados restaurados
   Define macros in your printer.cfg: Defina macros en su printer.cfg
   Delete: Eliminar
@@ -958,7 +948,6 @@ translations:
   Enter a multiplier between 0.5 and 2.0: 'Introduzca un multiplicador entre 0.5 y 2.0'
   Enter a name for this profile: "Ingrese un nombre para este perfil"
   'Enter a name for your custom theme:': 'Ingrese un nombre para su tema personalizado:'
-  Enter a name to save this profile: Ingrese un nombre para guardar este perfil
   Enter network name: Ingrese el nombre de la red
   Enter password: Ingrese contraseña
   Enter printer IP address first: Ingrese la dirección IP de la impresora primero
@@ -1121,7 +1110,6 @@ translations:
   Failed to save fan configuration: Error al guardar configuración de ventilador
   Failed to save heater configuration: Error al guardar configuración de calentador
   Failed to save printer configuration: Error al guardar configuración de impresora
-  Failed to save profile: Error al guardar perfil
   Failed to save setup completion: Error al guardar finalización de configuración
   Failed to save spool: Error al guardar bobina
   Failed to save theme file: Error al guardar archivo de tema
@@ -1134,7 +1122,6 @@ translations:
   'Failed to set temperature: {}': 'Error al configurar temperatura: {}'
   'Failed to set {} temp: {}': 'Error al configurar temp. de {}: {}'
   Failed to show confirmation dialog: Error al mostrar diálogo de confirmación
-  Failed to start calibration: Error al iniciar calibración
   'Failed to start installer: ': 'Error al iniciar el instalador: '
   'Failed to start print: {}': 'Error al iniciar impresión: {}'
   'Failed to start uninstaller: ': 'Error al iniciar el desinstalador: '
@@ -1174,7 +1161,6 @@ translations:
   Filament: Filamento
   Filament Control: Control de filamento
   Filament Detected: Filamento Detectado
-  Filament Environment: Entorno del filamento
   Filament Grade Mismatch: El grado del filamento no coincide
   Filament Humidity: Humedad del Filamento
   Filament In The Toolhead: Filamento en el cabezal
@@ -1210,7 +1196,6 @@ translations:
   Filament is still present after the cut — the blade may be dull or misaligned: Todavía hay filamento después del corte. La cuchilla puede estar desafilada o mal alineada
   Filament jam detected: Atasco de filamento detectado
   Filament jammed at the extruder gear: Filamento atascado en el engranaje del extrusor
-  'Filament load failed: {}': 'Error al cargar filamento: {}'
   Filament never reached the CFS hub sensor: El filamento nunca llegó al sensor del concentrador del CFS
   Filament operation failed: Falló la operación de filamento
   Filament operation timed out: Operación de filamento — tiempo de espera agotado
@@ -1235,7 +1220,6 @@ translations:
   Filament tension is balanced: La tensión del filamento está equilibrada
   Filament tracking & label printing: Seguimiento de filamento e impresión de etiquetas
   Filament tracking and inventory: Seguimiento e inventario de filamento
-  'Filament unload failed: {}': 'Error al descargar filamento: {}'
   FilamentSensor: Sensor de filamento
   File: Archivo
   File Size: Tamaño del archivo
@@ -1536,7 +1520,7 @@ translations:
   Join the HelixScreen community on Discord for discussion, tips, troubleshooting help, and feature requests.: Únase
     a la comunidad de HelixScreen en Discord para discusión, consejos, ayuda con la
     solución de problemas y solicitudes de funciones.
-  Joining Wi-Fi disconnects the wired network.: ''
+  Joining Wi-Fi disconnects the wired network.: Unirse a Wi-Fi desconecta la red por cable.
   Just now: Justo ahora
   Just queued: 'Recién puesto en cola'
   KEYBOARD LAYOUT: DISTRIBUCIÓN DE TECLADO
@@ -1562,6 +1546,7 @@ translations:
   Klipper has entered shutdown state. This may be due to an emergency stop, thermal runaway, or configuration error.: Klipper
     ha entrado en estado de apagado. Esto puede ser debido a una parada de emergencia,
     descontrol térmico o error de configuración.
+  Klipper reserves 'default' for new calibrations. Choose another name.: "Klipper reserva 'default' para nuevas calibraciones. Elija otro nombre."
   Klipper restarting - macros activating: 'Reiniciando Klipper - activando macros'
   Klipper will restart to apply changes: Klipper se reiniciará para aplicar los cambios
   Klipper will restart to apply changes.: Klipper se reiniciará para aplicar los cambios.
@@ -1632,8 +1617,6 @@ translations:
   Load failed: Error al cargar
   Load filament: 'Cargar filamento'
   Load filament first: Cargue filamento primero
-  Load may still be running — response timed out: La carga puede seguir en curso —
-    tiempo de espera agotado
   Load or unload filament.: Carga o descarga filamento.
   Load the required filaments or start anyway?: ¿Cargar los filamentos requeridos
     o iniciar de todos modos?
@@ -1773,7 +1756,6 @@ translations:
   Memory: Memoria
   Memory (MB): Memoria (MB)
   Memory Snapshot: Instantánea de memoria
-  Mesh Complete: Malla Completa
   Mesh saved as '{}': Malla guardada como '{}'
   Method: Método
   Min: Mín
@@ -1921,11 +1903,9 @@ translations:
   No network. Scan QR code to report on your phone.: Sin red. Escanee el código QR
     para reportar desde su teléfono.
   No networks found: No se encontraron redes
+  No new mesh was stored as '{}': "No se guardó ninguna malla nueva como '{}'"
   No notifications: Sin notificaciones
   No objects defined for this print: No hay objetos definidos para esta impresión
-  No plugins: Sin plugins
-  No plugins discovered: No se descubrieron plugins
-  No plugins found: No se encontraron plugins
   No presets configured: No hay preajustes configurados
   No preview: Sin vista previa
   No print history found: Sin historial de impresión
@@ -2120,9 +2100,6 @@ translations:
   'Place image files (PNG, JPEG, BMP, GIF) in config/custom_images/. Max size: 2048×2048 pixels.': 'Coloque
     archivos de imagen (PNG, JPEG, BMP, GIF) en config/custom_images/. Tamaño máx.:
     2048×2048 píxeles.'
-  Place plugins in the plugins directory: Coloca los plugins en el directorio de plugins
-  Place plugins in the plugins directory to extend HelixScreen: Coloque plugins en
-    el directorio de plugins para extender HelixScreen
   Placed: En cola
   Platform: Plataforma
   'Platform: ': 'Plataforma: '
@@ -2145,10 +2122,8 @@ translations:
     Moonraker se está reiniciando...
   ? "Plugin not responding after restart.\nIt may need more time to load."
   : "El plugin no responde tras reiniciar.\nPuede necesitar más tiempo."
+  Plugin removed. A config file needs attention - check the HelixScreen log for details.: Plugin eliminado. Un archivo de configuración requiere atención - revise el registro de HelixScreen para más detalles.
   Plugin uninstalled successfully.: Plugin desinstalado exitosamente.
-  Plugins: Plugins
-  Plugins are discovered on application startup: Los plugins se descubren al iniciar
-    la aplicación
   Point camera at QR code on spool: Apunte la cámara al código QR de la bobina
   Polymaker: Polymaker
   Poor Accuracy: Precisión Baja
@@ -2258,6 +2233,7 @@ translations:
   Printer connection unavailable: Conexión con la impresora no disponible
   Printer database format error: Error de formato de la base de datos de impresoras
   Printer database is corrupt: La base de datos de impresoras está corrupta
+  Printer default: Valor por defecto de la impresora
   Printer didn't respond — make sure it's on and in range: La impresora no respondió
     — asegúrate de que esté encendida y al alcance
   Printer doesn't expose the expected service — wrong device?: La impresora no expone
@@ -2309,6 +2285,7 @@ translations:
   Processing...: 'Procesando...'
   Profile deleted: Perfil eliminado
   Profile name (e.g., default): Nombre del perfil (ej., default)
+  Profile names cannot contain ';': "Los nombres de perfil no pueden contener ';'"
   Profile renamed: Perfil renombrado
   Profiles: Perfiles
   Progress, file, and time remaining: Progreso, archivo y tiempo restante
@@ -2428,7 +2405,6 @@ translations:
   Rename Mesh Profile: Renombrar Perfil de Malla
   Rename failed at load step: Error al renombrar en paso de carga
   Rename failed at remove step: Error al renombrar en paso de eliminación
-  Rename failed at save step: Error al renombrar en paso de guardado
   Render Now: Renderizar Ahora
   Rendering timelapse...: Renderizando timelapse...
   Replace: "Reemplazar"
@@ -2948,7 +2924,6 @@ translations:
   Temp: Temp
   Temp Compensation: Compensación de Temp
   Temp °C: Temp °C
-  Temp °C (%d–%d): Temp. °C (%d–%d)
   Temperature: Temperatura
   Temperature Graph: 'Gráfico de temperatura'
   Temperature Graph Config: Configuración del Gráfico de Temperatura
@@ -3097,7 +3072,8 @@ translations:
     %.0fg restantes. ¿Iniciar de todos modos?
   ? This printer looks like a {} ({}% confidence), but it is set up as a {}. A wrong type applies incorrect pre-print options and presets.
   : Esta impresora parece una {} ({}% de confianza), pero está configurada como {}. Un tipo erróneo aplica opciones y preajustes de preimpresión incorrectos.
-  This removes the plugin's macros and its Moonraker component from the printer and restarts Klipper.: Elimina los macros del plugin y su componente de Moonraker de la impresora y reinicia Klipper.
+  ? This removes the plugin's Moonraker component and restarts Moonraker. The printer will briefly disconnect. If old phase-tracking lines are still in PRINT_START, they are removed too, with backups kept. A Klipper restart applies that.
+  : Esto elimina el componente de Moonraker del plugin y reinicia Moonraker. La impresora se desconectará brevemente. Si aún hay líneas de seguimiento de fases antiguas en PRINT_START, también se eliminan, conservando copias de seguridad. Un reinicio de Klipper aplica eso.
   This replaces the printer's helper macros with the current version and restarts Klipper.: 'Esto reemplaza las macros de ayuda de la impresora por la versión actual y reinicia Klipper.'
   ? This replaces the printer's helper macros with the current version. A print is running, so Klipper restarts after it finishes.
   : 'Esto reemplaza las macros de ayuda de la impresora por la versión actual. Hay una impresión en curso, así que Klipper se reiniciará al terminar.'
@@ -3240,7 +3216,6 @@ translations:
   Uninstall HelixPrint Plugin: Desinstalar Plugin HelixPrint
   Uninstall HelixPrint Plugin?: ¿Desinstalar Plugin HelixPrint?
   Uninstall script not found.: Script de desinstalación no encontrado.
-  'Uninstall: Coming soon': 'Desinstalar: Próximamente'
   Uninstallation failed. Check logs for details.: Desinstalación fallida. Revise los
     registros para más detalles.
   'Uninstallation failed: ': 'Desinstalación fallida: '
@@ -3248,7 +3223,7 @@ translations:
     de espera. El script puede estar bloqueado.
   Unit: Unidad
   'Unit ': 'Unidad '
-  'Units: %d   Boxes: %d   Dryers: %d': ''
+  'Units: %d   Boxes: %d   Dryers: %d': 'Unidades: %d   Cajas: %d   Secadores: %d'
   Unknown: Desconocido
   Unknown Error: 'Error desconocido'
   Unknown Event: Evento desconocido
@@ -3263,8 +3238,6 @@ translations:
   Unload filament: 'Descargar filamento'
   Unload from toolhead first: 'Descargue primero desde el cabezal'
   Unload macro not configured: Macro de descarga no configurado
-  Unload may still be running — response timed out: La descarga puede seguir en curso
-    — tiempo de espera agotado
   Unload the CFS filament before enabling bypass: 'Descargue el filamento del CFS antes de activar el bypass'
   Unloading: Descargando
   Unloading Start Speed: 'Velocidad inicial de descarga'
@@ -3333,9 +3306,8 @@ translations:
   View Full History: Ver Historial Completo
   View Telemetry Data: Ver datos de telemetría
   View Timelapse: Ver Timelapse
-  View all boxes: ''
+  View all boxes: Ver todas las cajas
   View and rename fans: Ver y renombrar ventiladores
-  View installed plugins and status: Ver plugins instalados y estado
   View live camera feed: Ver la cámara en vivo
   View print statistics and job history: Ver estadísticas de impresión e historial
     de trabajos
@@ -3354,8 +3326,8 @@ translations:
   Wait for the current operation to complete or cancel it first: Espere a que se complete la operación actual o cancélela primero
   Wait until the print finishes: Espere a que termine la impresión
   Waiting for Moonraker...: Esperando a Moonraker...
-  'Waiting for %s to finish. One heater at a time.': ''
-  Waiting for another box to finish.: ''
+  Waiting for %s to finish. One heater at a time.: Esperando a que %s termine. Solo un calentador a la vez.
+  Waiting for another box to finish.: Esperando a que otra caja termine.
   Waiting for bed to reach temperature for accurate calibration.: Esperando que la
     cama alcance la temperatura para una calibración precisa.
   Waiting for the filament system to report its state: Esperando que el sistema de filamento informe su estado
@@ -3515,7 +3487,7 @@ translations:
   Monitor for print abnormalities (camera-based): 'Monitorear anomalías de impresión (basado en cámara)'
   on unit {}: 'en la unidad {}'
   or type a macro name: o escriba un nombre de macro
-  passive: ''
+  passive: pasivo
   printer default: valor por defecto de la impresora
   prints: impresiones
   remaining: restante

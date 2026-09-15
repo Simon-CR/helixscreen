@@ -244,14 +244,14 @@ TEST_CASE("object_exists keys a rule off the module object, not the command name
                                                 {"field", "printer_objects"},
                                                 {"pattern", "load_cell_probe"}}})},
                      {"operations", json::array({"screws_tilt"})},
-                     {"gcode", json::array({"LOAD_CELL_SAVE_TARE"})}};
+                     {"gcode", json::array({"LOAD_CELL_TARE"})}};
     const json rules = json::array({rule});
 
     SECTION("object present - fires") {
         const Preparation p =
             resolve_from_rules(rules, STOCK_MACROS, {"load_cell_probe"}, Operation::ScrewsTilt);
         REQUIRE(p.rule_id == "obj_tare");
-        REQUIRE(p.gcode == "LOAD_CELL_SAVE_TARE");
+        REQUIRE(p.gcode == "LOAD_CELL_TARE");
     }
     SECTION("object absent - stays silent") {
         REQUIRE(
@@ -276,59 +276,66 @@ TEST_CASE("object_exists keys a rule off the module object, not the command name
 }
 
 /**
- * The shipped rules, as data. A Centauri Carbon publishes LOAD_CELL_SAVE_TARE
- * as a mux command on its load_cell module - never a gcode_macro - so the
- * macro-based ZMOD rule is dead data on it and the object-based rule must be
- * the one that fires. First-match-wins keeps the macro path authoritative when
- * a printer exposes both.
+ * The shipped rules, as data. On COSMOS the load_cell module registers
+ * LOAD_CELL_TARE as a command - never a gcode_macro - so macro_match cannot see
+ * it and the ZMOD rule is dead data there. The COSMOS rule keys off the
+ * load_cell_probe object together with COSMOS's own _COSMOS_SETTINGS macro, so a
+ * load cell on any other firmware is not sent a command it may not define.
+ * First-match-wins keeps the macro path authoritative when a printer exposes both.
  */
-TEST_CASE("Shipped rules: the CC1 tares via its object, the ZMOD via its macro",
+TEST_CASE("Shipped rules: COSMOS tares via its object, the ZMOD via its macro",
           "[1529][calibration][probe_prep]") {
     const json rules = helix::probe_prep::database_rules();
     REQUIRE(rules.is_array());
     REQUIRE(rules.size() >= 2);
 
-    const std::unordered_set<std::string> cc1_macros = {"SCREWS_TILT_CALCULATE", "G28"};
-    const std::vector<std::string> cc1_objects = {"load_cell_probe", "toolhead"};
+    const std::unordered_set<std::string> cosmos_macros = {"_COSMOS_SETTINGS",
+                                                           "SCREWS_TILT_CALCULATE", "G28"};
+    const std::vector<std::string> cosmos_objects = {"load_cell_probe", "toolhead"};
 
-    SECTION("CC1: object present, macro absent - the object rule fires") {
+    SECTION("COSMOS: probe accuracy tares with LOAD_CELL_TARE") {
         const Preparation p =
-            resolve_from_rules(rules, cc1_macros, cc1_objects, Operation::ScrewsTilt);
-        REQUIRE(p.rule_id == "cc1_load_cell_save_tare");
-        REQUIRE(p.gcode == "LOAD_CELL_SAVE_TARE");
+            resolve_from_rules(rules, cosmos_macros, cosmos_objects, Operation::ProbeAccuracy);
+        REQUIRE(p.rule_id == "cosmos_load_cell_tare");
+        REQUIRE(p.gcode == "LOAD_CELL_TARE");
     }
-    SECTION("CC1: probe accuracy and z-offset get the tare too") {
-        REQUIRE_FALSE(
-            resolve_from_rules(rules, cc1_macros, cc1_objects, Operation::ProbeAccuracy).empty());
-        REQUIRE_FALSE(
-            resolve_from_rules(rules, cc1_macros, cc1_objects, Operation::ZOffsetCalibrate)
-                .empty());
+    SECTION("COSMOS: z-offset calibration gets the tare too") {
+        const Preparation p =
+            resolve_from_rules(rules, cosmos_macros, cosmos_objects, Operation::ZOffsetCalibrate);
+        REQUIRE(p.rule_id == "cosmos_load_cell_tare");
+        REQUIRE(p.gcode == "LOAD_CELL_TARE");
     }
-    SECTION("CC1: BED_LEVEL_SCREWS_TUNE does NOT suppress the tare") {
-        // COSMOS's macro clears the mesh, heats and homes without taring, so
-        // skip_if_macro_in would stand the tare down on the path that most
-        // needs it.
-        const Preparation p = resolve_from_rules(rules, cc1_macros, cc1_objects,
-                                                 Operation::ScrewsTilt, "BED_LEVEL_SCREWS_TUNE");
-        REQUIRE(p.rule_id == "cc1_load_cell_save_tare");
+    SECTION("COSMOS: screws tilt is left alone") {
+        // COSMOS's SCREWS_TILT_CALCULATE tares the load cell itself.
+        REQUIRE(resolve_from_rules(rules, cosmos_macros, cosmos_objects, Operation::ScrewsTilt)
+                    .empty());
+    }
+    SECTION("load_cell_probe without _COSMOS_SETTINGS stays silent") {
+        const std::unordered_set<std::string> other_macros = {"SCREWS_TILT_CALCULATE", "G28"};
+        REQUIRE(resolve_from_rules(rules, other_macros, cosmos_objects, Operation::ProbeAccuracy)
+                    .empty());
+        REQUIRE(resolve_from_rules(rules, other_macros, cosmos_objects, Operation::ZOffsetCalibrate)
+                    .empty());
+    }
+    SECTION("_COSMOS_SETTINGS without load_cell_probe stays silent") {
+        REQUIRE(resolve_from_rules(rules, cosmos_macros, {"toolhead"}, Operation::ProbeAccuracy)
+                    .empty());
     }
     SECTION("ZMOD: the macro rule fires first") {
-        std::unordered_set<std::string> zmod = cc1_macros;
+        std::unordered_set<std::string> zmod = cosmos_macros;
         zmod.insert("LOAD_CELL_TARE");
-        const Preparation p = resolve_from_rules(rules, zmod, cc1_objects, Operation::ScrewsTilt);
+        const Preparation p =
+            resolve_from_rules(rules, zmod, cosmos_objects, Operation::ProbeAccuracy);
         REQUIRE(p.rule_id == "zmod_load_cell_tare");
         REQUIRE(p.gcode == "LOAD_CELL_TARE");
     }
-    SECTION("a printer with neither - silent") {
-        REQUIRE(resolve_from_rules(rules, cc1_macros, {"toolhead"}, Operation::ScrewsTilt).empty());
-    }
 }
 
-TEST_CASE("resolve() hands the discovered objects to the rules",
+TEST_CASE("resolve() hands the discovered objects and macros to the rules",
           "[1529][calibration][probe_prep]") {
     helix::PrinterDiscovery hw;
-    hw.parse_objects(json::array({"load_cell_probe"}));
+    hw.parse_objects(json::array({"load_cell_probe", "gcode_macro _COSMOS_SETTINGS"}));
 
-    const Preparation p = helix::probe_prep::resolve(hw, Operation::ScrewsTilt);
-    REQUIRE(p.rule_id == "cc1_load_cell_save_tare");
+    const Preparation p = helix::probe_prep::resolve(hw, Operation::ProbeAccuracy);
+    REQUIRE(p.rule_id == "cosmos_load_cell_tare");
 }

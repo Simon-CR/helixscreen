@@ -97,7 +97,6 @@ using helix::ui::temperature::get_heating_state_color;
 using helix::ui::filament_load_fallback_gcode;
 using helix::ui::filament_purge_fallback_gcode;
 using helix::ui::filament_unload_fallback_gcode;
-using helix::ui::get_filament_param_modal;
 
 // ============================================================================
 // CONSTRUCTOR
@@ -1508,56 +1507,14 @@ void FilamentPanel::execute_purge() {
     const auto& info = StandardMacros::instance().get(StandardMacroSlot::Purge);
     if (!info.is_empty()) {
         std::string macro_name = info.get_macro();
-        auto cached = MacroParamCache::instance().get(macro_name);
-
-        // Pre-fill PURGE_TEMP from active material if available
-        std::string purge_temp_default;
-        auto active = helix::get_active_material();
-        if (active) {
-            int recommended = active->material_info.nozzle_recommended();
-            if (recommended > 0) {
-                purge_temp_default = std::to_string(recommended);
-                spdlog::info("[{}] Active material '{}' recommends PURGE_TEMP={}", get_name(),
-                             active->display_name, recommended);
-            }
-        }
-
-        if (cached.knowledge == MacroParamKnowledge::KNOWN_PARAMS) {
-            // Override PURGE_TEMP default with active material temp
-            auto params = cached.params;
-            if (!purge_temp_default.empty()) {
-                for (auto& p : params) {
-                    if (p.name == "PURGE_TEMP") {
-                        p.default_value = purge_temp_default;
-                        break;
-                    }
-                }
-            }
-            spdlog::info("[{}] Purge macro '{}' has params, showing modal", get_name(), macro_name);
-            get_filament_param_modal().show_for_macro(
-                lv_screen_active(), macro_name, params,
-                [this, macro_name](const MacroParamResult& result) {
-                    run_filament_macro(macro_name, "Purg", result);
-                });
-            return;
-        }
-
-        if (cached.knowledge == MacroParamKnowledge::UNKNOWN) {
-            spdlog::info("[{}] Purge macro '{}' params unknown, showing raw input", get_name(),
-                         macro_name);
-            get_filament_param_modal().show_for_unknown_params(
-                lv_screen_active(), macro_name, [this, macro_name](const MacroParamResult& result) {
-                    run_filament_macro(macro_name, "Purg", result);
-                });
-            return;
-        }
-
-        // KNOWN_NO_PARAMS — auto-pass PURGE_TEMP and execute directly
-        MacroParamResult result;
-        if (!purge_temp_default.empty()) {
-            result.params["PURGE_TEMP"] = purge_temp_default;
-        }
-        run_filament_macro(macro_name, "Purg", result);
+        // FilamentPanel is an immortal singleton, so [this] outlives the shared
+        // param modal's retained callback [L012].
+        helix::ui::dispatch_filament_macro(
+            macro_name, helix::ui::ParamPolicy::Prompt,
+            [this, macro_name](const MacroParamResult& result) {
+                run_filament_macro(macro_name, "Purg", result);
+            },
+            macro_temp_prefill(helix::ui::FilamentMacroOp::Purge));
         return;
     }
 
@@ -2344,24 +2301,28 @@ void FilamentPanel::handle_cooldown() {
     spdlog::info("[{}] Cooldown requested - turning off heaters", get_name());
 
     if (api_) {
-        // Build default cooldown gcode, including chamber if printer has one
-        std::string default_gcode = "SET_HEATER_TEMPERATURE HEATER=extruder TARGET=0\n"
-                                    "SET_HEATER_TEMPERATURE HEATER=heater_bed TARGET=0";
-
-        // The resolved chamber heater name is empty when the printer has none, and
-        // then no off command is built.
-        char chamber_gcode[128];
-        if (helix::ui::temperature::build_heater_off_gcode(
-                printer_state_.temperature_state().chamber_heater_name(), chamber_gcode,
-                sizeof(chamber_gcode))) {
-            default_gcode += "\n";
-            default_gcode += chamber_gcode;
-        }
-
         // Use configured cooldown macro (user-overridable in settings.json)
         auto* cfg = helix::Config::get_instance();
-        helix::MacroConfig default_cooldown{"Cool Down", default_gcode};
+        helix::MacroConfig default_cooldown{"Cool Down", helix::kDefaultCooldownGcode};
         auto cooldown = cfg ? cfg->get_macro("cooldown", default_cooldown) : default_cooldown;
+
+        // A platform preset's macro text is fixed at install time and can name
+        // a chamber heater that another machine sharing the same preset file
+        // doesn't have. When the macro in use is still the shared default,
+        // append the heater PrinterState actually resolved for THIS printer
+        // instead of trusting the macro to know it (empty when the printer
+        // has none, so no off command is appended). A user-customized macro,
+        // or a single-model preset's own hardcoded chamber line, runs exactly
+        // as written.
+        if (helix::is_default_cooldown_gcode(cooldown.gcode)) {
+            char chamber_gcode[128];
+            if (helix::ui::temperature::build_heater_off_gcode(
+                    printer_state_.temperature_state().chamber_heater_name(), chamber_gcode,
+                    sizeof(chamber_gcode))) {
+                cooldown.gcode += "\n";
+                cooldown.gcode += chamber_gcode;
+            }
+        }
 
         api_->execute_gcode(
             cooldown.gcode, []() { NOTIFY_SUCCESS(lv_tr("Heaters off")); },
@@ -2517,7 +2478,8 @@ int FilamentPanel::preheat_slot_for_op(PreheatOp op) const {
     }
 }
 
-FilamentPanel::PreheatTempResult FilamentPanel::resolve_preheat_temp(int target_slot) const {
+std::optional<FilamentPanel::PreheatTempResult>
+FilamentPanel::resolve_material_preheat_temp(int target_slot) const {
     // Priorities 1 and 2 (target slot, then the external spool as the fallback
     // for a load with no lane of its own) are shared with
     // AmsOperationSidebar::get_load_temp_for_slot() via
@@ -2537,7 +2499,7 @@ FilamentPanel::PreheatTempResult FilamentPanel::resolve_preheat_temp(int target_
     auto ext = AmsState::instance().get_external_spool_info();
     if (auto resolved = helix::ui::resolve_load_preheat_material(
             target_slot, slot_ptr, ext.has_value() ? &ext.value() : nullptr)) {
-        return {resolved->temp_c, resolved->material_name};
+        return PreheatTempResult{resolved->temp_c, resolved->material_name};
     }
 
     // Priority 3: the panel's selected material preset. The sidebar has no
@@ -2547,12 +2509,40 @@ FilamentPanel::PreheatTempResult FilamentPanel::resolve_preheat_temp(int target_
     if (selected_material_ >= 0 && selected_material_ < PRESET_COUNT) {
         auto mat = filament::find_material(helix::presets::name(selected_material_));
         if (mat) {
-            return {helix::ui::load_preheat_temp(*mat), helix::presets::name(selected_material_)};
+            return PreheatTempResult{helix::ui::load_preheat_temp(*mat),
+                                     helix::presets::name(selected_material_)};
         }
     }
 
+    return std::nullopt;
+}
+
+FilamentPanel::PreheatTempResult FilamentPanel::resolve_preheat_temp(int target_slot) const {
+    if (auto material = resolve_material_preheat_temp(target_slot)) {
+        return *material;
+    }
     // Priority 4: Fallback to min_extrude_temp_
     return {min_extrude_temp_, ""};
+}
+
+std::map<std::string, std::string>
+FilamentPanel::macro_temp_prefill(helix::ui::FilamentMacroOp op) const {
+    PreheatOp preheat_op = PreheatOp::LOAD;
+    switch (op) {
+    case helix::ui::FilamentMacroOp::Load:
+        preheat_op = PreheatOp::LOAD;
+        break;
+    case helix::ui::FilamentMacroOp::Unload:
+        preheat_op = PreheatOp::UNLOAD;
+        break;
+    case helix::ui::FilamentMacroOp::Purge:
+        preheat_op = PreheatOp::PURGE;
+        break;
+    }
+    const auto material = resolve_material_preheat_temp(preheat_slot_for_op(preheat_op));
+    return helix::ui::nozzle_temp_prefill(
+        op, current_extruder_target(), material ? std::optional<int>(material->temp) : std::nullopt,
+        min_extrude_temp_, nozzle_max_temp_);
 }
 
 const char* FilamentPanel::preheat_op_name(PreheatOp op) {
@@ -2703,7 +2693,11 @@ void FilamentPanel::restore_heater_after_preheat() {
     prior_nozzle_target_ = 0;
 }
 
-void FilamentPanel::set_limits(int min_temp, int max_temp, int min_extrude_temp) {
+void FilamentPanel::set_limits(const SafetyLimits& limits) {
+    const int min_temp = static_cast<int>(limits.min_temperature_celsius);
+    const int max_temp = helix::ui::temperature::nozzle_max_temp_c(limits);
+    const int min_extrude_temp = helix::ui::temperature::extrusion_floor_c(limits);
+
     nozzle_min_temp_ = min_temp;
     nozzle_max_temp_ = max_temp;
 
@@ -2872,6 +2866,10 @@ helix::ui::FilamentOpSurface FilamentPanel::op_surface(FilamentOp op) {
         restore_heater_after_preheat();
         op_in_flight_.reset();
         op_succeeded(op);
+    };
+
+    surface.macro_prefill = [this](helix::ui::FilamentMacroOp macro_op) {
+        return macro_temp_prefill(macro_op);
     };
 
     // No guard: FilamentPanel is an immortal singleton [L012], so a macro

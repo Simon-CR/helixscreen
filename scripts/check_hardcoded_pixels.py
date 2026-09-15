@@ -94,6 +94,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from staged_content import catfile_batch
+
 XML_DIRS = ("ui_xml",)
 CPP_DIRS = ("src",)
 CPP_EXTS = (".cpp", ".cc")
@@ -309,38 +311,6 @@ def _git_text(args: list[str], root: Path) -> str:
                           capture_output=True, text=True, check=False).stdout
 
 
-def _catfile_batch(root: Path, revs: list[str], rels: list[str]):
-    """Yield (rel, text) for each blob rev via one `git cat-file --batch`.
-
-    The byte-count header makes this robust to newlines/binary in content; the
-    streaming form (one process for every rev) is ~8x faster than spawning a
-    `git show` per file (0.2s vs 1.5s for ~1000 files — benchmarked).
-    """
-    proc = subprocess.Popen(
-        ["git", "-C", str(root), "cat-file", "--batch"],
-        stdin=subprocess.PIPE, stdout=subprocess.PIPE)
-    try:
-        for rev, rel in zip(revs, rels):
-            assert proc.stdin is not None and proc.stdout is not None
-            proc.stdin.write((rev + "\n").encode())
-            proc.stdin.flush()
-            header = proc.stdout.readline().decode("utf-8", "replace").split()
-            # "<sha> blob <size>" — skip "missing" / non-blob (submodule) entries.
-            if len(header) < 3 or header[1] != "blob":
-                continue
-            size = int(header[2])
-            content = proc.stdout.read(size)
-            proc.stdout.read(1)  # trailing newline after each blob
-            try:
-                yield (rel, content.decode("utf-8"))
-            except UnicodeDecodeError:
-                continue
-    finally:
-        if proc.stdin is not None:
-            proc.stdin.close()
-        proc.wait()
-
-
 def _in_scope(rel: str) -> bool:
     """True if rel is a file the gate scans — mirrors the default scan's dirs.
 
@@ -387,7 +357,7 @@ def collect(args, root: Path):
             return  # not a git repo / empty index — nothing to check
         rels = [f for f in _git_text(
             ["ls-tree", "-r", "--name-only", tree], root).split("\n") if f and _in_scope(f)]
-        yield from _catfile_batch(root, [f"{tree}:{r}" for r in rels], rels)
+        yield from catfile_batch(((r, f"{tree}:{r}") for r in rels), root)
         return
 
     # Default: whole working tree.

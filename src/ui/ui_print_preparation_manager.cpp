@@ -171,9 +171,6 @@ void PrintPreparationManager::recalculate_estimate() {
     total += mgr.estimate_heating_seconds("extruder", ext_temp, ext_target);
     total += mgr.estimate_heating_seconds("heater_bed", bed_temp, bed_target);
 
-    // Homing always happens
-    total += 20.0f;
-
     // Non-heating ops from predictor (cached to avoid reparsing config JSON on every toggle)
     if (!predictor_cached_) {
         auto entries = helix::PreprintPredictor::load_entries_from_config();
@@ -183,6 +180,9 @@ void PrintPreparationManager::recalculate_estimate() {
                                        is_warm ? StartCondition::WARM : StartCondition::COLD);
         predictor_cached_ = true;
     }
+
+    // Homing always happens, and takes the collector's estimate for it
+    total += static_cast<float>(cached_predictor_.predicted_homing_seconds());
     auto phases = cached_predictor_.predicted_phases();
 
     // Add phase estimate if the option is currently enabled. State is read
@@ -490,7 +490,7 @@ void PrintPreparationManager::scan_file_for_operations(const std::string& filena
         "gcodes", file_path, SCAN_DOWNLOAD_LIMIT,
         // Success: parse content and cache result
         // NOTE: This callback runs on a background HTTP thread, so we must defer
-        // shared state updates and LVGL calls to the main thread via lv_async_call
+        // shared state updates and LVGL calls to the main thread via token.defer (queue_update)
         [this, token, filename](const std::string& content) {
             // Parse on background thread (safe - no shared state access)
             gcode::GCodeOpsDetector detector;

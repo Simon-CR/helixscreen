@@ -16,6 +16,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <string_view>
 
 using namespace helix;
 
@@ -168,11 +169,21 @@ std::string shipped_sequence_for(const std::string& printer, StandardMacroSlot s
     }
 }
 
+/// Replace every @p placeholder in @p script with @p value. Inserted text is never
+/// rescanned, so a value that spells a placeholder is kept verbatim.
+void substitute(std::string& script, std::string_view placeholder, const std::string& value) {
+    for (size_t pos = script.find(placeholder); pos != std::string::npos;
+         pos = script.find(placeholder, pos + value.size())) {
+        script.replace(pos, placeholder.size(), value);
+    }
+}
+
 } // namespace
 
 namespace helix {
 
-ResolvedMacroScript resolve_macro_script(const StandardMacroInfo& info, const std::string& profile,
+ResolvedMacroScript resolve_macro_script(const StandardMacroInfo& info,
+                                         const helix::MacroScriptValues& values,
                                          bool accept_fallback) {
     ResolvedMacroScript out;
     const MacroSource source = info.get_source();
@@ -180,14 +191,14 @@ ResolvedMacroScript resolve_macro_script(const StandardMacroInfo& info, const st
         return out;
     }
     out.script = info.get_macro();
-    out.self_prepares = source == MacroSource::SHIPPED;
+    out.shipped = source == MacroSource::SHIPPED;
+    out.self_prepares = out.shipped;
 
-    static constexpr const char* PLACEHOLDER = "{profile}";
-    const size_t len = std::strlen(PLACEHOLDER);
-    for (size_t pos = out.script.find(PLACEHOLDER); pos != std::string::npos;
-         pos = out.script.find(PLACEHOLDER, pos + profile.size())) {
-        out.script.replace(pos, len, profile);
-    }
+    out.takes_profile_arg = out.script.find("{profile_arg}") != std::string::npos;
+
+    // The temperature first: a profile name is free text and may spell a placeholder.
+    substitute(out.script, "{bed_temp}", std::to_string(values.bed_temp_c));
+    substitute(out.script, "{profile_arg}", values.profile_arg);
     return out;
 }
 

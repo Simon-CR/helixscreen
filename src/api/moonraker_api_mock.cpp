@@ -1450,11 +1450,13 @@ void MoonrakerAdvancedAPIMock::start_bed_mesh_calibrate(
         MoonrakerAdvancedAPIMock* advanced;
         BedMeshProgressCallback on_progress;
         SuccessCallback on_complete;
+        std::string script;
         int current = 0;
         int total = 49; // 7x7 mesh = 49 probe points
     };
 
-    auto* ctx = new ProbeSimContext{this, std::move(on_progress), std::move(on_complete)};
+    auto* ctx =
+        new ProbeSimContext{this, std::move(on_progress), std::move(on_complete), command.script};
 
     // Timer callback - advances probe simulation one step at a time
     auto timer_cb = [](lv_timer_t* t) {
@@ -1474,10 +1476,10 @@ void MoonrakerAdvancedAPIMock::start_bed_mesh_calibrate(
             spdlog::info("[MoonrakerAdvancedAPIMock] Probe simulation complete, regenerating mesh");
             lv_timer_delete(t);
 
-            // Send BED_MESH_CALIBRATE to client mock to regenerate mesh data
-            // Match real API: no PROFILE= parameter, mesh goes to "default" profile
+            // The client mock regenerates the mesh and stores it in whatever
+            // profile the command's PROFILE= names, as Klipper does.
             c->advanced->api_.execute_gcode(
-                "BED_MESH_CALIBRATE",
+                c->script,
                 [c]() {
                     spdlog::debug("[MoonrakerAdvancedAPIMock] Mesh regenerated");
                     if (c->on_complete) {
