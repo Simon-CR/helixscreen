@@ -17,6 +17,10 @@
  *
  * can_start_new_print() is the predicate that covers both axes: the printer's
  * reported state AND the app's committed-but-unconfirmed start.
+ *
+ * The second guard here is the printer-stopping command check: a queued entry
+ * reaches the queue from a slicer or web UI, so nothing in the app has ever
+ * scanned it.
  */
 
 #include "ui_job_queue_modal.h"
@@ -27,11 +31,16 @@
 #include "../test_helpers/print_state_test_drivers.h"
 #include "../ui_test_utils.h"
 #include "app_globals.h"
+#include "macro_param_cache.h"
 #include "moonraker_api.h"
+#include "moonraker_api_mock.h"
 #include "moonraker_client_mock.h"
 #include "printer_state.h"
 #include "test_helpers/printer_state_test_access.h"
 
+#include <cstdio>
+#include <filesystem>
+#include <fstream>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -77,6 +86,77 @@ class RecordingClient : public MoonrakerClientMock {
 
 constexpr const char* DELETE_JOB = "server.job_queue.delete_job";
 
+/// Counts the file-head reads the start path makes, so "it blocked" can be told
+/// apart from "it never looked".
+class CountingTransfers : public MoonrakerFileTransferAPIMock {
+  public:
+    using MoonrakerFileTransferAPIMock::MoonrakerFileTransferAPIMock;
+
+    void download_file_partial(const std::string& root, const std::string& path, size_t max_bytes,
+                               StringCallback on_success, ErrorCallback on_error) override {
+        ++partial_reads;
+        MoonrakerFileTransferAPIMock::download_file_partial(
+            root, path, max_bytes, std::move(on_success), std::move(on_error));
+    }
+
+    int partial_reads = 0;
+};
+
+/// The real API everywhere except the file reads, which come from disk.
+class TransferMockAPI : public MoonrakerAPI {
+  public:
+    TransferMockAPI(helix::MoonrakerClient& client, helix::PrinterState& state,
+                    CountingTransfers& transfers)
+        : MoonrakerAPI(client, state), transfers_(transfers) {}
+
+    MoonrakerFileTransferAPI& transfers() override {
+        return transfers_;
+    }
+
+  private:
+    CountingTransfers& transfers_;
+};
+
+/// A .gcode in the directory the transfer mock resolves names from.
+class PlantedAsset {
+  public:
+    PlantedAsset(const std::string& name, const std::string& content) {
+        for (const auto* prefix : {"", "../", "../../"}) {
+            const std::string dir = std::string(prefix) + "assets/test_gcodes";
+            if (std::filesystem::is_directory(dir)) {
+                path_ = dir + "/" + name;
+                break;
+            }
+        }
+        REQUIRE_FALSE(path_.empty());
+        std::ofstream(path_, std::ios::trunc) << content;
+    }
+    ~PlantedAsset() {
+        std::remove(path_.c_str());
+    }
+    PlantedAsset(const PlantedAsset&) = delete;
+    PlantedAsset& operator=(const PlantedAsset&) = delete;
+
+  private:
+    std::string path_;
+};
+
+/// This printer's M729 is a macro that shuts it down.
+class StopMacroCache {
+  public:
+    StopMacroCache() {
+        nlohmann::json config;
+        config["gcode_macro M729"] = {
+            {"gcode", "{action_emergency_stop(\"M729 is not supported\")}"}};
+        helix::MacroParamCache::instance().populate_from_configfile(config, {"M729"});
+    }
+    ~StopMacroCache() {
+        helix::MacroParamCache::instance().clear();
+    }
+    StopMacroCache(const StopMacroCache&) = delete;
+    StopMacroCache& operator=(const StopMacroCache&) = delete;
+};
+
 class JobQueueStartFixture : public LVGLTestFixture {
   public:
     JobQueueStartFixture() {
@@ -86,7 +166,7 @@ class JobQueueStartFixture : public LVGLTestFixture {
         PrinterStateTestAccess::reset(ps0);
         ps0.init_subjects(false);
         client.connect("ws://mock/websocket", []() {}, []() {});
-        api = std::make_unique<MoonrakerAPI>(client, get_printer_state());
+        api = std::make_unique<TransferMockAPI>(client, get_printer_state(), transfers);
         previous_api_ = get_moonraker_api();
         set_moonraker_api(api.get());
         // A prior case's preparing job would refuse every start here.
@@ -120,6 +200,7 @@ class JobQueueStartFixture : public LVGLTestFixture {
     }
 
     RecordingClient client;
+    CountingTransfers transfers{client, "http://mock"};
     std::unique_ptr<MoonrakerAPI> api;
 
   private:
@@ -185,4 +266,35 @@ TEST_CASE_METHOD(JobQueueStartFixture,
     settle();
 
     CHECK(client.count(DELETE_JOB) == 0);
+}
+
+TEST_CASE_METHOD(JobQueueStartFixture, "JobQueueModal refuses a queued file that stops the printer",
+                 "[job_queue][printer_stop]") {
+    // Nothing in the app enqueues jobs, so a queue entry has never been through
+    // the detail view's scan: this start path is the only place it is read.
+    StopMacroCache macros;
+    PlantedAsset file("queued_stop.gcode", "G28\nM729\nG1 X10 Y10 E1\n");
+
+    JobQueueModal modal;
+    JobQueueModalTestAccess::start_job(modal, "job-1", "queued_stop.gcode");
+    settle();
+
+    CHECK(client.count(DELETE_JOB) == 0);
+    // An absence assertion has to prove the code ran.
+    CHECK(transfers.partial_reads == 1);
+}
+
+TEST_CASE_METHOD(JobQueueStartFixture,
+                 "JobQueueModal starts a queued file that calls no such macro",
+                 "[job_queue][printer_stop]") {
+    // Stops the refusal above from passing vacuously.
+    StopMacroCache macros;
+    PlantedAsset file("queued_clean.gcode", "G28\nG1 X10 Y10 E1\n");
+
+    JobQueueModal modal;
+    JobQueueModalTestAccess::start_job(modal, "job-1", "queued_clean.gcode");
+    settle();
+
+    CHECK(client.count(DELETE_JOB) == 1);
+    CHECK(transfers.partial_reads == 1);
 }

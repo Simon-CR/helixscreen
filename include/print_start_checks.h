@@ -73,6 +73,21 @@ struct PrinterStopCheck {
     uint64_t macro_generation = 0;
 };
 
+/// How much of a file's head the printer-stopping command check reads. Every
+/// caller downloads exactly this much: the answer describes the scanned prefix,
+/// so two callers reading different amounts would disagree about one file.
+inline constexpr size_t PRINTER_STOP_SCAN_BYTES = 200 * 1024;
+
+/// Look through @p content for a command this printer's macros make an
+/// emergency stop. A download cut at @p limit ends mid-line, so that last
+/// partial line is not read: a truncated word could spell a command the file
+/// never calls.
+[[nodiscard]] PrinterStopCheck printer_stop_check_in(const std::string& content, size_t limit);
+
+/// An answer of "no answer", carrying @p reason and the macro generation it was
+/// made against.
+[[nodiscard]] PrinterStopCheck printer_stop_not_run(std::string reason);
+
 /// Everything a gate may read. Gathered fresh by the controller per pipeline
 /// (re-)entry; gates never fetch singleton state themselves.
 struct PrintStartContext {
@@ -133,6 +148,11 @@ struct PrintStartGate {
     std::string_view name;                             // for logging
     CheckResult (*evaluate)(const PrintStartContext&); // pure fn, no captures
 };
+
+/// The dialog for a file that calls a command this printer treats as an
+/// emergency stop. Pass for every other state, so a caller can hand it any
+/// check and read the verdict.
+[[nodiscard]] CheckResult gate_printer_stopping_command(const PrintStartContext& ctx);
 
 /// Per-tool material mismatch detail (ported verbatim from
 /// PrintStartController::MaterialMismatchDetail).
