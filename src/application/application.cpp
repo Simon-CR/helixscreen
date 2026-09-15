@@ -1661,7 +1661,7 @@ bool Application::init_display() {
     // unnecessary wait until the 8-second failsafe kicks in.
     pid_t splash_pid = get_runtime_config()->splash_pid;
     if (splash_pid > 0 && kill(splash_pid, 0) == 0 && !m_splash_manager.has_exited()) {
-        lv_display_enable_invalidation(nullptr, false);
+        m_splash_invalidation_suppression.begin();
 
         // Replace the flush callback with a no-op while splash is active.
         // LVGL's invalidation system sends LV_EVENT_REFR_REQUEST which resumes
@@ -1799,7 +1799,7 @@ void Application::run_rotation_probe_and_layout() {
                     m_splash_manager.on_discovery_complete();
                     m_splash_manager.check_and_signal();
                     restore_flush_callback();
-                    lv_display_enable_invalidation(nullptr, true);
+                    m_splash_invalidation_suppression.end();
                 }
                 m_display->run_rotation_probe();
                 m_screen_width = m_display->width();
@@ -4151,8 +4151,6 @@ int Application::main_loop() {
     // Failsafe: track invalidation suppression with a hard deadline.
     // If splash handoff doesn't complete within this time, force rendering back on
     // to avoid a permanently black screen.
-    bool invalidation_suppressed =
-        get_runtime_config()->splash_pid > 0 && !m_splash_manager.has_exited();
     uint32_t suppression_start_tick = DisplayManager::get_ticks();
     static constexpr uint32_t INVALIDATION_FAILSAFE_MS =
         11000; // Must exceed DISCOVERY_TIMEOUT_MS (8s)
@@ -4314,12 +4312,9 @@ int Application::main_loop() {
                 // If a suppressed-flush splash path was active (launcher passed
                 // --splash-pid), lift suppression first so the repaint is not a
                 // no-op; on the DRM watchdog path invalidation was never suppressed.
-                // Clearing the flag here also stops the post-signal handoff block
-                // below from repainting a second time.
-                if (invalidation_suppressed) {
-                    invalidation_suppressed = false;
-                    lv_display_enable_invalidation(nullptr, true);
-                }
+                // Ending it here also stops the post-signal handoff block below from
+                // repainting a second time.
+                m_splash_invalidation_suppression.end();
                 restore_flush_callback(); // no-op on the DRM path (flush never swapped)
                 if (lv_obj_t* screen = lv_screen_active()) {
                     lv_obj_update_layout(screen);
@@ -4334,9 +4329,9 @@ int Application::main_loop() {
             // Post-splash handoff: re-enable rendering and repaint
             // Display invalidation was suppressed to prevent framebuffer flicker
             // while both splash and main app were running simultaneously.
-            if (invalidation_suppressed && m_splash_manager.needs_post_splash_refresh()) {
-                invalidation_suppressed = false;
-                lv_display_enable_invalidation(nullptr, true);
+            if (m_splash_invalidation_suppression.active() &&
+                m_splash_manager.needs_post_splash_refresh()) {
+                m_splash_invalidation_suppression.end();
                 restore_flush_callback();
                 spdlog::info(
                     "[Application] Post-splash handoff: flush callback restored, painting UI");
@@ -4352,10 +4347,9 @@ int Application::main_loop() {
 
             // Failsafe: if invalidation is still suppressed after hard deadline, force it back on.
             // Prevents permanent black screen if splash handoff fails for any reason.
-            if (invalidation_suppressed &&
+            if (m_splash_invalidation_suppression.active() &&
                 (current_tick - suppression_start_tick) >= INVALIDATION_FAILSAFE_MS) {
-                invalidation_suppressed = false;
-                lv_display_enable_invalidation(nullptr, true);
+                m_splash_invalidation_suppression.end();
                 restore_flush_callback();
                 spdlog::warn("[Application] Invalidation failsafe triggered after {}ms",
                              INVALIDATION_FAILSAFE_MS);

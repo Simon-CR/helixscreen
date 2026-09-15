@@ -7,6 +7,7 @@
 
 #include "async_lifetime_guard.h"
 #include "cli_args.h"
+#include "invalidation_suppression.h"
 #include "lvgl/lvgl.h"
 #include "main_loop_handler.h"
 #include "splash_screen_manager.h"
@@ -302,6 +303,9 @@ class Application {
 
     /// Original LVGL flush callback, saved while splash no-op is active
     lv_display_flush_cb_t m_original_flush_cb = nullptr;
+
+    /// Display invalidation suppressed while the launcher's splash owns the framebuffer
+    helix::InvalidationSuppression m_splash_invalidation_suppression;
 };
 
 namespace helix {
