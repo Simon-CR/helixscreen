@@ -302,6 +302,31 @@ else
 fi
 run git -C "$MAIN_ABS" worktree prune
 
+# --- shared submodule pointers -------------------------------------------------
+# .git/modules/<name> is common to every worktree, so initializing a submodule
+# inside one repoints that shared core.worktree at it. Left aimed at a directory
+# this script is about to delete, every OTHER worktree symlinking that submodule
+# fails `git status` with "cannot chdir", and so does the main tree.
+say ""
+say "${BOLD}Restoring shared submodule pointers${RESET}"
+restored=0
+for cfg in "$MAIN_ABS"/.git/modules/*/config "$MAIN_ABS"/.git/modules/lib/*/config; do
+    [[ -f "$cfg" ]] || continue
+    target="$(git config --file "$cfg" --get core.worktree 2>/dev/null || true)"
+    [[ -n "$target" ]] || continue
+    resolved="$(canonicalize_path "$(dirname -- "$cfg")/$target")"
+    [[ "$resolved" == "$WT_ABS"/* ]] || continue
+    # Keep the existing ../ depth (it differs between .git/modules/<n>/ and
+    # .git/modules/lib/<n>/) and swap the path tail back to the main tree's copy.
+    prefix="$(printf '%s' "$target" | sed -E 's#^((\.\./)+).*#\1#')"
+    run git config --file "$cfg" core.worktree "${prefix}${resolved#"$WT_ABS"/}"
+    say "  $(basename -- "$(dirname -- "$cfg")"): pointed here, restored to the main tree"
+    restored=$((restored + 1))
+done
+if (( restored == 0 )); then
+    say "  none pointed into this worktree"
+fi
+
 # The claim, if any, outlives the directory and would read LIVE forever.
 if [[ -x "$MAIN_ABS/scripts/helix-claim" ]]; then
     # --force: the tree is being deleted, so its claim goes with it even when the
