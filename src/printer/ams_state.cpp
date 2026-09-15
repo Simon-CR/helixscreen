@@ -2011,84 +2011,8 @@ void AmsState::sync_from_backend() {
     bool any_slot_changed = false;
     for (int i = 0; i < std::min(info.total_slots, MAX_SLOTS); ++i) {
         const SlotInfo* slot = info.get_slot_global(i);
-        if (slot) {
-            int new_color = static_cast<int>(slot->color_rgb);
-            if (lv_subject_get_int(&slot_colors_[i]) != new_color) {
-                lv_subject_set_int(&slot_colors_[i], new_color);
-                any_slot_changed = true;
-            }
-            int new_status = static_cast<int>(slot->status);
-            if (lv_subject_get_int(&slot_statuses_[i]) != new_status) {
-                lv_subject_set_int(&slot_statuses_[i], new_status);
-                any_slot_changed = true;
-            }
-
-            // Lane presentation classification (Present/Ghosted/Empty) — THE
-            // input every lane rendering surface binds to.
-            int new_lane_state = static_cast<int>(
-                helix::ui::classify_lane(slot->status, helix::ui::lane_has_identity(*slot)));
-            if (lv_subject_get_int(&slot_lane_states_[i]) != new_lane_state) {
-                lv_subject_set_int(&slot_lane_states_[i], new_lane_state);
-                any_slot_changed = true;
-            }
-
-            // Error flag + severity for the lane's status line.
-            bool new_has_error = false;
-            int new_severity = static_cast<int>(SlotError::Severity::INFO);
-            slot_error_state(*slot, new_has_error, new_severity);
-            if (lv_subject_get_int(&slot_has_error_[i]) != (new_has_error ? 1 : 0)) {
-                lv_subject_set_int(&slot_has_error_[i], new_has_error ? 1 : 0);
-                any_slot_changed = true;
-            }
-            if (lv_subject_get_int(&slot_error_severity_[i]) != new_severity) {
-                lv_subject_set_int(&slot_error_severity_[i], new_severity);
-                any_slot_changed = true;
-            }
-
-            // Fill percent (canonical display_fill_pct encoding). The ams_slot
-            // widget observes this — so spool fill renders from state on every
-            // panel, not just the ones that remember to push it imperatively.
-            int new_fill = slot->display_fill_pct();
-            if (lv_subject_get_int(&slot_fills_[i]) != new_fill) {
-                lv_subject_set_int(&slot_fills_[i], new_fill);
-                any_slot_changed = true;
-            }
-
-            // Update remaining filament string (length when measured, weight
-            // as the fallback, "" when neither).
-            std::string remaining = slot->remaining_display();
-            if (strcmp(lv_subject_get_string(&slot_remaining_[i]), remaining.c_str()) != 0) {
-                lv_subject_copy_string(&slot_remaining_[i], remaining.c_str());
-            }
-
-            // Material type. Unlike remaining, a material delta MUST bump
-            // slots_version: the panel's material label is re-read only by
-            // refresh_slots() (it has no direct binding), so a type change that
-            // leaves color/status unchanged would otherwise leave the label stale
-            // (#1065 — native ZMOD AD5X "color updates, material stuck").
-            if (strcmp(lv_subject_get_string(&slot_materials_[i]), slot->material.c_str()) != 0) {
-                lv_subject_copy_string(&slot_materials_[i], slot->material.c_str());
-                any_slot_changed = true;
-            }
-
-            // Per-slot LIVE state: path segment, toolhead-present, active-loaded.
-            // Sourced directly from the backend accessors so the panel observes
-            // real-time sensor changes (path redraw + active-lane highlight).
-            int new_segment = static_cast<int>(backend->get_slot_filament_segment(i));
-            if (lv_subject_get_int(&slot_segments_[i]) != new_segment) {
-                lv_subject_set_int(&slot_segments_[i], new_segment);
-                any_slot_changed = true;
-            }
-            int new_toolhead = backend->slot_has_filament_at_toolhead(i) ? 1 : 0;
-            if (lv_subject_get_int(&slot_toolhead_present_[i]) != new_toolhead) {
-                lv_subject_set_int(&slot_toolhead_present_[i], new_toolhead);
-                any_slot_changed = true;
-            }
-            int new_active = backend->slot_is_actively_loaded(i) ? 1 : 0;
-            if (lv_subject_get_int(&slot_active_loaded_[i]) != new_active) {
-                lv_subject_set_int(&slot_active_loaded_[i], new_active);
-                any_slot_changed = true;
-            }
+        if (slot && write_slot_subjects(*backend, i, *slot)) {
+            any_slot_changed = true;
         }
     }
 
@@ -2167,7 +2091,13 @@ void AmsState::sync_from_backend() {
                     updated.spool_name = tools[ti].spool_name;
                     updated.remaining_weight_g = tools[ti].remaining_weight_g;
                     updated.total_weight_g = tools[ti].total_weight_g;
-                    backend->sync_external_identity(i, updated);
+                    // The loop above published this slot from the snapshot taken
+                    // before the write, so publish it again from what the backend
+                    // now holds.
+                    if (backend->sync_external_identity(i, updated).success() &&
+                        write_slot_subjects(*backend, i, backend->get_slot_info(i))) {
+                        any_slot_changed = true;
+                    }
                 }
             }
         }
@@ -2422,6 +2352,88 @@ void AmsState::sync_from_backend() {
                   path_segment_to_string(backend->get_filament_segment()));
 }
 
+bool AmsState::write_slot_subjects(AmsBackend& backend, int slot_index, const SlotInfo& slot) {
+    bool changed = false;
+
+    int new_color = static_cast<int>(slot.color_rgb);
+    if (lv_subject_get_int(&slot_colors_[slot_index]) != new_color) {
+        lv_subject_set_int(&slot_colors_[slot_index], new_color);
+        changed = true;
+    }
+    int new_status = static_cast<int>(slot.status);
+    if (lv_subject_get_int(&slot_statuses_[slot_index]) != new_status) {
+        lv_subject_set_int(&slot_statuses_[slot_index], new_status);
+        changed = true;
+    }
+
+    // Lane presentation classification (Present, Ghosted, Empty): the input
+    // every lane rendering surface binds to.
+    int new_lane_state =
+        static_cast<int>(helix::ui::classify_lane(slot.status, helix::ui::lane_has_identity(slot)));
+    if (lv_subject_get_int(&slot_lane_states_[slot_index]) != new_lane_state) {
+        lv_subject_set_int(&slot_lane_states_[slot_index], new_lane_state);
+        changed = true;
+    }
+
+    // Error flag and severity for the lane's status line.
+    bool new_has_error = false;
+    int new_severity = static_cast<int>(SlotError::Severity::INFO);
+    slot_error_state(slot, new_has_error, new_severity);
+    if (lv_subject_get_int(&slot_has_error_[slot_index]) != (new_has_error ? 1 : 0)) {
+        lv_subject_set_int(&slot_has_error_[slot_index], new_has_error ? 1 : 0);
+        changed = true;
+    }
+    if (lv_subject_get_int(&slot_error_severity_[slot_index]) != new_severity) {
+        lv_subject_set_int(&slot_error_severity_[slot_index], new_severity);
+        changed = true;
+    }
+
+    // Fill percent in the canonical display_fill_pct() encoding. The ams_slot
+    // widget observes this, so spool fill renders from state on every panel.
+    int new_fill = slot.display_fill_pct();
+    if (lv_subject_get_int(&slot_fills_[slot_index]) != new_fill) {
+        lv_subject_set_int(&slot_fills_[slot_index], new_fill);
+        changed = true;
+    }
+
+    // Remaining filament string: length when measured, weight as the fallback,
+    // "" when neither.
+    std::string remaining = slot.remaining_display();
+    if (strcmp(lv_subject_get_string(&slot_remaining_[slot_index]), remaining.c_str()) != 0) {
+        lv_subject_copy_string(&slot_remaining_[slot_index], remaining.c_str());
+    }
+
+    // Material type. Unlike remaining, a material delta MUST move slots_version:
+    // the panel's material label has no direct binding and is re-read only by
+    // refresh_slots(), so a type change that leaves colour and status alone would
+    // otherwise leave the label stale (#1065).
+    if (strcmp(lv_subject_get_string(&slot_materials_[slot_index]), slot.material.c_str()) != 0) {
+        lv_subject_copy_string(&slot_materials_[slot_index], slot.material.c_str());
+        changed = true;
+    }
+
+    // Per-slot LIVE state: path segment, toolhead-present, active-loaded. Read
+    // from the backend accessors so the panel observes real-time sensor changes
+    // (path redraw and active-lane highlight).
+    int new_segment = static_cast<int>(backend.get_slot_filament_segment(slot_index));
+    if (lv_subject_get_int(&slot_segments_[slot_index]) != new_segment) {
+        lv_subject_set_int(&slot_segments_[slot_index], new_segment);
+        changed = true;
+    }
+    int new_toolhead = backend.slot_has_filament_at_toolhead(slot_index) ? 1 : 0;
+    if (lv_subject_get_int(&slot_toolhead_present_[slot_index]) != new_toolhead) {
+        lv_subject_set_int(&slot_toolhead_present_[slot_index], new_toolhead);
+        changed = true;
+    }
+    int new_active = backend.slot_is_actively_loaded(slot_index) ? 1 : 0;
+    if (lv_subject_get_int(&slot_active_loaded_[slot_index]) != new_active) {
+        lv_subject_set_int(&slot_active_loaded_[slot_index], new_active);
+        changed = true;
+    }
+
+    return changed;
+}
+
 void AmsState::update_slot(int slot_index) {
     std::lock_guard<std::recursive_mutex> lock(mutex_);
 
@@ -2432,76 +2444,14 @@ void AmsState::update_slot(int slot_index) {
 
     SlotInfo slot = backend->get_slot_info(slot_index);
     if (slot.slot_index >= 0) {
-        bool changed = false;
-        int new_color = static_cast<int>(slot.color_rgb);
-        if (lv_subject_get_int(&slot_colors_[slot_index]) != new_color) {
-            lv_subject_set_int(&slot_colors_[slot_index], new_color);
-            changed = true;
-        }
-        int new_status = static_cast<int>(slot.status);
-        if (lv_subject_get_int(&slot_statuses_[slot_index]) != new_status) {
-            lv_subject_set_int(&slot_statuses_[slot_index], new_status);
-            changed = true;
-        }
-
-        // Lane presentation classification, mirroring sync_from_backend(). This is
-        // the single-slot fast path, so a backend that reports per-slot updates
-        // reaches here and nowhere else; deriving status without re-deriving the
-        // lane state leaves every lane surface bound to a stale classification.
-        int new_lane_state = static_cast<int>(
-            helix::ui::classify_lane(slot.status, helix::ui::lane_has_identity(slot)));
-        if (lv_subject_get_int(&slot_lane_states_[slot_index]) != new_lane_state) {
-            lv_subject_set_int(&slot_lane_states_[slot_index], new_lane_state);
-            changed = true;
-        }
-
-        // Error flag + severity, same derivation as the full-sync loop.
-        bool new_has_error = false;
-        int new_severity = static_cast<int>(SlotError::Severity::INFO);
-        slot_error_state(slot, new_has_error, new_severity);
-        if (lv_subject_get_int(&slot_has_error_[slot_index]) != (new_has_error ? 1 : 0)) {
-            lv_subject_set_int(&slot_has_error_[slot_index], new_has_error ? 1 : 0);
-            changed = true;
-        }
-        if (lv_subject_get_int(&slot_error_severity_[slot_index]) != new_severity) {
-            lv_subject_set_int(&slot_error_severity_[slot_index], new_severity);
-            changed = true;
-        }
-
-        // Update remaining filament string (length when measured, weight as
-        // the fallback, "" when neither).
-        std::string remaining = slot.remaining_display();
-        if (strcmp(lv_subject_get_string(&slot_remaining_[slot_index]), remaining.c_str()) != 0) {
-            lv_subject_copy_string(&slot_remaining_[slot_index], remaining.c_str());
-        }
-
-        // Material type — a delta bumps slots_version so refresh_slots() re-reads
-        // the material label even when color/status are unchanged (#1065).
-        if (strcmp(lv_subject_get_string(&slot_materials_[slot_index]), slot.material.c_str()) !=
-            0) {
-            lv_subject_copy_string(&slot_materials_[slot_index], slot.material.c_str());
-            changed = true;
-        }
-
-        // Per-slot LIVE state: path segment, toolhead-present, active-loaded.
-        int new_segment = static_cast<int>(backend->get_slot_filament_segment(slot_index));
-        if (lv_subject_get_int(&slot_segments_[slot_index]) != new_segment) {
-            lv_subject_set_int(&slot_segments_[slot_index], new_segment);
-            changed = true;
-        }
-        int new_toolhead = backend->slot_has_filament_at_toolhead(slot_index) ? 1 : 0;
-        if (lv_subject_get_int(&slot_toolhead_present_[slot_index]) != new_toolhead) {
-            lv_subject_set_int(&slot_toolhead_present_[slot_index], new_toolhead);
-            changed = true;
-        }
-        int new_active = backend->slot_is_actively_loaded(slot_index) ? 1 : 0;
-        if (lv_subject_get_int(&slot_active_loaded_[slot_index]) != new_active) {
-            lv_subject_set_int(&slot_active_loaded_[slot_index], new_active);
-            changed = true;
-        }
-
-        if (changed) {
+        if (write_slot_subjects(*backend, slot_index, slot)) {
             bump_slots_version();
+        }
+
+        // "Currently Loaded" shows the loaded slot's colour, label and weight,
+        // and nothing but a full sync re-reads them.
+        if (backend->is_filament_loaded() && backend->get_current_slot() == slot_index) {
+            sync_current_loaded_from_backend();
         }
 
         // Sync spool to ToolState if this slot maps to a tool
@@ -2509,7 +2459,7 @@ void AmsState::update_slot(int slot_index) {
             ToolState::instance().assign_spool(slot.mapped_tool, slot.spoolman_id, slot.spool_name,
                                                slot.remaining_weight_g, slot.total_weight_g);
             if (!backend->has_firmware_spool_persistence()) {
-                ToolState::instance().save_spool_assignments(get_moonraker_api());
+                ToolState::instance().save_spool_assignments_if_dirty(get_moonraker_api());
             }
         }
 
@@ -3592,6 +3542,14 @@ AmsError AmsState::commit_slot_edit(int slot_index, const SlotInfo& original,
     // error still returns below, so the caller's toast still shows.
     if (!err.success() && !err.partially_applied) {
         return err;
+    }
+
+    // Where each tool owns its spool, ToolState holds the assignment and the
+    // sync below copies it back onto a slot that names none, so an unlink has to
+    // reach ToolState before that sync runs.
+    if (original.spoolman_id > 0 && info.spoolman_id <= 0 && original.mapped_tool >= 0 &&
+        backend->supports_per_tool_spool_assignment()) {
+        ToolState::instance().clear_spool(original.mapped_tool);
     }
 
     // S4 + S7

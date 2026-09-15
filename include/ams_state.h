@@ -1687,6 +1687,17 @@ class AmsState {
     void on_backend_event(int backend_index, const std::string& event, const std::string& data);
 
     /**
+     * @brief Write one primary-backend slot's per-slot subjects from @p slot
+     *
+     * The one per-slot derivation, shared by sync_from_backend() and
+     * update_slot(). Main thread only, with mutex_ held.
+     *
+     * @return true when a value refresh_slots() re-reads changed, so the caller
+     *         owes a slots_version bump
+     */
+    bool write_slot_subjects(AmsBackend& backend, int slot_index, const SlotInfo& slot);
+
+    /**
      * @brief Probe for ACE via REST endpoint
      *
      * Makes an async REST call to /server/ace/info. If successful,
