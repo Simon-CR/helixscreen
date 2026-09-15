@@ -151,17 +151,6 @@ class TemperatureSensorManager : public ISensorManager {
     [[nodiscard]] std::vector<TemperatureSensorConfig> get_sensors_sorted() const;
 
     /**
-     * @brief The strongest chamber sensor discovery classified
-     *
-     * The first CHAMBER-role sensor in get_sensors_sorted() order — which
-     * includes chamber-named temperature_fans, so it can name a chamber
-     * thermistor PrinterDiscovery's own sensor pick never considers.
-     *
-     * @return Full Klipper object name, or empty when no sensor holds the role
-     */
-    [[nodiscard]] std::string get_discovered_chamber_sensor() const;
-
-    /**
      * @brief Get sensor count
      */
     [[nodiscard]] size_t sensor_count() const;

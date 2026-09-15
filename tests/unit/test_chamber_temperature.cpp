@@ -6,6 +6,7 @@
 #include "../../include/heater_limits.h"
 #include "../../include/moonraker_client_mock.h"
 #include "../lvgl_test_fixture.h"
+#include "../test_helpers/log_capture.h"
 #include "chamber_heater_assignment.h"
 #include "lvgl.h"
 #include "macro_param_cache.h"
@@ -440,10 +441,10 @@ TEST_CASE("apply_chamber_sensor_override on already-CHAMBER sensor is a no-op",
     REQUIRE(chamber->priority == original_priority);
 }
 
-// An override naming a sensor the printer does not report yields to the
-// strongest discovered chamber sensor instead of demoting it and leaving the
-// chamber role vacant.
-TEST_CASE("apply_chamber_sensor_override with an absent name keeps the discovered chamber sensor",
+// An override naming a sensor the printer does not report leaves the
+// auto-categorizer's classification standing instead of demoting it and
+// leaving the chamber role vacant.
+TEST_CASE("apply_chamber_sensor_override with an absent name keeps the auto-categorized roles",
           "[chamber][override]") {
     LVGLTestFixture fixture;
 
@@ -454,34 +455,49 @@ TEST_CASE("apply_chamber_sensor_override with an absent name keeps the discovere
         std::vector<std::string> objects = {"temperature_fan chamber_exhaust_fans",
                                             "temperature_sensor mcu_temp"};
         mgr.discover(objects);
-        REQUIRE(mgr.get_discovered_chamber_sensor() == "temperature_fan chamber_exhaust_fans");
-
-        mgr.apply_chamber_sensor_override("temperature_sensor chamber_temp");
-
         auto sensors = mgr.get_sensors_sorted();
         auto fan = std::find_if(sensors.begin(), sensors.end(), [](const auto& s) {
             return s.klipper_name == "temperature_fan chamber_exhaust_fans";
         });
         REQUIRE(fan != sensors.end());
+        REQUIRE(fan->role == helix::sensors::TemperatureSensorRole::CHAMBER);
+
+        helix::LogCapture capture;
+        mgr.apply_chamber_sensor_override("temperature_sensor chamber_temp");
+
+        sensors = mgr.get_sensors_sorted();
+        fan = std::find_if(sensors.begin(), sensors.end(), [](const auto& s) {
+            return s.klipper_name == "temperature_fan chamber_exhaust_fans";
+        });
+        REQUIRE(fan != sensors.end());
         CHECK(fan->role == helix::sensors::TemperatureSensorRole::CHAMBER);
         CHECK(fan->priority == 0);
-        CHECK(mgr.get_discovered_chamber_sensor() == "temperature_fan chamber_exhaust_fans");
         auto mcu = std::find_if(sensors.begin(), sensors.end(), [](const auto& s) {
             return s.klipper_name == "temperature_sensor mcu_temp";
         });
         REQUIRE(mcu != sensors.end());
         CHECK(mcu->role == helix::sensors::TemperatureSensorRole::MCU);
+        // Exactly one note, at debug: the condition holds on every discovery pass.
+        const auto levels = capture.levels_for("not found in discovered sensors");
+        REQUIRE(levels.size() == 1);
+        CHECK(levels[0] == spdlog::level::debug);
     }
-    SECTION("no discovered chamber candidate leaves no CHAMBER role") {
+
+    SECTION("no discovered chamber candidate keeps every role untouched") {
         std::vector<std::string> objects = {"temperature_sensor mcu_temp"};
         mgr.discover(objects);
 
+        helix::LogCapture capture;
         mgr.apply_chamber_sensor_override("temperature_sensor chamber_temp");
 
         for (const auto& sensor : mgr.get_sensors_sorted()) {
             CHECK(sensor.role != helix::sensors::TemperatureSensorRole::CHAMBER);
         }
-        CHECK(mgr.get_discovered_chamber_sensor().empty());
+        // The debug note is the proof the override call reached the absent-name
+        // branch rather than asserting an absence that cannot fail.
+        const auto levels = capture.levels_for("not found in discovered sensors");
+        REQUIRE(levels.size() == 1);
+        CHECK(levels[0] == spdlog::level::debug);
     }
 }
 

@@ -545,7 +545,7 @@ namespace {} // namespace
 
 TEST_CASE_METHOD(
     TemperatureSensorTestFixture,
-    "TemperatureSensorManager - unmatched chamber override adopts the incumbent at info",
+    "TemperatureSensorManager - unmatched chamber override keeps the incumbent at debug",
     "[temperature][chamber][logging]") {
     // A chamber-named object auto-takes the CHAMBER role. Overriding onto a
     // different, absent object is what reaches the unmatched branch: without an
@@ -572,8 +572,9 @@ TEST_CASE_METHOD(
         }
     }
 
-    // Adoption is a real behavioural decision the user can see in the log.
+    // The unmatched condition holds on every discovery pass while the saved
+    // name stays stale, so it is noted at debug, not news at info.
     auto levels = log.levels_for("Chamber override");
     REQUIRE(levels.size() == 1);
-    REQUIRE(levels[0] == spdlog::level::info);
+    REQUIRE(levels[0] == spdlog::level::debug);
 }

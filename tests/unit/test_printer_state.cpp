@@ -1622,6 +1622,25 @@ int has_chamber_sensor(PrinterState& state) {
     return lv_subject_get_int(PrinterStateTestAccess::has_chamber_sensor_subject(state));
 }
 
+/// The temperature sensor manager is a singleton shared across test cases: any
+/// case that discovers sensors into it leaves it holding none for later cases.
+struct SensorsForget {
+    ~SensorsForget() {
+        helix::sensors::TemperatureSensorManager::instance().discover({});
+    }
+};
+
+/// A sensor's role, or nothing when the manager is not tracking that object.
+std::optional<helix::sensors::TemperatureSensorRole>
+role_of(helix::sensors::TemperatureSensorManager& sensors, const std::string& klipper_name) {
+    for (const auto& sensor : sensors.get_sensors_sorted()) {
+        if (sensor.klipper_name == klipper_name) {
+            return std::optional<helix::sensors::TemperatureSensorRole>(sensor.role);
+        }
+    }
+    return std::optional<helix::sensors::TemperatureSensorRole>{};
+}
+
 /// Every object an Elegoo Centauri Carbon on COSMOS reports apart from its gcode
 /// macros: one chamber sensor, and neither a chamber heater nor a chamber-named fan.
 PrinterDiscovery centauri_carbon_objects() {
@@ -1876,94 +1895,111 @@ TEST_CASE("PrinterState::set_hardware: a stale chamber sensor name leaves the re
     using helix::sensors::TemperatureSensorRole;
 
     ChamberAssignmentsRestore restore;
+    SensorsForget forget;
     PrinterState& state = state_before_discovery("auto", STALE_CHAMBER_SENSOR);
 
     auto& sensors = TemperatureSensorManager::instance();
     sensors.init_subjects();
-    // The manager is a singleton: leave it holding no sensors for later cases.
-    struct SensorsForget {
-        ~SensorsForget() {
-            TemperatureSensorManager::instance().discover({});
-        }
-    } forget;
-
-    const auto role_of = [&sensors](const std::string& klipper_name) {
-        for (const auto& sensor : sensors.get_sensors_sorted()) {
-            if (sensor.klipper_name == klipper_name) {
-                return std::optional<TemperatureSensorRole>(sensor.role);
-            }
-        }
-        return std::optional<TemperatureSensorRole>{};
-    };
 
     // Hardware discovery hands the manager the printer's sensors before discovery
     // completes and PrinterState resolves the chamber.
     PrinterDiscovery hw = centauri_carbon_objects();
     sensors.discover(hw.sensors());
-    REQUIRE(role_of("temperature_sensor chamber") == TemperatureSensorRole::CHAMBER);
+    REQUIRE(role_of(sensors, "temperature_sensor chamber") == TemperatureSensorRole::CHAMBER);
 
     state.set_hardware(std::move(hw));
 
     REQUIRE(state.temperature_state().chamber_sensor_name() == "temperature_sensor chamber");
-    CHECK(role_of("temperature_sensor chamber") == TemperatureSensorRole::CHAMBER);
+    CHECK(role_of(sensors, "temperature_sensor chamber") == TemperatureSensorRole::CHAMBER);
 }
 
-TEST_CASE("PrinterState::set_hardware: a stale chamber sensor override adopts the chamber sensor "
-          "the manager discovered",
+TEST_CASE("PrinterState::set_hardware: a stale chamber sensor override falls back to the "
+          "chamber temperature_fan discovery picked",
           "[state][hardware][chamber]") {
     using helix::sensors::TemperatureSensorManager;
     using helix::sensors::TemperatureSensorRole;
 
     ChamberAssignmentsRestore restore;
+    SensorsForget forget;
     PrinterState& state = state_before_discovery("auto", "temperature_sensor chamber_temp");
 
     auto& sensors = TemperatureSensorManager::instance();
     sensors.init_subjects();
-    // The manager is a singleton: leave it holding no sensors for later cases.
-    struct SensorsForget {
-        ~SensorsForget() {
-            TemperatureSensorManager::instance().discover({});
-        }
-    } forget;
 
-    const auto role_of = [&sensors](const std::string& klipper_name) {
-        for (const auto& sensor : sensors.get_sensors_sorted()) {
-            if (sensor.klipper_name == klipper_name) {
-                return std::optional<TemperatureSensorRole>(sensor.role);
-            }
-        }
-        return std::optional<TemperatureSensorRole>{};
-    };
-
-    // The override outlived the hardware it named: this printer's only chamber
-    // thermistor is a chamber-named temperature_fan, which PrinterDiscovery's
-    // sensor pick never considers.
+    // The override outlived the hardware it named: this printer reports no chamber
+    // temperature_sensor, only a chamber-named temperature_fan.
     PrinterDiscovery hw =
         discovered_objects({"heater_generic chamber_heater", "temperature_fan chamber_exhaust_fans",
                             "temperature_sensor mcu_temp", "extruder", "heater_bed"});
     sensors.discover(hw.sensors());
-    REQUIRE(role_of("temperature_fan chamber_exhaust_fans") == TemperatureSensorRole::CHAMBER);
+    REQUIRE(role_of(sensors, "temperature_fan chamber_exhaust_fans") ==
+            TemperatureSensorRole::CHAMBER);
 
     state.set_hardware(std::move(hw));
 
     CHECK(state.temperature_state().chamber_sensor_name() ==
           "temperature_fan chamber_exhaust_fans");
     CHECK(has_chamber_sensor(state) == 1);
-    CHECK(role_of("temperature_fan chamber_exhaust_fans") == TemperatureSensorRole::CHAMBER);
+    CHECK(role_of(sensors, "temperature_fan chamber_exhaust_fans") ==
+          TemperatureSensorRole::CHAMBER);
+}
+
+TEST_CASE("PrinterState::set_hardware: auto resolves a chamber temperature_fan as the chamber "
+          "sensor",
+          "[state][hardware][chamber]") {
+    using helix::sensors::TemperatureSensorManager;
+    using helix::sensors::TemperatureSensorRole;
+
+    ChamberAssignmentsRestore restore;
+    SensorsForget forget;
+    PrinterState& state = state_before_discovery("auto", "auto");
+
+    auto& sensors = TemperatureSensorManager::instance();
+    sensors.init_subjects();
+
+    PrinterDiscovery hw =
+        discovered_objects({"heater_generic chamber_heater", "temperature_fan chamber_exhaust_fans",
+                            "temperature_sensor mcu_temp", "extruder", "heater_bed"});
+    sensors.discover(hw.sensors());
+    REQUIRE(role_of(sensors, "temperature_fan chamber_exhaust_fans") ==
+            TemperatureSensorRole::CHAMBER);
+
+    state.set_hardware(std::move(hw));
+
+    CHECK(state.temperature_state().chamber_sensor_name() ==
+          "temperature_fan chamber_exhaust_fans");
+    CHECK(has_chamber_sensor(state) == 1);
+    CHECK(role_of(sensors, "temperature_fan chamber_exhaust_fans") ==
+          TemperatureSensorRole::CHAMBER);
 }
 
 TEST_CASE("PrinterState::set_hardware: a chamber sensor override the printer reports still wins "
           "over a discovered chamber sensor",
           "[state][hardware][chamber]") {
+    using helix::sensors::TemperatureSensorRole;
+
     ChamberAssignmentsRestore restore;
+    SensorsForget forget;
     PrinterState& state = state_before_discovery("auto", "temperature_sensor external_bme");
 
-    state.set_hardware(
+    auto& sensors = helix::sensors::TemperatureSensorManager::instance();
+    sensors.init_subjects();
+    PrinterDiscovery hw =
         discovered_objects({"temperature_fan chamber_exhaust_fans",
-                            "temperature_sensor external_bme", "extruder", "heater_bed"}));
+                            "temperature_sensor external_bme", "extruder", "heater_bed"});
+    sensors.discover(hw.sensors());
+    // Discovery classified the fan CHAMBER on its own; the reported override must
+    // take the role from it.
+    REQUIRE(role_of(sensors, "temperature_fan chamber_exhaust_fans") ==
+            TemperatureSensorRole::CHAMBER);
+
+    state.set_hardware(std::move(hw));
 
     CHECK(state.temperature_state().chamber_sensor_name() == "temperature_sensor external_bme");
     CHECK(has_chamber_sensor(state) == 1);
+    CHECK(role_of(sensors, "temperature_sensor external_bme") == TemperatureSensorRole::CHAMBER);
+    CHECK(role_of(sensors, "temperature_fan chamber_exhaust_fans") !=
+          TemperatureSensorRole::CHAMBER);
 }
 
 // ============================================================================

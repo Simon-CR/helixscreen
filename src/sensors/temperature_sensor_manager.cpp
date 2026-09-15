@@ -385,15 +385,6 @@ std::vector<TemperatureSensorConfig> TemperatureSensorManager::get_sensors_sorte
     return sorted;
 }
 
-std::string TemperatureSensorManager::get_discovered_chamber_sensor() const {
-    for (const auto& sensor : get_sensors_sorted()) {
-        if (sensor.role == TemperatureSensorRole::CHAMBER) {
-            return sensor.klipper_name;
-        }
-    }
-    return {};
-}
-
 size_t TemperatureSensorManager::sensor_count() const {
     std::lock_guard<std::recursive_mutex> lock(mutex_);
     return sensors_.size();
@@ -419,6 +410,16 @@ void TemperatureSensorManager::set_sensor_role(const std::string& klipper_name,
 void TemperatureSensorManager::apply_chamber_sensor_override(const std::string& klipper_name) {
     std::lock_guard<std::recursive_mutex> lock(mutex_);
 
+    // A name this printer does not report would demote the incumbent CHAMBER
+    // below and promote nothing in its place, vacating the chamber role. Keep
+    // the auto-categorizer's classification standing instead.
+    if (!klipper_name.empty() && !find_config(klipper_name)) {
+        spdlog::debug("[TemperatureSensorManager] Chamber override '{}' not found in discovered "
+                      "sensors; keeping auto-categorized roles",
+                      klipper_name);
+        return;
+    }
+
     // Early-out when the named sensor is already the sole CHAMBER — avoids
     // demoting + repromoting the same sensor and the accompanying log line on
     // every reconnect for printers whose chamber sensor matches the
@@ -435,14 +436,6 @@ void TemperatureSensorManager::apply_chamber_sensor_override(const std::string& 
         }
         if (!needs_change)
             return;
-    }
-
-    // An override naming a sensor this printer does not report yields to the
-    // strongest discovered chamber sensor, so the demotion below cannot leave
-    // the chamber role vacant. Picked before demoting: the loop strips CHAMBER.
-    std::string adopted;
-    if (!klipper_name.empty() && !find_config(klipper_name)) {
-        adopted = get_discovered_chamber_sensor();
     }
 
     // Demote any existing CHAMBER sensor back to an inferred role
@@ -464,27 +457,11 @@ void TemperatureSensorManager::apply_chamber_sensor_override(const std::string& 
         }
     }
 
-    // Promote the specified sensor to CHAMBER role. An override naming a sensor
-    // this printer does not report (a preset-seeded name its config no longer
-    // defines) yields to the adopted sensor above, so the demotion never
-    // leaves the chamber role vacant.
-    if (!klipper_name.empty()) {
-        auto* sensor = find_config(klipper_name);
-        if (!sensor) {
-            sensor = find_config(adopted);
-        }
-        if (sensor) {
-            sensor->role = TemperatureSensorRole::CHAMBER;
-            sensor->priority = 0;
-            if (sensor->klipper_name == klipper_name) {
-                spdlog::info("[TemperatureSensorManager] Manual chamber sensor override: {}",
-                             klipper_name);
-            } else {
-                spdlog::info("[TemperatureSensorManager] Chamber override '{}' not found in "
-                             "discovered sensors; using '{}' instead",
-                             klipper_name, sensor->klipper_name);
-            }
-        }
+    // Promote the specified sensor to CHAMBER role.
+    if (auto* sensor = find_config(klipper_name)) {
+        sensor->role = TemperatureSensorRole::CHAMBER;
+        sensor->priority = 0;
+        spdlog::info("[TemperatureSensorManager] Manual chamber sensor override: {}", klipper_name);
     }
 
     update_subjects();
