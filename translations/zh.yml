@@ -6,14 +6,10 @@ translations:
   '"%s" failed to load': '"%s" 加载失败'
   '%.0f Hz difference': '%.0f Hz 差异'
   '%d additional fan%s': '%d 个额外风扇%s'
-  '%d disabled': '%d 个已禁用'
-  '%d failed to load - see details below': '%d 个加载失败 - 详见下方'
   '%d feeders': '%d 个送料器'
   '%d gates': '%d 个通道'
   '%d lanes': '%d 个耗材通道'
   '%d more sensors': 还有%d个传感器
-  '%d of %d plugins loaded': 已加载 %d / %d 个插件
-  '%d plugins loaded': 已加载 %d 个插件
   '%d slots': '%d 个槽位'
   '%d toolheads': '%d 个工具头'
   '%d tools': '%d 个工具'
@@ -61,7 +57,6 @@ translations:
   1 min ago: 1分钟前
   1 minute: 1 分钟
   1 more tap to {} beta features: 再点击 1 次以{}测试功能
-  1 plugin loaded: 已加载 1 个插件
   1. Printer homes and probes the bed: 1. 打印机归位并探测热床
   1. Printer will home and probe each screw: 1. 打印机将归位并探测每个螺丝位置
   10 minutes: 10 分钟
@@ -171,7 +166,6 @@ translations:
   All Devices: 所有设备
   All axes homed: 所有轴已归位
   All fields are required: 所有字段均为必填项
-  All plugins loaded successfully: 所有插件加载成功
   Allow: '允许'
   Allow Home Screen Editing: '允许编辑主屏幕'
   Allow cold load/unload: 允许冷态加载/卸载
@@ -396,11 +390,8 @@ translations:
   Calibration failed - touch targets more precisely.: 校准失败 – 请更精确地触摸目标。
   Calibration kept timing out. Your previous settings were kept.: 校准反复超时，已保留您之前的设置。
   Calibration may still be running — printer connection was interrupted: '校准可能仍在运行 — 打印机连接已中断'
-  Calibration may still be running — response timed out: 校准可能仍在运行 — 响应超时
   Calibration move may still be running — printer connection was interrupted: '校准移动可能仍在运行 — 打印机连接已中断'
-  Calibration move may still be running — response timed out: 校准移动可能仍在运行 — 响应超时
   Calibration saved but cannot apply on SDL display: 校准已保存，但无法在 SDL 显示上应用
-  Calibration started: 校准已开始
   Calibration succeeded, but the frequency chart data couldn't be read.: 校准成功，但无法读取频率图表数据。
   Calibration succeeded. The frequency chart is only available when HelixScreen runs on the printer.: 校准成功。频率图表仅在 HelixScreen 运行于打印机上时可用。
   Calibration timed out. Please try again.: 校准超时。请重试。
@@ -675,7 +666,6 @@ translations:
   Create New Vendor: 创建新供应商
   Create Spool: 创建料盘
   Create a 4-6 digit security PIN: 创建 4-6 位安全 PIN
-  Create backup of %s before applying: 应用前创建 %s 的备份
   Create video when print completes: 打印完成时创建视频
   Creating bed mesh...: 正在创建热床网格...
   Creating spool...: 正在创建料盘…
@@ -723,7 +713,7 @@ translations:
   Default: '默认'
   Default border thickness: 默认边框厚度
   'Default: %d-%d°C nozzle, %d°C bed': '默认: 喷嘴 %d-%d°C,热床 %d°C'
-  'Default: %d-%d°C nozzle, %d°C bed, %d°C chamber': ''
+  'Default: %d-%d°C nozzle, %d°C bed, %d°C chamber': '默认: 喷嘴 %d-%d°C,热床 %d°C,腔体 %d°C'
   Defaults restored: 已恢复默认设置
   Define macros in your printer.cfg: 在 printer.cfg 中定义宏
   Delete: 删除
@@ -1037,7 +1027,6 @@ translations:
   'Failed to set temperature: {}': '设置温度失败: {}'
   'Failed to set {} temp: {}': '设置 {} 温度失败: {}'
   Failed to show confirmation dialog: 显示确认对话框失败
-  Failed to start calibration: 启动校准失败
   'Failed to start installer: ': '启动安装程序失败: '
   'Failed to start print: {}': '开始打印失败: {}'
   'Failed to start uninstaller: ': '启动卸载程序失败: '
@@ -1077,7 +1066,6 @@ translations:
   Filament: 耗材
   Filament Control: 耗材控制
   Filament Detected: 检测到耗材
-  Filament Environment: 耗材环境
   Filament Grade Mismatch: 耗材等级不匹配
   Filament Humidity: 耗材湿度
   Filament In The Toolhead: 工具头处有耗材
@@ -1112,7 +1100,6 @@ translations:
   Filament is still present after the cut — the blade may be dull or misaligned: 切断后仍有耗材残留。刀片可能已钝或未对准
   Filament jam detected: 检测到耗材堵塞
   Filament jammed at the extruder gear: 耗材卡在挤出机齿轮处
-  'Filament load failed: {}': '耗材加载失败: {}'
   Filament never reached the CFS hub sensor: 耗材未到达 CFS 集线器传感器
   Filament operation failed: 耗材操作失败
   Filament operation timed out: 耗材操作超时
@@ -1135,7 +1122,6 @@ translations:
   Filament tension is balanced: 耗材张力平衡
   Filament tracking & label printing: 耗材跟踪和标签打印
   Filament tracking and inventory: 耗材跟踪和库存
-  'Filament unload failed: {}': '耗材卸载失败: {}'
   FilamentSensor: 耗材传感器
   File: 文件
   File Size: 文件大小
@@ -1411,7 +1397,7 @@ translations:
   'Jog failed: {}': '移动失败: {}'
   Join the HelixScreen community on Discord for discussion, tips, troubleshooting help, and feature requests.: 加入
     HelixScreen 的 Discord 社区，参与讨论、获取技巧、故障排除帮助和功能请求。
-  Joining Wi-Fi disconnects the wired network.: ''
+  Joining Wi-Fi disconnects the wired network.: 加入 WiFi 会断开有线网络连接。
   Just now: 刚刚
   Just queued: '刚刚加入队列'
   KEYBOARD LAYOUT: 键盘布局
@@ -1499,7 +1485,6 @@ translations:
   Load failed: 装载失败
   Load filament: '装载耗材'
   Load filament first: 请先装载耗材
-  Load may still be running — response timed out: 加载可能仍在运行 — 响应超时
   Load or unload filament.: 装载或卸载耗材。
   Load the required filaments or start anyway?: 加载所需耗材还是直接开始？
   'Load, unload, and swap spools. View your multi-filament system at a glance, map colors to slots, and monitor runout sensors.': 加载、卸载和更换料盘。一目了然地查看您的多耗材系统、将颜色映射到槽位，并监控耗材用尽传感器。
@@ -1771,9 +1756,6 @@ translations:
   No networks found: 未找到网络
   No notifications: 无通知
   No objects defined for this print: 此次打印未定义对象
-  No plugins: 无插件
-  No plugins discovered: 未发现插件
-  No plugins found: 未找到插件
   No presets configured: 未配置预设
   No preview: 无预览
   No print history found: 未找到打印历史
@@ -1962,9 +1944,6 @@ translations:
     = 滚动越快触发)
   'Place image files (PNG, JPEG, BMP, GIF) in config/custom_images/. Max size: 2048×2048 pixels.': '将图片文件
     (PNG, JPEG, BMP, GIF) 放入 config/custom_images/。最大尺寸: 2048×2048 像素。'
-  Place plugins in the plugins directory: 请将插件放入插件目录
-  Place plugins in the plugins directory to extend HelixScreen: 将插件放在 plugins 目录中以扩展
-    HelixScreen
   Placed: 已放置
   Platform: 平台
   'Platform: ': '平台: '
@@ -1984,10 +1963,8 @@ translations:
   Plugin installed successfully. Moonraker is restarting...: 插件安装成功。Moonraker 正在重启...
   ? "Plugin not responding after restart.\nIt may need more time to load."
   : "重启后插件无响应。\n可能需要更多时间加载。"
-  Plugin removed. A config file needs attention - check the HelixScreen log for details.: ''
+  Plugin removed. A config file needs attention - check the HelixScreen log for details.: 插件已移除。配置文件需要处理 - 请查看 HelixScreen 日志了解详情。
   Plugin uninstalled successfully.: 插件卸载成功。
-  Plugins: 插件
-  Plugins are discovered on application startup: 插件在应用程序启动时被发现
   Point camera at QR code on spool: 将摄像头对准料盘上的 QR 码
   Polymaker: Polymaker
   Poor Accuracy: 精度较差
@@ -2721,7 +2698,6 @@ translations:
   Temp: 温度
   Temp Compensation: 温度补偿
   Temp °C: 温度 °C
-  Temp °C (%d–%d): 温度 °C (%d–%d)
   Temperature: 温度
   Temperature Graph: '温度曲线'
   Temperature Graph Config: 温度图表配置
@@ -2846,10 +2822,7 @@ translations:
   ? This printer looks like a {} ({}% confidence), but it is set up as a {}. A wrong type applies incorrect pre-print options and presets.
   : 此打印机看起来是 {}（置信度 {}%），但当前设置为 {}。错误的类型会应用不正确的打印前选项和预设。
   ? This removes the plugin's Moonraker component and restarts Moonraker. The printer will briefly disconnect. If old phase-tracking lines are still in PRINT_START, they are removed too, with backups kept. A Klipper restart applies that.
-  : ''
-  ? This removes the plugin's Moonraker component. If old phase-tracking lines are still in PRINT_START, they are removed too, with backups kept. A Klipper restart applies that.
-  : ''
-  This removes the plugin's macros and its Moonraker component from the printer and restarts Klipper.: 从打印机移除插件的宏及其 Moonraker 组件，并重启 Klipper。
+  : 这会移除插件的 Moonraker 组件并重启 Moonraker。打印机将短暂断开连接。如果 PRINT_START 中仍有旧的阶段跟踪行，它们也会被移除，但会保留备份。重启 Klipper 后生效。
   This replaces the printer's helper macros with the current version and restarts Klipper.: '这会将打印机的帮助宏替换为当前版本并重启 Klipper。'
   ? This replaces the printer's helper macros with the current version. A print is running, so Klipper restarts after it finishes.
   : '这会将打印机的帮助宏替换为当前版本。当前正在打印，Klipper 将在打印结束后重启。'
@@ -2979,13 +2952,12 @@ translations:
   Uninstall HelixPrint Plugin: 卸载 HelixPrint 插件
   Uninstall HelixPrint Plugin?: 卸载 HelixPrint 插件？
   Uninstall script not found.: 未找到卸载脚本。
-  'Uninstall: Coming soon': '卸载: 即将推出'
   Uninstallation failed. Check logs for details.: 卸载失败。请查看日志了解详情。
   'Uninstallation failed: ': '卸载失败: '
   Uninstallation timed out. The script may be stuck.: 卸载超时。脚本可能已卡住。
   Unit: 单元
   'Unit ': '单元 '
-  'Units: %d   Boxes: %d   Dryers: %d': ''
+  'Units: %d   Boxes: %d   Dryers: %d': '单元: %d   料盒: %d   干燥器: %d'
   Unknown: 未知
   Unknown Error: '未知错误'
   Unknown Event: 未知事件
@@ -3000,7 +2972,6 @@ translations:
   Unload filament: '卸载耗材'
   Unload from toolhead first: '请先从工具头卸载'
   Unload macro not configured: 卸载宏未配置
-  Unload may still be running — response timed out: 卸载可能仍在运行 — 响应超时
   Unload the CFS filament before enabling bypass: '启用旁通前请先卸载 CFS 耗材'
   Unloading: 卸载中
   Unloading Start Speed: '卸载起始速度'
@@ -3066,9 +3037,8 @@ translations:
   View Full History: 查看完整历史
   View Telemetry Data: 查看遥测数据
   View Timelapse: 查看延时摄影
-  View all boxes: ''
+  View all boxes: 查看所有料盒
   View and rename fans: 查看和重命名风扇
-  View installed plugins and status: 查看已安装的插件和状态
   View live camera feed: 查看实时摄像头画面
   View print statistics and job history: 查看打印统计和作业历史
   'Visits: ': '访问次数: '
@@ -3086,8 +3056,8 @@ translations:
   Wait for the current operation to complete or cancel it first: 请等待当前操作完成，或先将其取消
   Wait until the print finishes: 请等待打印完成
   Waiting for Moonraker...: 正在等待 Moonraker...
-  'Waiting for %s to finish. One heater at a time.': ''
-  Waiting for another box to finish.: ''
+  Waiting for %s to finish. One heater at a time.: 正在等待 %s 完成。一次只能使用一个加热器。
+  Waiting for another box to finish.: 正在等待另一个料盒完成。
   Waiting for bed to reach temperature for accurate calibration.: 等待热床达到温度以进行精确校准。
   Waiting for the filament system to report its state: 正在等待耗材系统报告状态
   Warm Bed: 预热热床
@@ -3235,7 +3205,7 @@ translations:
   Monitor for print abnormalities (camera-based): '监测打印异常（基于摄像头）'
   on unit {}: '在单元 {}'
   or type a macro name: 或输入宏名称
-  passive: ''
+  passive: 被动
   printer default: 打印机默认
   prints: 打印次数
   remaining: 剩余
