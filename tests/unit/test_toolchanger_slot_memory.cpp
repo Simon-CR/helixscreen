@@ -219,6 +219,23 @@ TEST_CASE("persist=false is a preview, not a memory", "[ams][toolchanger][slot_m
     CHECK(h.get_slot_info(1).color_rgb == helix::AMS_DEFAULT_SLOT_COLOR);
 }
 
+TEST_CASE("An identity sync never remaps a tool", "[ams][toolchanger][slot_memory][1652]") {
+    helix::test::RegisteredBackend<SlotMemoryHelper> h_reg(4);
+    SlotMemoryHelper& h = *h_reg;
+
+    helix::SlotInfo info = h.get_slot_info(1);
+    const int mapped_before = info.mapped_tool;
+    REQUIRE(mapped_before != 3);
+    // Only a person's edit moves the tool map, so a synced value naming another
+    // tool number leaves the lane answering to the one it had.
+    info.mapped_tool = 3;
+
+    REQUIRE(h.sync_external_identity(1, info).success());
+
+    CHECK(h.sent().empty());
+    CHECK(h.get_slot_info(1).mapped_tool == mapped_before);
+}
+
 TEST_CASE("An edit that also remaps a tool keeps both", "[ams][toolchanger][slot_memory]") {
     // apply_user_edit() does double duty: metadata AND an ASSIGN_TOOL remap when
     // mapped_tool changed. The remap path returns early, so a persist placed

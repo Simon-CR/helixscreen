@@ -1309,45 +1309,19 @@ AmsError AmsBackendToolChanger::apply_user_edit(int slot_index, const SlotInfo& 
 }
 
 AmsError AmsBackendToolChanger::sync_external_identity(int slot_index, const SlotInfo& info) {
-    std::string physical_tool_name;
-    {
-        std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard<std::mutex> lock(mutex_);
 
-        AmsError slot_valid = validate_slot_index(slot_index);
-        if (!slot_valid) {
-            return slot_valid;
-        }
-
-        if (!system_info_.units.empty() &&
-            slot_index < static_cast<int>(system_info_.units[0].slots.size())) {
-            auto& slot = system_info_.units[0].slots[slot_index];
-            const int old_mapped_tool = slot.mapped_tool;
-            write_filament_fields(slot, info);
-
-            // Tool mapping change: persist via ASSIGN_TOOL outside the lock.
-            // slot.mapped_tool stores "which G-code tool number activates this physical
-            // tool"; the gcode says "T<info.mapped_tool> now activates tool_names_[slot]".
-            if (info.mapped_tool != old_mapped_tool && info.mapped_tool >= 0 &&
-                info.mapped_tool < static_cast<int>(system_info_.tool_to_slot_map.size()) &&
-                slot_index < static_cast<int>(tool_names_.size())) {
-                // One pass for both directions, and it EVICTS: the tool being
-                // moved leaves its old lane unmapped, and whatever tool this
-                // lane previously answered to gives it up. Writing the two
-                // fields by hand left both stale halves in place, so a swap
-                // ended with two lanes claiming one tool number.
-                helix::printer::assign_tool_slot(system_info_, info.mapped_tool, slot_index);
-                physical_tool_name = tool_names_[slot_index];
-            }
-        }
+    AmsError slot_valid = validate_slot_index(slot_index);
+    if (!slot_valid) {
+        return slot_valid;
     }
 
-    if (!physical_tool_name.empty()) {
-        spdlog::info("[AMS ToolChanger] Remap via slot edit: T{} -> physical {} (slot {})",
-                     info.mapped_tool, physical_tool_name, slot_index);
-        return execute_gcode(
-            fmt::format("ASSIGN_TOOL TOOL={} N={}", physical_tool_name, info.mapped_tool));
+    // The slot keeps the tool number it answers to: only a person's edit moves
+    // the tool map, and moving it sends ASSIGN_TOOL.
+    if (!system_info_.units.empty() &&
+        slot_index < static_cast<int>(system_info_.units[0].slots.size())) {
+        write_filament_fields(system_info_.units[0].slots[slot_index], info);
     }
-
     return AmsErrorHelper::success();
 }
 

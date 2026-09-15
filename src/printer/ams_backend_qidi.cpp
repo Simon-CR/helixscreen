@@ -1462,9 +1462,18 @@ AmsError AmsBackendQidi::apply_user_edit(int slot_index, const SlotInfo& info,
     return AmsErrorHelper::success();
 }
 
-AmsError AmsBackendQidi::sync_external_identity(int slot_index, const SlotInfo& info) {
-    return apply_user_edit(slot_index, info,
-                           helix::ams::Observation(helix::ams::ObservationSource::LocalUser));
+AmsError AmsBackendQidi::sync_external_identity(int slot_index, const SlotInfo& /*info*/) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (system_info_.units.empty()) {
+        return AmsErrorHelper::not_supported("QIDI Box: no unit configured");
+    }
+    if (!system_info_.get_slot_global(slot_index)) {
+        return AmsErrorHelper::not_supported("QIDI Box: slot index out of range");
+    }
+    // Only a person's edit reaches the box's save_variables, and this backend
+    // keeps no other store for a slot's identity, so a synced value has nowhere
+    // to go.
+    return AmsErrorHelper::success();
 }
 
 void AmsBackendQidi::update_slot_weight_impl(int /*slot_index*/, float /*remaining_weight_g*/,

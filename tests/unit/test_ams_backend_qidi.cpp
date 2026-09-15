@@ -1560,6 +1560,24 @@ TEST_CASE("QIDI Box weight update writes none of the box's identity variables",
     CHECK(backend.sent.empty());
 }
 
+TEST_CASE("QIDI Box identity sync writes none of the box's identity variables",
+          "[ams][qidi_box][write_path][1652]") {
+    RecordingQidiBackend backend;
+    QidiBoxTestAccess::apply_filas_list(backend, STOCK_FILAS_EXCERPT);
+    // Values that resolve to all three ids, so a sync that reached the write
+    // path would show up in what was sent.
+    REQUIRE(QidiBoxTestAccess::vendor_count(backend) > 0);
+
+    SlotInfo info;
+    info.material = "ABS";
+    info.brand = "eSUN";
+    info.color_rgb = 0xFF362D;
+
+    REQUIRE(backend.sync_external_identity(0, info).success());
+
+    CHECK(backend.sent.empty());
+}
+
 TEST_CASE("QIDI Box apply_user_edit skips fields with no mapping", "[ams][qidi_box][write_path]") {
     RecordingQidiBackend backend;
     QidiBoxTestAccess::apply_filas_list(backend, STOCK_FILAS_EXCERPT);
