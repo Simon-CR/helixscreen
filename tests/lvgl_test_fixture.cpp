@@ -40,6 +40,20 @@ static void test_display_flush_cb(lv_display_t* disp, const lv_area_t* /*area*/,
     lv_display_flush_ready(disp);
 }
 
+/**
+ * @brief The screen teardown switches to while deleting the test screen
+ *
+ * One for the whole process: something has to stay active during the delete,
+ * and LVGL sizes every screen on the display at each resolution change
+ * (update_resolution() sends LV_EVENT_SIZE_CHANGED down the whole screen
+ * list), so a fresh throwaway screen per case makes every later change walk
+ * more and more dead trees.
+ */
+static lv_obj_t* blank_screen() {
+    static lv_obj_t* screen = lv_obj_create(nullptr);
+    return screen;
+}
+
 LVGLTestFixture::LVGLTestFixture() : m_test_screen(nullptr) {
     ensure_lvgl_initialized();
 
@@ -54,7 +68,17 @@ LVGLTestFixture::LVGLTestFixture() : m_test_screen(nullptr) {
     // put its geometry back, before anything reads either; a test that wants a
     // different display for its own body scopes that inside the body
     // (ScopedResolution, or its own display).
+    //
+    // Rotation is restored first, and for two reasons: a rotated display is
+    // wrong on its own, and the resolution getters swap their axes under
+    // ROTATION_90/270 while lv_display_set_resolution() no-ops when the raw
+    // pixel fields already match - so putting the geometry back from "what
+    // the getters report" against a rotated display writes nothing and
+    // leaves the axes swapped.
     if (s_display != nullptr) {
+        if (lv_display_get_rotation(s_display) != LV_DISPLAY_ROTATION_0) {
+            lv_display_set_rotation(s_display, LV_DISPLAY_ROTATION_0);
+        }
         const int32_t w = lv_display_get_horizontal_resolution(s_display);
         const int32_t h = lv_display_get_vertical_resolution(s_display);
         if (w != TEST_DISPLAY_WIDTH || h != TEST_DISPLAY_HEIGHT) {
@@ -108,9 +132,7 @@ LVGLTestFixture::~LVGLTestFixture() {
         // Switch to a different screen before deleting if this is active
         lv_obj_t* active = lv_screen_active();
         if (active == m_test_screen) {
-            // Create a temporary screen to switch to
-            lv_obj_t* temp = lv_obj_create(nullptr);
-            lv_screen_load(temp);
+            lv_screen_load(blank_screen());
         }
         lv_obj_delete(m_test_screen);
         m_test_screen = nullptr;

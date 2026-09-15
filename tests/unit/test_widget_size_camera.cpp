@@ -72,22 +72,32 @@ using namespace helix::widget_size;
 // below judges its resize ladder against the tier that display yields
 // (w_normal() at the fixture's 800x480 is Medium's 174px; at this case's
 // 1080x1920 the narrow axis is XXLarge's 309px, which swallows the 233px
-// Medium cell below). This case moves the resolution and deliberately does
-// not put it back: LVGLTestFixture's constructor reclaims the display -
-// default slot and geometry both - before the next case, and if that reset
-// ever stops, the case below goes red at its Medium-tier step.
+// Medium cell below). This case moves the resolution and rotation and
+// deliberately puts neither back, then checks the reset the direct way: a
+// fresh LVGLTestFixture constructed here must hand whatever runs next the
+// fixture's own geometry. Pinning it in the same case keeps the oracle with
+// the leak no matter where Catch2's shard boundaries fall; the case below
+// then shows the tier consequence end to end.
 TEST_CASE_METHOD(LVGLUITestFixture,
                  "camera: a leaked display resolution does not reach the next case",
-                 "[widget_size][camera]") {
+                 "[1563][widget_size][camera]") {
     lv_display_t* disp = lv_display_get_default();
     REQUIRE(disp != nullptr);
     lv_display_set_resolution(disp, 1080, 1920);
+    lv_display_set_rotation(disp, LV_DISPLAY_ROTATION_90);
+
+    LVGLTestFixture reclaimed;
+    lv_display_t* const d = lv_display_get_default();
+    CHECK(d == LVGLTestFixture::s_display);
+    CHECK(lv_display_get_rotation(d) == LV_DISPLAY_ROTATION_0);
+    CHECK(lv_display_get_horizontal_resolution(d) == TEST_DISPLAY_WIDTH);
+    CHECK(lv_display_get_vertical_resolution(d) == TEST_DISPLAY_HEIGHT);
 }
 
 TEST_CASE_METHOD(LVGLUITestFixture,
                  "camera compact/live layout follows width alone, and stream "
                  "start/stop stays edge-triggered",
-                 "[widget_size][camera]") {
+                 "[1563][widget_size][camera]") {
     // Actively zero the global PrinterState singleton's webcam config rather
     // than trusting it is already empty: MoonrakerClientMock::discover_printer()
     // (src/api/moonraker_client_mock.cpp) calls
