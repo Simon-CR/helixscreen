@@ -106,25 +106,29 @@
       "reason": "ZMOD probes with a load cell whose zero drifts when bed screws or thermal preload change. ZMOD tares on its print path (_PREPARE_PRINT, _START_PRINT) but not on any calibration entry point, so an untared probe reports 'Probe triggered prior to movement'. BED_LEVEL_SCREWS_TUNE tares itself, hence skip_if_macro_in."
     },
     {
-      "id": "cc1_load_cell_save_tare",
+      "id": "cosmos_load_cell_tare",
       "when": [
         {
           "type": "object_exists",
           "field": "printer_objects",
           "pattern": "load_cell_probe"
+        },
+        {
+          "type": "macro_match",
+          "field": "macros",
+          "pattern": "_COSMOS_SETTINGS"
         }
       ],
       "operations": [
-        "screws_tilt",
         "probe_accuracy",
         "z_offset_calibrate"
       ],
       "gcode": [
-        "LOAD_CELL_SAVE_TARE"
+        "LOAD_CELL_TARE"
       ],
       "label": "Zeroing load cell",
       "timeout_s": 60,
-      "reason": "The Centauri Carbon's load_cell module publishes LOAD_CELL_SAVE_TARE as a mux command, never a gcode_macro, so macro_match cannot see it. The load_cell_probe object keys the rule instead. No skip_if_macro_in: COSMOS's Bed_Level_Screws_Tune clears the mesh and homes without taring, so it must not suppress the tare."
+      "reason": "COSMOS probes with a load cell whose zero drifts between calibrations. Its load_cell module registers LOAD_CELL_TARE as a command, never a gcode_macro, so macro_match cannot see it: the load_cell_probe object keys the rule, and COSMOS's _COSMOS_SETTINGS macro keeps it off other firmware whose load cell may not define that command. COSMOS's SCREWS_TILT_CALCULATE and BED_MESH_CALIBRATE tare the load cell themselves, so only probe accuracy and Z-offset calibration get it."
     }
   ],
   "printers": [
