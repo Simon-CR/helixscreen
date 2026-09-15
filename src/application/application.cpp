@@ -3450,13 +3450,11 @@ void Application::setup_discovery_callbacks() {
                 IMoonrakerAPI* api_ptr = api;
                 api_ptr->update_safety_limits_from_printer(
                     [api_ptr]() {
-                        const auto& limits = api_ptr->get_safety_limits();
-                        int min_extrude = static_cast<int>(limits.min_extrude_temp_celsius);
-                        int max_temp = static_cast<int>(limits.max_temperature_celsius);
-                        int min_temp = static_cast<int>(limits.min_temperature_celsius);
+                        // A copy: the panel reads it later, on the main thread.
+                        const SafetyLimits limits = api_ptr->get_safety_limits();
 
-                        helix::ui::queue_update([min_temp, max_temp, min_extrude]() {
-                            get_global_filament_panel().set_limits(min_temp, max_temp, min_extrude);
+                        helix::ui::queue_update([limits]() {
+                            get_global_filament_panel().set_limits(limits);
                             spdlog::debug("[Application] Safety limits propagated to panels");
                         });
 

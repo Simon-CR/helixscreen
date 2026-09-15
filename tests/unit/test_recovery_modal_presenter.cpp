@@ -233,6 +233,24 @@ TEST_CASE_METHOD(RecoveryPreheatFixture,
 }
 
 TEST_CASE_METHOD(RecoveryPreheatFixture,
+                 "A nozzle one degree under a fractional extrusion minimum is still cold",
+                 "[error-center][recovery-presenter][preheat]") {
+    SafetyLimits limits;
+    limits.min_extrude_temp_celsius = 180.5;
+    api_.set_safety_limits(limits);
+    presenter().present(make_afc_jam());
+    process_lvgl(20);
+
+    // Klipper refuses to extrude at 180 against a 180.5 minimum.
+    set_nozzle_c(180);
+    TA::tap(presenter(), "TOOL_UNLOAD");
+    process_lvgl(20);
+
+    CHECK(gcode_count(mock_client_, "TOOL_UNLOAD") == 0);
+    CHECK(TA::preheating(presenter()));
+}
+
+TEST_CASE_METHOD(RecoveryPreheatFixture,
                  "A non-needs_hot_nozzle recovery dispatches immediately even when cold",
                  "[error-center][recovery-presenter][preheat]") {
     presenter().present(make_afc_jam());

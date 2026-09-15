@@ -237,9 +237,11 @@ MacroParamModal* MacroParamModal::s_active_instance_ = nullptr;
 
 void MacroParamModal::show_for_macro(lv_obj_t* parent, const std::string& macro_name,
                                      const std::vector<MacroParam>& params,
-                                     MacroExecuteCallback on_execute) {
+                                     MacroExecuteCallback on_execute,
+                                     const std::map<std::string, std::string>& prefill) {
     macro_name_ = macro_name;
     params_ = params;
+    prefill_ = prefill;
     on_execute_ = std::move(on_execute);
     raw_mode_ = false;
     show_common(parent);
@@ -249,6 +251,7 @@ void MacroParamModal::show_for_unknown_params(lv_obj_t* parent, const std::strin
                                               MacroExecuteCallback on_execute) {
     macro_name_ = macro_name;
     params_.clear();
+    prefill_.clear();
     on_execute_ = std::move(on_execute);
     raw_mode_ = true;
     show_common(parent);
@@ -338,10 +341,17 @@ void MacroParamModal::populate_param_fields() {
         lv_obj_t* field = static_cast<lv_obj_t*>(lv_xml_create(param_list, "form_field", attrs));
         if (!field) {
             spdlog::warn("[MacroParamModal] Failed to create form_field for {}", param.name);
+            // An empty slot keeps every later field at its parameter's index;
+            // collect_values() skips it.
+            textareas_.push_back(nullptr);
             continue;
         }
 
         lv_obj_t* textarea = lv_obj_find_by_name(field, "field_input");
+        // A prefill is the field's text, so Run sends it unless the user clears it.
+        if (auto it = prefill_.find(param.name); textarea && it != prefill_.end()) {
+            lv_textarea_set_text(textarea, it->second.c_str());
+        }
 
         textareas_.push_back(textarea);
     }
