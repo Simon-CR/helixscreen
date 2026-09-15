@@ -259,3 +259,65 @@ TEST_CASE_METHOD(ThumbnailRaceFixture, "process_async racing shutdown never uses
 
     SUCCEED("Completed " << ITERATIONS << " shutdown races without faulting");
 }
+
+TEST_CASE_METHOD(ThumbnailRaceFixture, "submit_test_task after shutdown queues nothing",
+                 "[thumbnail][threading][1202]") {
+    ProcHandle proc;
+
+    proc->shutdown();
+
+    std::atomic<int> ran{0};
+    proc->submit_test_task([&ran]() { ++ran; });
+
+    // No pool to commit into after shutdown() - the task must never run, and
+    // must not resurrect the pool (a running task would prove either failure).
+    CHECK(proc->pending_tasks() == 0);
+    CHECK(ran.load() == 0);
+}
+
+TEST_CASE_METHOD(ThumbnailRaceFixture, "submit_test_task racing shutdown never uses a freed pool",
+                 "[thumbnail][threading][1202][slow]") {
+    // Same regression shape as "process_async racing shutdown" above, for
+    // submit_test_task()'s own commit() call.
+    constexpr int ITERATIONS = 40;
+    constexpr int SUBMITTERS = 4;
+
+    for (int iter = 0; iter < ITERATIONS; ++iter) {
+        ProcHandle proc;
+
+        helix::ThumbnailProcessor* raw = proc.get();
+        auto ran = std::make_shared<std::atomic<int>>(0);
+        std::atomic<bool> go{false};
+        std::vector<std::thread> threads;
+        threads.reserve(SUBMITTERS + 1);
+
+        for (int t = 0; t < SUBMITTERS; ++t) {
+            threads.emplace_back([raw, ran, &go] {
+                while (!go.load(std::memory_order_acquire)) {
+                }
+                for (int i = 0; i < 6; ++i) {
+                    raw->submit_test_task([ran]() { ++*ran; });
+                }
+            });
+        }
+
+        threads.emplace_back([raw, &go] {
+            while (!go.load(std::memory_order_acquire)) {
+            }
+            raw->shutdown();
+        });
+
+        go.store(true, std::memory_order_release);
+        for (auto& th : threads) {
+            th.join();
+        }
+
+        // The invariant is "no crash, no torn state". Every submission either
+        // ran before shutdown() or was refused after it; shutdown()'s
+        // pool->stop() joins every worker before returning, so by the time
+        // every thread above has joined, no task is still running.
+        CHECK(proc->pending_tasks() == 0);
+    }
+
+    SUCCEED("Completed " << ITERATIONS << " shutdown races without faulting");
+}

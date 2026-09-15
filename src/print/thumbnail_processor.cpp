@@ -443,12 +443,20 @@ void ThumbnailProcessor::clear_cache() {
 size_t ThumbnailProcessor::pending_tasks() const {
     // Was an unlocked null-check followed by an unlocked dereference — the same
     // use-after-free window as process_async(), against shutdown()'s reset
-    // (#1202). taskNum() is a cheap read, so the whole thing goes under the lock.
+    // (#1202). All three reads are cheap, so the whole thing goes under the lock.
     std::lock_guard<std::mutex> lock(mutex_);
     if (!thread_pool_) {
         return 0;
     }
-    return thread_pool_->taskNum();
+    // taskNum() alone only counts tasks still sitting in the queue: a task a
+    // worker has already popped and is executing drops out of it before the
+    // task itself finishes, so it must not be read as "nothing pending" on
+    // its own. currentThreadNum() - idleThreadNum() adds back exactly what
+    // HThreadPool::wait()'s own idle condition checks
+    // (`tasks.empty() && idle_thread_num == cur_thread_num`).
+    size_t queued = thread_pool_->taskNum();
+    int busy_workers = thread_pool_->currentThreadNum() - thread_pool_->idleThreadNum();
+    return queued + (busy_workers > 0 ? static_cast<size_t>(busy_workers) : 0);
 }
 
 void ThumbnailProcessor::wait_for_completion() {
@@ -464,6 +472,17 @@ void ThumbnailProcessor::wait_for_completion() {
     }
     if (pool) {
         pool->wait();
+    }
+}
+
+void ThumbnailProcessor::submit_test_task(std::function<void()> task) {
+    // commit() must run under mutex_, the same as process_async()/process_from_path()
+    // above (#1202): HThreadPool::commit() opens with `if (status == STOP) start();`,
+    // so releasing the lock first would let a concurrent shutdown() stop the pool and
+    // then have this commit() resurrect it.
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (!shutdown_ && thread_pool_) {
+        thread_pool_->commit(std::move(task));
     }
 }
 

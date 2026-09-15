@@ -745,7 +745,7 @@ refusal — this is how the toast's layout gets checked on a 480x272 panel.
 ### Diagnostics & lifecycle
 | Command | Meaning |
 |---------|---------|
-| `wait_idle [--timeout N]` | Block until `UpdateQueue` and `HttpExecutor` are both quiet (default 10s), so a script can gate on real async work instead of a fixed `sleep` |
+| `wait_idle [--timeout N]` | Block until `UpdateQueue`, `HttpExecutor`, and `ThumbnailProcessor` are all quiet (default 10s), so a script can gate on real async work instead of a fixed `sleep` |
 | `freeze` | Stop the moving parts for a reproducible capture: `lv_anim_delete_all()` plus `animations_enabled = 0`, pause every periodic `lv_timer` except two, and park the mock printer's simulation loop (see below). Returns `{"frozen": true, "timers_paused": N}` |
 | `unfreeze` | Reverse `freeze`: resume exactly the timers it paused, re-enable animations. Returns `{"frozen": false, "timers_resumed": N}` |
 | `log [-n N]` | Tail the app's in-memory log ring buffer (default 50 lines). Printed as raw lines, so it pipes to `grep`. **Gated**: same diagnostic-upload switch as the bundle/crash pipes — refused with a JSON-RPC error in any build that may not ship diagnostics (see below) |
@@ -821,9 +821,11 @@ meanings available.
 
 #### `wait_idle` — what it can and cannot see
 
-`wait_idle` polls two counters from the transport thread — `UpdateQueue` pending
-work (including anything buffered by a `ScopedFreeze` held internally) and `HttpExecutor` in-flight
-items on both lanes — and returns once both read zero on two consecutive
+`wait_idle` polls three counters from the transport thread: `UpdateQueue` pending
+work (including anything buffered by a `ScopedFreeze` held internally),
+`HttpExecutor` in-flight items on both lanes, and `ThumbnailProcessor`
+pending tasks (its worker pool prescaling a card thumbnail, independent of
+either HTTP lane). It returns once all three read zero on two consecutive
 samples (a single zero reading can land in the gap between one callback
 finishing and the next being enqueued by the work it just completed). A
 timeout names the nonzero counter(s) rather than just saying time ran out.
@@ -850,7 +852,7 @@ large and grows. Known gaps:
 | Source | Where | Note |
 |---|---|---|
 | Raw `lv_async_call` | `panel_widget_manager.cpp` (home-panel widget-gate rebuild), `ui_nav_manager.cpp` (overlay-close), `ui_filament_path_layers.cpp`, `grid_edit_mode.cpp` | LVGL exposes only call/cancel — no count API |
-| Thumbnail render thread | `gcode_object_thumbnail_renderer.cpp` | Own `std::thread`, not `HttpExecutor` |
+| Per-object thumbnail render thread | `gcode_object_thumbnail_renderer.cpp` | Own `std::thread`, not `HttpExecutor`. Distinct from `ThumbnailProcessor` (card thumbnails), which `wait_idle` now counts |
 | GCode geometry build | `ui_gcode_viewer.cpp` (`build_thread_`) | Same |
 | GCode layer/streaming | `gcode_layer_renderer.h`, `gcode_streaming_controller.h` | Same |
 | Mock backends | `moonraker_client_mock.cpp` (`simulation_thread_` + 3 timers), `moonraker_client_mock_print.cpp` (2 timers), `ams_backend_mock.cpp` (6 threads), `wifi_backend_mock.cpp` (2) | Mock mode **adds** nondeterminism |
@@ -936,8 +938,9 @@ rationale.
 #### `screenshot --stable` / `--target` — the frame-hash gate
 
 `wait_idle` and `freeze` are both best-effort: neither one can see raw
-`lv_async_call` work, the gcode/thumbnail build threads, or the mock
-backends' own threads (see the gap table above). `--stable` is the black-box
+`lv_async_call` work, the gcode-viewer and per-object thumbnail render
+threads, or the mock backends' own threads (see the gap table above).
+`--stable` is the black-box
 backstop — it hashes the actual captured pixels (FNV-1a over the composited
 RGBA buffer) and polls, at most 180 samples 16ms apart (~3s), until three
 consecutive frames hash identically. It throws rather than returning a

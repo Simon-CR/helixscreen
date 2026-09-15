@@ -436,9 +436,9 @@ class HelixApp:
     def wait_idle(self, timeout: float = 10.0) -> dict:
         """Block until the UI has settled.
 
-        Best-effort: raw lv_async_call work, the gcode/thumbnail build threads,
-        and the mock backends' own threads are invisible to this. See the design
-        spec's determinism section.
+        Best-effort: raw lv_async_call work, the gcode-viewer and per-object
+        thumbnail render threads, and the mock backends' own threads are
+        invisible to this. See the design spec's determinism section.
         """
         return self.ctl("wait_idle", "--timeout", timeout)
 
