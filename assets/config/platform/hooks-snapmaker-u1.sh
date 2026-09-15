@@ -289,6 +289,31 @@ _remote_screen_backend_args() {
 start_remote_screen() {
     [ -f "$HELIX_FB_HTTP" ] || return 0
     _remote_screen_enabled || return 0
+    # The mode fb-http runs in is a declaration, not a start side effect, so
+    # it is decided and re-supplied ABOVE and INSIDE the already-running
+    # early return: the init script fires platform_pre_start in a subshell
+    # (side effects only), and the launcher's own call is the one whose
+    # environment reaches helix-screen. Below the guard it would be supplied
+    # only by the subshell and never re-supplied.
+    #
+    # A warm call re-declares the mode the RUNNING fb-http was started with,
+    # recorded beside the pidfile, rather than re-probing whatever binary is
+    # on disk now: fb-http can be replaced between the init subshell's start
+    # and the launcher's call, and a build that gained --backend would flip
+    # the probe, skip the fb0 export, and leave the running fbdev fb-http
+    # reading an fb0 nothing mirrors — a silently frozen remote screen. No
+    # record (a start that predates the record) conservatively exports the
+    # mirror: an unneeded one costs a few writes, a missing one freezes the
+    # feed.
+    _rs_mode_file="${HELIX_REMOTE_SCREEN_PID}.mode"
+    if [ -f "$HELIX_REMOTE_SCREEN_PID" ] && \
+       kill -0 "$(cat "$HELIX_REMOTE_SCREEN_PID" 2>/dev/null)" 2>/dev/null; then
+        if [ "$(cat "$_rs_mode_file" 2>/dev/null)" != "drm" ]; then
+            export HELIX_REMOTE_SCREEN_FB0="${HELIX_REMOTE_SCREEN_FB0:-/dev/fb0}"
+        fi
+        unset _rs_mode_file
+        return 0
+    fi
     _rs_backend=$(_remote_screen_backend_args)
     # No DRM backend: fb-http reads /dev/fb0. HelixScreen renders into its own
     # DRM dumb buffer and never touches fb0, so fb0 would be stale — UNLESS the
@@ -297,19 +322,11 @@ start_remote_screen() {
     # snapshot the live UI. Only on the fbdev path — the DRM branch captures
     # the real buffer directly and needs no mirror. See
     # docs/devel/printers/SNAPMAKER_U1_SUPPORT.md.
-    #
-    # The export is a mode declaration, not a start side effect, so it sits
-    # ABOVE the already-running early return below: the init script fires
-    # platform_pre_start in a subshell (side effects only), and the launcher's
-    # own call is the one whose environment reaches helix-screen. Below the
-    # guard it would be supplied only by the subshell and never re-supplied.
     if [ -z "$_rs_backend" ]; then
         export HELIX_REMOTE_SCREEN_FB0="${HELIX_REMOTE_SCREEN_FB0:-/dev/fb0}"
-    fi
-    if [ -f "$HELIX_REMOTE_SCREEN_PID" ] && \
-       kill -0 "$(cat "$HELIX_REMOTE_SCREEN_PID" 2>/dev/null)" 2>/dev/null; then
-        unset _rs_backend
-        return 0
+        echo fbdev > "$_rs_mode_file"
+    else
+        echo drm > "$_rs_mode_file"
     fi
     if [ -n "$_rs_backend" ]; then
         # --drm-wait lets fb-http wait for the DRM device to be ready, so it is
@@ -330,7 +347,7 @@ start_remote_screen() {
     # vanishes when empty); it is a fixed internal string, never user input.
     start-stop-daemon -S -b -m -p "$HELIX_REMOTE_SCREEN_PID" -x /bin/sh -- -c \
         "exec /usr/bin/python3 $HELIX_FB_HTTP --bind 127.0.0.1 --port 8092 $_rs_backend --html-dir $HELIX_FB_HTTP_HTML >/dev/null 2>&1"
-    unset _rs_backend
+    unset _rs_backend _rs_mode_file
 }
 
 # Stop fb-http if we started it.
@@ -350,10 +367,11 @@ stop_remote_screen() {
             start-stop-daemon -K -p "$HELIX_REMOTE_SCREEN_PID" -s TERM 2>/dev/null || \
                 kill -TERM "$_rs_pid" 2>/dev/null || true
         fi
-        rm -f "$HELIX_REMOTE_SCREEN_PID"
+        rm -f "$HELIX_REMOTE_SCREEN_PID" "${HELIX_REMOTE_SCREEN_PID}.mode"
         unset _rs_pid _fb_name
     else
         pkill -f "$HELIX_FB_HTTP" 2>/dev/null || true
+        rm -f "${HELIX_REMOTE_SCREEN_PID}.mode"
     fi
 }
 

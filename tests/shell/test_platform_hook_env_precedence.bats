@@ -598,3 +598,70 @@ EOF
         false
     fi
 }
+
+@test "a warm remote-screen call re-exports the mode fb-http was started with" {
+    # fb-http can be replaced between the init subshell's cold start and the
+    # launcher's warm call (an upgrade swaps the binary in place). The warm
+    # call must re-declare the mode the RUNNING fb-http was started with,
+    # recorded beside the pidfile - not re-probe the new binary. A build that
+    # gained --backend makes the probe return DRM flags, the fb0 export is
+    # skipped, and the still-running fbdev fb-http reads an fb0 nothing
+    # mirrors: a silently frozen remote screen.
+    mkdir -p "$BATS_TEST_TMPDIR/bin"
+    cat > "$BATS_TEST_TMPDIR/bin/pidof" << 'EOF'
+#!/bin/sh
+exit 1
+EOF
+    cat > "$BATS_TEST_TMPDIR/bin/start-stop-daemon" << 'EOF'
+#!/bin/sh
+# Stand-in for `start -m`: record the pidfile a real daemon start would
+# leave, pointing at the live PID passed in HELIX_TEST_LIVE_PID.
+while [ $# -gt 0 ]; do
+    case "$1" in
+        -p) echo "$HELIX_TEST_LIVE_PID" > "$2"; shift 2 ;;
+        *) shift ;;
+    esac
+done
+exit 0
+EOF
+    chmod +x "$BATS_TEST_TMPDIR"/bin/*
+    fb_old="$BATS_TEST_TMPDIR/fb-http-old"
+    fb_new="$BATS_TEST_TMPDIR/fb-http-new"
+    printf '    parser.add_argument("--fb", default="/dev/fb0")\n' > "$fb_old"
+    printf '    parser.add_argument("--backend", choices=["drm", "fbdev"])\n' > "$fb_new"
+
+    f="$HOOKS_DIR/hooks-snapmaker-u1.sh"
+    pidfile="$BATS_TEST_TMPDIR/u1-upgrade.pid"
+    rm -f "$pidfile" "$pidfile.mode"
+
+    export HELIX_TEST_LIVE_PID="$$"
+    export HELIX_SAVED_WPA="$BATS_TEST_TMPDIR/no-wpa.conf"
+    export TOOL_CALL_LOG="$BATS_TEST_TMPDIR/tool-calls"
+    export PATH="$BATS_TEST_TMPDIR/bin:$PATH"
+
+    # fbdev start, then the binary gains --backend before the warm call.
+    cold="$(HELIX_FB_HTTP="$fb_old" capture_pre_start_env "$f" "$pidfile")"
+    printf '%s\n' "$cold" | grep -qx 'HELIX_REMOTE_SCREEN_FB0'
+    [ "$(cat "$pidfile.mode" 2>/dev/null)" = "fbdev" ]
+    warm="$(HELIX_FB_HTTP="$fb_new" capture_pre_start_env "$f" "$pidfile")"
+    printf '%s\n' "$warm" | grep -qx 'HELIX_REMOTE_SCREEN_FB0' || \
+        fail "warm call dropped the fb0 mirror after fb-http gained --backend"
+
+    # The DRM leg stays mirror-free across its own warm call.
+    rm -f "$pidfile" "$pidfile.mode"
+    cold="$(HELIX_FB_HTTP="$fb_new" capture_pre_start_env "$f" "$pidfile")"
+    if printf '%s\n' "$cold" | grep -qx 'HELIX_REMOTE_SCREEN_FB0'; then
+        fail "a DRM start exports the fb0 mirror"
+    fi
+    [ "$(cat "$pidfile.mode" 2>/dev/null)" = "drm" ]
+    warm="$(HELIX_FB_HTTP="$fb_new" capture_pre_start_env "$f" "$pidfile")"
+    if printf '%s\n' "$warm" | grep -qx 'HELIX_REMOTE_SCREEN_FB0'; then
+        fail "a warm DRM call exports the fb0 mirror"
+    fi
+
+    # stop cleans the record beside the pidfile.
+    HELIX_REMOTE_SCREEN_PID="$pidfile" HELIX_FB_HTTP="$fb_new" \
+        sh -c '. "'"$f"'"; stop_remote_screen' >/dev/null 2>&1
+    [ ! -e "$pidfile" ]
+    [ ! -e "$pidfile.mode" ]
+}
