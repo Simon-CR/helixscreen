@@ -184,6 +184,10 @@ start() {
     # Start splash screen early (before launcher) so it's visible during load
     # Set HELIX_NO_SPLASH=1 to disable splash (for debugging backlight issues)
     # Splash auto-detects resolution from display hardware
+    # HELIX_NO_SPLASH here is the shell environment's value or the platform
+    # hook's file-scope assignment (Forge-X): the launcher reads
+    # helixscreen.env only later, so an operator's env-file value reaches
+    # every splash decision except this early one.
     EARLY_SPLASH_PID=""
     if [ -x "$SPLASH" ] && [ "${HELIX_NO_SPLASH:-0}" != "1" ]; then
         echo "Starting splash screen..."

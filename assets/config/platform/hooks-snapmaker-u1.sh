@@ -291,25 +291,34 @@ _remote_screen_backend_args() {
 start_remote_screen() {
     [ -f "$HELIX_FB_HTTP" ] || return 0
     _remote_screen_enabled || return 0
+    _rs_backend=$(_remote_screen_backend_args)
+    # No DRM backend: fb-http reads /dev/fb0. HelixScreen renders into its own
+    # DRM dumb buffer and never touches fb0, so fb0 would be stale — UNLESS the
+    # in-app fb0 mailbox mirror is enabled. Export HELIX_REMOTE_SCREEN_FB0 so
+    # helix-screen mirrors each rendered frame into /dev/fb0, making fb-http's
+    # snapshot the live UI. Only on the fbdev path — the DRM branch captures
+    # the real buffer directly and needs no mirror. See
+    # docs/devel/printers/SNAPMAKER_U1_SUPPORT.md.
+    #
+    # The export is a mode declaration, not a start side effect, so it sits
+    # ABOVE the already-running early return below: the init script fires
+    # platform_pre_start in a subshell (side effects only), and the launcher's
+    # own call is the one whose environment reaches helix-screen. Below the
+    # guard it would be supplied only by the subshell and never re-supplied.
+    if [ -z "$_rs_backend" ]; then
+        export HELIX_REMOTE_SCREEN_FB0="/dev/fb0"
+    fi
     if [ -f "$HELIX_REMOTE_SCREEN_PID" ] && \
        kill -0 "$(cat "$HELIX_REMOTE_SCREEN_PID" 2>/dev/null)" 2>/dev/null; then
+        unset _rs_backend
         return 0
     fi
-    _rs_backend=$(_remote_screen_backend_args)
     if [ -n "$_rs_backend" ]; then
         # --drm-wait lets fb-http wait for the DRM device to be ready, so it is
         # safe to launch here (before helix-screen becomes DRM master); capture
         # is read-only and does not contend for DRM master.
         echo "Remote screen: starting fb-http (DRM capture of /dev/dri/card0) on 127.0.0.1:8092"
     else
-        # No DRM backend: fb-http reads /dev/fb0. HelixScreen renders into its own
-        # DRM dumb buffer and never touches fb0, so fb0 would be stale — UNLESS the
-        # in-app fb0 mailbox mirror is enabled. Export HELIX_REMOTE_SCREEN_FB0 so
-        # helix-screen (launched after this hook, inheriting our env) mirrors each
-        # rendered frame into /dev/fb0, making fb-http's snapshot the live UI. Only
-        # on the fbdev path — the DRM branch captures the real buffer directly and
-        # needs no mirror. See docs/devel/printers/SNAPMAKER_U1_SUPPORT.md.
-        export HELIX_REMOTE_SCREEN_FB0="/dev/fb0"
         echo "Remote screen: starting fb-http (fbdev /dev/fb0) + in-app fb0 mirror on 127.0.0.1:8092"
     fi
     # Output is discarded to /dev/null: fb-http is a long-lived daemon (whole UI

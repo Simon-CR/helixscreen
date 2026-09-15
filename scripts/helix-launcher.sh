@@ -505,9 +505,13 @@ fi
 # and the parent shell's own variables are already in place, so a hook's
 # guarded default fills only what nothing else set —
 #   shell environment > helixscreen.env > platform hook > built-in.
-# Any caller that runs platform_pre_start before exec'ing this script must
-# confine its exports the way the init script does, or its hook defaults
-# arrive as "already set" and outrank the operator's env file.
+# That rule governs this launcher's environment. A caller's own pre-launch
+# reads (the init script's early-splash HELIX_NO_SPLASH check) see only the
+# shell environment and hook file-scope assignments — nothing reads
+# helixscreen.env before this point. Any caller that runs platform_pre_start
+# before exec'ing this script must confine its exports the way the init
+# script does, or its hook defaults arrive as "already set" and outrank the
+# operator's env file.
 PLATFORM_HOOKS="${INSTALL_DIR}/platform/hooks.sh"
 if [ -f "${PLATFORM_HOOKS}" ]; then
     # shellcheck disable=SC1090  # path depends on INSTALL_DIR
@@ -519,10 +523,11 @@ fi
 
 # Resolve debug/logging settings: CLI flags > env vars (incl. env file) > defaults.
 #
-# MUST come after the platform-hooks block above. Six of the seven platform
-# hooks export HELIX_LOG_DEST / HELIX_LOG_FILE from platform_pre_start
-# (ad5m-zmod, ad5m-forgex, ad5m-kmod, k1, k2, cc1) to steer the app log onto a
-# partition that is persistent AND captured by that firmware's log archiver.
+# MUST come after the platform-hooks block above. The platform hooks export
+# HELIX_LOG_DEST / HELIX_LOG_FILE from platform_pre_start (every AD5M, AD5X,
+# K1/K2 and CC1 hook; the Pi, QIDI, M1 and Snapmaker U1 targets have no
+# firmware log archiver to feed) to steer the app log onto a partition that
+# is persistent AND captured by that firmware's log archiver.
 # Resolved any earlier, those variables are unset: --log-dest/--log-file never
 # reach the binary and the app log falls back to auto-detection (syslog on
 # Linux). That binds every launch path the same way: the init script runs

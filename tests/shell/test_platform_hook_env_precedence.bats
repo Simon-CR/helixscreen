@@ -15,6 +15,9 @@
 #
 # Hooks supply the platform DEFAULT. Anything already set wins.
 # Precedence: shell environment > helixscreen.env > platform hook > built-in.
+# That ordering holds inside the launcher; the init script's own early-splash
+# read of HELIX_NO_SPLASH precedes any env-file access and sees only the
+# shell environment plus the hook's file-scope assignment.
 
 WORKTREE_ROOT="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)"
 HOOKS_DIR="$WORKTREE_ROOT/assets/config/platform"
@@ -34,13 +37,15 @@ pre_start_exports() {
 # export statements at file scope (outside every function body). The
 # function-entry rule and the reset rule each `next` on their own line, so a
 # closing brace always resets the scan: an export below the last function is
-# as visible as one above the first.
+# as visible as one above the first. The indent class holds a literal space
+# AND tab (the launcher's env parser precedent): a tab-indented export inside
+# a file-scope `if` block is exactly the offender the gate exists to catch.
 file_scope_exports() {
     awk '
         /^[a-zA-Z_][a-zA-Z0-9_]*\(\) ?\{/ { infn = 1; next }
         infn && /^}/ { infn = 0; next }
         infn { next }
-        /^ *export / { print }
+        /^[ 	]*export / { print }
     ' "$1"
 }
 
@@ -98,18 +103,22 @@ file_scope_exports() {
     # The gate above is only as good as this scan. A scan that goes blind
     # below the first function body would pass the gate while missing real
     # offenders, so feed a fixture with exports above, inside, and below a
-    # function and assert exactly the two file-scope ones come back.
+    # function and assert exactly the three file-scope ones come back. One
+    # is tab-indented (the shape an export inside a tab-indented file-scope
+    # `if` block takes) - whitespace must not decide whether the gate fires.
     local fixture="$BATS_TEST_TMPDIR/scan-fixture.sh"
     cat > "$fixture" << 'EOF'
 export ABOVE=1
 helper_fn() {
     export INSIDE=1
 }
-export BELOW=1
 EOF
+    printf '\texport TABBED=1\nexport BELOW=1\n' >> "$fixture"
     run file_scope_exports "$fixture"
     [ "$status" -eq 0 ]
     echo "$output" | grep -qx 'export ABOVE=1'
+    # The scan reports lines as written, indent included.
+    echo "$output" | grep -qx "$(printf '\t')export TABBED=1"
     echo "$output" | grep -qx 'export BELOW=1'
     if echo "$output" | grep -q 'INSIDE'; then
         fail "scan reports an export from inside a function body"
@@ -217,4 +226,96 @@ EOF
     [ -s "$MOCK_INSTALL/helix_screen_args.txt" ]
     grep -q '^--log-dest=console$' "$MOCK_INSTALL/helix_screen_args.txt"
     grep -q '^--log-file=/hook/default.log$' "$MOCK_INSTALL/helix_screen_args.txt"
+}
+
+# =============================================================================
+# The launcher's second platform_pre_start call.
+#
+# The init script fires the hook in a subshell for side effects only, so the
+# launcher's call is the one whose environment reaches helix-screen — and it
+# runs with the subshell's side effects already on disk: pidfiles, running
+# daemons. Every export the hook supplies must survive that warm second call.
+# An export placed below an already-running early return is supplied only by
+# the init subshell and drops silently on every later call.
+# =============================================================================
+
+@test "a warm second platform_pre_start call re-supplies every export of the first" {
+    # Two fresh shells share the filesystem (pidfile a first-call daemon start
+    # leaves behind) but not the environment; the second call must set every
+    # HELIX_* variable the first did. Daemon starts are staged, not run: a
+    # start-stop-daemon stand-in only records the pidfile, pointing at a live
+    # PID (this test's own), and pidof reports nothing running, so the hooks'
+    # already-running guards take their warm branch. mkdir/touch are no-ops so
+    # hooks' absolute-path writes cannot touch this host. The Snapmaker
+    # remote-screen arm is forced on (toggle override + an fbdev-only fb-http
+    # stub): it is the one conditional export in the fleet.
+    mkdir -p "$BATS_TEST_TMPDIR/bin"
+    fb_stub="$BATS_TEST_TMPDIR/fb-http"
+    printf '    parser.add_argument("--fb", default="/dev/fb0")\n' > "$fb_stub"
+    cat > "$BATS_TEST_TMPDIR/bin/pidof" << 'EOF'
+#!/bin/sh
+exit 1
+EOF
+    cat > "$BATS_TEST_TMPDIR/bin/start-stop-daemon" << 'EOF'
+#!/bin/sh
+# Stand-in for `start -m`: record the pidfile a real daemon start would
+# leave, pointing at the live PID passed in HELIX_TEST_LIVE_PID.
+while [ $# -gt 0 ]; do
+    case "$1" in
+        -p) echo "$HELIX_TEST_LIVE_PID" > "$2"; shift 2 ;;
+        *) shift ;;
+    esac
+done
+exit 0
+EOF
+    chmod +x "$BATS_TEST_TMPDIR/bin/pidof" "$BATS_TEST_TMPDIR/bin/start-stop-daemon"
+    export PATH="$BATS_TEST_TMPDIR/bin:$PATH"
+    export HELIX_TEST_LIVE_PID="$$"
+    export HELIX_FB_HTTP="$fb_stub"
+    export HELIX_SAVED_WPA="$BATS_TEST_TMPDIR/no-wpa.conf"
+
+    supplied=0
+    offenders=""
+    for f in "$HOOKS_DIR"/hooks-*.sh; do
+        base="$(basename "$f")"
+        pidfile="$BATS_TEST_TMPDIR/${base}.pid"
+        rm -f "$pidfile"
+
+        cold="$(HELIX_REMOTE_SCREEN_PID="$pidfile" sh -c '
+            . "'"$f"'"
+            mkdir() { :; }
+            touch() { :; }
+            _remote_screen_enabled() { return 0; }
+            platform_pre_start >/dev/null 2>&1
+            env | sed -n "s/^\(HELIX_[A-Z0-9_]*\)=.*/\1/p" | sort -u
+        ')"
+        warm="$(HELIX_REMOTE_SCREEN_PID="$pidfile" sh -c '
+            . "'"$f"'"
+            mkdir() { :; }
+            touch() { :; }
+            _remote_screen_enabled() { return 0; }
+            platform_pre_start >/dev/null 2>&1
+            env | sed -n "s/^\(HELIX_[A-Z0-9_]*\)=.*/\1/p" | sort -u
+        ')"
+        while IFS= read -r var; do
+            [ -n "$var" ] || continue
+            supplied=$((supplied + 1))
+            if ! printf '%s\n' "$warm" | grep -qx "$var"; then
+                offenders="$offenders
+  $base: \$$var set by the first call, dropped by the warm second call"
+            fi
+        done <<< "$cold"
+    done
+    # Anti-vacuous: the harness must actually capture hook exports. Four of
+    # the counted names are harness-injected (LIVE_PID, FB_HTTP, SAVED_WPA,
+    # REMOTE_SCREEN_PID), so the floor sits well above them.
+    [ "$supplied" -gt 10 ] || {
+        echo "harness captured only $supplied HELIX_* exports - it is not exercising the hooks"
+        false
+    }
+    [ -z "$offenders" ] || {
+        echo "These exports are not re-supplied by a warm second call:$offenders"
+        echo "Hoist the export above the already-running early return: it is a mode declaration, not a start side effect."
+        false
+    }
 }
