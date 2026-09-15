@@ -243,6 +243,12 @@ void SettingsManager::init_subjects() {
     feeder_close_macro_ =
         config->get<std::string>(config->df() + wizard::FEEDER_CLOSE_MACRO, "auto");
 
+    // ACE bypass macro overrides (default: "auto" = detected default).
+    ace_bypass_on_macro_ =
+        config->get<std::string>(config->df() + wizard::ACE_BYPASS_ON_MACRO, "auto");
+    ace_bypass_off_macro_ =
+        config->get<std::string>(config->df() + wizard::ACE_BYPASS_OFF_MACRO, "auto");
+
     // Load scanner device selection. Global: the scanner is plugged into the
     // host running HelixScreen, not into any one printer.
     scanner_device_id_ = config->get<std::string>("/scanner/usb_vendor_product", "");
@@ -888,6 +894,30 @@ void SettingsManager::set_feeder_open_macro(const std::string& value) {
 
 std::string SettingsManager::get_feeder_close_macro() const {
     return feeder_close_macro_;
+}
+
+std::string SettingsManager::get_ace_bypass_on_macro() const {
+    return ace_bypass_on_macro_;
+}
+
+void SettingsManager::set_ace_bypass_on_macro(const std::string& value) {
+    ace_bypass_on_macro_ = value;
+    spdlog::info("[SettingsManager] set_ace_bypass_on_macro({})", value);
+    Config* config = Config::get_instance();
+    config->set<std::string>(config->df() + wizard::ACE_BYPASS_ON_MACRO, value);
+    config->save();
+}
+
+std::string SettingsManager::get_ace_bypass_off_macro() const {
+    return ace_bypass_off_macro_;
+}
+
+void SettingsManager::set_ace_bypass_off_macro(const std::string& value) {
+    ace_bypass_off_macro_ = value;
+    spdlog::info("[SettingsManager] set_ace_bypass_off_macro({})", value);
+    Config* config = Config::get_instance();
+    config->set<std::string>(config->df() + wizard::ACE_BYPASS_OFF_MACRO, value);
+    config->save();
 }
 
 void SettingsManager::set_feeder_close_macro(const std::string& value) {
