@@ -201,10 +201,18 @@ EOF
 @test "the build graph has no circular dependency make would silently drop" {
     # make resolves a cycle by dropping one edge and continuing; a watched
     # file waiting on the marker stamp is such a cycle, and the dropped edge
-    # is that file's gate. The dry run walks the pi graph (the cross-compile
-    # configuration) without compiling anything.
+    # is that file's gate. Walk only the stamp's own goal: a whole-tree dry
+    # run executes recipe lines that contain $(MAKE), which really builds.
+    # -B forces the recipe print that proves the walk whatever the stamp
+    # state, and the watched files must exist or the wildcard drops their
+    # edges and the check would pass vacuously.
+    missing=$(awk -F'\t' 'NR>1 && !s[$4"/"$5]++ \
+        {print ($4=="LVGL_DIR" ? "lib/lvgl" : "lib/libhv") "/" $5}' mk/patch-markers.tsv \
+        | while IFS= read -r f; do [ -f "$f" ] || printf '%s ' "$f"; done)
+    [ -z "$missing" ] || { printf 'watched files absent, graph incomplete: %s\n' "$missing"; return 1; }
     graph="$BATS_TEST_TMPDIR/pi-graph.log"
-    make PLATFORM_TARGET=pi SKIP_OPTIONAL_DEPS=1 -n > "$graph" 2>&1
+    make PLATFORM_TARGET=pi SKIP_OPTIONAL_DEPS=1 -n -B build/pi/.patch-markers-verified \
+        > "$graph" 2>&1 || true
     grep -q 'patch-markers-verified' "$graph" \
         || { printf 'dry run never walked the marker stamp\n'; head -5 "$graph"; return 1; }
     if grep -q 'Circular .* dependency dropped' "$graph"; then
