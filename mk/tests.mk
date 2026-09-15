@@ -415,22 +415,90 @@ prune-orphan-test-objs:
 # This is Catch2's hidden test convention.
 
 # Build tests only (does not run)
-# Use 'make test-run' to actually execute the tests
 # Delegates to test-build for parallel compilation, then shows usage hint
 test: test-build
-	$(ECHO) "$(CYAN)Run tests with: make test-run$(RESET)"
+	$(ECHO) "$(CYAN)Run one filter with: make t F='[tag]'$(RESET)"
 
-# Run unit tests in PARALLEL (excludes hidden and slow tests for fast iteration)
+# ----------------------------------------------------------------------------
+# t: the inner loop
+# ----------------------------------------------------------------------------
+# Build, then run exactly one Catch2 filter. F takes a tag, an exact case name,
+# or any Catch2 expression, so one variable covers every way of naming a case:
+#
+#   make t F='[ams]'
+#   make t F='AMS lane rebinds on eject'
+#   make t F='[ams] ~[slow]'
+#
+# Quiet on purpose: no banner, no timing line. This is typed dozens of times an
+# hour, and Catch2's own output is the answer.
+#
+# What this costs is make's dependency scan over the tree, 5 to 18s depending on
+# load, against a test run of 0.05 to 0.6s. What it buys is the guarantee that
+# the binary matches your source, which after an edit is not optional: `make -j`
+# builds only the app, so the bare binary would report the previous build's
+# numbers. When nothing has changed, run $(TEST_BIN) directly and skip the scan.
+#
+# An empty F is an error, never a whole-suite run. Falling back to everything is
+# the reflex this target exists to replace, so a typo must not reach it. The
+# guard is a parse-time conditional so a bare `make t` fails without first
+# building a binary it has no filter to run.
+.PHONY: t full-test-run test-run
+ifeq ($(strip $(F)),)
+t:
+	@echo "$(YELLOW)make t needs a filter.$(RESET)"; \
+	echo "  make t F='[tag]'             one tag"; \
+	echo "  make t F='exact case name'   one case"; \
+	echo "  make test-list-tags          what tags exist"; \
+	exit 2
+else
+t: test-build
+	$(Q)$(TEST_BIN) "$(F)"
+endif
+
+# Every fast test, sharded across cores. Answers "did I break something I was
+# not touching", which is a question about finished work.
 # Uses Catch2 sharding across multiple processes for ~4-8x speedup
 # Use 'make test-serial' for sequential execution (debugging, clean output)
 # Use 'make test-all' to run everything including slow tests
-test-run: test-build
+full-test-run: test-build
 	$(ECHO) "$(CYAN)$(BOLD)Running unit tests in parallel (excluding slow)...$(RESET)"
 	@START_TIME=$$(date +%s); \
 	$(call run_tests_parallel,"~[.] ~[slow]"); \
 	END_TIME=$$(date +%s); \
 	DURATION=$$((END_TIME - START_TIME)); \
 	echo "$(GREEN)$(BOLD)✓ Tests passed in $${DURATION}s$(RESET)"
+
+# ----------------------------------------------------------------------------
+# test-run: a signpost that refuses
+# ----------------------------------------------------------------------------
+# The shortest name that runs anything becomes the reflex, and a 96-shard run is
+# the wrong answer to almost every question that prompts it. So this one refuses
+# and routes the question to the target that fits it.
+#
+# It MUST exit non-zero and run nothing. Advice printed above a suite that then
+# proceeds scrolls past while the run works, so it changes no behaviour at all.
+test-run:
+	@echo "$(YELLOW)$(BOLD)make test-run runs nothing. Pick the question you actually have:$(RESET)"; \
+	echo ""; \
+	echo "  $(CYAN)Does the thing I just wrote work?$(RESET)"; \
+	echo "      make t F='exact case name'"; \
+	echo ""; \
+	echo "  $(CYAN)Did I break this area?$(RESET)"; \
+	echo "      make t F='[tag]'"; \
+	echo ""; \
+	echo "  $(CYAN)Nothing has changed since the last build?$(RESET)"; \
+	echo "      $(TEST_BIN) '[tag]'"; \
+	echo "         Skips make's dependency scan (5 to 18s) for a 0.05 to 0.6s run."; \
+	echo "         Correct ONLY when you have not edited code since that build."; \
+	echo ""; \
+	echo "  $(CYAN)Did I break something I was not touching?$(RESET)"; \
+	echo "      make full-test-run"; \
+	echo "         25s idle, minutes on a loaded box, and only worth asking once"; \
+	echo "         the feature is finished."; \
+	echo ""; \
+	echo "A full run cannot tell you your feature works, only that something else broke."; \
+	echo "Cadence table: tests/CLAUDE.md, 'What to run when'."; \
+	exit 2
 
 # Run unit tests SEQUENTIALLY (for debugging or clean output)
 # Slower but useful when you need to see exact test ordering or debug failures
@@ -474,7 +542,7 @@ test-all: test-build
 # are timing-sensitive stress harnesses; sharding buys little here and muddies
 # attribution when something goes red.
 #
-# Still NOT part of test-run — these cannot share that run's sharded, parallel,
+# Still NOT part of full-test-run — these cannot share that run's sharded, parallel,
 # arbitrary-cwd execution. scripts/quality-checks.sh does gate on this target
 # now that the set is green, but only when the test binary is already current
 # (it never builds one) — see the "Hidden test set" block there and
@@ -494,7 +562,8 @@ test-hidden-list: test-build
 	$(ECHO) "$(CYAN)$(BOLD)Hidden test cases ($(HIDDEN_FILTER)):$(RESET)"
 	$(Q)cd $(CURDIR) && $(TEST_BIN) "$(HIDDEN_FILTER)" --list-tests
 
-# Alias that rebuilds and runs tests (useful for development)
+# `tests` is the same vague ask as `test-run` and earns the same answer: the
+# signpost, which names the target that fits the question.
 tests: test-run
 
 # ============================================================================
@@ -1311,8 +1380,10 @@ help-test:
 	echo "$${B}Test Targets$${X}"; \
 	echo ""; \
 	echo "$${C}Main Test Targets:$${X}"; \
+	echo "  $${G}t F='<filter>'$${X}       - Build, then run ONE tag or case (the inner loop)"; \
 	echo "  $${G}test$${X}                 - Build tests (does not run)"; \
-	echo "  $${G}test-run$${X}             - Run tests in PARALLEL (default, ~4-8x faster)"; \
+	echo "  $${G}full-test-run$${X}        - Whole suite in PARALLEL (the completion gate)"; \
+	echo "  $${G}test-run$${X}             - Signpost only: refuses, names the target that fits"; \
 	echo "  $${G}test-serial$${X}          - Run tests sequentially (for debugging)"; \
 	echo "  $${G}test-smoke$${X}           - Quick smoke test (~30s) for rapid iteration"; \
 	echo "  $${G}test-all$${X}             - Run ALL tests in parallel (including slow)"; \
@@ -1438,7 +1509,7 @@ COV_FILTER ?= ~[.]~[slow]
 
 # Its own binary NAME as well as its own object tree, matching TEST_ASAN_BIN.
 # Without this the instrumented binary lands on build/bin/helix-tests and every
-# later `make test-run` silently runs an instrumented build until something
+# later `make full-test-run` silently runs an instrumented build until something
 # forces a relink.
 TEST_COV_BIN := $(BIN_DIR)/helix-tests-cov
 

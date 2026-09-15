@@ -39,7 +39,14 @@ HELIX_MOCK_AUTO_PRINT=1 ./build/bin/helix-screen --test --sim-speed 6 -vv
 #   Confirm via log: "[MoonrakerManager] Creating MOCK client (<printer>, <n>x speed)"
 
 make test                            # Build tests only (does NOT run them)
-make test-run                        # Build AND run tests in parallel
+make t F='[tag]'                     # Build, then run ONE tag or case (the inner loop)
+./build/bin/helix-tests '[tag]'      # Same run WITHOUT make's dependency scan (0.05-0.6s).
+#   Correct only when you have not edited code since the last `make test`:
+#   `make -j` builds the app alone, so after an edit the bare binary reports the
+#   PREVIOUS build's numbers. `make t` costs 5-18s and buys exactly that guarantee.
+make full-test-run                   # The WHOLE suite in parallel (25s idle, minutes loaded)
+#   `make test-run` no longer runs anything: it prints which of these fits the
+#   question you have and exits non-zero. Cadence table: tests/CLAUDE.md.
 
 scripts/syntax_check.py <file>...    # "does this compile?" in seconds
 #   Takes the file's own flags from compile_commands.json and runs -fsyntax-only,

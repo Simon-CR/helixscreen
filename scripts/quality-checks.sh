@@ -640,7 +640,7 @@ echo ""
 # ====================================================================
 qc_hidden_tests() {
   local EXIT_CODE=0
-# The 89 [.]-tagged tests are excluded from `make test-run`: they need ui_xml/
+# The 89 [.]-tagged tests are excluded from `make full-test-run`: they need ui_xml/
 # on a relative path, own destructive global state, or are timing-sensitive
 # stress harnesses. Nothing else runs them, which is how six of them rotted red
 # without anyone noticing. See docs/devel/HIDDEN_TESTS_TRACKER.md.
