@@ -1,15 +1,13 @@
 // Copyright (C) 2026 356C LLC
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+#include "../test_helpers/config_dir_guard.h"
 #include "../test_helpers/log_capture.h"
 #include "data_root_resolver.h"
 #include "wifi_saved_config.h"
 
-#include <cstdlib>
-#include <filesystem>
 #include <fstream>
 #include <sys/stat.h>
-#include <unistd.h>
 
 #include "../catch_amalgamated.hpp"
 
@@ -32,51 +30,11 @@
  * command protocol, but legal as SSIDs) survive the JSON round trip intact.
  */
 
+using helix::ConfigDirGuard;
 using helix::wifi::store::SavedNetwork;
 
-namespace {
-
-/// Point HELIX_CONFIG_DIR at an isolated temp directory for the duration of a
-/// test, restoring whatever was there before on scope exit. Mirrors the
-/// pattern used throughout tests/unit/ (e.g. test_theme_loader.cpp,
-/// test_config_preset.cpp) for isolating get_user_config_dir().
-class ConfigDirGuard {
-  public:
-    explicit ConfigDirGuard(const std::string& dir) {
-        if (const char* prev = std::getenv("HELIX_CONFIG_DIR")) {
-            had_prev_ = true;
-            prev_ = prev;
-        }
-        setenv("HELIX_CONFIG_DIR", dir.c_str(), 1);
-    }
-
-    ~ConfigDirGuard() {
-        if (had_prev_)
-            setenv("HELIX_CONFIG_DIR", prev_.c_str(), 1);
-        else
-            unsetenv("HELIX_CONFIG_DIR");
-    }
-
-    ConfigDirGuard(const ConfigDirGuard&) = delete;
-    ConfigDirGuard& operator=(const ConfigDirGuard&) = delete;
-
-  private:
-    bool had_prev_ = false;
-    std::string prev_;
-};
-
-/// Fresh, empty temp dir per test so runs never see a previous test's store.
-std::string make_temp_dir(const std::string& name) {
-    const std::string dir = "/tmp/" + name;
-    std::filesystem::remove_all(dir);
-    std::filesystem::create_directories(dir);
-    return dir;
-}
-
-} // namespace
-
 TEST_CASE("A saved network round-trips through the store", "[network][wifi][savedconfig][store]") {
-    ConfigDirGuard guard(make_temp_dir("helix_store_roundtrip"));
+    ConfigDirGuard guard("store_roundtrip");
 
     CHECK(helix::wifi::store::load().empty());
 
@@ -90,7 +48,7 @@ TEST_CASE("A saved network round-trips through the store", "[network][wifi][save
 
 TEST_CASE("Saving an existing SSID replaces rather than duplicates",
           "[network][wifi][savedconfig][store]") {
-    ConfigDirGuard guard(make_temp_dir("helix_store_dedup"));
+    ConfigDirGuard guard("store_dedup");
 
     REQUIRE(helix::wifi::store::save({"MyHomeNet", "oldpassword"}));
     REQUIRE(helix::wifi::store::save({"MyHomeNet", "newpassword"}));
@@ -110,7 +68,7 @@ TEST_CASE("Saving an existing SSID replaces rather than duplicates",
 }
 
 TEST_CASE("Removing a network deletes it from the store", "[network][wifi][savedconfig][store]") {
-    ConfigDirGuard guard(make_temp_dir("helix_store_remove"));
+    ConfigDirGuard guard("store_remove");
 
     REQUIRE(helix::wifi::store::save({"NetA", "pskA"}));
     REQUIRE(helix::wifi::store::save({"NetB", "pskB"}));
@@ -128,7 +86,7 @@ TEST_CASE("Removing a network deletes it from the store", "[network][wifi][saved
 }
 
 TEST_CASE("The store file mode is exactly 0600", "[network][wifi][savedconfig][store]") {
-    ConfigDirGuard guard(make_temp_dir("helix_store_mode"));
+    ConfigDirGuard guard("store_mode");
 
     REQUIRE(helix::wifi::store::save({"NetA", "pskA"}));
 
@@ -144,7 +102,7 @@ TEST_CASE("The store file mode is exactly 0600", "[network][wifi][savedconfig][s
 
 TEST_CASE("load() on a missing file returns empty, not an exception",
           "[network][wifi][savedconfig][store]") {
-    ConfigDirGuard guard(make_temp_dir("helix_store_missing"));
+    ConfigDirGuard guard("store_missing");
 
     // Nothing has been saved yet — the file does not exist at all.
     CHECK(helix::wifi::store::load().empty());
@@ -152,8 +110,7 @@ TEST_CASE("load() on a missing file returns empty, not an exception",
 
 TEST_CASE("load() on a corrupt file returns empty, not an exception",
           "[network][wifi][savedconfig][store]") {
-    const std::string dir = make_temp_dir("helix_store_corrupt");
-    ConfigDirGuard guard(dir);
+    ConfigDirGuard guard("store_corrupt");
 
     const std::string path = helix::wifi::store::store_path();
     {
@@ -172,8 +129,7 @@ TEST_CASE("load() on a corrupt file returns empty, not an exception",
 
 TEST_CASE("load() on a JSON file that is not an array returns empty",
           "[network][wifi][savedconfig][store]") {
-    const std::string dir = make_temp_dir("helix_store_wrong_shape");
-    ConfigDirGuard guard(dir);
+    ConfigDirGuard guard("store_wrong_shape");
 
     const std::string path = helix::wifi::store::store_path();
     {
@@ -192,7 +148,7 @@ TEST_CASE("An SSID containing a quote or backslash round-trips intact",
     // to the wire protocol, not to the store: a network legitimately named
     // `Joe's "Cafe"` or `back\slash` must still survive being written to and
     // read back from our own JSON file untouched.
-    ConfigDirGuard guard(make_temp_dir("helix_store_escaping"));
+    ConfigDirGuard guard("store_escaping");
 
     const std::string quoted_ssid = R"(Joe's "Cafe" WiFi)";
     const std::string backslash_ssid = R"(back\slash\net)";
@@ -220,10 +176,9 @@ TEST_CASE("An SSID containing a quote or backslash round-trips intact",
 }
 
 TEST_CASE("The store path lives under the user config dir", "[network][wifi][savedconfig][store]") {
-    const std::string dir = make_temp_dir("helix_store_path");
-    ConfigDirGuard guard(dir);
+    ConfigDirGuard guard("store_path");
 
-    CHECK(helix::wifi::store::store_path() == dir + "/wifi_networks.json");
+    CHECK(helix::wifi::store::store_path() == (guard.dir / "wifi_networks.json").string());
 }
 
 TEST_CASE("A file truncated mid-PSK does not leak the PSK into the log",
@@ -235,8 +190,7 @@ TEST_CASE("A file truncated mid-PSK does not leak the PSK into the log",
     // around: the reporting device's own vendor atomic-write already proved
     // unreliable), that fragment IS a chunk of a real cleartext password.
     // parse_store()'s catch block must never pass e.what() to spdlog.
-    const std::string dir = make_temp_dir("helix_store_truncated_psk");
-    ConfigDirGuard guard(dir);
+    ConfigDirGuard guard("store_truncated_psk");
 
     const std::string secret_psk = "TotallySecretPassphrase987654XYZ";
     const std::string path = helix::wifi::store::store_path();
@@ -280,7 +234,7 @@ TEST_CASE("Non-ASCII and invalid-UTF-8 SSID bytes do not crash save()/load()",
     //      UTF-8: see the M12 regression test below for why silently mangling
     //      it (the old U+FFFD-substitution behaviour) is itself a bug, not an
     //      acceptable fallback.
-    ConfigDirGuard guard(make_temp_dir("helix_store_utf8"));
+    ConfigDirGuard guard("store_utf8");
 
     const std::string valid_non_ascii_ssid =
         "Caf\xc3\xa9 \xe6\x97\xa5\xe6\x9c\xac WiFi"; // "Café 日本 WiFi"
@@ -346,7 +300,7 @@ TEST_CASE("Reconnecting to a non-UTF-8 SSID does not grow the store unbounded",
     // does on each successful connection — the store must still hold exactly
     // one entry for it, the same guarantee save()'s dedup already gives every
     // ordinary (valid-UTF-8) SSID.
-    ConfigDirGuard guard(make_temp_dir("helix_store_utf8_dedup"));
+    ConfigDirGuard guard("store_utf8_dedup");
 
     const std::string invalid_utf8_ssid = std::string("Router") + "\xff" + "\xc0" + "Net";
 
