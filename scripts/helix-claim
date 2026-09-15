@@ -207,9 +207,30 @@ release-if-owned-by)
     exit 0
     ;;
 release)
-    res=$(canon "${1:-}"); [ -n "$res" ] || die "usage: helix-claim release <resource>"
+    # A failed `take` is loud, but an unconditional release is silent on both
+    # sides: it hands the lock away and the holder is never told. So a claim a
+    # DIFFERENT live process holds is refused here, and --force is the only way
+    # past it. A stale claim, a pid-less one, and your own still release freely,
+    # which is what teardown-worktree.sh needs to clear a dead tree's claim.
+    force=0; res=""
+    while [ $# -gt 0 ]; do
+        case $1 in
+            --force) force=1; shift;;
+            *) [ -n "$res" ] && die "unknown option: $1"; res=$1; shift;;
+        esac
+    done
+    res=$(canon "$res"); [ -n "$res" ] || die "usage: helix-claim release <resource> [--force]"
     f="$CLAIM_DIR/$(slug "$res").json"
     [ -f "$f" ] || { printf 'not claimed: %s\n' "$res"; exit 0; }
+    if [ "$force" -eq 0 ]; then
+        owner=$(json_get "$(tr -d '\n' < "$f")" pid)
+        if [ -n "$owner" ] && [ "$owner" != "$(session_pid)" ] && [ "$(state_of "$f")" = "LIVE" ]; then
+            printf 'REFUSED: held by another live session\n'
+            describe "$f"
+            printf '  release it from that session, or --force if you know it is abandoned\n'
+            exit 1
+        fi
+    fi
     rm -f "$f" && printf 'RELEASED %s\n' "$res"
     ;;
 *)
@@ -219,7 +240,8 @@ helix-claim - advisory claims on resources shared between agent sessions
   take <resource> <op> [--note X] [--pid N]   claim; refuses if a LIVE claim exists
   check <resource>                            FREE | LIVE | STALE (exit 1 if LIVE)
   list                                        all claims with derived liveness
-  release <resource>                          drop your claim
+  release <resource> [--force]                drop your claim; refuses one another
+                                              live session holds unless forced
   release-if-owned-by <pid> <resource>        drop it only if that pid claimed it
 
 worktree: and build: names are resolved (basename, branch, or bare = the tree

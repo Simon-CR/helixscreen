@@ -304,7 +304,9 @@ run git -C "$MAIN_ABS" worktree prune
 
 # The claim, if any, outlives the directory and would read LIVE forever.
 if [[ -x "$MAIN_ABS/scripts/helix-claim" ]]; then
-    run "$MAIN_ABS/scripts/helix-claim" release "worktree:$(basename "$WT_ABS")" >/dev/null 2>&1 || true
+    # --force: the tree is being deleted, so its claim goes with it even when the
+    # session that took it is still alive somewhere.
+    run "$MAIN_ABS/scripts/helix-claim" release --force "worktree:$(basename "$WT_ABS")" >/dev/null 2>&1 || true
 fi
 
 # --- branch -------------------------------------------------------------------
