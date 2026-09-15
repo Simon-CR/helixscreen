@@ -28,10 +28,26 @@ setup() {
     load helpers
 }
 
-# export lines inside platform_pre_start(), excluding comments.
-pre_start_exports() {
-    awk '/^platform_pre_start\(\)/{i=1; next} i && /^}/{exit} i' "$1" \
-        | grep -E '^\s*export [A-Z_][A-Z0-9_]*=' || true
+# Every export of a HELIX_* variable in a hook, anywhere in the file —
+# platform_pre_start itself, the helpers it calls, everywhere. A hook export
+# reaches the launcher's environment from any function the launcher's
+# platform_pre_start call runs, so the defaulting rule cannot be scoped to
+# one function body. Exports of other variables (camera plumbing configured
+# inside a subshell around a daemon start) never escape that subshell and are
+# outside this contract. Indent class is a literal space AND tab, matching
+# the launcher's env parser.
+helix_exports() {
+    grep -E '^[ 	]*export HELIX_[A-Z0-9_]*=' "$1" || true
+}
+
+# The export lines in $1 that assign unconditionally and so discard a value
+# the operator already set.
+unguarded_hook_exports() {
+    helix_exports "$1" | while IFS= read -r line; do
+        [ -n "$line" ] || continue
+        var="$(echo "$line" | sed -E 's/^[ 	]*export (HELIX_[A-Z0-9_]*)=.*/\1/')"
+        echo "$line" | grep -qF "\${$var:-" || echo "$line"
+    done
 }
 
 # export statements at file scope (outside every function body). The
@@ -54,11 +70,9 @@ file_scope_exports() {
     for f in "$HOOKS_DIR"/hooks-*.sh; do
         while IFS= read -r line; do
             [ -n "$line" ] || continue
-            var="$(echo "$line" | sed -E 's/^\s*export ([A-Z_][A-Z0-9_]*)=.*/\1/')"
-            echo "$line" | grep -qF "\${$var:-" || \
-                offenders="$offenders
+            offenders="$offenders
   $(basename "$f"): $(echo "$line" | sed 's/^\s*//')"
-        done <<< "$(pre_start_exports "$f")"
+        done <<< "$(unguarded_hook_exports "$f")"
     done
     [ -z "$offenders" ] || {
         echo "These assignments discard a value the user already set:$offenders"
@@ -70,9 +84,41 @@ file_scope_exports() {
 @test "the hooks actually export something (the check above is not vacuous)" {
     local n=0
     for f in "$HOOKS_DIR"/hooks-*.sh; do
-        n=$((n + $(pre_start_exports "$f" | grep -c . || true)))
+        n=$((n + $(helix_exports "$f" | grep -c . || true)))
     done
     [ "$n" -ge 20 ]
+}
+
+@test "the defaulting scan sees unguarded exports inside helper functions" {
+    # The gate above is only as good as this scan. A scan that stops at
+    # platform_pre_start's closing brace would pass the gate while missing an
+    # unguarded export in a start_/ensure_ helper - exactly where hooks put
+    # their conditional work. Feed a fixture holding one guarded default, one
+    # hardcoded helper export (tab-indented, the shape it takes inside a
+    # nested block) and one subshell-confined non-HELIX export, and assert
+    # only the helper export is reported.
+    local fixture="$BATS_TEST_TMPDIR/defaulting-fixture.sh"
+    cat > "$fixture" << 'EOF'
+platform_pre_start() {
+    export HELIX_LOG_DEST="${HELIX_LOG_DEST:-file}"
+    helper_fn
+}
+helper_fn() {
+    if [ -z "$HELIX_FOO" ]; then
+	export HELIX_FOO=hardcoded
+    fi
+    ( export V4L2_TOOL=imposter; start-stop-daemon -S -x /usr/bin/lmd )
+}
+EOF
+    run unguarded_hook_exports "$fixture"
+    [ "$status" -eq 0 ]
+    echo "$output" | grep -q 'export HELIX_FOO=hardcoded'
+    if echo "$output" | grep -q 'HELIX_LOG_DEST'; then
+        fail "scan flags a guarded default"
+    fi
+    if echo "$output" | grep -q 'V4L2_TOOL'; then
+        fail "scan flags a subshell-confined non-HELIX export"
+    fi
 }
 
 @test "no hook exports anything at file scope" {
@@ -239,22 +285,54 @@ EOF
 # the init subshell and drops silently on every later call.
 # =============================================================================
 
+# One HELIX_* variable name per line that a platform_pre_start call supplies
+# in this environment. Daemon starts are staged, never executed (see the gate
+# below for the staging contract); takes the hook file and the pidfile path
+# the hook's daemon start would use.
+capture_pre_start_env() {
+    HELIX_REMOTE_SCREEN_PID="$2" sh -c '
+        . "'"$1"'"
+        mkdir() { :; }
+        touch() { :; }
+        _remote_screen_enabled() { return 0; }
+        platform_pre_start >/dev/null 2>&1
+        env | sed -n "s/^\(HELIX_[A-Z0-9_]*\)=.*/\1/p" | sort -u
+    '
+}
+
 @test "a warm second platform_pre_start call re-supplies every export of the first" {
     # Two fresh shells share the filesystem (pidfile a first-call daemon start
     # leaves behind) but not the environment; the second call must set every
-    # HELIX_* variable the first did. Daemon starts are staged, not run: a
-    # start-stop-daemon stand-in only records the pidfile, pointing at a live
-    # PID (this test's own), and pidof reports nothing running, so the hooks'
-    # already-running guards take their warm branch. mkdir/touch are no-ops so
-    # hooks' absolute-path writes cannot touch this host. The Snapmaker
-    # remote-screen arm is forced on (toggle override + an fbdev-only fb-http
-    # stub): it is the one conditional export in the fleet.
+    # HELIX_* variable the first did. The Snapmaker remote-screen arm is
+    # forced on (toggle override + an fbdev-only fb-http stub): it is the one
+    # conditional export in the fleet.
+    #
+    # Hermetic by construction: every hook in the fleet runs here, so every
+    # host-touching command a hook can reach on its warm path is intercepted.
+    # start-stop-daemon only records the pidfile a real start would leave,
+    # pointing at a live PID (this test's own); pidof reports nothing, so
+    # already-running guards take their warm branch; mkdir/touch are no-ops
+    # (hooks' absolute-path writes cannot land); `ip` reports an addressed
+    # wlan0, so the K2 WiFi restore branch sees a configured interface and
+    # never spawns its killall/wpa_supplicant/udhcpc sequence. wpa_supplicant
+    # and udhcpc are recording no-ops as a second layer: if any hook reaches
+    # one anyway, the tripwire below fails the test. (Forge-X drives its
+    # driver via absolute /sbin/insmod from device-only paths and gates on
+    # interface presence, so it cannot load anything on a dev machine.)
+    # killall/pkill stay with the suite sandbox: a hook reaching one is a
+    # suite failure, not silent host damage.
     mkdir -p "$BATS_TEST_TMPDIR/bin"
     fb_stub="$BATS_TEST_TMPDIR/fb-http"
     printf '    parser.add_argument("--fb", default="/dev/fb0")\n' > "$fb_stub"
     cat > "$BATS_TEST_TMPDIR/bin/pidof" << 'EOF'
 #!/bin/sh
 exit 1
+EOF
+    cat > "$BATS_TEST_TMPDIR/bin/ip" << 'EOF'
+#!/bin/sh
+echo "2: wlan0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500"
+echo "    inet 192.0.2.10/24 brd 192.0.2.255 scope global wlan0"
+exit 0
 EOF
     cat > "$BATS_TEST_TMPDIR/bin/start-stop-daemon" << 'EOF'
 #!/bin/sh
@@ -268,11 +346,19 @@ while [ $# -gt 0 ]; do
 done
 exit 0
 EOF
-    chmod +x "$BATS_TEST_TMPDIR/bin/pidof" "$BATS_TEST_TMPDIR/bin/start-stop-daemon"
+    for _cmd in wpa_supplicant udhcpc; do
+        cat > "$BATS_TEST_TMPDIR/bin/$_cmd" << EOF
+#!/bin/sh
+echo "$_cmd \$*" >> "\$TOOL_CALL_LOG"
+exit 0
+EOF
+    done
+    chmod +x "$BATS_TEST_TMPDIR"/bin/*
     export PATH="$BATS_TEST_TMPDIR/bin:$PATH"
     export HELIX_TEST_LIVE_PID="$$"
     export HELIX_FB_HTTP="$fb_stub"
     export HELIX_SAVED_WPA="$BATS_TEST_TMPDIR/no-wpa.conf"
+    export TOOL_CALL_LOG="$BATS_TEST_TMPDIR/tool-calls"
 
     supplied=0
     offenders=""
@@ -281,22 +367,8 @@ EOF
         pidfile="$BATS_TEST_TMPDIR/${base}.pid"
         rm -f "$pidfile"
 
-        cold="$(HELIX_REMOTE_SCREEN_PID="$pidfile" sh -c '
-            . "'"$f"'"
-            mkdir() { :; }
-            touch() { :; }
-            _remote_screen_enabled() { return 0; }
-            platform_pre_start >/dev/null 2>&1
-            env | sed -n "s/^\(HELIX_[A-Z0-9_]*\)=.*/\1/p" | sort -u
-        ')"
-        warm="$(HELIX_REMOTE_SCREEN_PID="$pidfile" sh -c '
-            . "'"$f"'"
-            mkdir() { :; }
-            touch() { :; }
-            _remote_screen_enabled() { return 0; }
-            platform_pre_start >/dev/null 2>&1
-            env | sed -n "s/^\(HELIX_[A-Z0-9_]*\)=.*/\1/p" | sort -u
-        ')"
+        cold="$(capture_pre_start_env "$f" "$pidfile")"
+        warm="$(capture_pre_start_env "$f" "$pidfile")"
         while IFS= read -r var; do
             [ -n "$var" ] || continue
             supplied=$((supplied + 1))
@@ -318,4 +390,12 @@ EOF
         echo "Hoist the export above the already-running early return: it is a mode declaration, not a start side effect."
         false
     }
+    # Tripwire: the mocks above must never run. A hook reaching for a real
+    # WiFi tool inside this harness would be a hermeticity break on whatever
+    # machine runs the suite.
+    if [ -s "$TOOL_CALL_LOG" ]; then
+        echo "hooks reached WiFi tools inside the harness:"
+        cat "$TOOL_CALL_LOG"
+        false
+    fi
 }

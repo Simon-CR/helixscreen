@@ -88,6 +88,8 @@ if [ -n "$_helix_env_file" ]; then
             if ! eval "export $_line" 2>/dev/null; then
                 echo "[helix-launcher] warning: ${_helix_env_file}:${_lineno}: failed to export: $_line" >&2
             fi
+        elif [ "${HELIX_DEBUG:-0}" = "1" ]; then
+            echo "[helix-launcher] note: ${_helix_env_file}:${_lineno}: $_var already set in environment; file value ignored" >&2
         fi
     done < "$_helix_env_file"
     unset _line _var _existing _lineno
@@ -231,6 +233,21 @@ EOF
     export MOONRAKER_HOST=from-env
     result=$(MOCK_INSTALL="$MOCK_INSTALL" sh -c ". \"$BATS_TEST_TMPDIR/env_setup.sh\" && echo \"\$MOONRAKER_HOST\"")
     [ "$result" = "from-env" ]
+}
+
+@test "a skipped env-file line says so under HELIX_DEBUG=1 and is silent otherwise" {
+    # The skip is the precedence rule acting; without a trace of it, an
+    # operator's file value looks accepted and discarded.
+    cat > "$MOCK_INSTALL/config/helixscreen.env" << 'EOF'
+MOONRAKER_HOST=from-file
+EOF
+    export MOONRAKER_HOST=from-env
+    MOCK_INSTALL="$MOCK_INSTALL" HELIX_DEBUG=1 \
+        sh -c ". \"$BATS_TEST_TMPDIR/env_setup.sh\"" 2> "$BATS_TEST_TMPDIR/loud.log"
+    grep -q 'MOONRAKER_HOST already set in environment; file value ignored' "$BATS_TEST_TMPDIR/loud.log"
+    MOCK_INSTALL="$MOCK_INSTALL" HELIX_DEBUG=0 \
+        sh -c ". \"$BATS_TEST_TMPDIR/env_setup.sh\"" 2> "$BATS_TEST_TMPDIR/quiet.log"
+    [ ! -s "$BATS_TEST_TMPDIR/quiet.log" ]
 }
 
 @test "env file HELIX_DISPLAY_BACKEND takes precedence over hardcoded fbdev default" {

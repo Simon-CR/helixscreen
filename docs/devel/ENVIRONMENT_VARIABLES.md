@@ -2158,7 +2158,7 @@ Set these in `helixscreen.env`, which the launcher sources before it builds the 
 - Resolution is CLI flag > env var (including `helixscreen.env` and hook exports) > `/log_dest` and `/log_path` in `settings.json` > default.
 - `HELIX_LOG_LEVEL` takes priority over `HELIX_DEBUG`: a named level emits `--log-level=<level>` and the legacy `-vv` branch is never reached.
 - `HELIX_LOG_DEST=auto` is the only value that produces no launcher flag. `auto` resolves to the systemd journal when `/run/systemd/journal/socket` exists, otherwise syslog on Linux, console on macOS. It **never** resolves to a file on any platform — the file sink has to be asked for, which is what the embedded platform hooks do.
-- The launcher resolves these **after** sourcing platform/hooks.sh, so a value exported from `platform_pre_start` is picked up. Six of the seven hooks rely on that.
+- The launcher resolves these **after** sourcing platform/hooks.sh, so a value exported from `platform_pre_start` is picked up. Every AD5M, AD5X, K1/K2 and CC1 hook relies on that; the Pi, QIDI, M1 and Snapmaker U1 targets have no firmware log archiver to feed.
 - An unopenable `HELIX_LOG_FILE` is not fatal: the sink construction is caught and the platform's normal system sink takes over with a warning.
 
 **Example:**

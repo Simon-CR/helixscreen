@@ -343,6 +343,10 @@ if [ -n "$_helix_env_file" ]; then
             if ! eval "export $_line" 2>/dev/null; then
                 log "warning: ${_helix_env_file}:${_lineno}: failed to export: $_line"
             fi
+        elif [ "${HELIX_DEBUG:-0}" = "1" ]; then
+            # DEBUG_MODE is derived later in this script; the raw variable
+            # is all that exists at parse time.
+            log "note: ${_helix_env_file}:${_lineno}: $_var already set in environment; file value ignored"
         fi
     done < "$_helix_env_file"
     unset _line _var _existing _lineno

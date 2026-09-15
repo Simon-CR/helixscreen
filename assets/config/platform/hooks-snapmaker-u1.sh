@@ -30,9 +30,6 @@
 # Display: 480x320 32bpp rockchipdrmfb (/dev/fb0)
 # SSH access: root@<ip> (password: snapmaker) via extended firmware
 
-# PID of the background keepalive process
-DRM_KEEPALIVE_PID=""
-
 # WiFi restore configuration. The stock Snapmaker app saves the user's network
 # to HELIX_SAVED_WPA and loads it into wpa_supplicant at runtime; since we
 # replaced the stock app, we do it ourselves (see ensure_wifi_associated).
@@ -50,6 +47,8 @@ platform_stop_competing_uis() {
     # Spawn a background process that holds the DRM device open.
     # It stays alive until helix-screen opens /dev/dri/card0 itself (detected
     # via /proc/*/fd), or for a maximum of 30 seconds as a safety timeout.
+    # Nothing reaps it afterwards: it is bounded by that timeout, and the
+    # stop path runs in a separate shell that never sees its pid.
     if [ -e /dev/dri/card0 ]; then
         (
             # Hold the device open via our own fd
@@ -75,8 +74,7 @@ platform_stop_competing_uis() {
             done
             echo "DRM keepalive: timeout after 30s, releasing"
         ) &
-        DRM_KEEPALIVE_PID=$!
-        echo "DRM keepalive: background process PID $DRM_KEEPALIVE_PID"
+        echo "DRM keepalive: background process PID $!"
     fi
 
     # Kill stock UI processes only. unisrv (proprietary camera/MQTT daemon
@@ -306,7 +304,7 @@ start_remote_screen() {
     # own call is the one whose environment reaches helix-screen. Below the
     # guard it would be supplied only by the subshell and never re-supplied.
     if [ -z "$_rs_backend" ]; then
-        export HELIX_REMOTE_SCREEN_FB0="/dev/fb0"
+        export HELIX_REMOTE_SCREEN_FB0="${HELIX_REMOTE_SCREEN_FB0:-/dev/fb0}"
     fi
     if [ -f "$HELIX_REMOTE_SCREEN_PID" ] && \
        kill -0 "$(cat "$HELIX_REMOTE_SCREEN_PID" 2>/dev/null)" 2>/dev/null; then
@@ -393,14 +391,6 @@ platform_pre_start() {
 platform_post_stop() {
     # Stop the remote-screen server we started in platform_pre_start.
     stop_remote_screen
-
-    # Kill the keepalive process if still running
-    if [ -n "$DRM_KEEPALIVE_PID" ]; then
-        kill "$DRM_KEEPALIVE_PID" 2>/dev/null || true
-        wait "$DRM_KEEPALIVE_PID" 2>/dev/null || true
-        echo "DRM keepalive: cleaned up process $DRM_KEEPALIVE_PID"
-        DRM_KEEPALIVE_PID=""
-    fi
 
     # Do NOT restart /usr/bin/gui — the stock Snapmaker UI takes ownership of
     # wpa_supplicant on launch and drops the active WiFi connection, breaking
