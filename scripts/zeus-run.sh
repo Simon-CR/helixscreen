@@ -165,6 +165,18 @@ HELIX_J=\$(awk -v per=$GB_PER_JOB -v cpus="\$(nproc)" '
 ' /proc/meminfo)
 echo "→ MemAvailable \$(awk '/^MemAvailable/{printf "%.0fGB", \$2/1048576}' /proc/meminfo), using -j\$HELIX_J"
 
+# The container is long-lived but has no restart policy, so it is stopped after
+# every NAS reboot and `docker exec` fails with a message about the container
+# not running, several steps before anything explains why. Starting it is
+# idempotent and costs nothing when it is already up.
+if ! sudo -n docker ps --format '{{.Names}}' | grep -qx "$CONTAINER"; then
+    echo "→ container $CONTAINER is not running; starting it"
+    sudo -n docker start "$CONTAINER" >/dev/null || {
+        echo "✗ could not start container $CONTAINER on \$(hostname)" >&2
+        exit 1
+    }
+fi
+
 D() { sudo -n docker exec -w "$WORKDIR" -e CCACHE_DIR=/work/ccache -e HELIX_J="\$HELIX_J" "$CONTAINER" bash -lc "\$1"; }
 
 D 'git config --global --add safe.directory "*"' >/dev/null
