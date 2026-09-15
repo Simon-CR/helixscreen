@@ -26,6 +26,12 @@ HELPER="scripts/apply_submodule_patch.sh"
 setup() {
     cd "$BATS_TEST_DIRNAME/../.." || return 1
 
+    # make exports HELIX_FROM_CLEAN_SENTINEL into its recipe shells, and bats
+    # runs inside one, so the real tree's build/.patches-from-clean would
+    # otherwise leak into these fixture verdicts. A test that exercises the
+    # sentinel sets its own explicitly.
+    unset HELIX_FROM_CLEAN_SENTINEL
+
     ROOT="${BATS_TEST_TMPDIR:-$(mktemp -d)}/repo"
     SUB="$ROOT/lib/fake"
     mkdir -p "$ROOT/patches" "$SUB"
