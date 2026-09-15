@@ -2234,6 +2234,7 @@ translations:
   Printer connection unavailable: Подключение к принтеру недоступно
   Printer database format error: Ошибка формата базы данных принтеров
   Printer database is corrupt: База данных принтеров повреждена
+  Printer default: По умолчанию для принтера
   Printer didn't respond — make sure it's on and in range: Принтер не ответил — убедитесь,
     что он включён и в зоне доступа
   Printer doesn't expose the expected service — wrong device?: Принтер не предоставляет

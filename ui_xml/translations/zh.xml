@@ -2040,6 +2040,7 @@
   <translation tag="Printer connection unavailable" zh="打印机连接不可用"/>
   <translation tag="Printer database format error" zh="打印机数据库格式错误"/>
   <translation tag="Printer database is corrupt" zh="打印机数据库已损坏"/>
+  <translation tag="Printer default" zh="打印机默认"/>
   <translation tag="Printer didn&apos;t respond — make sure it&apos;s on and in range" zh="打印机无响应 — 请确保已开机且在范围内"/>
   <translation tag="Printer doesn&apos;t expose the expected service — wrong device?" zh="打印机未提供预期的服务 — 设备是否有误？"/>
   <translation tag="Printer hardware detected" zh="检测到打印机硬件"/>

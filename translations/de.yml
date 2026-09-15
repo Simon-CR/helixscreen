@@ -2268,6 +2268,7 @@ translations:
   Printer connection unavailable: Druckerverbindung nicht verfügbar
   Printer database format error: Formatfehler der Druckerdatenbank
   Printer database is corrupt: Druckerdatenbank ist beschädigt
+  Printer default: Druckerstandard
   Printer didn't respond — make sure it's on and in range: Drucker hat nicht reagiert
     — stellen Sie sicher, dass er eingeschaltet und in Reichweite ist
   Printer doesn't expose the expected service — wrong device?: Drucker bietet nicht

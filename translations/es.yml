@@ -2259,6 +2259,7 @@ translations:
   Printer connection unavailable: Conexión con la impresora no disponible
   Printer database format error: Error de formato de la base de datos de impresoras
   Printer database is corrupt: La base de datos de impresoras está corrupta
+  Printer default: Valor por defecto de la impresora
   Printer didn't respond — make sure it's on and in range: La impresora no respondió
     — asegúrate de que esté encendida y al alcance
   Printer doesn't expose the expected service — wrong device?: La impresora no expone

@@ -2099,6 +2099,7 @@ translations:
   Printer connection unavailable: プリンターとの接続が利用できません
   Printer database format error: プリンターデータベースの形式エラー
   Printer database is corrupt: プリンターデータベースが破損しています
+  Printer default: プリンター既定
   Printer didn't respond — make sure it's on and in range: プリンターが応答しません — 電源が入っており通信範囲内にあることを確認してください
   Printer doesn't expose the expected service — wrong device?: プリンターが想定されるサービスを公開していません
     — デバイスが違う可能性があります

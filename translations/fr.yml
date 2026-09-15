@@ -2277,6 +2277,7 @@ translations:
   Printer connection unavailable: Connexion à l'imprimante indisponible
   Printer database format error: Erreur de format de la base de données d'imprimantes
   Printer database is corrupt: La base de données d'imprimantes est corrompue
+  Printer default: Par défaut de l’imprimante
   Printer didn't respond — make sure it's on and in range: L'imprimante n'a pas répondu
     — vérifiez qu'elle est allumée et à portée
   Printer doesn't expose the expected service — wrong device?: L'imprimante n'expose

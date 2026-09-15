@@ -2212,6 +2212,7 @@ translations:
   Printer connection unavailable: Printer connection unavailable
   Printer database format error: Printer database format error
   Printer database is corrupt: Printer database is corrupt
+  Printer default: Printer default
   Printer didn't respond — make sure it's on and in range: Printer didn't respond
     — make sure it's on and in range
   Printer doesn't expose the expected service — wrong device?: Printer doesn't expose

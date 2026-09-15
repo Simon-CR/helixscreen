@@ -2040,6 +2040,7 @@
   <translation tag="Printer connection unavailable" fr="Connexion à l&apos;imprimante indisponible"/>
   <translation tag="Printer database format error" fr="Erreur de format de la base de données d&apos;imprimantes"/>
   <translation tag="Printer database is corrupt" fr="La base de données d&apos;imprimantes est corrompue"/>
+  <translation tag="Printer default" fr="Par défaut de l’imprimante"/>
   <translation tag="Printer didn&apos;t respond — make sure it&apos;s on and in range" fr="L&apos;imprimante n&apos;a pas répondu — vérifiez qu&apos;elle est allumée et à portée"/>
   <translation tag="Printer doesn&apos;t expose the expected service — wrong device?" fr="L&apos;imprimante n&apos;expose pas le service attendu — mauvais appareil ?"/>
   <translation tag="Printer hardware detected" fr="Matériel d&apos;imprimante détecté"/>

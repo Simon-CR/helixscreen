@@ -10,10 +10,110 @@
 #include <spdlog/spdlog.h>
 
 #include <algorithm>
+#include <cctype>
+#include <optional>
 #include <regex>
 #include <set>
+#include <string_view>
 
 using namespace helix;
+
+namespace {
+
+std::string_view trim(std::string_view text) {
+    while (!text.empty() && std::isspace(static_cast<unsigned char>(text.front()))) {
+        text.remove_prefix(1);
+    }
+    while (!text.empty() && std::isspace(static_cast<unsigned char>(text.back()))) {
+        text.remove_suffix(1);
+    }
+    return text;
+}
+
+/// The argument of a `|default(...)` filter that directly opens @p rest, read to
+/// its matching parenthesis so nested calls and quoted parentheses stay whole.
+/// nullopt when no such filter follows, or its parenthesis never closes.
+std::optional<std::string_view> default_filter_argument(std::string_view rest) {
+    static constexpr std::string_view KEYWORD = "default";
+
+    rest = trim(rest);
+    if (rest.empty() || rest.front() != '|') {
+        return std::nullopt;
+    }
+    rest = trim(rest.substr(1));
+    if (rest.substr(0, KEYWORD.size()) != KEYWORD) {
+        return std::nullopt;
+    }
+    rest = trim(rest.substr(KEYWORD.size()));
+    if (rest.empty() || rest.front() != '(') {
+        return std::nullopt;
+    }
+    rest.remove_prefix(1);
+
+    int depth = 0;
+    char quote = '\0';
+    for (size_t i = 0; i < rest.size(); ++i) {
+        const char c = rest[i];
+        if (quote != '\0') {
+            if (c == '\\') {
+                ++i; // the escaped character cannot close the string
+            } else if (c == quote) {
+                quote = '\0';
+            }
+        } else if (c == '\'' || c == '"') {
+            quote = c;
+        } else if (c == '(') {
+            ++depth;
+        } else if (c == ')') {
+            if (depth == 0) {
+                return rest.substr(0, i);
+            }
+            --depth;
+        }
+    }
+    return std::nullopt;
+}
+
+/// One quoted string: opens and closes with the same quote, never closing early.
+bool is_quoted_string(std::string_view text) {
+    if (text.size() < 2) {
+        return false;
+    }
+    const char quote = text.front();
+    if ((quote != '\'' && quote != '"') || text.back() != quote) {
+        return false;
+    }
+    for (size_t i = 1; i + 1 < text.size(); ++i) {
+        if (text[i] == '\\') {
+            if (i + 2 == text.size()) {
+                return false; // the closing quote is escaped
+            }
+            ++i;
+        } else if (text[i] == quote) {
+            return false;
+        }
+    }
+    return true;
+}
+
+MacroDefaultKind classify_default(std::string_view text) {
+    static const std::regex number_re(R"(^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$)");
+    static constexpr std::string_view KEYWORDS[] = {"true",  "True", "false",
+                                                    "False", "none", "None"};
+
+    if (text.empty() || is_quoted_string(text) ||
+        std::regex_match(text.begin(), text.end(), number_re)) {
+        return MacroDefaultKind::Literal;
+    }
+    for (std::string_view keyword : KEYWORDS) {
+        if (text == keyword) {
+            return MacroDefaultKind::Literal;
+        }
+    }
+    return MacroDefaultKind::Expression;
+}
+
+} // namespace
 
 // ============================================================================
 // parse_macro_params — extract Klipper gcode_macro parameters from template
@@ -53,28 +153,21 @@ std::vector<MacroParam> helix::parse_macro_params(const std::string& gcode_templ
         }
         seen.insert(name);
 
-        // Try to extract |default(VALUE) after the match
-        std::string default_value;
-        auto suffix_start = match.suffix().first;
-        auto suffix_end = gcode_template.cend();
-        std::string suffix(suffix_start, suffix_end);
-
-        // Look for |default(...) or | default(...) immediately after
-        std::regex default_re(R"(^\s*\|\s*default\(([^)]*)\))");
-        std::smatch default_match;
-        if (std::regex_search(suffix, default_match, default_re)) {
-            default_value = default_match[1].str();
-            // Strip surrounding quotes from string defaults
-            if (default_value.size() >= 2) {
-                char first = default_value.front();
-                char last = default_value.back();
-                if ((first == '\'' && last == '\'') || (first == '"' && last == '"')) {
-                    default_value = default_value.substr(1, default_value.size() - 2);
-                }
+        MacroParam param;
+        param.name = name;
+        const std::string_view rest =
+            std::string_view(gcode_template)
+                .substr(static_cast<size_t>(match.position(0) + match.length(0)));
+        if (auto argument = default_filter_argument(rest)) {
+            std::string_view text = trim(*argument);
+            param.default_kind = classify_default(text);
+            if (param.default_kind == MacroDefaultKind::Literal && is_quoted_string(text)) {
+                text = text.substr(1, text.size() - 2);
             }
+            param.default_value = std::string(text);
         }
 
-        result.push_back({name, default_value});
+        result.push_back(std::move(param));
     }
 
     // Second pass: catch {% if 'NAME' in params %} / {% if "NAME" in params %}
@@ -105,6 +198,15 @@ std::vector<MacroParam> helix::parse_macro_params(const std::string& gcode_templ
     }
 
     return result;
+}
+
+std::string helix::macro_param_placeholder(const MacroParam& param) {
+    if (param.default_kind == MacroDefaultKind::Expression) {
+        // The value exists only on the printer, and the template source that
+        // computes it is not something the user could type back in.
+        return lv_tr("Printer default");
+    }
+    return param.default_value.empty() ? param.name : param.default_value;
 }
 
 std::map<std::string, std::string> helix::parse_raw_macro_params(const std::string& raw_text) {
@@ -227,8 +329,8 @@ void MacroParamModal::populate_param_fields() {
             display_name[0] = static_cast<char>(::toupper(display_name[0]));
         }
 
-        // Show default value as placeholder hint; empty field = use macro's own default
-        std::string placeholder = param.default_value.empty() ? param.name : param.default_value;
+        // The hint an empty field shows; an empty field leaves the macro its own default.
+        const std::string placeholder = macro_param_placeholder(param);
 
         // Create form_field component (label + themed text_input with keyboard wiring)
         const char* attrs[] = {
