@@ -633,10 +633,10 @@ class PrinterDiscovery {
         //
         // Never overwrites real tool objects - a klipper-toolchanger name is
         // arbitrary, and ASSIGN_TOOL can remap it.
-        const int extruder_heater_count = static_cast<int>(helix::count_extruder_names(heaters_));
+        const std::size_t extruder_heater_count = helix::count_extruder_names(heaters_);
         if (tool_names_.empty() && extruder_heater_count > 1) {
-            for (int i = 0; i < extruder_heater_count; ++i) {
-                tool_names_.push_back(helix::ui::tool_label(i));
+            for (std::size_t i = 0; i < extruder_heater_count; ++i) {
+                tool_names_.push_back(helix::ui::tool_label(static_cast<int>(i)));
             }
         }
 
