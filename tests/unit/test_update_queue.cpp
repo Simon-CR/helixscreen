@@ -231,7 +231,7 @@ TEST_CASE_METHOD(LVGLTestFixture, "untagged queue_update has null callback tag",
 // the main loop sleeps for that answer. A sub-frame period therefore pins the
 // loop at its 5 ms floor — ~200 wakeups a second on a machine with nothing to
 // do — and each one pays clock reads, a notification-queue lock, and a drain.
-// Draining once per rendered frame is as often as the UI can use.
+// Draining once per refresh period is as often as the UI can use.
 TEST_CASE_METHOD(LVGLTestFixture, "drain timer does not wake the main loop faster than a frame",
                  "[update_queue][1440]") {
     auto& q = UpdateQueue::instance();

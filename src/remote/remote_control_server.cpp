@@ -694,7 +694,7 @@ nlohmann::json RemoteControlServer::handle_screenshot(const nlohmann::json& para
     int stable_frames = 0;
     if (stable) {
         constexpr int REQUIRED = 3;
-        constexpr int MAX_SAMPLES = 180; // ~3s at 16ms
+        constexpr int MAX_SAMPLES = 180; // 16 ms sleep plus up to 33 ms drain wait each: ~3-9 s
         uint64_t last = 0;
         int run = 0;
         for (int i = 0; i < MAX_SAMPLES; i++) {

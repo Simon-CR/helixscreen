@@ -2273,7 +2273,7 @@ CardDimensions PrintSelectPanel::calculate_card_dimensions() {
 }
 
 void PrintSelectPanel::schedule_view_refresh() {
-    // Use lv_async_call to ensure thread-safety (this may be called from WebSocket thread)
+    // async_call goes through the update queue: this may be called from the WebSocket thread
     helix::ui::async_call(
         [](void* user_data) {
             auto* self = static_cast<PrintSelectPanel*>(user_data);

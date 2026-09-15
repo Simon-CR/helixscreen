@@ -200,7 +200,7 @@ class WidthSensorManager : public ISensorManager {
      * @brief Enable synchronous mode for testing
      *
      * When enabled, update_from_status() calls update_subjects() synchronously
-     * instead of using lv_async_call().
+     * instead of using queue_update().
      */
     void set_sync_mode(bool enabled);
 

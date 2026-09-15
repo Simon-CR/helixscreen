@@ -490,7 +490,7 @@ void PrintPreparationManager::scan_file_for_operations(const std::string& filena
         "gcodes", file_path, SCAN_DOWNLOAD_LIMIT,
         // Success: parse content and cache result
         // NOTE: This callback runs on a background HTTP thread, so we must defer
-        // shared state updates and LVGL calls to the main thread via lv_async_call
+        // shared state updates and LVGL calls to the main thread via token.defer (queue_update)
         [this, token, filename](const std::string& content) {
             // Parse on background thread (safe - no shared state access)
             gcode::GCodeOpsDetector detector;

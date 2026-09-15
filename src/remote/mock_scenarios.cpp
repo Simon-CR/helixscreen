@@ -356,9 +356,9 @@ static std::vector<MockScenario> build_scenarios() {
     // Not a printer state — a synthetic HTTP-lane busy condition for testing
     // wait_idle()'s "which counter was busy" reporting deterministically.
     // A burst of subject changes makes UpdateQueue's `pending_` nonzero for
-    // at most one LVGL tick (~16ms): process_pending() drains the entire
-    // batch every tick, so there's no way to widen that window from the
-    // subject side. HttpExecutor::inflight() instead stays incremented for
+    // at most one drain period (LV_DEF_REFR_PERIOD, 33 ms): process_pending()
+    // drains the entire batch each time, so there's no way to widen that window
+    // from the subject side. HttpExecutor::inflight() instead stays incremented for
     // the full wall-clock duration of the submitted job body (see
     // http_executor.h's `submit()` — incremented there, decremented only on
     // completion), so a deliberately slow job gives wait_idle(timeout=0.0) a

@@ -233,7 +233,7 @@ TEST_CASE("PrinterState: Initialization sets default values", "[state][init]") {
 // ============================================================================
 // Note: Subjects store temperatures in decidegrees (temp * 10) for 0.1°C resolution.
 // Tests use update_from_status() directly since update_from_notification() uses
-// lv_async_call() which requires pumping the LVGL timer.
+// queue_update() via async_lifetime_.defer, which requires draining the UpdateQueue.
 
 TEST_CASE("PrinterState: Update extruder temperature from status", "[state][temp]") {
     lv_init_safe();
