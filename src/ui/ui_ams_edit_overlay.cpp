@@ -1986,7 +1986,16 @@ void AmsEditOverlay::do_spoolman_save(helix::SpoolmanSlotSaver::LinkIntent inten
                             }
                             // Repoint is silent — IDs change but no toast.
                         }
+                        // A created spool's id is stamped onto working_info_
+                        // above, so this is the id the commit binds either way.
+                        const int saved_spool_id = working_info_.spoolman_id;
                         close_editor(true);
+                        // After the commit, so the slot already names the spool
+                        // the answer has to be filed against. The lane's
+                        // Spoolman record is what a linked spool's identity
+                        // resolves from, and the poll would leave it showing
+                        // what the user just changed for a whole interval.
+                        SpoolmanManager::refresh_spool(saved_spool_id);
                     });
                 });
 }

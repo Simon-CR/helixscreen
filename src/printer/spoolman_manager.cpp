@@ -234,6 +234,253 @@ void SpoolmanManager::set_api(IMoonrakerAPI* api) {
     reset_circuit_breaker();
 }
 
+void SpoolmanManager::fetch_linked_slot(int backend_index, int slot_index, int spoolman_id,
+                                        bool local_weight) {
+    api_->spoolman().get_spoolman_spool(
+        spoolman_id,
+        [slot_index, spoolman_id, backend_index,
+         local_weight](const std::optional<SpoolInfo>& spool_opt) {
+            if (!spool_opt.has_value()) {
+                spdlog::warn("[SpoolmanManager] Spoolman spool {} not found", spoolman_id);
+                // "No such spool" is an answer, not a transport
+                // failure: the circuit breaker must not see it, but
+                // the id must stop being polled. It also proves the
+                // lane's Spoolman record describes a spool that does
+                // not exist, so that record goes. An unreachable
+                // server proves nothing about the record and takes
+                // the error path instead, leaving it standing.
+                helix::ui::queue_update([spoolman_id, slot_index, backend_index]() {
+                    note_identity_unresolvable(spoolman_id);
+                    if (s_shutdown_flag.load(std::memory_order_acquire)) {
+                        return;
+                    }
+                    const auto bound = slot_still_bound_to(backend_index, slot_index, spoolman_id);
+                    if (bound) {
+                        const helix::ams::LaneId lane = bound->owner->lane_id(slot_index);
+                        const bool had_record = helix::ams::lane_sources(lane).spoolman.has_value();
+                        helix::ams::drop_lane_source(lane, helix::ams::ObservationSource::Spoolman);
+                        // A backend serving its slots from a cache
+                        // painted this one while the record stood,
+                        // and the drop raises no backend event to
+                        // resync the slot's subjects.
+                        if (had_record) {
+                            bound->owner->repaint_slot_from_lane(slot_index);
+                            AmsState::instance().update_slot_for_backend(backend_index, slot_index);
+                        }
+                    }
+                });
+                return;
+            }
+
+            const SpoolInfo& spool = spool_opt.value();
+
+            // Data to pass to UI thread
+            struct WeightUpdate {
+                int slot_index;
+                int backend_index;        // Which AMS owns that slot index
+                int expected_spoolman_id; // To verify slot wasn't reassigned
+                float remaining_weight_g;
+                float total_weight_g;
+                bool local_weight; // Backend tracks remaining weight locally
+                // Whole record, carried so the identity cache and
+                // the lane's Spoolman record are filled on the UI
+                // thread. Nothing from it is written onto the slot:
+                // see the persist=false note below.
+                SpoolInfo spool;
+            };
+
+            auto update_data = std::make_unique<WeightUpdate>(
+                WeightUpdate{slot_index, backend_index, spoolman_id,
+                             static_cast<float>(spool.remaining_weight_g),
+                             static_cast<float>(spool.initial_weight_g), local_weight, spool});
+
+            helix::ui::queue_update<WeightUpdate>(std::move(update_data), [](WeightUpdate* d) {
+                // Skip if shutdown is in progress
+                if (s_shutdown_flag.load(std::memory_order_acquire)) {
+                    return;
+                }
+
+                SpoolmanManager& mgr = SpoolmanManager::instance();
+
+                // Our own state, under our own lock, released before the
+                // AmsState work below. AmsState::sync_from_backend() holds
+                // AmsState::mutex_ across SpoolmanManager::find_identity(),
+                // so carrying mutex_ into AmsState here closes an ABBA cycle
+                // that ThreadSanitizer reports as a lock-order inversion.
+                bool identity_is_new = false;
+                {
+                    std::lock_guard<std::recursive_mutex> lock(mgr.mutex_);
+
+                    // Success response: reset the circuit breaker (on the UI thread).
+                    if (mgr.consecutive_failures_ > 0) {
+                        spdlog::info("[SpoolmanManager] Spoolman recovered after {} failures",
+                                     mgr.consecutive_failures_);
+                    }
+                    mgr.consecutive_failures_ = 0;
+                    mgr.unavailable_notified_ = false;
+
+                    // Identity side channel. Must happen BEFORE the
+                    // slot-reassignment and weights-unchanged early
+                    // returns below, because a slot whose weight never
+                    // moves would otherwise never get a name.
+                    identity_is_new = cache_identity(d->spool);
+                }
+
+                AmsState& ams = AmsState::instance();
+                if (identity_is_new) {
+                    // A name the label consumers could not resolve a
+                    // moment ago just became resolvable. The weight
+                    // early-returns below would otherwise swallow it
+                    // whenever the weight happens not to move, which
+                    // is every poll once a spool settles (#1264).
+                    ams.bump_slots_version();
+                }
+                const auto bound =
+                    slot_still_bound_to(d->backend_index, d->slot_index, d->expected_spoolman_id);
+                if (!bound) {
+                    return;
+                }
+                AmsBackend* owner = bound->owner;
+                const SlotInfo& slot = bound->slot;
+
+                // Every answer reaches the lane, not only one that
+                // carries a new identity: a spool edited on the
+                // server keeps its id, so cache_identity() has
+                // already seen it. Ahead of the weights-unchanged
+                // return for the same reason. Refiling an unchanged
+                // record is harmless, since it replaces the old one.
+                // `slot` is a copy taken before this, so the
+                // weight comparison below still reads the old
+                // values.
+                apply_fetched_spool(*owner, d->backend_index, d->slot_index, d->spool,
+                                    d->local_weight);
+
+                // When backend tracks weight locally, only update total_weight
+                // (initial weight from Spoolman). Preserve the backend's
+                // remaining_weight which is more accurate than Spoolman's.
+                float new_remaining =
+                    d->local_weight ? slot.remaining_weight_g : d->remaining_weight_g;
+
+                // Skip update if weights haven't changed (avoids UI refresh cascade)
+                if (slot.remaining_weight_g == new_remaining &&
+                    slot.total_weight_g == d->total_weight_g) {
+                    spdlog::trace("[SpoolmanManager] Slot {} weights unchanged "
+                                  "({:.0f}g / {:.0f}g)",
+                                  d->slot_index, new_remaining, d->total_weight_g);
+                    return;
+                }
+
+                // Weight-only, through the weight-only API. An
+                // automated weight tracker must never assert filament
+                // identity: handing a backend a whole SlotInfo lets it
+                // re-derive state from fields this poll did not mean to
+                // touch, which on a backend that infers presence from
+                // identity resurrects a lane the sensors report empty
+                // (#981 for the same shape on the consumption path).
+                //
+                // persist=false because these weights come FROM
+                // Spoolman, which is the durable store for a linked
+                // spool. Persisting would also send firmware G-code
+                // (SET_WEIGHT on AFC, MMU_GATE_MAP on Happy Hare),
+                // whose status_update echo re-enters this poll: 16+
+                // commands per cycle on four AFC lanes.
+                owner->update_slot_weight(d->slot_index, new_remaining, d->total_weight_g,
+                                          /*persist=*/false);
+                // A slot event the backend raises for this write is
+                // only queued, so the subjects follow the weight in
+                // the pass that wrote it.
+                ams.update_slot_for_backend(d->backend_index, d->slot_index);
+                ams.bump_slots_version();
+
+                spdlog::debug("[SpoolmanManager] Updated slot {} weights: {:.0f}g / {:.0f}g{}",
+                              d->slot_index, new_remaining, d->total_weight_g,
+                              d->local_weight ? " (local remaining)" : "");
+            });
+        },
+        [spoolman_id](const MoonrakerError& err) {
+            spdlog::warn("[SpoolmanManager] Failed to fetch Spoolman spool {}: {}", spoolman_id,
+                         err.message);
+
+            // Track failure for circuit breaker (post to UI thread for
+            // thread-safe access to SpoolmanManager and ToastManager)
+            helix::ui::queue_update([]() {
+                if (s_shutdown_flag.load(std::memory_order_acquire)) {
+                    return;
+                }
+
+                SpoolmanManager& mgr = SpoolmanManager::instance();
+                std::lock_guard<std::recursive_mutex> lock(mgr.mutex_);
+
+                mgr.consecutive_failures_++;
+
+                if (mgr.consecutive_failures_ >= CB_FAILURE_THRESHOLD) {
+                    mgr.cb_open_ = true;
+                    mgr.cb_tripped_at_ms_ = lv_tick_get();
+                    spdlog::warn("[SpoolmanManager] Spoolman circuit breaker OPEN after {} "
+                                 "failures, backing off {}s",
+                                 mgr.consecutive_failures_, CB_BACKOFF_MS / 1000);
+
+                    // Notify the user once per outage, and only when
+                    // Spoolman is actually configured: a printer that never
+                    // set one up has nothing to be told about.
+                    if (!mgr.unavailable_notified_) {
+                        mgr.unavailable_notified_ = true;
+                        auto* subj = lv_xml_get_subject(nullptr, "printer_has_spoolman");
+                        if (subj && lv_subject_get_int(subj) == 1) {
+                            // i18n: Spoolman is a product name, do not translate
+                            ToastManager::instance().show(
+                                ToastSeverity::WARNING,
+                                lv_tr("Spoolman unavailable — filament weights "
+                                      "may be stale"),
+                                6000);
+                        }
+                    }
+                }
+            });
+        },
+        /*silent=*/true);
+}
+
+void SpoolmanManager::refresh_spool(int spool_id) {
+    if (spool_id <= 0 || s_shutdown_flag.load(std::memory_order_acquire)) {
+        return;
+    }
+
+    // AmsState first, then mutex_: the one-way lock order refresh_spoolman_weights()
+    // documents, for the same reason.
+    std::vector<std::pair<int, AmsBackend*>> backends;
+    {
+        const int count = AmsState::instance().backend_count();
+        backends.reserve(static_cast<size_t>(count > 0 ? count : 0));
+        for (int bi = 0; bi < count; ++bi) {
+            if (auto* b = AmsState::instance().get_backend(bi)) {
+                backends.emplace_back(bi, b);
+            }
+        }
+    }
+
+    SpoolmanManager& mgr = instance();
+    std::lock_guard<std::recursive_mutex> lock(mgr.mutex_);
+    if (!mgr.api_ || !get_printer_state().is_spoolman_available()) {
+        return;
+    }
+    // A spool the server has already denied exists has nothing to re-read.
+    if (is_identity_unresolvable(spool_id)) {
+        return;
+    }
+
+    for (const auto& entry : backends) {
+        AmsBackend* backend = entry.second;
+        const bool local_weight = backend->tracks_weight_locally();
+        const int slot_count = backend->get_system_info().total_slots;
+        for (int i = 0; i < slot_count; ++i) {
+            if (backend->get_slot_info(i).spoolman_id == spool_id) {
+                mgr.fetch_linked_slot(entry.first, i, spool_id, local_weight);
+            }
+        }
+    }
+}
+
 void SpoolmanManager::refresh_spoolman_weights() {
     // Resolve everything we need from AmsState BEFORE taking our own mutex_.
     // AmsState::sync_from_backend() holds AmsState::mutex_ across its call to
@@ -333,220 +580,7 @@ void SpoolmanManager::refresh_spoolman_weights() {
                 int slot_index = i;
                 int spoolman_id = slot.spoolman_id;
 
-                api_->spoolman().get_spoolman_spool(
-                    spoolman_id,
-                    [slot_index, spoolman_id, backend_index,
-                     local_weight](const std::optional<SpoolInfo>& spool_opt) {
-                        if (!spool_opt.has_value()) {
-                            spdlog::warn("[SpoolmanManager] Spoolman spool {} not found",
-                                         spoolman_id);
-                            // "No such spool" is an answer, not a transport
-                            // failure: the circuit breaker must not see it, but
-                            // the id must stop being polled. It also proves the
-                            // lane's Spoolman record describes a spool that does
-                            // not exist, so that record goes. An unreachable
-                            // server proves nothing about the record and takes
-                            // the error path instead, leaving it standing.
-                            helix::ui::queue_update([spoolman_id, slot_index, backend_index]() {
-                                note_identity_unresolvable(spoolman_id);
-                                if (s_shutdown_flag.load(std::memory_order_acquire)) {
-                                    return;
-                                }
-                                const auto bound =
-                                    slot_still_bound_to(backend_index, slot_index, spoolman_id);
-                                if (bound) {
-                                    const helix::ams::LaneId lane =
-                                        bound->owner->lane_id(slot_index);
-                                    const bool had_record =
-                                        helix::ams::lane_sources(lane).spoolman.has_value();
-                                    helix::ams::drop_lane_source(
-                                        lane, helix::ams::ObservationSource::Spoolman);
-                                    // A backend serving its slots from a cache
-                                    // painted this one while the record stood,
-                                    // and the drop raises no backend event to
-                                    // resync the slot's subjects.
-                                    if (had_record) {
-                                        bound->owner->repaint_slot_from_lane(slot_index);
-                                        AmsState::instance().update_slot_for_backend(backend_index,
-                                                                                     slot_index);
-                                    }
-                                }
-                            });
-                            return;
-                        }
-
-                        const SpoolInfo& spool = spool_opt.value();
-
-                        // Data to pass to UI thread
-                        struct WeightUpdate {
-                            int slot_index;
-                            int backend_index;        // Which AMS owns that slot index
-                            int expected_spoolman_id; // To verify slot wasn't reassigned
-                            float remaining_weight_g;
-                            float total_weight_g;
-                            bool local_weight; // Backend tracks remaining weight locally
-                            // Whole record, carried so the identity cache and
-                            // the lane's Spoolman record are filled on the UI
-                            // thread. Nothing from it is written onto the slot:
-                            // see the persist=false note below.
-                            SpoolInfo spool;
-                        };
-
-                        auto update_data = std::make_unique<WeightUpdate>(WeightUpdate{
-                            slot_index, backend_index, spoolman_id,
-                            static_cast<float>(spool.remaining_weight_g),
-                            static_cast<float>(spool.initial_weight_g), local_weight, spool});
-
-                        helix::ui::queue_update<
-                            WeightUpdate>(std::move(update_data), [](WeightUpdate* d) {
-                            // Skip if shutdown is in progress
-                            if (s_shutdown_flag.load(std::memory_order_acquire)) {
-                                return;
-                            }
-
-                            SpoolmanManager& mgr = SpoolmanManager::instance();
-
-                            // Our own state, under our own lock, released before the
-                            // AmsState work below. AmsState::sync_from_backend() holds
-                            // AmsState::mutex_ across SpoolmanManager::find_identity(),
-                            // so carrying mutex_ into AmsState here closes an ABBA cycle
-                            // that ThreadSanitizer reports as a lock-order inversion.
-                            bool identity_is_new = false;
-                            {
-                                std::lock_guard<std::recursive_mutex> lock(mgr.mutex_);
-
-                                // Success response — reset circuit breaker (on UI thread)
-                                if (mgr.consecutive_failures_ > 0) {
-                                    spdlog::info(
-                                        "[SpoolmanManager] Spoolman recovered after {} failures",
-                                        mgr.consecutive_failures_);
-                                }
-                                mgr.consecutive_failures_ = 0;
-                                mgr.unavailable_notified_ = false;
-
-                                // Identity side channel. Must happen BEFORE the
-                                // slot-reassignment and weights-unchanged early
-                                // returns below — a slot whose weight never moves
-                                // would otherwise never get a name.
-                                identity_is_new = cache_identity(d->spool);
-                            }
-
-                            AmsState& ams = AmsState::instance();
-                            if (identity_is_new) {
-                                // A name the label consumers could not resolve a
-                                // moment ago just became resolvable. The weight
-                                // early-returns below would otherwise swallow it
-                                // whenever the weight happens not to move, which
-                                // is every poll once a spool settles (#1264).
-                                ams.bump_slots_version();
-                            }
-                            const auto bound = slot_still_bound_to(d->backend_index, d->slot_index,
-                                                                   d->expected_spoolman_id);
-                            if (!bound) {
-                                return;
-                            }
-                            AmsBackend* owner = bound->owner;
-                            const SlotInfo& slot = bound->slot;
-
-                            // Every answer reaches the lane, not only one that
-                            // carries a new identity: a spool edited on the
-                            // server keeps its id, so cache_identity() has
-                            // already seen it. Ahead of the weights-unchanged
-                            // return for the same reason. Refiling an unchanged
-                            // record is harmless, since it replaces the old one.
-                            // `slot` is a copy taken before this, so the
-                            // weight comparison below still reads the old
-                            // values.
-                            apply_fetched_spool(*owner, d->backend_index, d->slot_index, d->spool,
-                                                d->local_weight);
-
-                            // When backend tracks weight locally, only update total_weight
-                            // (initial weight from Spoolman). Preserve the backend's
-                            // remaining_weight which is more accurate than Spoolman's.
-                            float new_remaining =
-                                d->local_weight ? slot.remaining_weight_g : d->remaining_weight_g;
-
-                            // Skip update if weights haven't changed (avoids UI refresh cascade)
-                            if (slot.remaining_weight_g == new_remaining &&
-                                slot.total_weight_g == d->total_weight_g) {
-                                spdlog::trace("[SpoolmanManager] Slot {} weights unchanged "
-                                              "({:.0f}g / {:.0f}g)",
-                                              d->slot_index, new_remaining, d->total_weight_g);
-                                return;
-                            }
-
-                            // Weight-only, through the weight-only API. An
-                            // automated weight tracker must never assert filament
-                            // identity: handing a backend a whole SlotInfo lets it
-                            // re-derive state from fields this poll did not mean to
-                            // touch, which on a backend that infers presence from
-                            // identity resurrects a lane the sensors report empty
-                            // (#981 for the same shape on the consumption path).
-                            //
-                            // persist=false because these weights come FROM
-                            // Spoolman, which is the durable store for a linked
-                            // spool. Persisting would also send firmware G-code
-                            // (SET_WEIGHT on AFC, MMU_GATE_MAP on Happy Hare),
-                            // whose status_update echo re-enters this poll: 16+
-                            // commands per cycle on four AFC lanes.
-                            owner->update_slot_weight(d->slot_index, new_remaining,
-                                                      d->total_weight_g, /*persist=*/false);
-                            // A slot event the backend raises for this write is
-                            // only queued, so the subjects follow the weight in
-                            // the pass that wrote it.
-                            ams.update_slot_for_backend(d->backend_index, d->slot_index);
-                            ams.bump_slots_version();
-
-                            spdlog::debug(
-                                "[SpoolmanManager] Updated slot {} weights: {:.0f}g / {:.0f}g{}",
-                                d->slot_index, new_remaining, d->total_weight_g,
-                                d->local_weight ? " (local remaining)" : "");
-                        });
-                    },
-                    [spoolman_id](const MoonrakerError& err) {
-                        spdlog::warn("[SpoolmanManager] Failed to fetch Spoolman spool {}: {}",
-                                     spoolman_id, err.message);
-
-                        // Track failure for circuit breaker (post to UI thread for
-                        // thread-safe access to SpoolmanManager and ToastManager)
-                        helix::ui::queue_update([]() {
-                            if (s_shutdown_flag.load(std::memory_order_acquire)) {
-                                return;
-                            }
-
-                            SpoolmanManager& mgr = SpoolmanManager::instance();
-                            std::lock_guard<std::recursive_mutex> lock(mgr.mutex_);
-
-                            mgr.consecutive_failures_++;
-
-                            if (mgr.consecutive_failures_ >= CB_FAILURE_THRESHOLD) {
-                                mgr.cb_open_ = true;
-                                mgr.cb_tripped_at_ms_ = lv_tick_get();
-                                spdlog::warn(
-                                    "[SpoolmanManager] Spoolman circuit breaker OPEN after {} "
-                                    "failures, backing off {}s",
-                                    mgr.consecutive_failures_, CB_BACKOFF_MS / 1000);
-
-                                // Notify user once per outage — only if Spoolman is
-                                // actually configured (avoid confusing toast on printers
-                                // that never set up Spoolman)
-                                if (!mgr.unavailable_notified_) {
-                                    mgr.unavailable_notified_ = true;
-                                    auto* subj =
-                                        lv_xml_get_subject(nullptr, "printer_has_spoolman");
-                                    if (subj && lv_subject_get_int(subj) == 1) {
-                                        // i18n: Spoolman is a product name, do not translate
-                                        ToastManager::instance().show(
-                                            ToastSeverity::WARNING,
-                                            lv_tr("Spoolman unavailable — filament weights "
-                                                  "may be stale"),
-                                            6000);
-                                    }
-                                }
-                            }
-                        });
-                    },
-                    /*silent=*/true);
+                fetch_linked_slot(backend_index, slot_index, spoolman_id, local_weight);
             }
         }
     } // if (backend)

@@ -639,6 +639,39 @@ TEST_CASE_METHOD(SpoolmanLaneFixture,
     CHECK(record->color_rgb == 0xFF5500U);
 }
 
+TEST_CASE_METHOD(SpoolmanLaneFixture,
+                 "SpoolmanManager refetches one spool while polling is debounced",
+                 "[spoolman][lane][1653]") {
+    // The debounce paces the whole-inventory poll. A deliberate read of one
+    // spool answers a question the user just asked, so it steps past it.
+    helix::test::RegisteredBackend<AmsBackendMock> backend(2);
+    link(*backend, 0, 1);
+    state_polymaker_pla(server_spool(1));
+
+    // The debounce clock is the LVGL tick, and a zero tick reads as "never
+    // refreshed". Move it off zero so the poll below arms the debounce the
+    // targeted read has to step past.
+    lv_tick_inc(1000);
+
+    poll();
+    REQUIRE(helix::ams::lane_sources(backend.lane(0)).spoolman.has_value());
+    REQUIRE(helix::ams::lane_sources(backend.lane(0)).spoolman->material == "PLA");
+
+    server_spool(1).material = "PETG";
+
+    // The poll that just ran is holding the debounce down, so a whole-inventory
+    // refresh at this moment reaches no slot. Without this the case would pass
+    // on a refetch the debounce had swallowed.
+    SpoolmanManager::instance().refresh_spoolman_weights();
+    drain();
+    REQUIRE(helix::ams::lane_sources(backend.lane(0)).spoolman->material == "PLA");
+
+    SpoolmanManager::refresh_spool(1);
+    drain();
+
+    CHECK(helix::ams::lane_sources(backend.lane(0)).spoolman->material == "PETG");
+}
+
 TEST_CASE_METHOD(
     SpoolmanLaneFixture,
     "SpoolmanManager: a slot re-bound while its fetch was in flight takes nothing from it",

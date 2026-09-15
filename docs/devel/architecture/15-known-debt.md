@@ -218,6 +218,32 @@ Both attribute the symptom to a Spoolman assignment recording a colour lock. A b
 claims no field but the binding, so that attribution does not describe the code, and neither
 entry has been re-checked against an AD5X.
 
+**A save that wrote part of what it was asked for leaves the lane on the pre-save identity.**
+A successful Spoolman save re-reads the spool it wrote through
+`SpoolmanManager::refresh_spool()`
+([`src/printer/spoolman_manager.cpp#refresh_spool`](../../../src/printer/spoolman_manager.cpp)),
+so the lane carries the server's answer before the next poll. A save that fails part way does
+not: the filament repoint can land and the spool PATCH after it fail, which changes the spool
+on the server while the editor reports "Couldn't save to Spoolman. Nothing changed on this
+printer." and the lane keeps the identity it held until the poll comes round. The editor's
+sentence is right for every other failure and wrong for this one. Reading the spool on the
+failed branch as well is the fix, and what blocks it is the test side: the Spoolman mock's
+`set_mock_spoolman_enabled(false)`
+([`include/moonraker_api_mock.h#set_mock_spoolman_enabled`](../../../include/moonraker_api_mock.h))
+fails reads and writes together, so a partial write cannot be staged and the read on that
+branch would ship with nothing able to pin it.
+
+**The mock cannot express a vendor-only filament change.**
+`MoonrakerSpoolmanAPIMock`'s vendor-filtered `get_spoolman_filaments` overload
+([`src/api/moonraker_api_mock.cpp`](../../../src/api/moonraker_api_mock.cpp))
+returns every filament it synthesises from the mock spool inventory regardless of the vendor
+asked for, and `SpoolmanSlotSaver::find_or_create_filament()`
+([`src/spoolman/spoolman_slot_saver.cpp#find_or_create_filament`](../../../src/spoolman/spoolman_slot_saver.cpp))
+matches on material and colour alone, trusting the server to have applied the vendor filter.
+A brand-only save therefore resolves back to the linked spool's own filament and the served
+vendor never moves, so no test can observe a brand save through the mock. Honouring `vendor_id`
+in that overload is the fix; it changes what several saver cases see, so it is its own change.
+
 ### Deliberate tolerations: C++ that is correct, not debt
 
 The gate does not merely tolerate these cases — it excludes them structurally, so they never appear in the 367: files that call `lv_xml_register_widget` are skipped whole, widgets created with `lv_*_create` in C++ never had an XML layer, events with no declarative equivalent (`DELETE`, draw hooks, size/scroll) are not flagged, and neither are annotated lines. The table (verified against the root [`AGENTS.md`](../../../AGENTS.md) and the code — the bolded entries were spot-checked for this chapter):

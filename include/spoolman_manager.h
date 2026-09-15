@@ -81,6 +81,22 @@ class SpoolmanManager {
     void set_api(IMoonrakerAPI* api);
 
     void refresh_spoolman_weights();
+
+    /**
+     * @brief Fetch one linked spool now, outside the poll's pacing
+     *
+     * A save the user just made is the one moment a lane's Spoolman record is
+     * known stale, and the poll would leave it that way for up to its interval.
+     * This is one request per slot linked to @p spool_id, so it is not gated on
+     * the poll timer, the debounce or the circuit breaker, and it does not
+     * write the debounce clock: none of those pace a single deliberate read.
+     *
+     * A spool linked on two lanes is fetched for both.
+     *
+     * @param spool_id Spoolman spool id; <= 0 and an unresolvable id do nothing
+     */
+    static void refresh_spool(int spool_id);
+
     void start_spoolman_polling();
     void stop_spoolman_polling();
 
@@ -96,6 +112,18 @@ class SpoolmanManager {
      * again from the availability observer when Spoolman appears.
      */
     void ensure_poll_timer();
+
+    /**
+     * @brief Issue one slot's spool fetch and file the answer
+     *
+     * One fetch does the same thing whoever asked for it: the request, the
+     * not-found drop, the filing onto the lane and the slot, and the circuit
+     * breaker's failure count. The poll walks every linked slot through here;
+     * refresh_spool() walks the slots linked to one id.
+     *
+     * Called with mutex_ held, which is what makes api_ safe to read.
+     */
+    void fetch_linked_slot(int backend_index, int slot_index, int spoolman_id, bool local_weight);
 
   public:
     // ========================================================================

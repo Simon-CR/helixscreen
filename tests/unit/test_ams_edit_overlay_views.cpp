@@ -21,6 +21,7 @@
 #include "display_numbering.h"
 #include "display_settings_manager.h"
 #include "filament_favorites.h"
+#include "lane_source_store.h"
 #include "moonraker_api_mock.h"
 #include "moonraker_client_mock.h"
 #include "printer_state.h"
@@ -28,6 +29,7 @@
 #include "spoolman_slot_saver.h"
 #include "src/ui/panel_widgets/active_spool_widget.h"
 
+#include <algorithm>
 #include <memory>
 
 #include "../catch_amalgamated.hpp"
@@ -1304,6 +1306,9 @@ struct OverlayConsumerCommitFixture : LVGLUITestFixture {
         UpdateQueue::instance().drain();
         ams.deinit_subjects();
         SpoolmanManager::clear_identity_cache();
+        // The manager holds a raw pointer, and this fixture's api outlives it
+        // by one member destruction at most.
+        SpoolmanManager::instance().set_api(nullptr);
     }
 
     /// The production backend-slot completion-consumer body (AmsPanel /
@@ -2847,6 +2852,171 @@ TEST_CASE_METHOD(LVGLUITestFixture,
     CHECK(api.spoolman_mock().created_spools.empty());
 
     NavigationManager::instance().go_back();
+    UpdateQueue::instance().drain();
+    process_lvgl(10);
+}
+
+// ============================================================================
+// The lane after a save: a successful Spoolman write is re-read at once
+// ============================================================================
+
+namespace {
+
+/// The linked spool both refetch cases start from, on the server and on the
+/// backend's slot 0. The mock inventory already carries id 7 and a GET serves
+/// the first match, so this states the fields on that record rather than
+/// pushing a second one the reads would never reach.
+void seed_linked_spool(MoonrakerAPIMock& api, AmsBackendMock& backend) {
+    auto& spools = api.spoolman_mock().get_mock_spools();
+    auto it =
+        std::find_if(spools.begin(), spools.end(), [](const SpoolInfo& s) { return s.id == 7; });
+    if (it == spools.end()) {
+        SpoolInfo added;
+        added.id = 7;
+        spools.push_back(added);
+        it = std::prev(spools.end());
+    }
+    it->filament_id = 3;
+    it->vendor = "Bambu Lab";
+    it->material = "ASA";
+    it->color_hex = "8A949E";
+    it->initial_weight_g = 1000.0;
+    it->remaining_weight_g = 850.0;
+    backend.sync_external_identity(0, tracked_slot());
+
+    auto* spoolman_subj = lv_xml_get_subject(nullptr, "printer_has_spoolman");
+    REQUIRE(spoolman_subj != nullptr);
+    lv_subject_set_int(spoolman_subj, 1);
+    get_printer_state().set_spoolman_available(true);
+    SpoolmanManager::instance().set_api(&api);
+    UpdateQueue::instance().drain();
+}
+
+/// Fill the lane's Spoolman record from the server, so a case measures the
+/// save's own read rather than the first record the lane ever gets.
+void poll_lane_once(helix::ams::LaneId lane) {
+    SpoolmanManager::instance().refresh_spoolman_weights();
+    UpdateQueue::instance().drain();
+    REQUIRE(helix::ams::lane_sources(lane).spoolman.has_value());
+    REQUIRE(helix::ams::lane_sources(lane).spoolman->brand == "Bambu Lab");
+}
+
+} // namespace
+
+TEST_CASE_METHOD(OverlayConsumerCommitFixture,
+                 "a successful Spoolman save re-reads the linked spool onto the lane before the "
+                 "next poll",
+                 "[ams_edit_overlay][spoolman][1653]") {
+    // A linked spool resolves its identity and its weights from the lane's
+    // Spoolman record, which only a fetch writes, and the poll is a whole
+    // interval wide. The save is the moment that record is known stale, so it
+    // re-reads the spool it just wrote.
+    seed_linked_spool(api, *backend);
+    const helix::ams::LaneId lane = backend->lane_id(0);
+    poll_lane_once(lane);
+    REQUIRE(helix::ams::lane_sources(lane).spoolman->remaining_weight_g == 850.0F);
+
+    auto& overlay = get_ams_edit_overlay();
+    AmsEditOverlayViewTestAccess access(overlay);
+
+    bool fired = false;
+    REQUIRE(overlay.show_for_slot(test_screen(), 0, tracked_slot(), &api,
+                                  [&](const AmsEditOverlay::EditResult& r) {
+                                      fired = true;
+                                      commit_like_consumer(r);
+                                  }));
+    UpdateQueue::instance().drain();
+    process_lvgl(10);
+
+    // A weight move is an edit Spoolman has to write, and it never prompts.
+    SlotInfo edited = access.working_info();
+    edited.remaining_weight_g = 600.0F;
+    access.set_working_info(edited);
+
+    access.call_handle_save();
+    UpdateQueue::instance().drain();
+    process_lvgl(10);
+    REQUIRE(fired);
+    REQUIRE(ModalStack::instance().stack_empty());
+
+    // The save reached Spoolman. Separated from the lane check below so a
+    // failure names which of the two halves broke.
+    const auto& spools = api.spoolman_mock().get_mock_spools();
+    const auto served =
+        std::find_if(spools.begin(), spools.end(), [](const SpoolInfo& s) { return s.id == 7; });
+    REQUIRE(served != spools.end());
+    REQUIRE(served->remaining_weight_g == 600.0);
+
+    // The read is issued after the commit, and its answer is filed from a
+    // later drain.
+    UpdateQueue::instance().drain();
+    process_lvgl(10);
+
+    const auto record = helix::ams::lane_sources(lane).spoolman;
+    REQUIRE(record.has_value());
+    REQUIRE(record->remaining_weight_g.has_value());
+    CHECK(*record->remaining_weight_g == 600.0F);
+
+    get_printer_state().set_spoolman_available(false); // restore clean slate
+    UpdateQueue::instance().drain();
+    process_lvgl(10);
+}
+
+TEST_CASE_METHOD(OverlayConsumerCommitFixture,
+                 "a new spool is filed on its lane before the next poll",
+                 "[ams_edit_overlay][spoolman][1653]") {
+    // A spool created by the save has never been fetched, so the lane still
+    // carries the spool it was bound to before. The read follows the id the
+    // commit just bound, not the one the editor opened on.
+    seed_linked_spool(api, *backend);
+    const helix::ams::LaneId lane = backend->lane_id(0);
+    poll_lane_once(lane);
+
+    auto& overlay = get_ams_edit_overlay();
+    AmsEditOverlayViewTestAccess access(overlay);
+
+    AmsEditOverlay::EditResult captured;
+    bool fired = false;
+    REQUIRE(overlay.show_for_slot(test_screen(), 0, tracked_slot(), &api,
+                                  [&](const AmsEditOverlay::EditResult& r) {
+                                      fired = true;
+                                      captured = r;
+                                      commit_like_consumer(r);
+                                  }));
+    UpdateQueue::instance().drain();
+    process_lvgl(10);
+
+    // A material move is an identity change, so Save asks whose spool this is.
+    SlotInfo edited = access.working_info();
+    edited.material = "PETG";
+    access.set_working_info(edited);
+
+    access.call_handle_save();
+    UpdateQueue::instance().drain();
+    process_lvgl(10);
+
+    REQUIRE_FALSE(ModalStack::instance().stack_empty()); // "Different filament?"
+    lv_obj_t* dlg = ModalStack::instance().top_dialog();
+    REQUIRE(dlg != nullptr);
+    lv_obj_t* confirm_btn = lv_obj_find_by_name(dlg, "btn_primary");
+    REQUIRE(confirm_btn != nullptr);
+    lv_obj_send_event(confirm_btn, LV_EVENT_CLICKED, nullptr);
+    UpdateQueue::instance().drain();
+    process_lvgl(10);
+
+    REQUIRE(fired);
+    REQUIRE(captured.slot_info.spoolman_id != 0);
+    REQUIRE(captured.slot_info.spoolman_id != 7);
+
+    UpdateQueue::instance().drain();
+    process_lvgl(10);
+
+    const auto record = helix::ams::lane_sources(lane).spoolman;
+    REQUIRE(record.has_value());
+    CHECK(record->spoolman_id == captured.slot_info.spoolman_id);
+    CHECK(record->material == "PETG");
+
+    get_printer_state().set_spoolman_available(false); // restore clean slate
     UpdateQueue::instance().drain();
     process_lvgl(10);
 }
