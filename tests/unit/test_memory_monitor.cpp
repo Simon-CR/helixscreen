@@ -550,11 +550,11 @@ TEST_CASE_METHOD(LVGLTestFixture,
                  "MemoryMonitor: pressure completion sample runs after async widget deletes",
                  "[memory_monitor][1675]") {
     // The completion log's RSS sample must land after the widget deletes the
-    // responders deferred. Both hop to the UI thread through the UpdateQueue,
-    // and lv_timer_create() inserts at the HEAD of LVGL's timer list, so the
-    // relative position of the completion timer and the delete timers decides
-    // which runs first. The tracked object logs its delete event into the same
-    // ring the completion line lands in: capture order is execution order.
+    // responders deferred. The completion hops UpdateQueue twice while the
+    // deletes are period-0 timers created in the first hop's drain, so the
+    // sample runs in a later drain than the handler pass that freed the
+    // widgets. The tracked object logs its delete event into the same ring
+    // the completion line lands in: capture order is execution order.
     LogCapture log(512);
 
     lv_obj_t* parent = lv_obj_create(test_screen());
@@ -566,20 +566,23 @@ TEST_CASE_METHOD(LVGLTestFixture,
     auto& monitor = MemoryMonitor::instance();
     // A stub widget-tree responder: hop to the UI thread, then defer the delete
     // one async step, the way the print-status teardown responder does.
-    lv_obj_t* doomed = tracked;
-    auto id = monitor.add_pressure_responder([doomed](MemoryPressureLevel) {
-        helix::ui::queue_update([doomed]() { lv_obj_delete_async(doomed); });
+    auto id = monitor.add_pressure_responder([tracked](MemoryPressureLevel) {
+        helix::ui::queue_update([tracked]() { lv_obj_delete_async(tracked); });
     });
 
     MemoryMonitorTestAccess::fire_warning(monitor, MemoryPressureLevel::warning, "test pressure",
                                           MemoryStats{}, MemoryInfo{}, 0);
 
-    // The first pump drains the queue — creating the delete timer and the
-    // completion timer — and fires whatever is ready; the second lets a
-    // nonzero-period completion timer come due.
-    process_lvgl(50);
-
+    // Unregister before the assertions: a failed REQUIRE below would skip the
+    // removal, leaving a responder in the process-wide singleton holding a
+    // pointer to a widget this fixture is about to destroy.
     monitor.remove_pressure_responder(id);
+
+    // The first tick iteration drains the queue — creating the delete timer
+    // and queueing the completion's second hop — then fires the ready delete
+    // timer; a later iteration within this same process_lvgl(50) call drains
+    // the second hop and runs the sample.
+    process_lvgl(50);
 
     const auto lines = log.lines();
     size_t deleted_at = lines.size();

@@ -516,46 +516,31 @@ void MemoryMonitor::fire_warning(MemoryPressureLevel level, const std::string& r
     // tree is actually freed by lv_obj_delete_async — a period-0 one-shot
     // timer. A sync get_current_stats() right after the loop would
     // systematically undercount: the RSS delta would read "+0kB" even when
-    // multi-hundred-KB reclaim succeeded. But so does a period-0 hop created
-    // after the responders' own hops: lv_timer_create() inserts every new
-    // timer at the HEAD of LVGL's timer list and lv_timer_handler() restarts
-    // its walk from the head whenever a timer is created, so a completion
-    // timer created later in the same UpdateQueue drain lands AHEAD of the
-    // delete timers and runs first. The completion is therefore a one-shot
-    // lv_timer with a nonzero period: not-ready makes the walk skip it, the
-    // period-0 delete timers run past it, and the sample fires on the next
-    // lv_timer_handler pass — reflecting sync responders, cache drops, AND
-    // widget deletes.
+    // multi-hundred-KB reclaim succeeded. So would a single queue hop: the
+    // responders' callbacks run in this same UpdateQueue drain, before the
+    // lv_timer_handler pass that fires the delete timers. A period-based
+    // delay would not fix it either — readiness is timing, and a drain that
+    // spends longer than the period in callbacks makes the timer come due in
+    // the very pass the deletes fire. So the completion hops UpdateQueue
+    // twice: process_pending() swaps the queue before running callbacks, so
+    // work queued from inside a drain lands in the NEXT drain — one full
+    // handler pass after the period-0 delete timers fired. The inner
+    // callback only samples and logs (no LVGL calls), so nothing else can
+    // reorder it.
     if (responders_fired > 0) {
 #ifdef __linux__
-        struct CompletionCtx {
-            size_t before_rss_kb;
-            size_t fired;
-        };
-        auto* ctx = new CompletionCtx{before_stats.vm_rss_kb, responders_fired};
-        helix::ui::queue_update([ctx]() {
-            lv_timer_t* timer = lv_timer_create(
-                [](lv_timer_t* t) {
-                    auto* c = static_cast<CompletionCtx*>(lv_timer_get_user_data(t));
-                    MemoryStats after = MemoryMonitor::get_current_stats();
-                    int64_t delta_kb = static_cast<int64_t>(after.vm_rss_kb) -
-                                       static_cast<int64_t>(c->before_rss_kb);
-                    spdlog::warn("[MemoryMonitor] Pressure response complete: "
-                                 "{} responder(s), "
-                                 "RSS {}MB -> {}MB ({:+}kB)",
-                                 c->fired, c->before_rss_kb / 1024, after.vm_rss_kb / 1024,
-                                 delta_kb);
-                    delete c;
-                },
-                1, ctx);
-            if (timer != nullptr) {
-                lv_timer_set_repeat_count(timer, 1);
-            } else {
-                // lv_timer_create fails only under allocation failure — the
-                // very state this monitor reports on. Drop the context rather
-                // than leak it on a box that is out of memory.
-                delete ctx;
-            }
+        const size_t before_rss_kb = before_stats.vm_rss_kb;
+        const size_t fired = responders_fired;
+        helix::ui::queue_update([before_rss_kb, fired]() {
+            helix::ui::queue_update([before_rss_kb, fired]() {
+                MemoryStats after = MemoryMonitor::get_current_stats();
+                int64_t delta_kb =
+                    static_cast<int64_t>(after.vm_rss_kb) - static_cast<int64_t>(before_rss_kb);
+                spdlog::warn("[MemoryMonitor] Pressure response complete: "
+                             "{} responder(s), "
+                             "RSS {}MB -> {}MB ({:+}kB)",
+                             fired, before_rss_kb / 1024, after.vm_rss_kb / 1024, delta_kb);
+            });
         });
 #endif
     }
