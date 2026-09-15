@@ -1564,17 +1564,11 @@ nlohmann::json TelemetryManager::build_session_event() const {
         printer["mcu_count"] = static_cast<int>(hw.mcu_list().empty() ? (hw.mcu().empty() ? 0 : 1)
                                                                       : hw.mcu_list().size());
 
-        // Count extruders with the strict naming grammar: an extruder count
-        // is a tool count, so an extruder-prefixed heater that is not a
-        // numbered extruder (extruder_mixing, extruder_stepper) must not
-        // inflate it.
-        int extruder_count = 0;
-        for (const auto& heater : hw.heaters()) {
-            if (helix::is_extruder_name(heater)) {
-                extruder_count++;
-            }
-        }
-        printer["extruder_count"] = extruder_count;
+        // An extruder count is a tool count: strict grammar, shared with
+        // detection's tool_count heuristic, so an extruder-prefixed heater
+        // that is not a numbered extruder (extruder_mixing,
+        // extruder_stepper) must not inflate it.
+        printer["extruder_count"] = static_cast<int>(helix::count_extruder_names(hw.heaters()));
 
         printer["has_heated_bed"] = hw.has_heater_bed();
         printer["has_chamber"] = hw.supports_chamber();
@@ -2063,16 +2057,10 @@ nlohmann::json TelemetryManager::build_hardware_profile_event() const {
             }
 
             // ---- extruders section ----
-            // Strict grammar, same as the session event's extruder_count:
-            // this counts tools, not extruder-prefixed heaters.
+            // The same tool count the session event's extruder_count
+            // reports, through the same counter.
             json extruders;
-            int extruder_count = 0;
-            for (const auto& heater : hw.heaters()) {
-                if (helix::is_extruder_name(heater)) {
-                    extruder_count++;
-                }
-            }
-            extruders["count"] = extruder_count;
+            extruders["count"] = static_cast<int>(helix::count_extruder_names(hw.heaters()));
             extruders["has_chamber_heater"] = hw.has_chamber_heater();
             extruders["has_heater_bed"] = hw.has_heater_bed();
             event["extruders"] = extruders;

@@ -676,12 +676,7 @@ int execute_heuristic(const json& heuristic, const PrinterHardwareData& hardware
         // four-digit index) must not inflate it. Discovery's looser prefix
         // match is for heater enumeration and stays loose.
         std::string pattern = heuristic.value("pattern", "");
-        int extruder_count = 0;
-        for (const auto& heater : hardware.heaters) {
-            if (helix::is_extruder_name(heater)) {
-                extruder_count++;
-            }
-        }
+        const int extruder_count = static_cast<int>(helix::count_extruder_names(hardware.heaters));
 
         // Parse expected count from pattern (tool_count_N)
         if (pattern.rfind("tool_count_", 0) == 0) {
