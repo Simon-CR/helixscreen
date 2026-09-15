@@ -35,6 +35,9 @@ setup() {
     # Extract the env-handling portion of the launcher into a testable snippet.
     # We source just the variable setup logic without actually launching anything.
     # This avoids needing real binaries, display hardware, etc.
+    # The copy pins resolved VALUES only: note wording and log prefixes are
+    # deliberately exempt here, covered by the note tests that run the
+    # shipped launcher.
     cat > "$BATS_TEST_TMPDIR/env_setup.sh" << 'ENVEOF'
 #!/bin/sh
 # Minimal harness that runs just the env-handling parts of helix-launcher.sh
@@ -88,6 +91,8 @@ if [ -n "$_helix_env_file" ]; then
             if ! eval "export $_line" 2>/dev/null; then
                 echo "[helix-launcher] warning: ${_helix_env_file}:${_lineno}: failed to export: $_line" >&2
             fi
+        elif [ "${HELIX_DEBUG:-0}" = "1" ]; then
+            echo "[helix-launcher] note: ${_helix_env_file}:${_lineno}: $_var already set in environment; file value ignored" >&2
         fi
     done < "$_helix_env_file"
     unset _line _var _existing _lineno
@@ -231,6 +236,88 @@ EOF
     export MOONRAKER_HOST=from-env
     result=$(MOCK_INSTALL="$MOCK_INSTALL" sh -c ". \"$BATS_TEST_TMPDIR/env_setup.sh\" && echo \"\$MOONRAKER_HOST\"")
     [ "$result" = "from-env" ]
+}
+
+@test "a skipped env-file line says so under HELIX_DEBUG=1 and is silent otherwise" {
+    # The skip is the precedence rule acting; without a trace of it, an
+    # operator's file value looks accepted and discarded. Run the SHIPPED
+    # launcher in query mode (--print-env NAME): it performs the same
+    # env-file parse startup does, prints the resolved value on stdout and
+    # the note on stderr, and exits before any display side effect or
+    # daemon - so what ships is exactly what is asserted here.
+    cp "$LAUNCHER" "$MOCK_INSTALL/bin/helix-launcher.sh"
+    rm -f "$MOCK_INSTALL/helix_screen_args.txt"
+    cat > "$MOCK_INSTALL/config/helixscreen.env" << 'EOF'
+MOONRAKER_HOST=from-file
+EOF
+    HELIX_DEBUG=1 MOONRAKER_HOST=from-env \
+        "$MOCK_INSTALL/bin/helix-launcher.sh" --print-env MOONRAKER_HOST \
+        > "$BATS_TEST_TMPDIR/value.out" 2> "$BATS_TEST_TMPDIR/loud.log"
+    [ "$(cat "$BATS_TEST_TMPDIR/value.out")" = "from-env" ]
+    grep -q 'MOONRAKER_HOST already set in environment; file value ignored' "$BATS_TEST_TMPDIR/loud.log"
+    HELIX_DEBUG=0 MOONRAKER_HOST=from-env \
+        "$MOCK_INSTALL/bin/helix-launcher.sh" --print-env MOONRAKER_HOST \
+        > /dev/null 2> "$BATS_TEST_TMPDIR/quiet.log"
+    [ ! -s "$BATS_TEST_TMPDIR/quiet.log" ]
+    # Query mode launched nothing.
+    [ ! -e "$MOCK_INSTALL/helix_screen_args.txt" ]
+}
+
+@test "a duplicate env-file key names the file, not the environment, as the winner" {
+    # When the same key appears twice, what outranked the second line is the
+    # FIRST line of the same file, not the shell environment - and the note
+    # must say so, or the operator goes hunting for an env var that is not
+    # set anywhere.
+    cp "$LAUNCHER" "$MOCK_INSTALL/bin/helix-launcher.sh"
+    cat > "$MOCK_INSTALL/config/helixscreen.env" << 'EOF'
+MOONRAKER_HOST=first
+MOONRAKER_HOST=second
+EOF
+    HELIX_DEBUG=1 "$MOCK_INSTALL/bin/helix-launcher.sh" --print-env MOONRAKER_HOST \
+        > "$BATS_TEST_TMPDIR/value.out" 2> "$BATS_TEST_TMPDIR/dup.log"
+    [ "$(cat "$BATS_TEST_TMPDIR/value.out")" = "first" ]
+    grep -q 'MOONRAKER_HOST already set by an earlier line of this file; this value ignored' "$BATS_TEST_TMPDIR/dup.log"
+    if grep -q 'already set in environment' "$BATS_TEST_TMPDIR/dup.log"; then
+        fail "note blames the environment for a duplicate key in the file"
+    fi
+}
+
+@test "the hand-extracted parse and the shipped launcher agree on tolerance shapes" {
+    # env_setup.sh hand-copies the launcher's env-file parse so the
+    # precedence tests can run it without binaries; a copy can drift while
+    # the suite stays green. This differential asks the SHIPPED launcher
+    # (--print-env NAME) for the same resolution the copy reports, across
+    # every tolerance shape, and pins both to the expected value so the two
+    # cannot agree on a wrong answer.
+    cp "$LAUNCHER" "$MOCK_INSTALL/bin/helix-launcher.sh"
+    local var shape want copy_val shipped_val
+    while IFS='|' read -r var shape want; do
+        case "$var" in ''|'#'*) continue ;; esac
+        printf '%s\n' "$shape" > "$MOCK_INSTALL/config/helixscreen.env"
+        copy_val=$(MOCK_INSTALL="$MOCK_INSTALL" run_env_setup "$var")
+        shipped_val=$(env -u "$var" "$MOCK_INSTALL/bin/helix-launcher.sh" --print-env "$var")
+        [ "$copy_val" = "$want" ] || fail "hand copy mis-reads [$shape] as [$copy_val]"
+        [ "$shipped_val" = "$want" ] || fail "shipped launcher mis-reads [$shape] as [$shipped_val]"
+    done <<'EOF'
+HELIX_FB_DEVICE|HELIX_FB_DEVICE=/dev/fb1|/dev/fb1
+HELIX_FB_DEVICE|   HELIX_FB_DEVICE=/dev/fb2|/dev/fb2
+HELIX_FB_DEVICE|HELIX_FB_DEVICE=/dev/fb3   |/dev/fb3
+HELIX_FB_DEVICE|export HELIX_FB_DEVICE=/dev/fb4|/dev/fb4
+HELIX_FB_DEVICE|export   HELIX_FB_DEVICE=/dev/fb5|/dev/fb5
+HELIX_FB_DEVICE|HELIX_FB_DEVICE='/dev/fb6'|/dev/fb6
+HELIX_FB_DEVICE|HELIX_FB_DEVICE="/dev/fb7"|/dev/fb7
+HELIX_FB_DEVICE|HELIX_FB_DEVICE=/dev/fb8 # trailing note|/dev/fb8
+EOF
+    # CRLF line endings: written with printf so the CR is real.
+    printf 'HELIX_FB_DEVICE=/dev/fb9\r\n' > "$MOCK_INSTALL/config/helixscreen.env"
+    copy_val=$(MOCK_INSTALL="$MOCK_INSTALL" run_env_setup HELIX_FB_DEVICE)
+    shipped_val=$(env -u HELIX_FB_DEVICE "$MOCK_INSTALL/bin/helix-launcher.sh" --print-env HELIX_FB_DEVICE)
+    [ "$copy_val" = "/dev/fb9" ] && [ "$shipped_val" = "/dev/fb9" ]
+    # Duplicate keys: the first definition wins.
+    printf 'HELIX_FB_DEVICE=/first\nHELIX_FB_DEVICE=/second\n' > "$MOCK_INSTALL/config/helixscreen.env"
+    copy_val=$(MOCK_INSTALL="$MOCK_INSTALL" run_env_setup HELIX_FB_DEVICE)
+    shipped_val=$(env -u HELIX_FB_DEVICE "$MOCK_INSTALL/bin/helix-launcher.sh" --print-env HELIX_FB_DEVICE)
+    [ "$copy_val" = "/first" ] && [ "$shipped_val" = "/first" ]
 }
 
 @test "env file HELIX_DISPLAY_BACKEND takes precedence over hardcoded fbdev default" {
