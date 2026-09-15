@@ -110,6 +110,22 @@ class StubBackend : public helix::AmsBackendMock {
     }
 };
 
+/// Refuses every tier-1 dispatch, and counts the home consent being cleared.
+class FailingDispatchBackend : public StubBackend {
+  public:
+    helix::AmsError load_filament(int) override {
+        return helix::AmsErrorHelper::busy("dispatch refused");
+    }
+    helix::AmsError change_tool(int) override {
+        return helix::AmsErrorHelper::busy("dispatch refused");
+    }
+    void clear_home_preconfirmed() override {
+        ++clears;
+        StubBackend::clear_home_preconfirmed();
+    }
+    int clears = 0;
+};
+
 AmsSystemInfo afc_sys() {
     AmsSystemInfo sys;
     sys.type = AmsType::AFC;
@@ -136,11 +152,12 @@ struct TimeoutHarness {
     std::unique_ptr<FilamentPanel> panel;
     lv_obj_t* root = nullptr;
 
-    explicit TimeoutHarness(LVGLUITestFixture& f) : fx(f) {
+    explicit TimeoutHarness(LVGLUITestFixture& f, std::unique_ptr<StubBackend> backend = nullptr)
+        : fx(f) {
         ToolState::instance().init_subjects(true);
         helix::AmsState::instance().init_subjects(true);
 
-        auto owned = std::make_unique<StubBackend>();
+        auto owned = backend ? std::move(backend) : std::make_unique<StubBackend>();
         owned->sys_ = afc_sys();
         owned->loaded_slot_ = 3; // slot 0 stays free so a Load can proceed
         mock = owned.get();
@@ -476,6 +493,25 @@ TEST_CASE_METHOD(LVGLUITestFixture, "a backend that heats for us still gets the 
     CHECK(asked == 1);
 
     helix::ui::set_home_confirm_prompter({});
+}
+
+TEST_CASE_METHOD(LVGLUITestFixture,
+                 "a tier-1 dispatch that fails clears the home consent it never spent",
+                 "[ui_integration][filament][homing][preconfirm]") {
+    // The arm is consumed single-shot by whichever operation dispatches next, so
+    // consent that its own dispatch never spent would home an unrelated later one
+    // without asking.
+    auto owned = std::make_unique<FailingDispatchBackend>();
+    FailingDispatchBackend* backend = owned.get();
+    TimeoutHarness h(*this, std::move(owned));
+
+    backend->arm_home_preconfirmed();
+    backend->clears = 0;
+
+    TA::execute_load(*h.panel);
+    process_lvgl(20);
+
+    CHECK(backend->clears == 1);
 }
 
 TEST_CASE_METHOD(LVGLUITestFixture, "declining the pre-load home dispatches nothing",

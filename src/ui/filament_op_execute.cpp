@@ -301,6 +301,11 @@ void execute_filament_load(AmsBackend* backend, int slot, const FilamentOpSurfac
                            : backend->load_filament(plan.ams_arg);
         if (!err.success()) {
             spdlog::error("{} Load filament failed: {}", log_tag, err.technical_msg);
+            // The dispatch this home consent was armed for never ran, and the arm
+            // is consumed single-shot by whichever operation dispatches next —
+            // leaving it set would home a later one without asking. Idempotent
+            // no-op when nothing was armed.
+            backend->clear_home_preconfirmed();
             unwind_backend(surface, plan, err);
         }
         // Success is NOT reported here: a backend load is fire-and-forget and

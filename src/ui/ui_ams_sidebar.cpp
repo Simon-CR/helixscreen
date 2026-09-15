@@ -947,6 +947,13 @@ void AmsOperationSidebar::fail_started_operation(const AmsError& error) {
     spdlog::warn("[AmsSidebar] Operation dispatch failed: {} ({})", error.user_msg,
                  error.technical_msg);
     helix::ui::notify_ams_error(error, lv_tr("Filament operation failed"));
+    // The dispatch this home consent was armed for never ran, and the arm is
+    // consumed single-shot by whichever operation dispatches next — leaving it
+    // set would home a later one without asking. Idempotent no-op when nothing
+    // was armed.
+    if (AmsBackend* backend = AmsState::instance().get_backend()) {
+        backend->clear_home_preconfirmed();
+    }
     target_load_slot_ = -1;
     AmsState::instance().set_pending_target_slot(-1);
     // Backend never left IDLE; pull its truth back into the UI so the action
