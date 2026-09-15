@@ -260,7 +260,7 @@ endif
 # tell make it's produced by PATCHES_STAMP to prevent parallel build races
 # (make would otherwise fail with "No rule to make target 'dns_resolv.c'").
 ifneq ($(APP_DNS_RESOLV_OBJ),)
-$(LIBHV_DIR)/base/dns_resolv.c: $(PATCHES_STAMP) | $(PATCH_MARKER_STAMP)
+$(LIBHV_DIR)/base/dns_resolv.c: $(PATCHES_STAMP)
 
 $(APP_DNS_RESOLV_OBJ): $(LIBHV_DIR)/base/dns_resolv.c $(LIBHV_LIB)
 	$(Q)mkdir -p $(dir $@)

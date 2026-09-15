@@ -180,11 +180,37 @@ EOF
 }
 
 @test "every compile rule gated on the patch stamp is gated on the marker stamp" {
-    gated=$(grep -F '$(PATCHES_STAMP)' mk/rules.mk mk/egl-link.mk \
-        | grep -v '^[^:]*:[[:space:]]*#' || true)
+    # A rule whose target is itself a watched file is a source-ordering rule,
+    # not a compile: the marker stamp depends on the watched files, so such a
+    # rule waiting on the stamp closes a cycle that make breaks by dropping
+    # the edge (the dry-run test below pins that). Everything else gated on
+    # the patch stamp must also wait on the marker stamp.
+    watched=$(awk -F'\t' 'NR>1 && !s[$4"/"$5]++ \
+        {print ($4=="LVGL_DIR" ? "lib/lvgl" : "lib/libhv") "/" $5}' mk/patch-markers.tsv)
+    [ -n "$watched" ]
+    gated=$(grep -hF '$(PATCHES_STAMP)' mk/rules.mk mk/egl-link.mk \
+        | grep -v '^[[:space:]]*#' || true)
     [ "$(printf '%s\n' "$gated" | grep -c .)" -ge 8 ]
-    ungated=$(printf '%s\n' "$gated" | grep -vF '$(PATCH_MARKER_STAMP)' || true)
-    [ -z "$ungated" ] || { printf 'ungated rules:\n%s\n' "$ungated"; return 1; }
+    ungated=$(printf '%s\n' "$gated" | grep -vF '$(PATCH_MARKER_STAMP)' \
+        | sed 's/:.*//; s/\$(LVGL_DIR)/lib\/lvgl/; s/\$(LIBHV_DIR)/lib\/libhv/' \
+        | grep . || true)
+    stray=$(printf '%s\n' "$ungated" | grep -vxF "$watched" || true)
+    [ -z "$stray" ] || { printf 'rules gated on patches but not markers:\n%s\n' "$stray"; return 1; }
+}
+
+@test "the build graph has no circular dependency make would silently drop" {
+    # make resolves a cycle by dropping one edge and continuing; a watched
+    # file waiting on the marker stamp is such a cycle, and the dropped edge
+    # is that file's gate. The dry run walks the pi graph (the cross-compile
+    # configuration) without compiling anything.
+    graph="$BATS_TEST_TMPDIR/pi-graph.log"
+    make PLATFORM_TARGET=pi SKIP_OPTIONAL_DEPS=1 -n > "$graph" 2>&1
+    grep -q 'patch-markers-verified' "$graph" \
+        || { printf 'dry run never walked the marker stamp\n'; head -5 "$graph"; return 1; }
+    if grep -q 'Circular .* dependency dropped' "$graph"; then
+        grep 'Circular .* dependency dropped' "$graph"
+        return 1
+    fi
 }
 
 @test "the drift stamp write is gated on the marker check" {
