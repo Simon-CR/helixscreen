@@ -2799,7 +2799,7 @@ void AmsBackendAfc::parse_afc_stepper(int slot_index, const std::string& lane_na
 
                 // Firmware-sourced: this is AFC's own `map` field coming back over
                 // the subscription, which is the only write here that proves the
-                // printer applied a mapping (#1270). set_slot_info()'s write is NOT
+                // printer applied a mapping (#1270). apply_user_edit()'s write is NOT
                 // this — that one is our own intent, sent as SET_MAP a few lines
                 // later.
                 slots_.set_tool_mapping(slot_index, chosen,
@@ -2917,7 +2917,7 @@ void AmsBackendAfc::maybe_reassert_retained_spool_link(int slot_index,
     // eject/re-insert cycle is the retry. That is the whole debounce: a
     // bouncing spool costs one write per transition, never a stream.
     //
-    // The write rides record_own_spool_write() like set_slot_info's own
+    // The write rides record_own_spool_write() like apply_user_edit's own
     // re-link, so the firmware echo of OUR push cannot be misread by the
     // merge's re-bind rule as another writer's statement.
     const int override_key = [=]() {
@@ -2946,7 +2946,7 @@ void AmsBackendAfc::maybe_reassert_retained_spool_link(int slot_index,
     const int retained_id = it->second.spoolman_id;
     spdlog::info("[AMS AFC] Lane {} (slot {}): re-asserting retained spool id {} into AFC",
                  lane_name, slot_index, retained_id);
-    // Record before dispatching, exactly like set_slot_info's SET_SPOOL_ID
+    // Record before dispatching, exactly like apply_user_edit's SET_SPOOL_ID
     // path: firmware_id (0 here) is what firmware last reported.
     record_own_spool_write(override_key, retained_id, firmware_id);
     AmsError err =
@@ -4920,13 +4920,11 @@ AmsError AmsBackendAfc::reset() {
                                 lv_tr("AFC reset failed"));
 }
 
-void AmsBackendAfc::persist_override(int slot_index, const SlotInfo& original, const SlotInfo& info,
-                                     const helix::ams::Observation* declared) {
-    // Callers hold mutex_. What the user declared comes from @p declared when
-    // the caller passed it down, else from a diff of @p original, the lane as
-    // it stood before this edit, against @p info.
+void AmsBackendAfc::persist_override(int slot_index, const SlotInfo& info,
+                                     const helix::ams::Observation& declared) {
+    // Callers hold mutex_.
     const helix::ams::FilamentSlotOverride o =
-        helix::ams::stage_user_override(overrides_, slot_index, original, info, declared);
+        helix::ams::stage_user_override(overrides_, slot_index, info, declared);
 
     if (override_store_) {
         override_store_->save_async(slot_index, o, [slot_index](bool ok, std::string err) {
@@ -5416,8 +5414,50 @@ std::string set_weight_command(const std::string& lane_name, float remaining_wei
 
 } // namespace
 
-AmsError AmsBackendAfc::set_slot_info(int slot_index, const SlotInfo& info, bool persist,
-                                      const helix::ams::Observation* declared) {
+void AmsBackendAfc::write_lane_locked(int slot_index, SlotInfo& slot, const SlotInfo& info) {
+    const int old_mapped_tool = slot.mapped_tool;
+
+    // Detect whether anything actually changed
+    bool changed = slot.color_name != info.color_name || slot.color_rgb != info.color_rgb ||
+                   slot.material != info.material || slot.brand != info.brand ||
+                   slot.catalog_id != info.catalog_id || slot.product_name != info.product_name ||
+                   slot.spoolman_id != info.spoolman_id || slot.spool_name != info.spool_name ||
+                   slot.remaining_weight_g != info.remaining_weight_g ||
+                   slot.total_weight_g != info.total_weight_g ||
+                   slot.nozzle_temp_min != info.nozzle_temp_min ||
+                   slot.nozzle_temp_max != info.nozzle_temp_max || slot.bed_temp != info.bed_temp ||
+                   slot.mapped_tool != info.mapped_tool;
+
+    // Update local state
+    slot.color_name = info.color_name;
+    slot.color_rgb = info.color_rgb;
+    slot.material = info.material;
+    slot.brand = info.brand;
+    // Carry the catalog product identity through a sync too: one that
+    // dropped it would make the editor snap back to a different variant on
+    // the next get_slot_info().
+    slot.catalog_id = info.catalog_id;
+    slot.product_name = info.product_name;
+    slot.spoolman_id = info.spoolman_id;
+    slot.spool_name = info.spool_name;
+    slot.remaining_weight_g = info.remaining_weight_g;
+    slot.total_weight_g = info.total_weight_g;
+    slot.nozzle_temp_min = info.nozzle_temp_min;
+    slot.nozzle_temp_max = info.nozzle_temp_max;
+    slot.bed_temp = info.bed_temp;
+    // Tool mapping change goes through registry so reverse maps stay consistent.
+    if (info.mapped_tool != old_mapped_tool && info.mapped_tool >= 0) {
+        slots_.set_tool_mapping(slot_index, info.mapped_tool);
+    }
+
+    if (changed) {
+        spdlog::info("[AMS AFC] Updated slot {} info: {} {}", slot_index, info.material,
+                     info.color_name);
+    }
+}
+
+AmsError AmsBackendAfc::apply_user_edit(int slot_index, const SlotInfo& info,
+                                        const helix::ams::Observation& declared) {
     // Set when the material could not be expressed as a G-code parameter. Reported
     // after every other write has gone out, so a name AFC cannot store costs the user
     // only the material rather than the whole save — but is never silent.
@@ -5431,134 +5471,78 @@ AmsError AmsBackendAfc::set_slot_info(int slot_index, const SlotInfo& info, bool
             return AmsErrorHelper::invalid_slot(lane_noun(), slot_index,
                                                 system_info_.total_slots - 1);
         }
-        auto& slot = entry->info;
-        // Snapshotted before the writes below, for persist_override.
-        const SlotInfo prior_slot = slot;
 
         // Capture old spoolman_id before updating for clear detection
-        int old_spoolman_id = slot.spoolman_id;
-        int old_mapped_tool = slot.mapped_tool;
+        const int old_spoolman_id = entry->info.spoolman_id;
+        const int old_mapped_tool = entry->info.mapped_tool;
+        write_lane_locked(slot_index, entry->info, info);
 
-        // Detect whether anything actually changed
-        bool changed = slot.color_name != info.color_name || slot.color_rgb != info.color_rgb ||
-                       slot.material != info.material || slot.brand != info.brand ||
-                       slot.catalog_id != info.catalog_id ||
-                       slot.product_name != info.product_name ||
-                       slot.spoolman_id != info.spoolman_id || slot.spool_name != info.spool_name ||
-                       slot.remaining_weight_g != info.remaining_weight_g ||
-                       slot.total_weight_g != info.total_weight_g ||
-                       slot.nozzle_temp_min != info.nozzle_temp_min ||
-                       slot.nozzle_temp_max != info.nozzle_temp_max ||
-                       slot.bed_temp != info.bed_temp || slot.mapped_tool != info.mapped_tool;
-
-        // Update local state
-        slot.color_name = info.color_name;
-        slot.color_rgb = info.color_rgb;
-        slot.material = info.material;
-        slot.brand = info.brand;
-        // Carry the catalog product identity through preview writes too — a
-        // persist=false preview that dropped it would make the editor snap
-        // back to a different variant on the next get_slot_info().
-        slot.catalog_id = info.catalog_id;
-        slot.product_name = info.product_name;
-        slot.spoolman_id = info.spoolman_id;
-        slot.spool_name = info.spool_name;
-        slot.remaining_weight_g = info.remaining_weight_g;
-        slot.total_weight_g = info.total_weight_g;
-        slot.nozzle_temp_min = info.nozzle_temp_min;
-        slot.nozzle_temp_max = info.nozzle_temp_max;
-        slot.bed_temp = info.bed_temp;
-        // Tool mapping change goes through registry so reverse maps stay consistent.
-        if (info.mapped_tool != old_mapped_tool && info.mapped_tool >= 0) {
-            slots_.set_tool_mapping(slot_index, info.mapped_tool);
-        }
-
-        if (changed) {
-            spdlog::info("[AMS AFC] Updated slot {} info: {} {}", slot_index, info.material,
-                         info.color_name);
-        }
-
-        // Persist via G-code commands when persist=true.
-        // Skip persistence when persist=false — this is used by Spoolman weight
-        // polling (refresh_spoolman_weights) to update in-memory state without
-        // sending G-code back to AFC firmware. Without this guard, each weight
-        // update would fire SET_COLOR/SET_MATERIAL/SET_WEIGHT/SET_SPOOL_ID G-codes,
-        // which trigger AFC status_update WebSocket events, which call
-        // sync_from_backend → refresh_spoolman_weights → set_slot_info again,
-        // creating an infinite feedback loop that saturates the CPU.
-        //
         // Record the user's identity in the override store as well. AFC cannot
         // hold brand / spool_name / total_weight / colour name / filament+vendor
         // ids at all, and the fields it DOES hold get cleared by its own
         // clear_values() on eject.
-        if (persist) {
-            persist_override(slot_index, prior_slot, info, declared);
-        }
+        persist_override(slot_index, info, declared);
 
         // Persistence is never version-gated. These SET_* commands have existed
         // since well before any version we would recognize, and the version string
         // is not a usable signal (AFC stopped writing it — see
         // apply_afc_version_response). Skipping gcode on an unrecognized version
         // caused issue #644, where spool assignment silently bypassed AFC.
-        if (persist) {
-            std::string lane_name = slots_.name_of(slot_index);
-            if (!lane_name.empty()) {
-                // Spoolman ID FIRST — both branches of AFC's set_spoolID() rewrite the
-                // lane's material/color/weight/temps, so this must precede our own
-                // writes or it clobbers them:
-                //   valid id  -> AFC fetches the spool from Spoolman and overwrites
-                //               material, color, weight, temps, density, diameter
-                //   empty id  -> AFC runs clear_values() and wipes all of the above
-                // Emitting it last made a single save set the data and then destroy it,
-                // which is why an edit needed two passes to stick.
-                //
-                // Record the write before dispatching: in-flight status frames
-                // keep reporting old_spoolman_id until the echo lands, and
-                // Rule 1 must not read those as an external re-bind. An
-                // unlink (id 0) erases the pending expectation instead.
-                record_own_spool_write(slot_index, info.spoolman_id, old_spoolman_id);
-                if (info.spoolman_id > 0) {
-                    execute_gcode(fmt::format("SET_SPOOL_ID LANE={} SPOOL_ID={}", lane_name,
-                                              info.spoolman_id));
-                } else if (info.spoolman_id == 0 && old_spoolman_id > 0) {
-                    // Clear Spoolman link with empty string (not -1)
-                    execute_gcode(fmt::format("SET_SPOOL_ID LANE={} SPOOL_ID=", lane_name));
-                }
+        std::string lane_name = slots_.name_of(slot_index);
+        if (!lane_name.empty()) {
+            // Spoolman ID FIRST — both branches of AFC's set_spoolID() rewrite the
+            // lane's material/color/weight/temps, so this must precede our own
+            // writes or it clobbers them:
+            //   valid id  -> AFC fetches the spool from Spoolman and overwrites
+            //               material, color, weight, temps, density, diameter
+            //   empty id  -> AFC runs clear_values() and wipes all of the above
+            // Emitting it last made a single save set the data and then destroy it,
+            // which is why an edit needed two passes to stick.
+            //
+            // Record the write before dispatching: in-flight status frames
+            // keep reporting old_spoolman_id until the echo lands, and
+            // Rule 1 must not read those as an external re-bind. An
+            // unlink (id 0) erases the pending expectation instead.
+            record_own_spool_write(slot_index, info.spoolman_id, old_spoolman_id);
+            if (info.spoolman_id > 0) {
+                execute_gcode(
+                    fmt::format("SET_SPOOL_ID LANE={} SPOOL_ID={}", lane_name, info.spoolman_id));
+            } else if (info.spoolman_id == 0 && old_spoolman_id > 0) {
+                // Clear Spoolman link with empty string (not -1)
+                execute_gcode(fmt::format("SET_SPOOL_ID LANE={} SPOOL_ID=", lane_name));
+            }
 
-                // A deliberate pure black (#000000) dispatches to AFC; the
-                // "no color reading" sentinel does not.
-                if (ams::is_declarable_color(info.color_rgb)) {
-                    char color_hex[8];
-                    snprintf(color_hex, sizeof(color_hex), "%06X", info.color_rgb & 0xFFFFFF);
-                    execute_gcode(fmt::format("SET_COLOR LANE={} COLOR={}", lane_name, color_hex));
-                }
+            // A deliberate pure black (#000000) dispatches to AFC; the
+            // "no color reading" sentinel does not.
+            if (ams::is_declarable_color(info.color_rgb)) {
+                char color_hex[8];
+                snprintf(color_hex, sizeof(color_hex), "%06X", info.color_rgb & 0xFFFFFF);
+                execute_gcode(fmt::format("SET_COLOR LANE={} COLOR={}", lane_name, color_hex));
+            }
 
-                // Material (validate to prevent command injection). The material
-                // charset is deliberately wider than an identifier's: `PLA+`,
-                // `PA6-CF` and `Silk PLA` are all in our own filament database, and
-                // gating this on is_safe_gcode_param() dropped every one of them.
-                if (!info.material.empty() &&
-                    IMoonrakerAPI::is_safe_material_param(info.material)) {
-                    execute_gcode(fmt::format("SET_MATERIAL LANE={} MATERIAL={}", lane_name,
-                                              IMoonrakerAPI::gcode_param_value(info.material)));
-                } else if (!info.material.empty()) {
-                    spdlog::warn("[AMS AFC] Skipping SET_MATERIAL - unsafe characters in: {}",
-                                 info.material);
-                    rejected_material = info.material;
-                }
+            // Material (validate to prevent command injection). The material
+            // charset is deliberately wider than an identifier's: `PLA+`,
+            // `PA6-CF` and `Silk PLA` are all in our own filament database, and
+            // gating this on is_safe_gcode_param() dropped every one of them.
+            if (!info.material.empty() && IMoonrakerAPI::is_safe_material_param(info.material)) {
+                execute_gcode(fmt::format("SET_MATERIAL LANE={} MATERIAL={}", lane_name,
+                                          IMoonrakerAPI::gcode_param_value(info.material)));
+            } else if (!info.material.empty()) {
+                spdlog::warn("[AMS AFC] Skipping SET_MATERIAL - unsafe characters in: {}",
+                             info.material);
+                rejected_material = info.material;
+            }
 
-                // Weight (if valid)
-                if (info.remaining_weight_g > 0) {
-                    execute_gcode(set_weight_command(lane_name, info.remaining_weight_g));
-                }
+            // Weight (if valid)
+            if (info.remaining_weight_g > 0) {
+                execute_gcode(set_weight_command(lane_name, info.remaining_weight_g));
+            }
 
-                // Tool mapping (lane → tool number) via SET_MAP.
-                // Mirrors set_tool_mapping() but is reachable from the slot edit modal,
-                // which routes all changes through set_slot_info().
-                if (info.mapped_tool != old_mapped_tool && info.mapped_tool >= 0) {
-                    execute_gcode(
-                        fmt::format("SET_MAP LANE={} MAP=T{}", lane_name, info.mapped_tool));
-                }
+            // Tool mapping (lane → tool number) via SET_MAP.
+            // Mirrors set_tool_mapping() but is reachable from the slot edit modal,
+            // which routes all changes through apply_user_edit().
+            if (info.mapped_tool != old_mapped_tool && info.mapped_tool >= 0) {
+                execute_gcode(fmt::format("SET_MAP LANE={} MAP=T{}", lane_name, info.mapped_tool));
             }
         }
     }
@@ -5579,6 +5563,23 @@ AmsError AmsBackendAfc::set_slot_info(int slot_index, const SlotInfo& info, bool
         return partial;
     }
 
+    return AmsErrorHelper::success();
+}
+
+AmsError AmsBackendAfc::sync_external_identity(int slot_index, const SlotInfo& info) {
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+
+        auto* entry = slots_.get_mut(slot_index);
+        if (!entry) {
+            return AmsErrorHelper::invalid_slot(lane_noun(), slot_index,
+                                                system_info_.total_slots - 1);
+        }
+        write_lane_locked(slot_index, entry->info, info);
+    }
+
+    // Emit OUTSIDE the lock to avoid deadlock with callbacks
+    emit_event(EVENT_SLOT_CHANGED, std::to_string(slot_index));
     return AmsErrorHelper::success();
 }
 

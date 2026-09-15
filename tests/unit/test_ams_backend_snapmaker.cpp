@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "../helix_test_fixture.h"
+#include "../test_helpers/backend_user_edit.h"
 #include "../test_helpers/printer_state_test_access.h"
 #include "../test_helpers/snapmaker_test_access.h"
 #include "../test_helpers/update_queue_test_access.h"
@@ -1388,11 +1389,10 @@ TEST_CASE_METHOD(SnapmakerFixture,
 }
 
 TEST_CASE_METHOD(SnapmakerFixture,
-                 "Snapmaker set_slot_info(persist=true) writes override and survives status update",
+                 "Snapmaker apply_user_edit writes override and survives status update",
                  "[ams][snapmaker][filament_slot_override]") {
-    // This is the core behavior that was BROKEN before Task 12: set_slot_info
-    // ignored its persist parameter and the next firmware status update
-    // wiped user edits. The override must now survive subsequent parses.
+    // The next firmware status update wipes an edit kept only in memory, so the
+    // override has to survive subsequent parses.
     SnapmakerTmpCacheDir tmp("task12_persist_survives");
     MoonrakerClientMock client(MoonrakerClientMock::PrinterType::VORON_24);
     helix::PrinterState state;
@@ -1448,8 +1448,7 @@ TEST_CASE_METHOD(SnapmakerFixture,
     CHECK(info.color_rgb == 0xFF5500u);              // override color wins
 }
 
-TEST_CASE_METHOD(SnapmakerFixture,
-                 "Snapmaker set_slot_info(persist=false) preview does NOT write store",
+TEST_CASE_METHOD(SnapmakerFixture, "Snapmaker sync_external_identity does NOT write store",
                  "[ams][snapmaker][filament_slot_override]") {
     SnapmakerTmpCacheDir tmp("task12_no_persist");
     MoonrakerClientMock client(MoonrakerClientMock::PrinterType::VORON_24);
@@ -1469,7 +1468,7 @@ TEST_CASE_METHOD(SnapmakerFixture,
     edit.material = "PLA";
     edit.color_rgb = 0x123456;
 
-    auto err = backend.set_slot_info(0, edit, /*persist=*/false);
+    auto err = backend.sync_external_identity(0, edit);
     REQUIRE(err.success());
 
     // No override staged, no DB write.
@@ -1645,7 +1644,7 @@ TEST_CASE_METHOD(SnapmakerFixture, "Snapmaker empty RFID UID does not update bas
 // ============================================================================
 
 TEST_CASE_METHOD(SnapmakerFixture,
-                 "Snapmaker set_slot_info(persist=true) POSTs to /printer/filament_detect/set",
+                 "Snapmaker apply_user_edit POSTs to /printer/filament_detect/set",
                  "[ams][snapmaker][firmware_writeback]") {
     SnapmakerTmpCacheDir tmp("firmware_writeback_post");
     MoonrakerClientMock client(MoonrakerClientMock::PrinterType::VORON_24);
@@ -1671,7 +1670,7 @@ TEST_CASE_METHOD(SnapmakerFixture,
     edit.nozzle_temp_max = 225;
     edit.bed_temp = 60;
 
-    auto err = backend.set_slot_info(2, edit, /*persist=*/true);
+    auto err = helix::test::apply_edit(backend, 2, edit);
     REQUIRE(err.success());
 
     auto history = api.rest_mock().mock_get_post_history();
@@ -1723,7 +1722,7 @@ TEST_CASE_METHOD(SnapmakerFixture, "Snapmaker firmware POST omits unknown SUB_TY
     edit.material = "PETG";
     edit.color_rgb = 0x00FF00;
 
-    auto err = backend.set_slot_info(0, edit, /*persist=*/true);
+    auto err = helix::test::apply_edit(backend, 0, edit);
     REQUIRE(err.success());
 
     auto history = api.rest_mock().mock_get_post_history();
@@ -1768,7 +1767,7 @@ TEST_CASE_METHOD(SnapmakerFixture,
     apply_spool_to_slot(edit, spool);
     REQUIRE(edit.spool_name == "Ambrosia Pink");
 
-    auto err = backend.set_slot_info(0, edit, /*persist=*/true);
+    auto err = helix::test::apply_edit(backend, 0, edit);
     REQUIRE(err.success());
 
     auto history = api.rest_mock().mock_get_post_history();
@@ -1802,7 +1801,7 @@ TEST_CASE_METHOD(SnapmakerFixture, "Snapmaker firmware POST omits zero temperatu
     edit.color_rgb = 0xFF5500;
     // All temps left at default 0 — must be omitted so firmware keeps prior values.
 
-    auto err = backend.set_slot_info(0, edit, /*persist=*/true);
+    auto err = helix::test::apply_edit(backend, 0, edit);
     REQUIRE(err.success());
 
     auto history = api.rest_mock().mock_get_post_history();
@@ -1813,8 +1812,7 @@ TEST_CASE_METHOD(SnapmakerFixture, "Snapmaker firmware POST omits zero temperatu
     CHECK_FALSE(info_obj.contains("BED_TEMP"));
 }
 
-TEST_CASE_METHOD(SnapmakerFixture,
-                 "Snapmaker set_slot_info(persist=false) does NOT POST to firmware",
+TEST_CASE_METHOD(SnapmakerFixture, "Snapmaker sync_external_identity does NOT POST to firmware",
                  "[ams][snapmaker][firmware_writeback]") {
     // Preview edits (persist=false) are in-memory only and must not write to
     // firmware OR the override store. Mirrors the existing "no DB write" test
@@ -1839,18 +1837,18 @@ TEST_CASE_METHOD(SnapmakerFixture,
     edit.material = "PLA";
     edit.color_rgb = 0x123456;
 
-    auto err = backend.set_slot_info(0, edit, /*persist=*/false);
+    auto err = backend.sync_external_identity(0, edit);
     REQUIRE(err.success());
 
     CHECK(api.rest_mock().mock_get_post_history().empty());
 }
 
 TEST_CASE_METHOD(SnapmakerFixture,
-                 "Snapmaker firmware POST 404 on stock firmware does not fail set_slot_info",
+                 "Snapmaker firmware POST 404 on stock firmware does not fail apply_user_edit",
                  "[ams][snapmaker][firmware_writeback]") {
     // Stock firmware (no Extended Firmware extension) returns 404 for the
     // endpoint. The override is still persisted to lane_data, so the user's
-    // edit isn't lost — set_slot_info must report success regardless.
+    // edit isn't lost, so apply_user_edit must report success regardless.
     SnapmakerTmpCacheDir tmp("firmware_writeback_404");
     MoonrakerClientMock client(MoonrakerClientMock::PrinterType::VORON_24);
     helix::PrinterState state;
@@ -1876,7 +1874,7 @@ TEST_CASE_METHOD(SnapmakerFixture,
     edit.material = "PLA";
     edit.color_rgb = 0xFF5500;
 
-    auto err = backend.set_slot_info(0, edit, /*persist=*/true);
+    auto err = helix::test::apply_edit(backend, 0, edit);
     REQUIRE(err.success());
 
     // POST was attempted...

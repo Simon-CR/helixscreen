@@ -720,26 +720,25 @@ FilamentSlotOverride user_override_from_slot_info(const SlotInfo& original, cons
 }
 
 FilamentSlotOverride& stage_user_override(std::unordered_map<int, FilamentSlotOverride>& overrides,
-                                          int slot_index, const SlotInfo& original,
-                                          const SlotInfo& edited, const std::string& material,
-                                          const Observation* declared) {
+                                          int slot_index, const SlotInfo& edited,
+                                          const std::string& material,
+                                          const Observation& declared) {
     // Built against the entry this call replaces, so the find has to happen
     // before the insert: operator[] on a lane with no record yet would hand
     // the amend a default-constructed record that declares nothing, which is
     // the same answer but by accident rather than on purpose.
     const auto existing = overrides.find(slot_index);
-    FilamentSlotOverride amended =
-        user_override_from_slot_info(edit_declaration(declared, original, edited), edited, material,
-                                     existing == overrides.end() ? nullptr : &existing->second);
+    FilamentSlotOverride amended = user_override_from_slot_info(
+        declared, edited, material, existing == overrides.end() ? nullptr : &existing->second);
     FilamentSlotOverride& staged = overrides[slot_index];
     staged = std::move(amended);
     return staged;
 }
 
 FilamentSlotOverride& stage_user_override(std::unordered_map<int, FilamentSlotOverride>& overrides,
-                                          int slot_index, const SlotInfo& original,
-                                          const SlotInfo& edited, const Observation* declared) {
-    return stage_user_override(overrides, slot_index, original, edited, edited.material, declared);
+                                          int slot_index, const SlotInfo& edited,
+                                          const Observation& declared) {
+    return stage_user_override(overrides, slot_index, edited, edited.material, declared);
 }
 
 FilamentSlotOverride&
@@ -1801,8 +1800,8 @@ bool mirror_firmware_to_lane_data(FilamentSlotOverrideStore* store,
         // policy bootstraps an empty override AND catches genuine external
         // edits (Mainsail console, native LCD, etc.).
         //
-        // BUT user-locked fields are NEVER overwritten — set_slot_info
-        // (persist=true) tags the fields it wrote, and that tag survives
+        // BUT user-locked fields are NEVER overwritten — apply_user_edit()
+        // tags the fields it wrote, and that tag survives
         // restart via lane_data. Without this guard, a stale firmware
         // re-emission (AD5X post-print FFMInfo revert, #965) would clobber
         // the user's choice. Auto-mirror writes leave the locks false so
@@ -1834,7 +1833,7 @@ bool mirror_firmware_to_lane_data(FilamentSlotOverrideStore* store,
         // and lets auto-mirror take over again.
         //
         // The user-lock checks are redundant with the unset checks in the
-        // common path (set_slot_info sets color_set together with
+        // common path (apply_user_edit sets color_set together with
         // user_locked_color), but they are the authoritative "the user chose
         // this" signal and every mirror policy honors them. Keeping both
         // policies lock-aware means a record whose locks and value-set flags

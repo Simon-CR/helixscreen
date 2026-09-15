@@ -1505,7 +1505,7 @@ TEST_CASE_METHOD(OverlayConsumerCommitFixture,
     api.spoolman_mock().get_mock_spools().push_back(linked_a);
     // The backend mirrors the overlay's initial info, the way a live backend
     // holds the tracked slot the editor was opened on.
-    backend->set_slot_info(0, tracked_slot(), /*persist=*/false);
+    backend->sync_external_identity(0, tracked_slot());
 
     auto* spoolman_subj = lv_xml_get_subject(nullptr, "printer_has_spoolman");
     REQUIRE(spoolman_subj != nullptr);
@@ -1572,7 +1572,7 @@ TEST_CASE_METHOD(OverlayConsumerCommitFixture,
     linked_a.material = "ASA";
     linked_a.color_hex = "8A949E";
     api.spoolman_mock().get_mock_spools().push_back(linked_a);
-    backend->set_slot_info(0, tracked_slot(), /*persist=*/false);
+    backend->sync_external_identity(0, tracked_slot());
 
     auto* spoolman_subj = lv_xml_get_subject(nullptr, "printer_has_spoolman");
     REQUIRE(spoolman_subj != nullptr);
@@ -1632,7 +1632,7 @@ TEST_CASE_METHOD(OverlayConsumerCommitFixture,
                  "[ams_edit_overlay][active_spool][commit]") {
     // Final-review find: ActiveSpoolWidget is the sixth completion consumer of
     // the shared edit overlay. Its backend-slot arm used to write the backend
-    // directly (set_slot_info) — no server active-spool sync, no identity
+    // directly (apply_user_edit) — no server active-spool sync, no identity
     // invalidation. The consumer commit owns both; this drives the widget's
     // own click → editor → Save path and asserts the server sync fired.
 
@@ -1641,7 +1641,7 @@ TEST_CASE_METHOD(OverlayConsumerCommitFixture,
     SlotInfo seeded = backend->get_slot_info(0);
     seeded.spoolman_id = 169;
     seeded.material = "PLA";
-    backend->set_slot_info(0, seeded, /*persist=*/false);
+    backend->sync_external_identity(0, seeded);
 
     // Spoolman "unavailable" so the editor's Save takes the synchronous
     // local-close branch (no async PATCH seam).
@@ -1756,7 +1756,7 @@ TEST_CASE_METHOD(
     "[ams_edit_overlay][filament_picker]") {
     // Regression: Cancel on the "Different filament?" dialog used to hide the
     // modal and then close_editor(true) — silently committing the staged
-    // identity change to the AMS panel (backend->set_slot_info() +
+    // identity change to the AMS panel (backend->apply_user_edit() +
     // sync_from_backend() in the panel's completion handler) while leaving
     // Spoolman untouched. Cancel must be a TRUE ABORT: no completion, no
     // PATCH, user stays on the spool-edit view with the edit still staged so

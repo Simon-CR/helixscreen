@@ -1524,48 +1524,52 @@ class AmsBackend {
     // ========================================================================
 
     /**
-     * @brief Update slot filament information
+     * @brief Apply a person's edit to a slot's filament information.
      *
-     * Sets the color, material, and other filament info for a slot.
+     * Sets the color, material, and other filament info for a slot, stores it
+     * where the backend keeps a person's edits, and writes it to firmware with
+     * the backend's own commands (e.g., SET_COLOR, SET_MATERIAL, SET_SPOOL_ID
+     * for AFC) so it survives a reboot.
      *
-     * When persist=true (default), changes are written to firmware via G-code
-     * commands (e.g., SET_COLOR, SET_MATERIAL, SET_SPOOL_ID for AFC) so they
-     * survive reboots. Use this for user-initiated edits.
-     *
-     * When persist=false, only in-memory state is updated and EVENT_SLOT_CHANGED
-     * is emitted for UI refresh. This MUST be used when updating slots from
-     * external data sources (e.g., Spoolman weight polling) to prevent a feedback
-     * loop: set_slot_info(persist=true) → G-code → firmware status update →
-     * sync_from_backend → refresh_spoolman_weights → set_slot_info again → ∞.
-     * On AFC with 4 lanes this loop fires 16+ G-code commands per cycle and
-     * saturates the CPU.
+     * The stored record's authorship comes from @p declared and nowhere else.
+     * commit_user_edit() answers it once from the editor's own snapshot and
+     * files that same answer on the lane. The backend's own read of the slot
+     * can be newer than that snapshot, so a diff against it would claim a
+     * field a firmware frame moved while the editor was open.
      *
      * @param slot_index Slot to update (0-based)
      * @param info New slot information (only filament fields used)
-     * @param persist If true, persist changes to firmware. If false, update
-     *               in-memory state only (for external data sync).
-     * @param declared What the user declared in this edit. Every production
-     *               edit passes the observation commit_user_edit()
-     *               computed from the editor's own snapshot, which is also what it
-     *               files on the lane, and a persist records its stored authorship
-     *               from it. A persisting call without it re-derives authorship by
-     *               diffing against the backend's own read of the slot: that is
-     *               two before-states, and the backend's read can be newer than
-     *               the editor's snapshot, so the diff claims a field a firmware
-     *               frame moved while the editor was open. The null form exists
-     *               only for callers not yet split into apply_user_edit /
-     *               sync_external_identity.
+     * @param declared What the user declared in this edit
      * @return AmsError indicating if update succeeded
      */
-    virtual AmsError set_slot_info(int slot_index, const SlotInfo& info, bool persist = true,
-                                   const helix::ams::Observation* declared = nullptr) = 0;
+    virtual AmsError apply_user_edit(int slot_index, const SlotInfo& info,
+                                     const helix::ams::Observation& declared) = 0;
+
+    /**
+     * @brief Put filament information that arrived from outside on a slot.
+     *
+     * For values nobody chose here, such as a tool changer's per-tool spool
+     * assignment or a metered weight. Only in-memory state changes, along with
+     * whatever slot-changed event the backend emits for it: no firmware
+     * command, no store write, no authorship.
+     *
+     * Routing these through apply_user_edit() instead starts a feedback loop:
+     * G-code → firmware status update → sync_from_backend → the same values
+     * written again → ∞. On AFC with 4 lanes this loop fires 16+ G-code
+     * commands per cycle and saturates the CPU.
+     *
+     * @param slot_index Slot to update (0-based)
+     * @param info New slot information (only filament fields used)
+     * @return AmsError indicating if update succeeded
+     */
+    virtual AmsError sync_external_identity(int slot_index, const SlotInfo& info) = 0;
 
     /**
      * @brief Repaint a slot from the lane model once its lane was written from outside.
      *
      * commit_user_edit() calls this after it files the user's declaration,
-     * which it does only once set_slot_info() has returned: a backend that
-     * paints the slot from the lane inside set_slot_info() painted the lane as
+     * which it does only once apply_user_edit() has returned: a backend that
+     * paints the slot from the lane inside apply_user_edit() painted the lane as
      * it stood before that filing. SpoolmanManager calls it after a fetch
      * changes the lane's Spoolman record or a denial drops it, with no frame to
      * follow. Either way a slot painted only while a frame is parsed would go on
@@ -1588,8 +1592,8 @@ class AmsBackend {
      * does runs this code rather than a copy of it.
      *
      * The user's declaration is user_edit_observation(@p original, @p info),
-     * answered once: set_slot_info() records the stored record's authorship
-     * from it, and the lane files it. A refused edit stops at set_slot_info()
+     * answered once: apply_user_edit() records the stored record's authorship
+     * from it, and the lane files it. A refused edit stops at apply_user_edit()
      * with nothing filed; one marked AmsError::partially_applied carries on,
      * because what reached firmware is applied.
      *
@@ -1600,13 +1604,13 @@ class AmsBackend {
      * identity files it back at the rungs the stored record reloads it on.
      * Once filed, the slot is repainted from the lane.
      *
-     * @warning Call without holding mutex_: set_slot_info() takes it, and so
+     * @warning Call without holding mutex_: apply_user_edit() takes it, and so
      *          does a backend's repaint_slot_from_lane().
      *
      * @param slot_index Slot to edit (0-based, global)
      * @param original   The slot as the editor opened on it
      * @param info       The slot as the editor committed it
-     * @return set_slot_info()'s result
+     * @return apply_user_edit()'s result
      */
     AmsError commit_user_edit(int slot_index, const SlotInfo& original, const SlotInfo& info);
 
@@ -1614,7 +1618,7 @@ class AmsBackend {
      * @brief Persist only a slot's filament weight (consumption tracking)
      *
      * Called by the consumption sink once per metered delta during a print.
-     * Unlike set_slot_info(), this updates ONLY remaining/total weight and MUST
+     * Unlike apply_user_edit(), this updates ONLY remaining/total weight and MUST
      * NOT touch material, color, or user-lock state, and MUST NOT re-emit any
      * firmware-facing color/material write. An automated weight tracker has no
      * business asserting filament identity — doing so clobbers an externally
@@ -1641,12 +1645,12 @@ class AmsBackend {
      *
      * Reached only through that wrapper, which files the meter reading before
      * returning. The default puts the weight on the live slot through
-     * set_slot_info(persist=false), which writes memory alone, and hands a
-     * persist to persist_slot_weight(). A persist never goes through
-     * set_slot_info(): that is the edit path, which records authorship and
-     * restates identity to firmware, and a meter states neither. A backend
-     * whose set_slot_info() writes more than memory even without persist
-     * overrides this (see AmsBackendAd5xIfs).
+     * sync_external_identity(), which writes memory alone, and hands a persist
+     * to persist_slot_weight(). A persist never goes through apply_user_edit():
+     * that is the edit path, which records authorship and restates identity to
+     * firmware, and a meter states neither. A backend whose
+     * sync_external_identity() does more than write the live slot overrides
+     * this (see AmsBackendAd5xIfs).
      */
     virtual void update_slot_weight_impl(int slot_index, float remaining_weight_g,
                                          float total_weight_g, bool persist) {
@@ -1654,7 +1658,7 @@ class AmsBackend {
         info.remaining_weight_g = remaining_weight_g;
         if (total_weight_g >= 0.0f)
             info.total_weight_g = total_weight_g;
-        const AmsError stored = set_slot_info(slot_index, info, /*persist=*/false);
+        const AmsError stored = sync_external_identity(slot_index, info);
         if (persist && stored.success()) {
             persist_slot_weight(slot_index, remaining_weight_g, total_weight_g);
         }
@@ -2541,7 +2545,7 @@ class AmsBackend {
     /// @warning **The caller must already hold the backend's own mutex_.**
     ///          Both methods touch shared state with no internal lock; every
     ///          call site runs inside the backend's mutex_ scope
-    ///          (set_slot_info's lock block, reconcile_lane_binding's
+    ///          (apply_user_edit's lock block, reconcile_lane_binding's
     ///          documented lock-held precondition). The mutexes are plain
     ///          std::mutex, not recursive: taking the lock again from inside
     ///          deadlocks.

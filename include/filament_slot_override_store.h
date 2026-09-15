@@ -298,13 +298,13 @@ struct LoadedOverrideStore {
 // Why a policy enum: backends differ in whether user UI edits propagate back
 // to firmware:
 //
-//   - IFS: set_slot_info writes to Adventurer5M.json — firmware re-reads it
+//   - IFS: apply_user_edit writes to Adventurer5M.json — firmware re-reads it
 //     and reports the user's chosen color on the next status poll. The mirror
 //     can safely overwrite the override with firmware values (except fields
 //     the user explicitly locked, per #965 — see MirrorPolicy::OverwriteAlways
 //     below) because firmware-truth and user-truth converge.
 //
-//   - CFS: set_slot_info does NOT touch the firmware-side material_type /
+//   - CFS: apply_user_edit does NOT touch the firmware-side material_type /
 //     RFID values. If the mirror unconditionally overwrote ovr.color_rgb with
 //     firmware-truth, every status poll would erase the user's color
 //     override. So this backend uses FillUnsetOnly: only fill fields the

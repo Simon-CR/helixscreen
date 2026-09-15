@@ -104,7 +104,7 @@ struct FilamentSlotOverride {
     // Always check color_set before applying / emitting the color; when
     // false, color_rgb is undefined and must be ignored.
     //
-    // Lifecycle: starts false; flipped to true by set_slot_info (any user
+    // Lifecycle: starts false; flipped to true by apply_user_edit (any user
     // edit, even setting black), by auto-mirror when firmware fills it, and
     // by from_lane_data_record / from_json when the on-disk record contains
     // a color. clear_slot_override erases the whole entry; nothing else
@@ -132,7 +132,7 @@ struct FilamentSlotOverride {
     std::string catalog_id;
     std::string product_name;
     // User-lock flags — set true when a user explicitly edits a field via
-    // set_slot_info(persist=true). The OverwriteAlways auto-mirror policy
+    // apply_user_edit(). The OverwriteAlways auto-mirror policy
     // skips fields whose lock is true so a subsequent firmware report (post-
     // print state restoration, internal CHANGE_ZCOLOR, etc.) cannot silently
     // overwrite the user's choice (#965 — AD5X firmware re-emitted prior
@@ -167,7 +167,7 @@ struct FilamentSlotOverride {
     // (highest to lowest priority): explicit user entry > Spoolman spool's
     // filament profile > internal material database default. The first two
     // land here via populate_temps_from_slot_info() from the backend's
-    // set_slot_info; the material-DB fallback is applied at *emit* time via
+    // apply_user_edit; the material-DB fallback is applied at *emit* time via
     // resolved_temps() so a later material change always picks up fresh
     // defaults instead of carrying stale values forward. 0 = unset.
     int bed_temp = 0;
@@ -203,7 +203,7 @@ struct ResolvedTemps {
 ResolvedTemps resolved_temps(const FilamentSlotOverride& o);
 
 // Populate the override's temp fields from a SlotInfo carrying user/Spoolman
-// values. Called from each backend's set_slot_info to centralize the SlotInfo
+// values. Called from each backend's apply_user_edit to centralize the SlotInfo
 // → FilamentSlotOverride temp wiring (previously this was an 11-line block
 // duplicated across all four AMS backends). nozzle_temp is the midpoint of
 // nozzle_temp_min/max when both differ, else nozzle_temp_min when set, else
@@ -280,18 +280,16 @@ FilamentSlotOverride user_override_from_slot_info(const SlotInfo& original, cons
 // finding it belongs here rather than in seven places that would each have to
 // remember to look.
 //
-// What the user declared is edit_declaration(declared, original, edited)
-// (lane_translation.h): the caller's own answer whenever it passed one down.
+// What the user declared is @p declared, which AmsBackend::commit_user_edit()
+// answers once from the editor's own snapshot.
 FilamentSlotOverride& stage_user_override(std::unordered_map<int, FilamentSlotOverride>& overrides,
-                                          int slot_index, const SlotInfo& original,
-                                          const SlotInfo& edited,
-                                          const Observation* declared = nullptr);
+                                          int slot_index, const SlotInfo& edited,
+                                          const Observation& declared);
 
 // As above, for a backend that records a normalized material spelling.
 FilamentSlotOverride& stage_user_override(std::unordered_map<int, FilamentSlotOverride>& overrides,
-                                          int slot_index, const SlotInfo& original,
-                                          const SlotInfo& edited, const std::string& material,
-                                          const Observation* declared = nullptr);
+                                          int slot_index, const SlotInfo& edited,
+                                          const std::string& material, const Observation& declared);
 
 // Put a metered weight on the record @p overrides holds for @p slot_index and
 // return it. Only the two weights move: a meter states no identity, so the

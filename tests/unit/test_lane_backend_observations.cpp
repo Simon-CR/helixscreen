@@ -30,6 +30,7 @@
 #include "test_helpers/ace_test_access.h"
 #include "test_helpers/ad5x_ifs_test_access.h"
 #include "test_helpers/afc_test_access.h"
+#include "test_helpers/backend_user_edit.h"
 #include "test_helpers/cfs_test_access.h"
 #include "test_helpers/happy_hare_test_access.h"
 #include "test_helpers/qidi_box_test_access.h"
@@ -2302,7 +2303,7 @@ TEST_CASE_METHOD(LVGLTestFixture, "Snapmaker's own write-back does not return as
     edit.material = "PETG";
     edit.spool_name = "Matte";
     edit.color_rgb = 0x00FF00u;
-    REQUIRE(harness->set_slot_info(0, edit, /*persist=*/true).success());
+    REQUIRE(helix::test::apply_edit(*harness, 0, edit).success());
     REQUIRE(api.rest_mock().mock_get_post_history().size() == 1);
     REQUIRE(api.rest_mock().mock_get_post_history()[0].endpoint == "/printer/filament_detect/set");
 
@@ -2416,7 +2417,7 @@ TEST_CASE_METHOD(LVGLTestFixture, "a Snapmaker write firmware refused withholds 
     edit.material = "PETG";
     edit.spool_name = "Matte";
     edit.color_rgb = 0x00FF00u;
-    REQUIRE(harness->set_slot_info(0, edit, /*persist=*/true).success());
+    REQUIRE(helix::test::apply_edit(*harness, 0, edit).success());
     REQUIRE(api.rest_mock().mock_get_post_history().size() == 1);
 
     // The refusal reaches the guard through the response callback, which
@@ -2481,9 +2482,9 @@ TEST_CASE_METHOD(LVGLTestFixture,
     REQUIRE(edit.material == "PLA");
     REQUIRE(edit.spool_name == "Silk");
     edit.color_rgb = 0x00FF00u;
-    REQUIRE(harness->set_slot_info(0, edit, /*persist=*/true).success());
+    REQUIRE(helix::test::apply_edit(*harness, 0, edit).success());
 
-    // set_slot_info POSTs the whole merged struct, so VENDOR / MAIN_TYPE /
+    // apply_user_edit POSTs the whole merged struct, so VENDOR / MAIN_TYPE /
     // SUB_TYPE went out carrying the tag's own strings.
     const auto history = api.rest_mock().mock_get_post_history();
     REQUIRE(history.size() == 1);
@@ -2544,7 +2545,7 @@ TEST_CASE_METHOD(LVGLTestFixture, "a Spoolman link declares the binding, not the
     edit.brand = "Polymaker";
     edit.material = "PETG";
     edit.color_rgb = 0x00FF00u;
-    REQUIRE(harness->set_slot_info(0, edit, /*persist=*/true).success());
+    REQUIRE(helix::test::apply_edit(*harness, 0, edit).success());
 
     // The user's own record, filed the way AmsState::commit_slot_edit files it.
     helix::ams::commit_slot_edit(harness.lane(0),
@@ -2763,7 +2764,7 @@ TEST_CASE_METHOD(LVGLTestFixture, "what the colordict admits decides the write-b
 
     // A row in one of the newly-admitted spellings. It is a palette MEMBER, so
     // it is also a nearest-match target: resolve_color_id scans the whole map,
-    // and set_slot_info writes back the id it picks.
+    // and apply_user_edit writes back the id it picks.
     AmsBackendQidi widened(nullptr, nullptr);
     QidiBoxTestAccess::apply_filas_list(widened, stock + "3 = F11\n");
     REQUIRE(QidiBoxTestAccess::color_count(widened) == 3);
@@ -2827,7 +2828,7 @@ TEST_CASE_METHOD(LVGLTestFixture, "the mock's simulated population becomes lane 
     CHECK_FALSE(lane.vendor_cache->remaining_weight_g.has_value());
 }
 
-TEST_CASE_METHOD(LVGLTestFixture, "neither arm of the mock's set_slot_info is a reading",
+TEST_CASE_METHOD(LVGLTestFixture, "neither the mock's edit nor its sync is a reading",
                  "[lane][ingest][mock]") {
     MockHarness harness(4);
     REQUIRE(harness->start().success());
@@ -2840,12 +2841,12 @@ TEST_CASE_METHOD(LVGLTestFixture, "neither arm of the mock's set_slot_info is a 
     edited.material = "Declared-PC";
     edited.color_rgb = 0x00FF00u;
     edited.brand = "Polymaker";
-    REQUIRE(harness->set_slot_info(0, edited, /*persist=*/true).success());
+    REQUIRE(helix::test::apply_edit(*harness, 0, edited).success());
 
     auto pushed = harness->get_slot_info(1);
     pushed.material = "Pushed-ASA";
     pushed.color_rgb = 0x0000FFu;
-    REQUIRE(harness->set_slot_info(1, pushed, /*persist=*/false).success());
+    REQUIRE(harness->sync_external_identity(1, pushed).success());
 
     // Preconditions: both writes landed on the slots, so an unchanged record
     // below is a decision and not a call that did nothing.
@@ -2869,17 +2870,17 @@ TEST_CASE_METHOD(LVGLTestFixture, "the mock's colour sentinel is not a grey anyb
                  "[lane][ingest][mock]") {
     MockHarness harness(4);
 
-    // set_slot_info writes the slot even though it files no reading, which is
+    // sync_external_identity writes the slot even though it files no reading, which is
     // how a lane gets staged before the population is published.
     auto black = harness->get_slot_info(0);
     black.color_rgb = 0x000000u;
     black.material = "Black-PLA";
-    REQUIRE(harness->set_slot_info(0, black, /*persist=*/false).success());
+    REQUIRE(harness->sync_external_identity(0, black).success());
 
     auto colourless = harness->get_slot_info(1);
     colourless.color_rgb = helix::AMS_DEFAULT_SLOT_COLOR;
     colourless.material = "Grey-PLA";
-    REQUIRE(harness->set_slot_info(1, colourless, /*persist=*/false).success());
+    REQUIRE(harness->sync_external_identity(1, colourless).success());
 
     REQUIRE(harness->start().success());
 

@@ -1972,7 +1972,7 @@ TEST_CASE("mirror_firmware_to_lane_data FillUnsetOnly: user color preserved agai
     FilamentSlotOverrideStore store(&api, "cfs");
     FilamentSlotOverrideStoreTestAccess::set_cache_directory(store, tmp.path);
 
-    // Simulate a user who already set blue + brand "Bambu" via set_slot_info.
+    // Simulate a user who already set blue + brand "Bambu" via apply_user_edit.
     // color_set is the explicit "user set this" signal — pure black is a
     // legitimate user choice, so we cannot rely on color_rgb != 0.
     std::unordered_map<int, FilamentSlotOverride> overrides;

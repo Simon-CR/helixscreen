@@ -1063,8 +1063,16 @@ AmsError AmsBackendMock::check_all_gates() {
     return AmsErrorHelper::success();
 }
 
-AmsError AmsBackendMock::set_slot_info(int slot_index, const SlotInfo& info, bool /*persist*/,
-                                       const helix::ams::Observation* /*declared*/) {
+AmsError AmsBackendMock::apply_user_edit(int slot_index, const SlotInfo& info,
+                                         const helix::ams::Observation& /*declared*/) {
+    return write_slot(slot_index, info);
+}
+
+AmsError AmsBackendMock::sync_external_identity(int slot_index, const SlotInfo& info) {
+    return write_slot(slot_index, info);
+}
+
+AmsError AmsBackendMock::write_slot(int slot_index, const SlotInfo& info) {
     {
         std::lock_guard<std::mutex> lock(mutex_);
 
@@ -1082,7 +1090,7 @@ AmsError AmsBackendMock::set_slot_info(int slot_index, const SlotInfo& info, boo
         int old_mapped_tool = entry->info.mapped_tool;
 
         // SlotStatus is deliberately NOT copied, matching every real backend's
-        // set_slot_info (CFS, ToolChanger, AD5X IFS): status is firmware-derived
+        // slot write (CFS, ToolChanger, AD5X IFS): status is firmware-derived
         // — who is seated, which bay is empty — and this call is the user
         // editing a lane's FILAMENT metadata. Honouring it here would make the
         // mock accept a write no real backend accepts, and a test built on that
@@ -1094,7 +1102,7 @@ AmsError AmsBackendMock::set_slot_info(int slot_index, const SlotInfo& info, boo
         // UNKNOWN is the default-constructed value, i.e. "caller expressed no
         // opinion" — not a request.
         if (info.status != SlotStatus::UNKNOWN && info.status != entry->info.status) {
-            spdlog::warn("[AmsBackendMock] set_slot_info(slot {}) IGNORED status {} "
+            spdlog::warn("[AmsBackendMock] slot {} write IGNORED status {} "
                          "(slot stays {}) — status is not user-settable on any backend; "
                          "use force_slot_status() to stage a mock slot state",
                          slot_index, slot_status_to_string(info.status),

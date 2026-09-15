@@ -1892,7 +1892,7 @@ void AmsEditOverlay::do_spoolman_save(helix::SpoolmanSlotSaver::LinkIntent inten
                                 lv_tr("Couldn't update Spoolman — saved locally"), 3000);
                         } else if (result.created_new_spool || result.repointed_filament) {
                             // Persist new Spoolman IDs into working_info_ so the
-                            // completion callback's backend->set_slot_info() writes
+                            // completion callback's commit_slot_edit() writes
                             // the link back to the slot. Without this, a subsequent
                             // edit would not know the spool exists and would create
                             // a duplicate.

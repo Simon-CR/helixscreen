@@ -1496,7 +1496,8 @@ class AmsState {
      *    manages_active_spool() by design: matches the previous overlay
      *    semantics (see spec § follow-ups for the SET-arm gating question).
      * 2. S6: invalidate the old spool's identity cache when the link changed.
-     * 3. S3: backend->set_slot_info() (firmware SET_SPOOL_ID gcode rides inside).
+     * 3. S3: backend->commit_user_edit() (firmware SET_SPOOL_ID gcode rides inside
+     *    its apply_user_edit()).
      * 4. S4+S7: sync_from_backend().
      *
      * This is the method layer: it performs the edit against every backing
@@ -1516,7 +1517,7 @@ class AmsState {
      *        declaration layer drops it rather than filing the edit on a
      *        neighbouring backend's lane. The edit itself still runs.
      *
-     * @return the AmsError from set_slot_info so callers keep their error toasts.
+     * @return the AmsError from apply_user_edit so callers keep their error toasts.
      *         An error the backend marks AmsError::partially_applied still
      *         files what it applied.
      */

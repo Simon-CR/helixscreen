@@ -38,7 +38,7 @@ namespace {
 // Snapmaker's recognized filament SUB_TYPE product lines. The RFID read path
 // stores SUB_TYPE into SlotInfo::spool_name (see handle_status_update), but a
 // user can edit spool_name to a free-form string ("My Custom Spool"). Both the
-// set_slot_info firmware round-trip (POST /printer/filament_detect/set) and the
+// apply_user_edit firmware round-trip (POST /printer/filament_detect/set) and the
 // #991 post-runout SET_PRINT_FILAMENT_CONFIG re-assert must only treat
 // spool_name as a SUB_TYPE when it matches one of these — a single source of
 // truth for "is this a real product line?".
@@ -763,18 +763,37 @@ void AmsBackendSnapmaker::prepare_for_resume(int slot_index, ResumeReadyCallback
 // Configuration
 // ============================================================================
 
-AmsError AmsBackendSnapmaker::set_slot_info(int slot_index, const SlotInfo& info, bool persist,
-                                            const helix::ams::Observation* declared) {
+namespace {
+
+/// Put @p info's filament fields on @p slot, covering every SlotInfo field the
+/// caller may set, so the UI does not snap back on the next get_slot_info read.
+void write_filament_fields(SlotInfo& slot, const SlotInfo& info) {
+    slot.color_name = info.color_name;
+    slot.color_rgb = info.color_rgb;
+    slot.material = info.material;
+    slot.brand = info.brand;
+    // Carry the catalog product identity through a sync too: one that dropped
+    // it would make the editor snap back to a different variant on the next
+    // get_slot_info().
+    slot.catalog_id = info.catalog_id;
+    slot.product_name = info.product_name;
+    slot.nozzle_temp_min = info.nozzle_temp_min;
+    slot.nozzle_temp_max = info.nozzle_temp_max;
+    slot.bed_temp = info.bed_temp;
+    slot.remaining_weight_g = info.remaining_weight_g;
+    slot.total_weight_g = info.total_weight_g;
+    slot.spoolman_id = info.spoolman_id;
+    slot.spoolman_vendor_id = info.spoolman_vendor_id;
+    slot.spool_name = info.spool_name;
+}
+
+} // namespace
+
+AmsError AmsBackendSnapmaker::apply_user_edit(int slot_index, const SlotInfo& info,
+                                              const helix::ams::Observation& declared) {
     auto err = validate_slot_index(slot_index);
     if (err.result != AmsResult::SUCCESS)
         return err;
-
-    // The channel as it stood before this edit. Both the stored record and the
-    // write-back guard rest on what the user declared, which @p declared answers
-    // when the caller passed it down and a diff against this answers otherwise:
-    // the editor opens on the lane's current state, so a value firmware supplied
-    // comes back looking like one a person typed.
-    SlotInfo prior_slot;
 
     {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -782,40 +801,14 @@ AmsError AmsBackendSnapmaker::set_slot_info(int slot_index, const SlotInfo& info
         if (!slot)
             return AmsErrorHelper::invalid_slot(lane_noun(), slot_index, NUM_TOOLS - 1);
 
-        prior_slot = *slot;
-
-        // Update the in-memory slot directly. Covers every SlotInfo field the
-        // caller may set — a persist=false preview must not silently drop
-        // brand / spool_name / spoolman_* / weights / color_name because
-        // otherwise the UI would snap back on the next get_slot_info read.
-        slot->color_name = info.color_name;
-        slot->color_rgb = info.color_rgb;
-        slot->material = info.material;
-        slot->brand = info.brand;
-        // Carry the catalog product identity through preview writes too — a
-        // persist=false preview that dropped it would make the editor snap
-        // back to a different variant on the next get_slot_info().
-        slot->catalog_id = info.catalog_id;
-        slot->product_name = info.product_name;
-        slot->nozzle_temp_min = info.nozzle_temp_min;
-        slot->nozzle_temp_max = info.nozzle_temp_max;
-        slot->bed_temp = info.bed_temp;
-        slot->remaining_weight_g = info.remaining_weight_g;
-        slot->total_weight_g = info.total_weight_g;
-        slot->spoolman_id = info.spoolman_id;
-        slot->spoolman_vendor_id = info.spoolman_vendor_id;
-        slot->spool_name = info.spool_name;
+        write_filament_fields(*slot, info);
 
         // handle_status_update writes RFID and print_task_config fields
         // unconditionally, so an edit kept only in memory is wiped by the next
-        // Klipper status update. For persist=true, stage the override into
-        // overrides_ so the edit survives a restart; the lane's own
-        // declaration, filed when the edit is committed, is what
-        // apply_resolved_lane lays back over firmware data on every subsequent
-        // parse. For persist=false we explicitly do NOT
-        // touch overrides_ — preview edits are in-memory only and will be
-        // overwritten by the next firmware parse, which is the expected
-        // preview contract.
+        // Klipper status update. Stage the override into overrides_ so the edit
+        // survives a restart; the lane's own declaration, filed when the edit is
+        // committed, is what apply_resolved_lane lays back over firmware data on
+        // every subsequent parse.
         //
         // NOTE on self-wipe: the AD5X IFS implementation pre-updates
         // last_firmware_color_ here to prevent the color-based hardware-event
@@ -827,12 +820,10 @@ AmsError AmsBackendSnapmaker::set_slot_info(int slot_index, const SlotInfo& info
         // baseline exactly as intended. No expected-echo value needed here.
         // (CFS shares the tracker and DOES register one — it writes
         // color_value back to the box, which is half of its fingerprint.)
-        if (persist) {
-            helix::ams::stage_user_override(overrides_, slot_index, prior_slot, info, declared);
-        }
+        helix::ams::stage_user_override(overrides_, slot_index, info, declared);
     }
 
-    if (persist && override_store_) {
+    if (override_store_) {
         // Re-read from overrides_ under the lock to get the staged copy.
         helix::ams::FilamentSlotOverride ovr_to_save;
         {
@@ -866,7 +857,7 @@ AmsError AmsBackendSnapmaker::set_slot_info(int slot_index, const SlotInfo& info
     // 404s; the override is still persisted to lane_data, so HelixScreen's UI
     // works correctly. Only OrcaSlicer's MoonrakerPrinterAgent and the
     // firmware-side LCD don't reflect user edits on stock firmware.
-    if (persist && api_) {
+    if (api_) {
         nlohmann::json info_obj = nlohmann::json::object();
         if (!info.brand.empty())
             info_obj["VENDOR"] = info.brand;
@@ -905,8 +896,7 @@ AmsError AmsBackendSnapmaker::set_slot_info(int slot_index, const SlotInfo& info
         // the response callback below.
         if (slot_index >= 0 && slot_index < NUM_TOOLS) {
             std::lock_guard<std::mutex> lock(mutex_);
-            own_write_echoes_.stage(slot_index,
-                                    helix::ams::edit_declaration(declared, prior_slot, info));
+            own_write_echoes_.stage(slot_index, declared);
             if (auto* staged = own_write_echoes_.staged(slot_index)) {
                 // The POST has to have carried the key. A field the user
                 // cleared is omitted from the body, so firmware keeps the
@@ -985,10 +975,11 @@ AmsError AmsBackendSnapmaker::set_slot_info(int slot_index, const SlotInfo& info
                 // genuine tag reading until the UID changes, which is the harm
                 // it exists to prevent, pointed the other way. Stock firmware
                 // has no such endpoint at all, so this is the common path.
-                tok.defer("AmsBackendSnapmaker::set_slot_info.abandon_echo", [this, slot_index]() {
-                    std::lock_guard<std::mutex> lock(mutex_);
-                    own_write_echoes_.abandon(slot_index);
-                });
+                tok.defer("AmsBackendSnapmaker::apply_user_edit.abandon_echo",
+                          [this, slot_index]() {
+                              std::lock_guard<std::mutex> lock(mutex_);
+                              own_write_echoes_.abandon(slot_index);
+                          });
             });
     }
 
@@ -996,6 +987,27 @@ AmsError AmsBackendSnapmaker::set_slot_info(int slot_index, const SlotInfo& info
     // Without it, AmsState::on_event silently skips the refresh and the AMS
     // panel never re-reads the edited slot — the UI shows stale data until
     // the next firmware status notification triggers a full refresh.
+    emit_event(EVENT_SLOT_CHANGED, std::to_string(slot_index));
+    return AmsErrorHelper::success();
+}
+
+AmsError AmsBackendSnapmaker::sync_external_identity(int slot_index, const SlotInfo& info) {
+    auto err = validate_slot_index(slot_index);
+    if (err.result != AmsResult::SUCCESS)
+        return err;
+
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        auto* slot = system_info_.units[0].get_slot(slot_index);
+        if (!slot)
+            return AmsErrorHelper::invalid_slot(lane_noun(), slot_index, NUM_TOOLS - 1);
+
+        // overrides_ is left alone and nothing reaches firmware: the next
+        // Klipper status update overwrites a synced value.
+        write_filament_fields(*slot, info);
+    }
+
+    // Pass slot_index as event data so AmsState can do a targeted slot sync.
     emit_event(EVENT_SLOT_CHANGED, std::to_string(slot_index));
     return AmsErrorHelper::success();
 }
@@ -1882,7 +1894,7 @@ void AmsBackendSnapmaker::handle_status_update(const nlohmann::json& notificatio
             }
             // Mirror firmware-truth color/material into lane_data so OrcaSlicer's
             // MoonrakerPrinterAgent sees the spool. OverwriteAlways policy: user
-            // edits via set_slot_info now round-trip through firmware via the
+            // edits via apply_user_edit round-trip through firmware via the
             // POST /printer/filament_detect/set endpoint (paxx12 Extended Firmware),
             // so firmware-truth and user-truth converge, and overwriting lane_data
             // is safe and also catches external edits (CHANGE_ZCOLOR

@@ -20,6 +20,7 @@
 #include "ui_spool_canvas.h"
 
 #include "../lvgl_ui_test_fixture.h"
+#include "../test_helpers/backend_user_edit.h"
 #include "../ui_test_utils.h"
 #include "ams_backend_mock.h"
 #include "ams_state.h"
@@ -327,7 +328,7 @@ TEST_CASE_METHOD(LVGLUITestFixture, "ams_slot: material label binds to subject",
     info.material = "PLA";
     info.color_rgb = 0xFF0000; // Red
     info.status = SlotStatus::AVAILABLE;
-    mock_ptr->set_slot_info(0, info);
+    helix::test::apply_edit(*mock_ptr, 0, info);
 
     // Connect backend to AmsState
     AmsState::instance().set_backend(std::move(mock));
@@ -389,7 +390,7 @@ TEST_CASE_METHOD(LVGLUITestFixture, "ams_slot: color subject updates spool",
     info.material = "PLA";
     info.color_rgb = 0xFF0000; // Red
     info.status = SlotStatus::AVAILABLE;
-    mock_ptr->set_slot_info(0, info);
+    helix::test::apply_edit(*mock_ptr, 0, info);
 
     AmsState::instance().set_backend(std::move(mock));
     AmsState::instance().sync_from_backend();
@@ -592,7 +593,7 @@ TEST_CASE_METHOD(LVGLUITestFixture, "ams_slot: refresh updates from AmsState",
     info.slot_index = 0;
     info.material = "PLA";
     info.status = SlotStatus::AVAILABLE;
-    mock_ptr->set_slot_info(0, info);
+    helix::test::apply_edit(*mock_ptr, 0, info);
 
     AmsState::instance().set_backend(std::move(mock));
     AmsState::instance().sync_from_backend();
@@ -780,7 +781,7 @@ TEST_CASE_METHOD(LVGLUITestFixture, "AMS slot ghosts empty slot with brand-only 
     SlotInfo info;
     info.slot_index = 0;
     info.brand = "Polymaker";
-    mock_ptr->set_slot_info(0, info);
+    helix::test::apply_edit(*mock_ptr, 0, info);
 
     AmsState::instance().set_backend(std::move(mock));
 
@@ -809,7 +810,7 @@ TEST_CASE_METHOD(LVGLUITestFixture, "AMS slot ghosts empty slot with spool_name-
     SlotInfo info;
     info.slot_index = 0;
     info.spool_name = "Shop Floor #7";
-    mock_ptr->set_slot_info(0, info);
+    helix::test::apply_edit(*mock_ptr, 0, info);
 
     AmsState::instance().set_backend(std::move(mock));
 
@@ -835,7 +836,7 @@ TEST_CASE_METHOD(LVGLUITestFixture, "AMS slot hides empty slot with no metadata 
     // Truly empty — no brand, spool_name, material, or spoolman_id.
     SlotInfo info;
     info.slot_index = 0;
-    mock_ptr->set_slot_info(0, info);
+    helix::test::apply_edit(*mock_ptr, 0, info);
 
     AmsState::instance().set_backend(std::move(mock));
 

@@ -23,6 +23,7 @@
 
 #include "../test_helpers/ace_test_access.h"
 #include "../test_helpers/afc_test_access.h"
+#include "../test_helpers/backend_user_edit.h"
 #include "../test_helpers/happy_hare_test_access.h"
 #include "ams_backend_ace.h"
 #include "ams_backend_afc.h"
@@ -315,7 +316,7 @@ TEST_CASE("Happy Hare slot identity survives a restart",
         hh.on_started();
         CHECK(helix::HappyHareTestAccess::store_namespace(hh) == "helix-screen-hh-overrides");
 
-        REQUIRE(hh.set_slot_info(1, user_edit(), /*persist=*/true).success());
+        REQUIRE(helix::test::apply_edit(hh, 1, user_edit()).success());
     }
 
     // The record has to be in the DB, under Happy Hare's own namespace. Gate 1
@@ -379,7 +380,7 @@ TEST_CASE("Happy Hare cleared slot override does not return after a restart",
         helix::test::RegisteredBackend<StoreBackedHappyHare> hh_reg(&api);
         StoreBackedHappyHare& hh = *hh_reg;
         hh.on_started();
-        REQUIRE(hh.set_slot_info(1, user_edit(), /*persist=*/true).success());
+        REQUIRE(helix::test::apply_edit(hh, 1, user_edit()).success());
         hh.clear_slot_override(1);
     }
 
@@ -413,7 +414,7 @@ TEST_CASE("AFC slot identity survives a restart", "[ams][afc][filament_slot_over
         afc.on_started();
         CHECK(helix::AfcTestAccess::store_namespace(afc) == "helix-screen-afc-overrides");
 
-        REQUIRE(afc.set_slot_info(1, user_edit(), /*persist=*/true).success());
+        REQUIRE(helix::test::apply_edit(afc, 1, user_edit()).success());
     }
 
     auto stored = api.mock_get_db_value("helix-screen-afc-overrides", "lane2");
@@ -467,7 +468,7 @@ TEST_CASE(
         helix::test::RegisteredBackend<StoreBackedAfc> afc_reg(&api);
         StoreBackedAfc& afc = *afc_reg;
         afc.on_started();
-        REQUIRE(afc.set_slot_info(1, unlinked_user_edit(), /*persist=*/true).success());
+        REQUIRE(helix::test::apply_edit(afc, 1, unlinked_user_edit()).success());
     }
 
     {
@@ -497,7 +498,7 @@ TEST_CASE("Happy Hare keeps the material and colour the user typed when the gate
         helix::test::RegisteredBackend<StoreBackedHappyHare> hh_reg(&api);
         StoreBackedHappyHare& hh = *hh_reg;
         hh.on_started();
-        REQUIRE(hh.set_slot_info(1, unlinked_user_edit(), /*persist=*/true).success());
+        REQUIRE(helix::test::apply_edit(hh, 1, unlinked_user_edit()).success());
     }
 
     {
@@ -535,7 +536,7 @@ TEST_CASE("ACE keeps the material and colour the user typed when the hub disagre
         StoreBackedAce& ace = *ace_reg;
         ace.on_started();
         ace.feed_hub_bays(hub_says_red_pla);
-        REQUIRE(ace.set_slot_info(0, unlinked_user_edit(), /*persist=*/true).success());
+        REQUIRE(helix::test::apply_edit(ace, 0, unlinked_user_edit()).success());
     }
 
     {

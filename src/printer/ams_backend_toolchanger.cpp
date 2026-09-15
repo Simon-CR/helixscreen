@@ -1213,9 +1213,30 @@ AmsError AmsBackendToolChanger::cancel() {
 // Configuration Operations
 // ============================================================================
 
-AmsError AmsBackendToolChanger::set_slot_info(int slot_index, const SlotInfo& info, bool persist,
-                                              const helix::ams::Observation* declared) {
-    int old_mapped_tool = -1;
+namespace {
+
+/// Put @p info's filament fields on @p slot, so get_slot_info returns them at
+/// once.
+void write_filament_fields(SlotInfo& slot, const SlotInfo& info) {
+    slot.color_rgb = info.color_rgb;
+    slot.color_name = info.color_name;
+    slot.material = info.material;
+    slot.brand = info.brand;
+    // Carry the catalog product identity through a sync too: one that dropped
+    // it would make the editor snap back to a different variant on the next
+    // get_slot_info().
+    slot.catalog_id = info.catalog_id;
+    slot.product_name = info.product_name;
+    slot.spoolman_id = info.spoolman_id;
+    slot.spool_name = info.spool_name;
+    slot.remaining_weight_g = info.remaining_weight_g;
+    slot.total_weight_g = info.total_weight_g;
+}
+
+} // namespace
+
+AmsError AmsBackendToolChanger::apply_user_edit(int slot_index, const SlotInfo& info,
+                                                const helix::ams::Observation& declared) {
     std::string physical_tool_name;
     {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -1229,24 +1250,8 @@ AmsError AmsBackendToolChanger::set_slot_info(int slot_index, const SlotInfo& in
         if (!system_info_.units.empty() &&
             slot_index < static_cast<int>(system_info_.units[0].slots.size())) {
             auto& slot = system_info_.units[0].slots[slot_index];
-            // The lane as it stood before this edit. stage_user_override needs it
-            // to tell what the user moved from what the editor merely carried
-            // back, so it has to be taken before the writes below.
-            const SlotInfo prior_slot = slot;
-            old_mapped_tool = slot.mapped_tool;
-            slot.color_rgb = info.color_rgb;
-            slot.color_name = info.color_name;
-            slot.material = info.material;
-            slot.brand = info.brand;
-            // No override store on this backend, so this in-memory copy is the
-            // only thing keeping the editor's catalog pick visible until the
-            // next parse.
-            slot.catalog_id = info.catalog_id;
-            slot.product_name = info.product_name;
-            slot.spoolman_id = info.spoolman_id;
-            slot.spool_name = info.spool_name;
-            slot.remaining_weight_g = info.remaining_weight_g;
-            slot.total_weight_g = info.total_weight_g;
+            const int old_mapped_tool = slot.mapped_tool;
+            write_filament_fields(slot, info);
 
             // Tool mapping change: persist via ASSIGN_TOOL outside the lock.
             // slot.mapped_tool stores "which G-code tool number activates this physical
@@ -1266,15 +1271,13 @@ AmsError AmsBackendToolChanger::set_slot_info(int slot_index, const SlotInfo& in
             // Stage the user's edit. Every field is override-exclusive here:
             // klipper-toolchanger supplies no material, colour, brand or weight,
             // so there is nothing underneath for these to fall through to.
-            if (persist) {
-                helix::ams::stage_user_override(overrides_, slot_index, prior_slot, info, declared);
-            }
+            helix::ams::stage_user_override(overrides_, slot_index, info, declared);
         }
     }
 
     // Persist BEFORE the remap's early return, or a slot edit that also moved a
     // tool number would send ASSIGN_TOOL and silently drop the metadata.
-    if (persist && override_store_) {
+    if (override_store_) {
         helix::ams::FilamentSlotOverride ovr_to_save;
         {
             std::lock_guard<std::mutex> lock(mutex_);
@@ -1293,6 +1296,49 @@ AmsError AmsBackendToolChanger::set_slot_info(int slot_index, const SlotInfo& in
                                  err);
                 }
             });
+    }
+
+    if (!physical_tool_name.empty()) {
+        spdlog::info("[AMS ToolChanger] Remap via slot edit: T{} -> physical {} (slot {})",
+                     info.mapped_tool, physical_tool_name, slot_index);
+        return execute_gcode(
+            fmt::format("ASSIGN_TOOL TOOL={} N={}", physical_tool_name, info.mapped_tool));
+    }
+
+    return AmsErrorHelper::success();
+}
+
+AmsError AmsBackendToolChanger::sync_external_identity(int slot_index, const SlotInfo& info) {
+    std::string physical_tool_name;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+
+        AmsError slot_valid = validate_slot_index(slot_index);
+        if (!slot_valid) {
+            return slot_valid;
+        }
+
+        if (!system_info_.units.empty() &&
+            slot_index < static_cast<int>(system_info_.units[0].slots.size())) {
+            auto& slot = system_info_.units[0].slots[slot_index];
+            const int old_mapped_tool = slot.mapped_tool;
+            write_filament_fields(slot, info);
+
+            // Tool mapping change: persist via ASSIGN_TOOL outside the lock.
+            // slot.mapped_tool stores "which G-code tool number activates this physical
+            // tool"; the gcode says "T<info.mapped_tool> now activates tool_names_[slot]".
+            if (info.mapped_tool != old_mapped_tool && info.mapped_tool >= 0 &&
+                info.mapped_tool < static_cast<int>(system_info_.tool_to_slot_map.size()) &&
+                slot_index < static_cast<int>(tool_names_.size())) {
+                // One pass for both directions, and it EVICTS: the tool being
+                // moved leaves its old lane unmapped, and whatever tool this
+                // lane previously answered to gives it up. Writing the two
+                // fields by hand left both stale halves in place, so a swap
+                // ended with two lanes claiming one tool number.
+                helix::printer::assign_tool_slot(system_info_, info.mapped_tool, slot_index);
+                physical_tool_name = tool_names_[slot_index];
+            }
+        }
     }
 
     if (!physical_tool_name.empty()) {

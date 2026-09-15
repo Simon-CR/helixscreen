@@ -10,6 +10,7 @@
 #include "ui_update_queue.h"
 
 #include "../lvgl_ui_test_fixture.h"
+#include "../test_helpers/backend_user_edit.h"
 #include "../ui_test_utils.h"
 #include "ams_backend_mock.h"
 #include "ams_state.h"
@@ -169,14 +170,14 @@ TEST_CASE_METHOD(LVGLUITestFixture, "ams_mini spool mode: sync_from_ams_state fe
     s0.material = "PETG";
     s0.total_weight_g = 1000.0f;
     s0.remaining_weight_g = 600.0f; // -> 60%
-    mock_ptr->set_slot_info(0, s0);
+    helix::test::apply_edit(*mock_ptr, 0, s0);
 
     helix::SlotInfo s1 = mock_ptr->get_slot_info(1);
     s1.status = helix::SlotStatus::AVAILABLE;
     s1.material = "ABS";
     s1.total_weight_g = 1000.0f;
     s1.remaining_weight_g = 250.0f; // -> 25%
-    mock_ptr->set_slot_info(1, s1);
+    helix::test::apply_edit(*mock_ptr, 1, s1);
 
     ui_ams_mini_status_init();
     lv_obj_t* w = ui_ams_mini_status_create(test_screen(), 60);
@@ -226,14 +227,14 @@ TEST_CASE_METHOD(LVGLUITestFixture, "ams_mini spool mode: active lane badge uses
     s0.material = "PETG";
     s0.total_weight_g = 1000.0f;
     s0.remaining_weight_g = 600.0f;
-    mock_ptr->set_slot_info(0, s0);
+    helix::test::apply_edit(*mock_ptr, 0, s0);
 
     helix::SlotInfo s1 = mock_ptr->get_slot_info(1);
     s1.status = helix::SlotStatus::AVAILABLE;
     s1.material = "ABS";
     s1.total_weight_g = 1000.0f;
     s1.remaining_weight_g = 250.0f;
-    mock_ptr->set_slot_info(1, s1);
+    helix::test::apply_edit(*mock_ptr, 1, s1);
 
     ui_ams_mini_status_init();
     lv_obj_t* w = ui_ams_mini_status_create(test_screen(), 60);

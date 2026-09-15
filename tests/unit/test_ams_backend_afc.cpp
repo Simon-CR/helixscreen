@@ -16,6 +16,7 @@
 #include "printer_state.h"
 #include "settings_manager.h"
 #include "test_helpers/afc_test_access.h"
+#include "test_helpers/backend_user_edit.h"
 #include "test_helpers/registered_backend.h"
 #include "test_helpers/scoped_home_confirm_prompter.h"
 #include "test_helpers/seeded_override.h"
@@ -635,7 +636,7 @@ TEST_CASE("AFC persistence is independent of the reported version", "[ams][afc][
         info.material = "PLA";
         info.remaining_weight_g = 850;
         info.spoolman_id = 42;
-        helper.set_slot_info(0, info);
+        helix::test::apply_edit(helper, 0, info);
 
         // Every version, including the ones that used to be gated out, must
         // persist through G-code. Skipping this was issue #644.
@@ -955,10 +956,10 @@ TEST_CASE("AFC segment: works with discovered lanes", "[ams][afc][discovery][seg
 }
 
 // ============================================================================
-// set_slot_info() Persistence Tests - AFC >= 1.0.20
+// apply_user_edit() Persistence Tests - AFC >= 1.0.20
 // ============================================================================
 //
-// These tests verify that set_slot_info() sends the appropriate G-code commands
+// These tests verify that apply_user_edit() sends the appropriate G-code commands
 // to persist filament properties when AFC version >= 1.0.20.
 //
 // Commands expected:
@@ -966,10 +967,6 @@ TEST_CASE("AFC segment: works with discovered lanes", "[ams][afc][discovery][seg
 // - SET_MATERIAL LANE=<name> MATERIAL=<type>
 // - SET_WEIGHT LANE=<name> WEIGHT=<grams>
 // - SET_SPOOL_ID LANE=<name> SPOOL_ID=<id>
-//
-// NOTE: These tests are designed to FAIL initially. The set_slot_info() method
-// currently only updates local state and does NOT send G-code commands.
-// Implementation must be added to make these tests pass.
 //
 // Testing approach: Since MoonrakerAPI::execute_gcode() is not virtual,
 // the test helper captures G-code via the protected execute_gcode() method
@@ -994,10 +991,10 @@ TEST_CASE("AFC persistence: persist=false is the only thing that skips G-code",
     info.remaining_weight_g = 850;
     info.spoolman_id = 42;
 
-    helper.set_slot_info(0, info, /*persist=*/false);
+    helper.sync_external_identity(0, info);
     REQUIRE(helper.captured_gcodes.empty());
 
-    helper.set_slot_info(0, info);
+    helix::test::apply_edit(helper, 0, info);
     REQUIRE_FALSE(helper.captured_gcodes.empty());
     REQUIRE(helper.has_gcode("SET_COLOR LANE=lane1 COLOR=FF0000"));
     REQUIRE(helper.has_gcode("SET_MATERIAL LANE=lane1 MATERIAL=PLA"));
@@ -1014,10 +1011,9 @@ TEST_CASE("AFC persistence: SET_COLOR command format", "[ams][afc][persistence]"
     SlotInfo info;
     info.color_rgb = 0xFF0000; // Red
 
-    helper.set_slot_info(0, info);
+    helix::test::apply_edit(helper, 0, info);
 
     // Should send: SET_COLOR LANE=lane1 COLOR=FF0000
-    // FAILS: set_slot_info doesn't call execute_gcode yet
     REQUIRE(helper.has_gcode("SET_COLOR LANE=lane1 COLOR=FF0000"));
 }
 
@@ -1030,10 +1026,9 @@ TEST_CASE("AFC persistence: SET_COLOR uppercase hex no prefix", "[ams][afc][pers
     SlotInfo info;
     info.color_rgb = 0x00FF00; // Green
 
-    helper.set_slot_info(1, info);
+    helix::test::apply_edit(helper, 1, info);
 
     // Should send: SET_COLOR LANE=lane2 COLOR=00FF00 (uppercase, no #)
-    // FAILS: set_slot_info doesn't call execute_gcode yet
     REQUIRE(helper.has_gcode("SET_COLOR LANE=lane2 COLOR=00FF00"));
 }
 
@@ -1046,10 +1041,9 @@ TEST_CASE("AFC persistence: SET_MATERIAL command format", "[ams][afc][persistenc
     SlotInfo info;
     info.material = "PLA";
 
-    helper.set_slot_info(1, info);
+    helix::test::apply_edit(helper, 1, info);
 
     // Should send: SET_MATERIAL LANE=lane2 MATERIAL=PLA
-    // FAILS: set_slot_info doesn't call execute_gcode yet
     REQUIRE(helper.has_gcode("SET_MATERIAL LANE=lane2 MATERIAL=PLA"));
 }
 
@@ -1062,10 +1056,9 @@ TEST_CASE("AFC persistence: SET_WEIGHT command format", "[ams][afc][persistence]
     SlotInfo info;
     info.remaining_weight_g = 850.5f; // Should be sent as integer
 
-    helper.set_slot_info(0, info);
+    helix::test::apply_edit(helper, 0, info);
 
     // Should send: SET_WEIGHT LANE=lane1 WEIGHT=850 (no decimals)
-    // FAILS: set_slot_info doesn't call execute_gcode yet
     REQUIRE(helper.has_gcode("SET_WEIGHT LANE=lane1 WEIGHT=850"));
 }
 
@@ -1078,10 +1071,9 @@ TEST_CASE("AFC persistence: SET_SPOOL_ID command format", "[ams][afc][persistenc
     SlotInfo info;
     info.spoolman_id = 42;
 
-    helper.set_slot_info(0, info);
+    helix::test::apply_edit(helper, 0, info);
 
     // Should send: SET_SPOOL_ID LANE=lane1 SPOOL_ID=42
-    // FAILS: set_slot_info doesn't call execute_gcode yet
     REQUIRE(helper.has_gcode("SET_SPOOL_ID LANE=lane1 SPOOL_ID=42"));
 }
 
@@ -1100,10 +1092,9 @@ TEST_CASE("AFC persistence: SET_SPOOL_ID clear with empty string", "[ams][afc][p
     SlotInfo new_info;
     new_info.spoolman_id = 0;
 
-    helper.set_slot_info(0, new_info);
+    helix::test::apply_edit(helper, 0, new_info);
 
     // Should send: SET_SPOOL_ID LANE=lane1 SPOOL_ID= (empty to clear)
-    // FAILS: set_slot_info doesn't call execute_gcode yet
     REQUIRE(helper.has_gcode("SET_SPOOL_ID LANE=lane1 SPOOL_ID="));
 }
 
@@ -1131,7 +1122,7 @@ TEST_CASE("AFC persistence: a stale afc-install version does not suppress gcode"
     info.color_rgb = 0xE53935;
     info.remaining_weight_g = 500.0f;
 
-    helper.set_slot_info(0, info);
+    helix::test::apply_edit(helper, 0, info);
 
     REQUIRE(helper.has_gcode("SET_MATERIAL LANE=lane1 MATERIAL=PLA"));
     REQUIRE(helper.has_gcode("SET_COLOR LANE=lane1 COLOR=E53935"));
@@ -1164,7 +1155,7 @@ TEST_CASE("AFC persistence: spool-link clear is emitted before the data writes",
     info.color_rgb = 0xE53935;
     info.remaining_weight_g = 500.0f;
 
-    helper.set_slot_info(0, info);
+    helix::test::apply_edit(helper, 0, info);
 
     const int clear_idx = helper.gcode_index_of("SET_SPOOL_ID LANE=lane1 SPOOL_ID=");
     const int color_idx = helper.gcode_index_of("SET_COLOR LANE=lane1");
@@ -1200,7 +1191,7 @@ TEST_CASE("AFC persistence: spool-link set is emitted before the data writes",
     info.color_rgb = 0xE53935;
     info.remaining_weight_g = 500.0f;
 
-    helper.set_slot_info(0, info);
+    helix::test::apply_edit(helper, 0, info);
 
     const int link_idx = helper.gcode_index_of("SET_SPOOL_ID LANE=lane1 SPOOL_ID=86");
     const int color_idx = helper.gcode_index_of("SET_COLOR LANE=lane1");
@@ -1217,7 +1208,7 @@ TEST_CASE("AFC persistence: spool-link set is emitted before the data writes",
     REQUIRE(link_idx < weight_idx);
 }
 
-TEST_CASE("AFC persistence: SET_MAP fires when mapped_tool changes via set_slot_info",
+TEST_CASE("AFC persistence: SET_MAP fires when an edit changes mapped_tool",
           "[ams][afc][persistence]") {
     AmsBackendAfcTestHelper helper;
 
@@ -1228,7 +1219,7 @@ TEST_CASE("AFC persistence: SET_MAP fires when mapped_tool changes via set_slot_
     SlotInfo info;
     info.mapped_tool = 2;
 
-    helper.set_slot_info(0, info);
+    helix::test::apply_edit(helper, 0, info);
 
     REQUIRE(helper.has_gcode("SET_MAP LANE=lane1 MAP=T2"));
 }
@@ -1245,7 +1236,7 @@ TEST_CASE("AFC persistence: SET_MAP not fired when mapped_tool unchanged",
     info.mapped_tool = 0;
     info.material = "PLA";
 
-    helper.set_slot_info(0, info);
+    helix::test::apply_edit(helper, 0, info);
 
     for (const auto& gcode : helper.captured_gcodes) {
         REQUIRE(gcode.rfind("SET_MAP ", 0) != 0);
@@ -1265,7 +1256,7 @@ TEST_CASE("AFC persistence: SET_MAP not fired when caller leaves mapped_tool def
     SlotInfo info; // mapped_tool defaults to -1
     info.material = "PLA";
 
-    helper.set_slot_info(2, info);
+    helix::test::apply_edit(helper, 2, info);
 
     for (const auto& gcode : helper.captured_gcodes) {
         REQUIRE(gcode.rfind("SET_MAP ", 0) != 0);
@@ -1285,7 +1276,7 @@ TEST_CASE("AFC persistence: mapped_tool change updates registry reverse map",
     // so future tool-changes (T2 → which slot?) resolve correctly.
     SlotInfo info;
     info.mapped_tool = 2;
-    helper.set_slot_info(0, info);
+    helix::test::apply_edit(helper, 0, info);
 
     REQUIRE(helper.get_slot_mapped_tool(0) == 2);
 }
@@ -1302,7 +1293,7 @@ TEST_CASE("AFC persistence: sends gcode even with unknown version", "[ams][afc][
     info.color_rgb = 0xFF0000;
     info.remaining_weight_g = 800.0f;
 
-    helper.set_slot_info(0, info);
+    helix::test::apply_edit(helper, 0, info);
 
     // Unknown version should still attempt gcode (SET_SPOOL_ID existed before 1.0.20)
     REQUIRE(helper.has_gcode("SET_SPOOL_ID LANE=lane1 SPOOL_ID=42"));
@@ -1317,7 +1308,7 @@ TEST_CASE("AFC persistence: sends gcode with empty version", "[ams][afc][persist
     SlotInfo info;
     info.spoolman_id = 42;
 
-    helper.set_slot_info(0, info);
+    helix::test::apply_edit(helper, 0, info);
 
     REQUIRE(helper.has_gcode("SET_SPOOL_ID LANE=lane1 SPOOL_ID=42"));
 }
@@ -1331,7 +1322,7 @@ TEST_CASE("AFC persistence: skips SET_COLOR for default grey", "[ams][afc][persi
     SlotInfo info;
     info.color_rgb = 0x808080; // Default grey - should NOT send
 
-    helper.set_slot_info(0, info);
+    helix::test::apply_edit(helper, 0, info);
 
     // Should NOT send SET_COLOR for grey default
     // PASSES: no G-code sent at all currently
@@ -1349,7 +1340,7 @@ TEST_CASE("AFC persistence: dispatches SET_COLOR for pure black", "[ams][afc][pe
     SlotInfo info;
     info.color_rgb = 0x000000; // Pure black
 
-    helper.set_slot_info(0, info);
+    helix::test::apply_edit(helper, 0, info);
 
     REQUIRE(helper.has_gcode("SET_COLOR LANE=lane1 COLOR=000000"));
 }
@@ -1360,7 +1351,7 @@ TEST_CASE("AFC persistence: SET_MATERIAL carries material names with punctuation
     // The gate was is_safe_gcode_param() -> is_safe_identifier(), charset
     // [A-Za-z0-9_ ] — so `PLA+`, which HelixScreen offers from its own
     // filament_database.h, could never be persisted. The other four G-codes went
-    // out and set_slot_info() still returned success: a silent partial write.
+    // out and apply_user_edit() still returned success: a silent partial write.
     AmsBackendAfcTestHelper helper;
 
     helper.set_afc_version("1.0.20");
@@ -1369,7 +1360,7 @@ TEST_CASE("AFC persistence: SET_MATERIAL carries material names with punctuation
     SlotInfo info;
     info.material = "PLA+";
 
-    AmsError err = helper.set_slot_info(0, info);
+    AmsError err = helix::test::apply_edit(helper, 0, info);
 
     REQUIRE(helper.gcode_index_of("SET_MATERIAL LANE=lane1") >= 0);
     REQUIRE(helper.has_gcode("SET_MATERIAL LANE=lane1 MATERIAL=PLA+"));
@@ -1390,7 +1381,7 @@ TEST_CASE("AFC persistence: SET_MATERIAL quotes multi-word material names",
     SlotInfo info;
     info.material = "Silk PLA";
 
-    AmsError err = helper.set_slot_info(0, info);
+    AmsError err = helix::test::apply_edit(helper, 0, info);
 
     REQUIRE(helper.has_gcode("SET_MATERIAL LANE=lane1 MATERIAL=\"Silk PLA\""));
     REQUIRE(err.success());
@@ -1410,7 +1401,7 @@ TEST_CASE("AFC persistence: an unsendable material is reported, not swallowed",
     info.material = "PLA;G28";
     info.remaining_weight_g = 750.0f;
 
-    AmsError err = helper.set_slot_info(0, info);
+    AmsError err = helix::test::apply_edit(helper, 0, info);
 
     REQUIRE_FALSE(helper.has_gcode_starting_with("SET_MATERIAL"));
     // The rest of the write is unaffected.
@@ -1428,7 +1419,7 @@ TEST_CASE("AFC persistence: skips SET_MATERIAL for empty string", "[ams][afc][pe
     SlotInfo info;
     info.material = ""; // Empty - should NOT send
 
-    helper.set_slot_info(0, info);
+    helix::test::apply_edit(helper, 0, info);
 
     // Should NOT send SET_MATERIAL for empty
     // PASSES: no G-code sent at all currently
@@ -1444,7 +1435,7 @@ TEST_CASE("AFC persistence: skips SET_WEIGHT for zero or negative", "[ams][afc][
     SECTION("zero weight") {
         SlotInfo info;
         info.remaining_weight_g = 0;
-        helper.set_slot_info(0, info);
+        helix::test::apply_edit(helper, 0, info);
         // PASSES: no G-code sent at all currently
         REQUIRE_FALSE(helper.has_gcode_starting_with("SET_WEIGHT"));
     }
@@ -1453,7 +1444,7 @@ TEST_CASE("AFC persistence: skips SET_WEIGHT for zero or negative", "[ams][afc][
         helper.clear_captured_gcodes();
         SlotInfo info;
         info.remaining_weight_g = -1;
-        helper.set_slot_info(0, info);
+        helix::test::apply_edit(helper, 0, info);
         // PASSES: no G-code sent at all currently
         REQUIRE_FALSE(helper.has_gcode_starting_with("SET_WEIGHT"));
     }
@@ -1481,7 +1472,7 @@ struct AfcLockedLaneFixture : HelixTestFixture {
         edit.brand = "Polymaker";
         edit.material = "PETG";
         edit.color_rgb = 0x1E5AA8;
-        REQUIRE(helper.set_slot_info(0, edit).success());
+        REQUIRE(helix::test::apply_edit(helper, 0, edit).success());
 
         const auto locked = record();
         REQUIRE(locked.user_locked_color);
@@ -1558,7 +1549,7 @@ TEST_CASE("AFC persistence: skips SET_SPOOL_ID when both old and new are zero",
     SlotInfo info;
     info.spoolman_id = 0;
 
-    helper.set_slot_info(0, info);
+    helix::test::apply_edit(helper, 0, info);
 
     // Should NOT send SET_SPOOL_ID when both old and new are 0
     // PASSES: no G-code sent at all currently
@@ -1578,10 +1569,9 @@ TEST_CASE("AFC persistence: sends multiple commands for full slot info",
     info.remaining_weight_g = 750;
     info.spoolman_id = 99;
 
-    helper.set_slot_info(0, info);
+    helix::test::apply_edit(helper, 0, info);
 
     // Should send all four commands
-    // FAILS: set_slot_info doesn't call execute_gcode yet
     REQUIRE(helper.has_gcode("SET_COLOR LANE=lane1 COLOR=0000FF"));
     REQUIRE(helper.has_gcode("SET_MATERIAL LANE=lane1 MATERIAL=PETG"));
     REQUIRE(helper.has_gcode("SET_WEIGHT LANE=lane1 WEIGHT=750"));
@@ -1589,18 +1579,18 @@ TEST_CASE("AFC persistence: sends multiple commands for full slot info",
 }
 
 // ============================================================================
-// set_slot_info() persist=false Tests
+// sync_external_identity() Tests
 // ============================================================================
 //
-// When persist=false, set_slot_info() should update in-memory slot state but
+// sync_external_identity() should update in-memory slot state but
 // NOT send any G-code commands to firmware. This is critical for preventing an
 // infinite feedback loop when Spoolman weight polling updates slot data:
 //
-//   set_slot_info(persist=true) → G-code to firmware → firmware status_update
+//   apply_user_edit() → G-code to firmware → firmware status_update
 //   via WebSocket → sync_from_backend → refresh_spoolman_weights →
-//   set_slot_info again → ∞
+//   apply_user_edit again → ∞
 //
-// With persist=false, the cycle breaks because no G-code is sent, so firmware
+// Through sync_external_identity() the cycle breaks because no G-code is sent, so firmware
 // doesn't emit a status_update, and the loop terminates.
 // ============================================================================
 
@@ -1618,7 +1608,7 @@ TEST_CASE("AFC persist=false: updates local state without G-code",
     info.spoolman_id = 42;
 
     // persist=false should NOT send any G-code
-    helper.set_slot_info(0, info, /*persist=*/false);
+    helper.sync_external_identity(0, info);
 
     REQUIRE(helper.captured_gcodes.empty());
 
@@ -1644,7 +1634,7 @@ TEST_CASE("AFC persist=true: sends G-code (default behavior unchanged)",
     info.spoolman_id = 7;
 
     // Default persist=true should send G-code
-    helper.set_slot_info(0, info);
+    helix::test::apply_edit(helper, 0, info);
 
     REQUIRE(helper.has_gcode("SET_COLOR LANE=lane1 COLOR=00FF00"));
     REQUIRE(helper.has_gcode("SET_MATERIAL LANE=lane1 MATERIAL=ABS"));
@@ -1665,7 +1655,7 @@ TEST_CASE("AFC persist=false: version warning not emitted",
     info.material = "PLA";
 
     // Should succeed without errors and without persistence
-    auto result = helper.set_slot_info(0, info, /*persist=*/false);
+    auto result = helper.sync_external_identity(0, info);
     REQUIRE(result.success());
     REQUIRE(helper.captured_gcodes.empty());
 }
@@ -6484,7 +6474,7 @@ TEST_CASE("AFC clear_slot_override drops the retained identity", "[ams][afc][ove
     info.brand = "Likesilk";
     info.spoolman_id = 86;
     info.material = "ASA";
-    helper.set_slot_info(0, info);
+    helix::test::apply_edit(helper, 0, info);
 
     helper.clear_slot_override(0);
     helper.feed_afc_stepper("lane1", {{"spool_id", nullptr}, {"material", ""}});
@@ -6502,7 +6492,7 @@ TEST_CASE("AFC persist_override records a deliberate pure black", "[ams][afc][ov
     SlotInfo info;
     info.material = "PLA";
     info.color_rgb = 0x000000;
-    helper.set_slot_info(0, info);
+    helix::test::apply_edit(helper, 0, info);
 
     const auto& ovr = AfcTestAccess::overrides(helper).at(0);
     CHECK(ovr.color_set);
@@ -6518,7 +6508,7 @@ TEST_CASE("AFC persist_override does not record the no-color sentinel", "[ams][a
     SlotInfo info;
     info.material = "PLA";
     info.color_rgb = AMS_DEFAULT_SLOT_COLOR;
-    helper.set_slot_info(0, info);
+    helix::test::apply_edit(helper, 0, info);
 
     const auto& ovr = AfcTestAccess::overrides(helper).at(0);
     CHECK_FALSE(ovr.color_set);
@@ -6535,7 +6525,7 @@ TEST_CASE("AFC persist_override wires nozzle/bed temps into the override", "[ams
     info.bed_temp = 80;
     info.nozzle_temp_min = 230;
     info.nozzle_temp_max = 250;
-    helper.set_slot_info(0, info);
+    helix::test::apply_edit(helper, 0, info);
 
     const auto& ovr = AfcTestAccess::overrides(helper).at(0);
     CHECK(ovr.bed_temp == 80);
@@ -8036,7 +8026,7 @@ TEST_CASE("AFC marks a persisted edit as the user's own", "[ams][afc][filament_s
     info.material = "PETG";
     info.color_rgb = 0x1188FF;
     info.color_name = "Blue";
-    helper.set_slot_info(0, info, /*persist=*/true);
+    helix::test::apply_edit(helper, 0, info);
 
     auto& overrides = AfcTestAccess::overrides(helper);
     REQUIRE(overrides.count(0) == 1);

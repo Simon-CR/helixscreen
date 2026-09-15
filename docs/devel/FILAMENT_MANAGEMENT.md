@@ -434,8 +434,8 @@ resume path, which needs a *blocklist* rather than an allowlist because a slicer
 filename legitimately carries characters no material name would - see
 [`POWER_LOSS_RECOVERY.md`](POWER_LOSS_RECOVERY.md). Do not merge the two.
 
-**A rejected material is an error, not a silent skip.** `AmsBackendAfc::set_slot_info()`
-and `AmsBackendHappyHare::set_slot_info()` issue every *other* write first, then
+**A rejected material is an error, not a silent skip.** `AmsBackendAfc::apply_user_edit()`
+and `AmsBackendHappyHare::apply_user_edit()` issue every *other* write first, then
 return `AmsResult::COMMAND_FAILED` naming the material. The user keeps the color,
 weight and Spoolman link and is told which part did not land; returning success
 for a write that never happened is what made this invisible for so long.
@@ -499,7 +499,7 @@ Two footguns this area has repeatedly hit (fixed in #1065; keep them fixed):
    clears a lock is an external `CHANGE_ZCOLOR` in the gcode stream (**#981**,
    emitted by the ZMOD COLOR macro / LCD). A **physical insert emits no
    `CHANGE_ZCOLOR`**, so a lane whose material was locked — either by a menu
-   type-set (`set_slot_info`) or by the pessimistic `!material.empty()` load
+   type-set (`apply_user_edit`) or by the pessimistic `!material.empty()` load
    default in `from_lane_data_record` — keeps painting the *previous* spool's
    type after a new spool goes in. This is why "change type via the COLOR macro"
    worked while "insert a new spool and change its type" did not.
@@ -2350,7 +2350,7 @@ Create include/ams_backend_mysystem.h and src/printer/ams_backend_mysystem.cpp. 
 - `get_topology()`, `get_filament_segment()`, `get_slot_filament_segment()`, `infer_error_segment()` -- Path visualization
 - `load_filament()`, `unload_filament()`, `select_slot()`, `change_tool()` -- Operations
 - `recover()`, `reset()`, `cancel()` -- Recovery
-- `set_slot_info()`, `set_tool_mapping()` -- Configuration
+- `apply_user_edit()`, `sync_external_identity()`, `set_tool_mapping()` -- Configuration
 - `enable_bypass()`, `disable_bypass()`, `is_bypass_active()` -- Bypass mode
 
 **Optional overrides (with default implementations):**

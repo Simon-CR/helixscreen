@@ -61,9 +61,9 @@ inline void file_override_as_lane_records(const AmsBackend& backend, int slot_in
 ///
 /// AmsState::commit_slot_edit hands the backend write and the lane record to
 /// AmsBackend::commit_user_edit(), and this calls that same method, so a
-/// fixture's edit passes the declaration to set_slot_info, drops what a
+/// fixture's edit passes the declaration to apply_user_edit, drops what a
 /// binding change leaves stale, files the declaration and repaints exactly as
-/// production does. A fixture that calls set_slot_info alone performs only the
+/// production does. A fixture that calls apply_user_edit alone performs only the
 /// backend write, so the lane keeps whatever it held and the edit has nothing
 /// standing behind it.
 ///

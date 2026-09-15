@@ -256,8 +256,9 @@ class AmsBackendSnapmaker : public AmsSubscriptionBackend {
     }
 
     // Configuration
-    AmsError set_slot_info(int slot_index, const SlotInfo& info, bool persist = true,
-                           const helix::ams::Observation* declared = nullptr) override;
+    AmsError apply_user_edit(int slot_index, const SlotInfo& info,
+                             const helix::ams::Observation& declared) override;
+    AmsError sync_external_identity(int slot_index, const SlotInfo& info) override;
     void persist_slot_weight(int slot_index, float remaining_weight_g,
                              float total_weight_g) override;
     AmsError set_tool_mapping_impl(int tool_number, int slot_index) override;
@@ -460,9 +461,9 @@ class AmsBackendSnapmaker : public AmsSubscriptionBackend {
     /// reset isn't masked by a stale declaration.
     ///
     /// Unlike the AD5X IFS implementation (which uses color as the event
-    /// signal and needs a self-wipe guard in set_slot_info), Snapmaker uses
+    /// signal and needs a self-wipe guard in apply_user_edit), Snapmaker uses
     /// the RFID UID — a hardware identifier the user cannot set via the UI.
-    /// So set_slot_info registers no expected-echo value with rfid_tracker_;
+    /// So apply_user_edit registers no expected-echo value with rfid_tracker_;
     /// the baseline stays at whatever firmware last reported and user edits
     /// don't race. (CFS shares the tracker but DOES need that guard — it
     /// writes color_value back to the box, which is half of its fingerprint.)
@@ -478,7 +479,7 @@ class AmsBackendSnapmaker : public AmsSubscriptionBackend {
     void clear_override_locked(int slot_index, SlotInfo& slot);
 
     // Persistent per-slot overrides. Writers (on_started bulk load,
-    // set_slot_info persist path, check_hardware_event_clear) all hold mutex_.
+    // apply_user_edit, check_hardware_event_clear) all hold mutex_.
     // Reads happen inside the parse path's lane_data mirror and the clear
     // helpers, all of which also hold mutex_.
     std::unique_ptr<helix::ams::FilamentSlotOverrideStore> override_store_;
@@ -497,7 +498,7 @@ class AmsBackendSnapmaker : public AmsSubscriptionBackend {
     helix::ams::SlotFingerprintTracker rfid_tracker_;
 
     /// What the user declared in their last edit of a channel, out of the
-    /// fields set_slot_info actually sent to /printer/filament_detect/set.
+    /// fields apply_user_edit actually sent to /printer/filament_detect/set.
     ///
     /// The write target is filament_detect.info, the same object
     /// parse_rfid_info reads, and VENDOR / MAIN_TYPE / SUB_TYPE are spelled

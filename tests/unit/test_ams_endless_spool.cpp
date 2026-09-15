@@ -11,13 +11,13 @@
  * the ONE place its guards now live (AmsBackend::set_endless_spool_backup).
  */
 
-#include "test_helpers/afc_test_access.h"
 #include "ams_backend_afc.h"
 #include "ams_backend_happy_hare.h"
 #include "ams_backend_mock.h"
 #include "ams_types.h"
 #include "filament_database.h"
 #include "filament_variants.h"
+#include "test_helpers/afc_test_access.h"
 #include "test_helpers/happy_hare_test_access.h"
 
 #include <algorithm>
@@ -398,7 +398,7 @@ TEST_CASE("Backup eligibility separates a grade change from a material mismatch"
     auto set_material = [&backend](int slot, const char* material) {
         SlotInfo info = backend.get_slot_info(slot);
         info.material = material;
-        REQUIRE(backend.set_slot_info(slot, info, false));
+        REQUIRE(backend.sync_external_identity(slot, info));
     };
 
     set_material(0, "PLA");

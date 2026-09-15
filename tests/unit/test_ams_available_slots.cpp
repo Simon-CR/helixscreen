@@ -13,6 +13,7 @@
  */
 
 #include "../lvgl_test_fixture.h"
+#include "../test_helpers/backend_user_edit.h"
 #include "ams_backend_afc.h"
 #include "ams_backend_mock.h"
 #include "ams_state.h"
@@ -73,7 +74,7 @@ TEST_CASE_METHOD(LVGLTestFixture,
         auto slot = mock_ptr->get_slot_info(0);
         slot.color_rgb = 0x202020;
         slot.multi_color_hexes = MULTI_HEXES;
-        mock_ptr->set_slot_info(0, slot);
+        helix::test::apply_edit(*mock_ptr, 0, slot);
     }
 
     auto slots = ams.collect_available_slots();
@@ -120,7 +121,7 @@ TEST_CASE_METHOD(LVGLTestFixture, "an assigned but empty lane still flattens to 
         slot.material = "ASA-GF";
         slot.brand = "Ambrosia";
         slot.spool_name = "Black ASA-GF";
-        mock_ptr->set_slot_info(0, slot);
+        helix::test::apply_edit(*mock_ptr, 0, slot);
     }
     mock_ptr->force_slot_status(0, SlotStatus::EMPTY);
 

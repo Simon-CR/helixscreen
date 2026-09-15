@@ -17,6 +17,7 @@
 #include "ui_update_queue.h"
 
 #include "../lvgl_ui_test_fixture.h"
+#include "../test_helpers/backend_user_edit.h"
 #include "../ui_test_utils.h"
 #include "ams_backend_mock.h"
 #include "ams_state.h"
@@ -47,9 +48,9 @@ namespace {
  *  - The aggregate pair (current_slot / filament_loaded), so an idle unload can
  *    be staged without driving the mock's timed unload simulation.
  *  - has_per_slot_loaded_authority(), to exercise the AFC/CFS rule.
- *  - Per-slot SlotStatus. AmsBackendMock::set_slot_info() deliberately copies
+ *  - Per-slot SlotStatus. AmsBackendMock::apply_user_edit() deliberately copies
  *    only the filament fields (color, material, brand, weights, Spoolman ids) —
- *    status is firmware-derived there, so writing it through set_slot_info() is
+ *    status is firmware-derived there, so writing it through apply_user_edit() is
  *    silently dropped.
  *
  * Both read paths are patched, because they are genuinely different call sites:
@@ -68,7 +69,7 @@ class ActiveLaneMock : public AmsBackendMock {
     bool aggregate_loaded = true;
     int current = 0;
 
-    /// Force a lane's status (the field set_slot_info() drops).
+    /// Force a lane's status (the field apply_user_edit() drops).
     void set_status(int slot_index, SlotStatus status) {
         if (slot_index >= 0 && slot_index < MAX_SLOTS) {
             status_override_[slot_index] = status;
@@ -129,8 +130,8 @@ void teardown_ams() {
 /**
  * @brief Give a lane a known identity and status.
  *
- * Filament fields go through the backend's own set_slot_info(); status goes
- * through the mock's override, since set_slot_info() drops it.
+ * Filament fields go through the backend's own apply_user_edit(); status goes
+ * through the mock's override, since apply_user_edit() drops it.
  */
 void set_slot(ActiveLaneMock* mock, int index, SlotStatus status, const char* material,
               float total_g = 1000.0f, float remaining_g = 500.0f) {
@@ -141,7 +142,7 @@ void set_slot(ActiveLaneMock* mock, int index, SlotStatus status, const char* ma
     s.spoolman_id = 0;
     s.total_weight_g = total_g;
     s.remaining_weight_g = remaining_g;
-    mock->set_slot_info(index, s);
+    helix::test::apply_edit(*mock, index, s);
     mock->set_status(index, status);
 }
 
@@ -250,7 +251,7 @@ TEST_CASE_METHOD(LVGLUITestFixture, "ams_mini: per-slot authority beats a stale 
     set_slot(mock, 0, SlotStatus::AVAILABLE, "PETG"); // per-slot parse: NOT seated
     set_slot(mock, 1, SlotStatus::LOADED, "ABS");     // per-slot parse: seated
 
-    // Fixture precondition. AmsBackendMock::set_slot_info() silently drops
+    // Fixture precondition. AmsBackendMock::apply_user_edit() silently drops
     // status, so ActiveLaneMock's override is the only thing staging this — if
     // it ever stops working, fail HERE rather than quietly asserting about a
     // lane whose status is still the mock's ctor default.

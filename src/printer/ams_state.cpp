@@ -2166,7 +2166,7 @@ void AmsState::sync_from_backend() {
                     updated.spool_name = tools[ti].spool_name;
                     updated.remaining_weight_g = tools[ti].remaining_weight_g;
                     updated.total_weight_g = tools[ti].total_weight_g;
-                    backend->set_slot_info(i, updated, false);
+                    backend->sync_external_identity(i, updated);
                 }
             }
         }

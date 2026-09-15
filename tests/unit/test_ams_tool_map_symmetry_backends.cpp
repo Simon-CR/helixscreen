@@ -31,6 +31,7 @@
 
 #include "ui_update_queue.h"
 
+#include "../test_helpers/backend_user_edit.h"
 #include "ams_backend_cfs.h"
 #include "ams_backend_mock.h"
 #include "ams_backend_toolchanger.h"
@@ -424,7 +425,7 @@ TEST_CASE("ToolChanger set_tool_mapping moves the lane badge with the map",
     CHECK(backend.captured.back() == "ASSIGN_TOOL TOOL=T2 N=0");
 }
 
-TEST_CASE("ToolChanger set_slot_info remap moves the lane badge with the map",
+TEST_CASE("ToolChanger apply_user_edit remap moves the lane badge with the map",
           "[ams][toolchanger][tool_map]") {
     // The AMS slot-edit modal's path into the same remap. It wrote both fields
     // by hand and evicted neither, so a swap ended with two lanes claiming one
@@ -433,7 +434,7 @@ TEST_CASE("ToolChanger set_slot_info remap moves the lane badge with the map",
 
     helix::SlotInfo edit = backend.get_slot_info(1);
     edit.mapped_tool = 3;
-    REQUIRE(backend.set_slot_info(1, edit).success());
+    REQUIRE(helix::test::apply_edit(backend, 1, edit).success());
 
     auto info = backend.get_system_info();
     CHECK(mapped_tool_of(info, 1) == 3);
@@ -599,7 +600,7 @@ TEST_CASE("Mock remap override clears a previous override", "[ams][mock]") {
     require_symmetric(info);
 }
 
-TEST_CASE("Mock set_slot_info does not change slot status", "[ams][mock]") {
+TEST_CASE("Mock apply_user_edit does not change slot status", "[ams][mock]") {
     // Same contract as every real backend: status is firmware-derived, so this
     // path carries filament metadata only. It used to drop `status` in silence,
     // which cost a debugging cycle — a test helper wrote status through here,
@@ -613,7 +614,7 @@ TEST_CASE("Mock set_slot_info does not change slot status", "[ams][mock]") {
     helix::SlotInfo edit = backend.get_slot_info(1);
     edit.status = helix::SlotStatus::LOADED; // ignored
     edit.material = "PETG";                  // applied
-    REQUIRE(backend.set_slot_info(1, edit).success());
+    REQUIRE(helix::test::apply_edit(backend, 1, edit).success());
 
     auto after = backend.get_slot_info(1);
     CHECK(after.status == helix::SlotStatus::EMPTY);

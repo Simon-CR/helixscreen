@@ -183,7 +183,7 @@ struct CommitFixture : LVGLTestFixture {
 
         SlotInfo slot = backend->get_slot_info(0);
         slot.spoolman_id = spoolman_id;
-        backend->set_slot_info(0, slot, /*persist=*/false);
+        backend->sync_external_identity(0, slot);
         return &api;
     }
 };
@@ -386,7 +386,7 @@ TEST_CASE("commit_slot_edit leaves server active spool alone on a no-link clear"
     SlotInfo seeded = f.backend->get_slot_info(1);
     seeded.material = "PLA";
     seeded.spoolman_id = 0;
-    f.backend->set_slot_info(1, seeded, /*persist=*/false);
+    f.backend->sync_external_identity(1, seeded);
 
     SlotInfo original = f.backend->get_slot_info(1);
     REQUIRE(original.spoolman_id == 0);
@@ -423,7 +423,7 @@ TEST_CASE("commit_slot_edit invalidates identity cache on link change", "[ams][s
     CHECK(SpoolmanManager::find_identity(170).has_value());
 }
 
-TEST_CASE("commit_slot_edit propagates set_slot_info failure", "[ams][commit]") {
+TEST_CASE("commit_slot_edit propagates apply_user_edit failure", "[ams][commit]") {
     CommitFixture f;
     f.setup(169);
     auto& ams = AmsState::instance();
@@ -439,13 +439,13 @@ TEST_CASE("commit_slot_edit propagates set_slot_info failure", "[ams][commit]") 
     // subject — that is exactly what must NOT happen.
     SlotInfo drifted = f.backend->get_slot_info(0);
     drifted.color_rgb = 0xCC2244;
-    f.backend->set_slot_info(0, drifted, /*persist=*/false);
+    f.backend->sync_external_identity(0, drifted);
 
     SlotInfo original = f.backend->get_slot_info(0);
     SlotInfo edited = original;
     edited.spoolman_id = 0;
 
-    // Slot 99 does not exist on a 4-slot backend -> set_slot_info fails.
+    // Slot 99 does not exist on a 4-slot backend -> apply_user_edit fails.
     AmsError err = ams.commit_slot_edit(99, original, edited);
 
     // REQUIRED: the backend failure propagates to the caller.
@@ -466,7 +466,7 @@ TEST_CASE("context-menu clear wipes slot and clears server active spool",
     // unlink. The dispatch constructs its own cleared copy from get_slot_info.
     SlotInfo seeded = f.backend->get_slot_info(0);
     seeded.material = "PLA";
-    f.backend->set_slot_info(0, seeded, /*persist=*/false);
+    f.backend->sync_external_identity(0, seeded);
 
     // Server thinks 169 is active — the state bundle F2LNLQCC left dangling
     // when the quick-clear only wiped the backend slot.
@@ -525,7 +525,7 @@ TEST_CASE("context-menu clear on the bypass sentinel names the external spool",
 
     SlotInfo lane = f.backend->get_slot_info(0);
     lane.material = "PLA";
-    f.backend->set_slot_info(0, lane, /*persist=*/false);
+    f.backend->sync_external_identity(0, lane);
     REQUIRE(f.backend->get_slot_info(0).material == "PLA");
 
     std::vector<std::string> notes;
@@ -584,7 +584,7 @@ TEST_CASE("commit_slot_edit records only the fields the user changed", "[ams][co
     SlotInfo original = f.backend->get_slot_info(0);
     original.color_rgb = 0xFFFFFF;
     original.material = "PETG";
-    f.backend->set_slot_info(0, original, /*persist=*/false);
+    f.backend->sync_external_identity(0, original);
     original = f.backend->get_slot_info(0);
 
     SlotInfo edited = original;
@@ -659,7 +659,7 @@ TEST_CASE("an unlink records the binding, not the fields it cleared", "[ams][com
     original.brand = "Kingroon";
     original.material = "PETG";
     original.color_rgb = 0xFFFFFF;
-    f.backend->set_slot_info(0, original, /*persist=*/false);
+    f.backend->sync_external_identity(0, original);
     original = f.backend->get_slot_info(0);
     REQUIRE(original.spoolman_id == 7);
 
@@ -738,7 +738,7 @@ TEST_CASE("an unlink the backend refuses leaves the server's record standing",
     CommitFixture f;
     f.setup(0);
 
-    // Slot 5 is past the mock's four slots, so set_slot_info refuses it, but
+    // Slot 5 is past the mock's four slots, so apply_user_edit refuses it, but
     // its id is inside this backend's block, so the store holds a record there.
     helix::test::file_override_as_lane_records(*f.backend, 5, linked_record(42));
     REQUIRE(helix::ams::lane_sources(lane_of(5)).spoolman.has_value());
@@ -1199,7 +1199,7 @@ TEST_CASE("a commit the backend rejects records no declaration", "[ams][commit][
     SlotInfo edited = original;
     edited.color_rgb = 0xBCBCBC;
 
-    // Slot 5 is past the mock's four slots, so set_slot_info refuses it.
+    // Slot 5 is past the mock's four slots, so apply_user_edit refuses it.
     const AmsError err = AmsState::instance().commit_slot_edit(5, original, edited);
     REQUIRE_FALSE(err.success());
 
@@ -1232,7 +1232,7 @@ TEST_CASE("clearing an already-unlinked slot declares no colour and no weight",
     original.material = "PETG";
     original.remaining_weight_g = 620.0f;
     original.total_weight_g = 1000.0f;
-    f.backend->set_slot_info(0, original, /*persist=*/false);
+    f.backend->sync_external_identity(0, original);
     original = f.backend->get_slot_info(0);
     REQUIRE(original.spoolman_id == 0);
 
@@ -1267,7 +1267,7 @@ TEST_CASE("a field cleared to empty is still the user's declaration", "[ams][com
 
     SlotInfo original = f.backend->get_slot_info(0);
     original.material = "PETG";
-    f.backend->set_slot_info(0, original, /*persist=*/false);
+    f.backend->sync_external_identity(0, original);
     original = f.backend->get_slot_info(0);
     REQUIRE(original.material == "PETG");
 
@@ -1310,7 +1310,7 @@ TEST_CASE("a weight edit finer than the editor's own tolerance is not a declarat
     SlotInfo original = f.backend->get_slot_info(0);
     original.remaining_weight_g = 620.0f;
     original.total_weight_g = 1000.0f;
-    f.backend->set_slot_info(0, original, /*persist=*/false);
+    f.backend->sync_external_identity(0, original);
     original = f.backend->get_slot_info(0);
 
     SlotInfo drifted = original;
@@ -1412,7 +1412,7 @@ TEST_CASE("a Happy Hare binding change that reached firmware is filed despite a 
 
     SlotInfo linked = hh->get_slot_info(0);
     linked.spoolman_id = 42;
-    REQUIRE(hh->set_slot_info(0, linked, /*persist=*/false).success());
+    REQUIRE(hh->sync_external_identity(0, linked).success());
     helix::test::file_override_as_lane_records(*hh, 0, linked_record(42));
     REQUIRE(helix::ams::lane_sources(hh.lane(0)).spoolman.has_value());
 

@@ -18,6 +18,7 @@
 #include "ams_types.h"
 #include "printer_discovery.h"
 #include "test_helpers/ad5x_ifs_test_access.h"
+#include "test_helpers/backend_user_edit.h"
 
 #include <algorithm>
 #include <memory>
@@ -629,7 +630,7 @@ TEST_CASE("AD5X IFS module ops dispatch the module's macros", "[ams][ad5x_ifs][i
     }
 }
 
-TEST_CASE("AD5X IFS set_slot_info writes through IFS_SET_MATERIAL on the module",
+TEST_CASE("AD5X IFS apply_user_edit writes through IFS_SET_MATERIAL on the module",
           "[ams][ad5x_ifs][ifs_module]") {
     TestableModuleBackend backend;
     Ad5xIfsTestAccess::set_running(backend, true);
@@ -639,7 +640,7 @@ TEST_CASE("AD5X IFS set_slot_info writes through IFS_SET_MATERIAL on the module"
     info.color_rgb = 0x7EC8E3;
     info.material = "PLA";
 
-    REQUIRE(backend.set_slot_info(1, info, /*persist=*/true).success());
+    REQUIRE(helix::test::apply_edit(backend, 1, info).success());
 
     // Bare hex — klipper's parser eats '#' as a comment start, and the module
     // re-prefixes on its side. SLOT is 1-based.

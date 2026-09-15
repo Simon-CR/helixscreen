@@ -209,9 +209,9 @@ TEST_CASE("persist=false is a preview, not a memory", "[ams][toolchanger][slot_m
     helix::test::RegisteredBackend<SlotMemoryHelper> h_reg(4);
     SlotMemoryHelper& h = *h_reg;
     helix::SlotInfo info = blue_petg();
-    REQUIRE(h.set_slot_info(1, info, /*persist=*/false).success());
+    REQUIRE(h.sync_external_identity(1, info).success());
 
-    // Visible immediately, because set_slot_info still writes the live SlotInfo.
+    // Visible immediately, because the sync still writes the live SlotInfo.
     CHECK(h.get_slot_info(1).color_rgb == 0x1E5AA8);
 
     // But nothing was staged, so the wipe takes it.
@@ -220,7 +220,7 @@ TEST_CASE("persist=false is a preview, not a memory", "[ams][toolchanger][slot_m
 }
 
 TEST_CASE("An edit that also remaps a tool keeps both", "[ams][toolchanger][slot_memory]") {
-    // set_slot_info() does double duty: metadata AND an ASSIGN_TOOL remap when
+    // apply_user_edit() does double duty: metadata AND an ASSIGN_TOOL remap when
     // mapped_tool changed. The remap path returns early, so a persist placed
     // after it would silently drop the metadata on exactly this call.
     helix::test::RegisteredBackend<SlotMemoryHelper> h_reg(4);
@@ -410,7 +410,7 @@ TEST_CASE("a tool changer rediscovery keeps a lane whose only identity is its Sp
     // rediscovery's reset takes off again, and stages no override.
     helix::SlotInfo preview = h.get_slot_info(1);
     preview.spool_name = "Preview name";
-    REQUIRE(h.set_slot_info(1, preview, /*persist=*/false).success());
+    REQUIRE(h.sync_external_identity(1, preview).success());
     REQUIRE(h.get_slot_info(1).spool_name == "Preview name");
     REQUIRE_FALSE(helix::ToolChangerTestAccess::has_overrides(h));
 

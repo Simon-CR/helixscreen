@@ -1394,10 +1394,10 @@ int AmsBackendQidi::resolve_vendor_id(const std::map<int, std::string>& vendors,
     return 0;
 }
 
-AmsError AmsBackendQidi::set_slot_info(int slot_index, const SlotInfo& info, bool persist,
-                                       const helix::ams::Observation* /*declared*/) {
-    spdlog::info("{} set_slot_info(slot={}, material='{}', brand='{}', persist={})",
-                 backend_log_tag(), slot_index, info.material, info.brand, persist);
+AmsError AmsBackendQidi::apply_user_edit(int slot_index, const SlotInfo& info,
+                                         const helix::ams::Observation& /*declared*/) {
+    spdlog::info("{} apply_user_edit(slot={}, material='{}', brand='{}')", backend_log_tag(),
+                 slot_index, info.material, info.brand);
 
     int fila_id = 0;
     int color_id = 0;
@@ -1435,7 +1435,7 @@ AmsError AmsBackendQidi::set_slot_info(int slot_index, const SlotInfo& info, boo
                       " VALUE=" + std::to_string(fila_id));
         wrote_any = true;
     } else {
-        spdlog::warn("{} set_slot_info: no fila match for material='{}' — "
+        spdlog::warn("{} apply_user_edit: no fila match for material='{}' — "
                      "skipping filament_slot write",
                      backend_log_tag(), info.material);
     }
@@ -1455,18 +1455,23 @@ AmsError AmsBackendQidi::set_slot_info(int slot_index, const SlotInfo& info, boo
     if (!wrote_any) {
         // Nothing resolved — soft success so the UI doesn't show an error, but
         // log loudly since the filas list probably hasn't loaded yet.
-        spdlog::warn("{} set_slot_info(slot={}): nothing mapped (filas list not "
+        spdlog::warn("{} apply_user_edit(slot={}): nothing mapped (filas list not "
                      "loaded?) — no SAVE_VARIABLE issued",
                      backend_log_tag(), slot_index);
     }
     return AmsErrorHelper::success();
 }
 
+AmsError AmsBackendQidi::sync_external_identity(int slot_index, const SlotInfo& info) {
+    return apply_user_edit(slot_index, info,
+                           helix::ams::Observation(helix::ams::ObservationSource::LocalUser));
+}
+
 void AmsBackendQidi::update_slot_weight_impl(int /*slot_index*/, float /*remaining_weight_g*/,
                                              float /*total_weight_g*/, bool /*persist*/) {
     // The box has nowhere to put a weight: its save_variables hold filament,
-    // colour and vendor ids alone, and set_slot_info() writes those whatever
-    // persist says. The wrapper has already filed the reading on the lane.
+    // colour and vendor ids alone, and apply_user_edit() writes those. The wrapper has already
+    // filed the reading on the lane.
 }
 
 AmsError AmsBackendQidi::set_tool_mapping_impl(int tool_number, int slot_index) {

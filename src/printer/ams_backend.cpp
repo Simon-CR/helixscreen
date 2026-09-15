@@ -368,7 +368,7 @@ void AmsBackend::apply_resolved_lane(SlotInfo& slot, int slot_index) {
 AmsError AmsBackend::commit_user_edit(int slot_index, const SlotInfo& original,
                                       const SlotInfo& info) {
     // The user's statement, answered once from the editor's own before and
-    // after. set_slot_info() records the stored authorship from this same
+    // after. apply_user_edit() records the stored authorship from this same
     // answer rather than diffing its own read of the slot, which a frame
     // landing while the editor was open has already moved.
     const helix::ams::Observation declaration = helix::ams::user_edit_observation(original, info);
@@ -384,7 +384,7 @@ AmsError AmsBackend::commit_user_edit(int slot_index, const SlotInfo& original,
         applied.product_name.clear();
     }
 
-    AmsError err = set_slot_info(slot_index, applied, /*persist=*/true, &declaration);
+    AmsError err = apply_user_edit(slot_index, applied, declaration);
     // A partly applied edit still changed what it applied: a binding that
     // reached firmware is bound whatever the call says about the rest.
     if (!err.success() && !err.partially_applied) {

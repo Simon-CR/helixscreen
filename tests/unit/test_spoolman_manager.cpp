@@ -568,7 +568,7 @@ struct SpoolmanLaneFixture : SpoolmanFixture {
     static void link(AmsBackend& backend, int slot, int spool_id) {
         SlotInfo info = backend.get_slot_info(slot);
         info.spoolman_id = spool_id;
-        REQUIRE(backend.set_slot_info(slot, info, /*persist=*/false).success());
+        REQUIRE(backend.sync_external_identity(slot, info).success());
     }
 };
 

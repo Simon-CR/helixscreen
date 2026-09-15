@@ -485,56 +485,49 @@ AmsError AmsBackendAce::cancel() {
 // Configuration
 // ============================================================================
 
-AmsError AmsBackendAce::set_slot_info(int slot_index, const SlotInfo& info, bool persist,
-                                      const helix::ams::Observation* declared) {
+namespace {
+
+/// Put @p info's filament fields on @p slot, covering every SlotInfo field the
+/// caller may have set, so get_slot_info returns them at once.
+void write_filament_fields(SlotInfo& slot, const SlotInfo& info) {
+    slot.color_rgb = info.color_rgb;
+    slot.color_name = info.color_name;
+    slot.material = info.material;
+    slot.brand = info.brand;
+    // Carry the catalog product identity through a sync too: one that dropped
+    // it would make the editor snap back to a different variant on the next
+    // get_slot_info().
+    slot.catalog_id = info.catalog_id;
+    slot.product_name = info.product_name;
+    slot.spool_name = info.spool_name;
+    slot.spoolman_id = info.spoolman_id;
+    slot.spoolman_vendor_id = info.spoolman_vendor_id;
+    slot.remaining_weight_g = info.remaining_weight_g;
+    slot.total_weight_g = info.total_weight_g;
+}
+
+} // namespace
+
+AmsError AmsBackendAce::apply_user_edit(int slot_index, const SlotInfo& info,
+                                        const helix::ams::Observation& declared) {
     {
         std::lock_guard<std::mutex> lock(mutex_);
 
-        // Validate slot index
-        if (system_info_.units.empty() || slot_index < 0 ||
-            slot_index >= static_cast<int>(system_info_.units[0].slots.size())) {
+        SlotInfo* slot = mutable_slot_locked(slot_index);
+        if (!slot) {
             return AmsErrorHelper::invalid_slot(lane_noun(), slot_index, 0);
         }
+        write_filament_fields(*slot, info);
 
-        // Update in-memory slot state so get_slot_info returns the edit
-        // immediately — covers every SlotInfo field the caller may have set,
-        // including persist=false previews that must survive until the next
-        // firmware parse.
-        auto& slot = system_info_.units[0].slots[slot_index];
-        // The lane as it stood before this edit. stage_user_override needs it to
-        // tell what the user moved from what the editor merely carried back, so
-        // it has to be taken before the writes below.
-        const SlotInfo prior_slot = slot;
-        slot.color_rgb = info.color_rgb;
-        slot.color_name = info.color_name;
-        slot.material = info.material;
-        slot.brand = info.brand;
-        // Carry the catalog product identity through preview writes too — a
-        // persist=false preview that dropped it would make the editor snap
-        // back to a different variant on the next get_slot_info().
-        slot.catalog_id = info.catalog_id;
-        slot.product_name = info.product_name;
-        slot.spool_name = info.spool_name;
-        slot.spoolman_id = info.spoolman_id;
-        slot.spoolman_vendor_id = info.spoolman_vendor_id;
-        slot.remaining_weight_g = info.remaining_weight_g;
-        slot.total_weight_g = info.total_weight_g;
-
-        // For persist=true, stage the override into overrides_ so the edit
-        // survives a restart; the lane's own declaration, filed when the edit
-        // is committed, is what apply_resolved_lane paints on every subsequent
-        // parse. For persist=false we explicitly do NOT touch overrides_ — preview
-        // edits are in-memory only and will be overwritten by the next
-        // firmware parse (expected preview contract).
-        if (persist) {
-            helix::ams::stage_user_override(overrides_, slot_index, prior_slot, info, declared);
-        }
+        // Stage the override into overrides_ so the edit survives a restart;
+        // the lane's own declaration, filed when the edit is committed, is what
+        // apply_resolved_lane paints on every subsequent parse.
+        helix::ams::stage_user_override(overrides_, slot_index, info, declared);
     }
 
-    spdlog::info("[ACE] Updated slot {} info (persist={}): {} {}", slot_index, persist,
-                 info.material, info.color_name);
+    spdlog::info("[ACE] Updated slot {} info: {} {}", slot_index, info.material, info.color_name);
 
-    if (persist && override_store_) {
+    if (override_store_) {
         // Re-read from overrides_ under the lock to pick up the staged copy.
         helix::ams::FilamentSlotOverride ovr_to_save;
         {
@@ -558,6 +551,24 @@ AmsError AmsBackendAce::set_slot_info(int slot_index, const SlotInfo& info, bool
             });
     }
 
+    emit_event(EVENT_SLOT_CHANGED, std::to_string(slot_index));
+    return AmsErrorHelper::success();
+}
+
+AmsError AmsBackendAce::sync_external_identity(int slot_index, const SlotInfo& info) {
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+
+        SlotInfo* slot = mutable_slot_locked(slot_index);
+        if (!slot) {
+            return AmsErrorHelper::invalid_slot(lane_noun(), slot_index, 0);
+        }
+        // overrides_ is left alone: a synced value lives in memory only, and
+        // the next firmware parse overwrites it.
+        write_filament_fields(*slot, info);
+    }
+
+    spdlog::info("[ACE] Synced slot {} info: {} {}", slot_index, info.material, info.color_name);
     emit_event(EVENT_SLOT_CHANGED, std::to_string(slot_index));
     return AmsErrorHelper::success();
 }

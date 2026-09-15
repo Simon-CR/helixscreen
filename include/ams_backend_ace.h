@@ -132,8 +132,9 @@ class AmsBackendAce : public AmsSubscriptionBackend {
     // Configuration
     // ========================================================================
 
-    AmsError set_slot_info(int slot_index, const SlotInfo& info, bool persist = true,
-                           const helix::ams::Observation* declared = nullptr) override;
+    AmsError apply_user_edit(int slot_index, const SlotInfo& info,
+                             const helix::ams::Observation& declared) override;
+    AmsError sync_external_identity(int slot_index, const SlotInfo& info) override;
     void persist_slot_weight(int slot_index, float remaining_weight_g,
                              float total_weight_g) override;
 
@@ -494,8 +495,8 @@ class AmsBackendAce : public AmsSubscriptionBackend {
 
     // User-provided per-slot metadata (brand, spool name, spoolman IDs,
     // remaining weight, etc.) layered over firmware-reported state.
-    // Both writers (on_started initial load, set_slot_info persist path) hold
-    // mutex_; so do the readers (set_slot_info's re-read of the staged record,
+    // Both writers (on_started initial load, apply_user_edit) hold
+    // mutex_; so do the readers (apply_user_edit's re-read of the staged record,
     // clear_override_locked).
     std::unique_ptr<helix::ams::FilamentSlotOverrideStore> override_store_;
     std::unordered_map<int, helix::ams::FilamentSlotOverride> overrides_;

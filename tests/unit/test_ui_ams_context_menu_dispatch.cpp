@@ -21,6 +21,7 @@
 #include "ui_ams_detail.h"
 
 #include "../lvgl_ui_test_fixture.h"
+#include "../test_helpers/backend_user_edit.h"
 #include "ams_backend_mock.h"
 #include "ams_state.h"
 
@@ -91,7 +92,7 @@ TEST_CASE_METHOD(LVGLUITestFixture, "ams dispatch: EJECT reaches the backend",
     info.slot_index = 1;
     info.material = "PLA";
     info.status = helix::SlotStatus::AVAILABLE;
-    backend->set_slot_info(1, info);
+    helix::test::apply_edit(*backend, 1, info);
     helix::AmsState::instance().sync_from_backend();
 
     // The whole point of #1258: the tap must actually arrive at the backend,

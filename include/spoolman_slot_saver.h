@@ -38,7 +38,7 @@ struct ChangeSet {
  *        new-spool creation or filament repoint.
  *
  * When `created_new_spool` or `repointed_filament` is true, the modal should
- * persist the new IDs back to the slot via backend->set_slot_info().
+ * persist the new IDs back to the slot via AmsState::commit_slot_edit().
  */
 struct SaveResult {
     bool success = false;

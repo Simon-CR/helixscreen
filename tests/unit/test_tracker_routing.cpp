@@ -69,7 +69,7 @@ struct TrackerRoutingFixture : LVGLTestFixture {
             info.remaining_weight_g = 1000.0f;
             info.total_weight_g = 1000.0f;
             info.spoolman_id = 0;
-            mock->set_slot_info(s, info, /*persist=*/false);
+            mock->sync_external_identity(s, info);
         }
 
         // Zero the aggregate + per-extruder subjects. PrinterPrintState
@@ -191,7 +191,7 @@ TEST_CASE_METHOD(LVGLTestFixture,
         info.remaining_weight_g = 1000.0f;
         info.total_weight_g = 1000.0f;
         info.spoolman_id = 0;
-        mock->set_slot_info(s, info, /*persist=*/false);
+        mock->sync_external_identity(s, info);
     }
 
     // select_slot on the mock synchronously updates current_slot (no motion).

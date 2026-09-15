@@ -1513,7 +1513,7 @@ check_weight_poll_is_weight_only() {
         echo "could not locate $file"
         return 1
     fi
-    if grep -qE '\->set_slot_info\(' "$file"; then
+    if grep -qE '\->(apply_user_edit|sync_external_identity)\(' "$file"; then
         echo "$file writes a whole SlotInfo; an automated weight poll must call update_slot_weight() instead"
         return 1
     fi
@@ -1528,7 +1528,7 @@ check_weight_poll_is_weight_only() {
 @test "the weight-poll gate fires when the poll writes a whole SlotInfo" {
     # Meta-test: a gate that cannot fail is not a gate.
     local mutated="${BATS_TEST_TMPDIR}/spoolman_manager_whole_struct.cpp"
-    sed -e 's@owner->update_slot_weight(@owner->set_slot_info(@' \
+    sed -e 's@owner->update_slot_weight(@owner->sync_external_identity(@' \
         src/printer/spoolman_manager.cpp > "$mutated"
 
     run check_weight_poll_is_weight_only "$mutated"
@@ -1757,7 +1757,7 @@ check_lane_store_write_is_private() {
 
 # --- The mock files its lane readings from exactly one call site ---
 # AmsBackendMock::publish_lane_observations() reads the persistent SlotInfo
-# that set_slot_info() writes a user's colour and material into, so it states
+# that apply_user_edit() writes a user's colour and material into, so it states
 # simulated firmware truth only where no edit can have landed yet: the tail of
 # start(). A second call site - from load_filament, unload_filament,
 # select_slot, change_tool or force_slot_status - would file the user's own

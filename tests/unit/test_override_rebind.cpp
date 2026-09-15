@@ -72,7 +72,7 @@ class AfcRebindHelper : public AmsBackendAfc {
     }
 
     /// Drive AmsBackend::record_own_spool_write exactly the way
-    /// set_slot_info's SET_SPOOL_ID path does: under mutex_, with the
+    /// apply_user_edit's SET_SPOOL_ID path does: under mutex_, with the
     /// firmware-reported id captured before the mirror was updated.
     void record_own_write(int slot_index, int new_id, int previous_firmware_id) {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -209,7 +209,7 @@ TEST_CASE_METHOD(LVGLTestFixture, "AFC own re-link survives the echo race (own-w
     helix::test::RegisteredBackend<AfcRebindHelper> afc_reg;
     AfcRebindHelper& afc = *afc_reg;
     // The editor path: stage the override, then record the write the way
-    // set_slot_info does when it emits SET_SPOOL_ID (previous id = what
+    // apply_user_edit does when it emits SET_SPOOL_ID (previous id = what
     // firmware last reported).
     afc.set_override(0, spool_override(169));
     afc.record_own_write(0, 169, 42);

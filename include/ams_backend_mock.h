@@ -181,8 +181,13 @@ class AmsBackendMock : public AmsBackend {
      * differs from the slot's current one logs a warning rather than silently
      * doing nothing — use force_slot_status() to stage a mock slot state.
      */
-    AmsError set_slot_info(int slot_index, const SlotInfo& info, bool persist = true,
-                           const helix::ams::Observation* declared = nullptr) override;
+    AmsError apply_user_edit(int slot_index, const SlotInfo& info,
+                             const helix::ams::Observation& declared) override;
+
+    /// The same write as apply_user_edit(). The mock has no firmware or store
+    /// behind a slot, so an edit and a sync differ only in what the caller
+    /// says the values are.
+    AmsError sync_external_identity(int slot_index, const SlotInfo& info) override;
     AmsError set_tool_mapping_impl(int tool_number, int slot_index) override;
 
     // Bypass mode
@@ -351,7 +356,7 @@ class AmsBackendMock : public AmsBackend {
      * @brief Force a slot's remaining filament length in metres (for testing)
      *
      * remaining_length_m is firmware-derived (the CFS insert probe produces it),
-     * so set_slot_info deliberately does not copy it - the same discipline as
+     * so apply_user_edit deliberately does not copy it - the same discipline as
      * status. Stage it here instead when a test needs a measured or sentinel
      * length (100 = never measured, 255 = failed probe).
      *
@@ -769,6 +774,9 @@ class AmsBackendMock : public AmsBackend {
      * @brief Initialize mock state with sample data
      */
     void init_mock_data();
+
+    /// The slot write apply_user_edit() and sync_external_identity() share.
+    AmsError write_slot(int slot_index, const SlotInfo& info);
 
     /**
      * @brief set_snapmaker_print_task() for callers already holding mutex_.
