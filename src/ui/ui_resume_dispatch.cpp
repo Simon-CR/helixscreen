@@ -13,6 +13,7 @@
 #include "i_moonraker_api.h"
 #include "lvgl/src/others/translation/lv_translation.h"
 #include "moonraker_job_api.h"
+#include "print_start_checks.h"
 #include "printer_state.h"
 #include "standard_macros.h"
 
@@ -46,6 +47,8 @@ void restart_from_beginning(IMoonrakerAPI* api, const std::string& filename,
         return;
     }
 
+    helix::warn_printer_stop_check_skipped("a restart from the beginning", filename,
+                                           "a restart does not scan the file");
     spdlog::info("{} Restart-from-beginning confirmed; running "
                  "SDCARD_RESET_FILE + CANCEL_PRINT_BASE then start_print({})",
                  log_prefix, filename);

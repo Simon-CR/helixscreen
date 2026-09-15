@@ -54,6 +54,20 @@ namespace helix {
 /// (kept separate so this header stays LVGL-free).
 enum class GateSeverity { Info, Warning, Error };
 
+/// What the file scan found about commands this printer treats as an emergency stop.
+struct PrinterStopCheck {
+    enum class State {
+        NotRun, ///< No answer: no scan of this file, a failed download, or unread macros
+        Clean,  ///< The scanned lines call none of them
+        Stops,  ///< The file calls one
+    };
+    State state = State::NotRun;
+    std::string not_run_reason; ///< Why, when NotRun
+    std::string command;        ///< The first call's command word as the file writes it
+    size_t line_number = 0;     ///< Its 1-indexed line
+    std::string stop_message;   ///< The macro's literal stop message; empty when unknown
+};
+
 /// Everything a gate may read. Gathered fresh by the controller per pipeline
 /// (re-)entry; gates never fetch singleton state themselves.
 struct PrintStartContext {
@@ -72,6 +86,9 @@ struct PrintStartContext {
     /// "unknown", never "zero".
     std::vector<double> tool_grams;
     size_t filament_color_count = 0; ///< filament_colors_.size() on the controller
+
+    /// The printer-stopping command scan of this file (PrintPreparationManager).
+    PrinterStopCheck printer_stop;
 
     // ---- environment (from AmsState / FilamentSensorManager) ----
     bool ams_available = false;           ///< AmsState::is_available()
@@ -184,8 +201,12 @@ std::vector<LaneWeightShortfall> insufficient_lane_weights_in(const PrintStartCo
 /// path (gcode material vs external spool), with filament-database temps.
 std::vector<MaterialMismatchDetail> material_mismatches_in(const PrintStartContext& ctx);
 
-/// The ordered production gate list. Order is behavior-critical: it preserves
-/// the pre-pipeline check order with the two new gates inserted at 2 and 3.
+/// The ordered production gate list. Order is behavior-critical.
 const std::vector<PrintStartGate>& default_print_start_gates();
+
+/// Log that a print is starting without the printer-stopping command check.
+/// @param start_path The in-app path starting it, as the log line names it.
+void warn_printer_stop_check_skipped(std::string_view start_path, std::string_view filename,
+                                     std::string_view reason);
 
 } // namespace helix

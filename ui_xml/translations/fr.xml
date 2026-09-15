@@ -1106,6 +1106,7 @@
   <translation tag="FilamentSensor" fr="Capteur de filament"/>
   <translation tag="File" fr="Fichier"/>
   <translation tag="File Size" fr="Taille du fichier"/>
+  <translation tag="File Will Stop the Printer" fr="Le fichier arrêtera l&apos;imprimante"/>
   <translation tag="Filename" fr="Nom du fichier"/>
   <translation tag="Filter Fan" fr="Ventilateur de filtration"/>
   <translation tag="Filter Fan: Off" fr="Ventilateur de filtration : éteint"/>
@@ -1438,6 +1439,7 @@
   <translation tag="Lifetime Print Stats" fr="Statistiques d&apos;impression totales"/>
   <translation tag="Light" fr="Clair"/>
   <translation tag="Light will switch when the current operation finishes" fr="La lumière basculera dès que l&apos;opération en cours sera terminée."/>
+  <translation tag="Line {} calls {}, which this printer treats as an emergency stop. Re-slice the file with a profile made for this printer." fr="La ligne {} appelle {}, que cette imprimante traite comme un arrêt d&apos;urgence. Retranchez le fichier avec un profil conçu pour cette imprimante."/>
   <translation tag="Listen to all theme sounds" fr="Écouter tous les sons du thème"/>
   <translation tag="Listening" fr="À l&apos;écoute"/>
   <translation tag="Live view from your webcam" fr="Vue en direct de votre webcam"/>
@@ -2026,6 +2028,7 @@
   <translation tag="Printer image set to auto-detect" fr="Image de l&apos;imprimante en auto-détection"/>
   <translation tag="Printer is busy - {} stays in the queue" fr="L&apos;imprimante est occupée – {} reste dans la file"/>
   <translation tag="Printer is not paired — pair it first" fr="L&apos;imprimante n&apos;est pas appairée — appairez-la d&apos;abord"/>
+  <translation tag="Printer message: {}" fr="Message de l&apos;imprimante : {}"/>
   <translation tag="Printer name" fr="Nom de l&apos;imprimante"/>
   <translation tag="Printer not connected" fr="Imprimante non connectée"/>
   <translation tag="Printer not ready" fr="Imprimante non prête"/>

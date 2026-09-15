@@ -143,6 +143,26 @@ std::string build_empty_lane_message(const std::vector<std::pair<int, int>>& emp
 
 // ---- gate evaluate-functions (dialog-bearing halves of the rules above) ----
 
+CheckResult gate_printer_stopping_command(const PrintStartContext& ctx) {
+    const PrinterStopCheck& stop = ctx.printer_stop;
+    if (stop.state != PrinterStopCheck::State::Stops) {
+        return pass_result();
+    }
+    CheckResult r;
+    r.verdict = CheckResult::Verdict::Block;
+    r.severity = GateSeverity::Error;
+    r.title = lv_tr("File Will Stop the Printer");
+    r.body = fmt::format(fmt::runtime(lv_tr("Line {} calls {}, which this printer treats as an "
+                                            "emergency stop. Re-slice the file with a profile "
+                                            "made for this printer.")),
+                         stop.line_number, stop.command);
+    if (!stop.stop_message.empty()) {
+        r.body += "\n\n";
+        r.body += fmt::format(fmt::runtime(lv_tr("Printer message: {}")), stop.stop_message);
+    }
+    return r;
+}
+
 CheckResult gate_insufficient_spool_weight(const PrintStartContext& ctx) {
     auto weights = insufficient_spool_weight_in(ctx);
     if (!weights.has_value()) {
@@ -782,9 +802,11 @@ std::vector<MaterialMismatchDetail> material_mismatches_in(const PrintStartConte
 }
 
 const std::vector<PrintStartGate>& default_print_start_gates() {
-    // Order is behavior-preserving: the pre-pipeline check order, with the two
-    // new gates (bypass + unaccounted toolhead) ahead of the ported four.
+    // Order is the order the questions are asked in: the file itself first, then
+    // filament supply, then what is at the toolhead, then the mapping.
     static const std::vector<PrintStartGate> gates = {
+        // A file that shuts the printer down outranks every filament question.
+        {"printer_stopping_command", gate_printer_stopping_command},
         {"insufficient_spool_weight", gate_insufficient_spool_weight},
         // The lane-fed counterpart. Mutually exclusive with the spool check by
         // construction: that one returns early on a lane-fed AMS print, this
@@ -797,6 +819,12 @@ const std::vector<PrintStartGate>& default_print_start_gates() {
         {"material_compatibility", gate_material_compatibility},
     };
     return gates;
+}
+
+void warn_printer_stop_check_skipped(std::string_view start_path, std::string_view filename,
+                                     std::string_view reason) {
+    spdlog::warn("[PrintStart] Starting {} from {} without the printer-stopping command check: {}",
+                 filename, start_path, reason);
 }
 
 } // namespace helix

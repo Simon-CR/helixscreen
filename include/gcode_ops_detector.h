@@ -9,11 +9,19 @@
 #include <filesystem>
 #include <functional>
 #include <optional>
+#include <set>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace helix {
 namespace gcode {
+
+/// A line that runs one of the commands a caller is looking for.
+struct CommandHit {
+    std::string command;    ///< The command word as the file writes it
+    size_t line_number = 0; ///< 1-indexed
+};
 
 /**
  * @brief Type of pre-print operation detected in G-code
@@ -231,6 +239,27 @@ class GCodeOpsDetector {
 
     DetectionConfig config_;
     std::vector<OperationPattern> patterns_;
+
+  public:
+    /**
+     * @brief The command word of one G-code line
+     *
+     * The first token after any leading whitespace, ending at whitespace or a `;`.
+     * Empty for a blank or comment-only line.
+     */
+    [[nodiscard]] static std::string_view command_word(std::string_view line);
+
+    /**
+     * @brief The first line of @p content whose command word is one of @p commands
+     *
+     * Case-insensitive and exact on the whole word, so `m729 S1` is M729 and
+     * `M7290` is not. Only the command word counts: a name in a comment or in a
+     * later token is not a call. Scans every line of @p content.
+     *
+     * @param commands Upper-case command names.
+     */
+    [[nodiscard]] static std::optional<CommandHit>
+    find_first_command(std::string_view content, const std::set<std::string>& commands);
 };
 
 } // namespace gcode

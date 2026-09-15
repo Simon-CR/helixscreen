@@ -42,11 +42,13 @@
 
 #include "../lvgl_ui_test_fixture.h"
 #include "helix-xml/src/xml/lv_xml.h"
+#include "macro_param_cache.h"
 #include "moonraker_api_mock.h"
 #include "moonraker_client_mock.h"
 #include "printer_state.h"
 #include "tools_used_cache.h"
 
+#include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -170,7 +172,32 @@ class DelayedFileTransfers : public MoonrakerFileTransferAPIMock {
             root, path, max_bytes, std::move(on_success), std::move(on_error));
     }
 
+    /// Holds the preamble read the operations scan makes, the way hold_transfers
+    /// holds the whole-file download.
+    void download_file_partial(const std::string& root, const std::string& path, size_t max_bytes,
+                               StringCallback on_success, ErrorCallback on_error) override {
+        if (!hold_partials) {
+            MoonrakerFileTransferAPIMock::download_file_partial(
+                root, path, max_bytes, std::move(on_success), std::move(on_error));
+            return;
+        }
+        held_partials_.push_back([this, root, path, max_bytes, on_success = std::move(on_success),
+                                  on_error = std::move(on_error)]() {
+            MoonrakerFileTransferAPIMock::download_file_partial(root, path, max_bytes, on_success,
+                                                                on_error);
+        });
+    }
+
+    void release_held_partials() {
+        auto held = std::move(held_partials_);
+        held_partials_.clear();
+        for (auto& h : held) {
+            h();
+        }
+    }
+
     bool hold_transfers = false;
+    bool hold_partials = false;
     bool fail_tail_reads = false;
 
     /// How many footer reads the view has asked for. The tools-used cache
@@ -190,6 +217,7 @@ class DelayedFileTransfers : public MoonrakerFileTransferAPIMock {
 
   private:
     std::vector<std::function<void()>> held_;
+    std::vector<std::function<void()>> held_partials_;
 };
 
 /// MoonrakerAPIMock whose transfers() serves the holdable DelayedFileTransfers
@@ -696,4 +724,97 @@ TEST_CASE_METHOD(DetailDownloadFixture, "nothing outstanding issues no footer re
     CHECK(transfers_.tail_read_count == 1);
 
     pop_and_drain();
+}
+
+// ============================================================================
+// A Print tap waits for the printer-stopping command check
+// ============================================================================
+
+namespace {
+
+/// A .gcode in the mock's asset directory for one test.
+struct PlantedAsset {
+    std::string path;
+
+    PlantedAsset(const std::string& name, const std::string& content) {
+        for (const auto* prefix : {"", "../", "../../"}) {
+            const std::string dir = std::string(prefix) + "assets/test_gcodes";
+            if (std::filesystem::is_directory(dir)) {
+                path = dir + "/" + name;
+                break;
+            }
+        }
+        REQUIRE_FALSE(path.empty());
+        std::ofstream(path, std::ios::trunc) << content;
+    }
+    ~PlantedAsset() {
+        std::remove(path.c_str());
+    }
+    PlantedAsset(const PlantedAsset&) = delete;
+    PlantedAsset& operator=(const PlantedAsset&) = delete;
+};
+
+/// This printer's M729 is a macro that shuts it down.
+struct StopMacroCache {
+    StopMacroCache() {
+        nlohmann::json config;
+        config["gcode_macro M729"] = {
+            {"gcode", "{action_emergency_stop(\"M729 is not supported\")}"}};
+        helix::MacroParamCache::instance().populate_from_configfile(config, {"M729"});
+    }
+    ~StopMacroCache() {
+        helix::MacroParamCache::instance().clear();
+    }
+};
+
+} // namespace
+
+TEST_CASE_METHOD(DetailDownloadFixture,
+                 "A Print tap waits for the file scan's printer-stopping command check",
+                 "[print_select][detail_view][printer_stop]") {
+    CacheDirGuard guard;
+    EnvGuard mem_fail("HELIX_FORCE_GCODE_MEMORY_FAIL", "1");
+    StopMacroCache macros;
+
+    // Tools scan settles, the operations scan is held, the tap waits; releasing
+    // the scan releases the tap. Returns what the scan answered.
+    const auto tap_before_scan = [this](const std::string& name, const std::string& content) {
+        PlantedAsset file(name, content);
+        transfers_.hold_partials = true;
+        view_.show(name, "", "PLA", {"#FF0000"}, {}, content.size(), 42);
+        REQUIRE(wait_until([this]() { return view_.is_preflight_ready(); }, 15000));
+        REQUIRE_FALSE(view_.is_print_start_ready());
+
+        int taps = 0;
+        view_.run_when_preflight_ready([&taps]() { ++taps; });
+        drain_queue_chain();
+        CHECK(taps == 0);
+
+        transfers_.release_held_partials();
+        drain_queue_chain();
+        CHECK(taps == 1);
+        CHECK(view_.is_print_start_ready());
+
+        const helix::PrinterStopCheck check =
+            view_.get_prep_manager()->printer_stop_check_for(name);
+        pop_and_drain();
+        return check;
+    };
+
+    const std::string pid = std::to_string(::getpid());
+
+    SECTION("then blocks on a file that calls one") {
+        const auto check =
+            tap_before_scan("printer_stop_calls_" + pid + ".gcode", "G28\nM729\nG1 X10 Y10 E1\n");
+        REQUIRE(check.state == helix::PrinterStopCheck::State::Stops);
+        CHECK(check.command == "M729");
+        CHECK(check.line_number == 2);
+        CHECK(check.stop_message == "M729 is not supported");
+    }
+
+    SECTION("then starts a clean file") {
+        const auto check =
+            tap_before_scan("printer_stop_clean_" + pid + ".gcode", "G28\nG1 X10 Y10 E1\n");
+        CHECK(check.state == helix::PrinterStopCheck::State::Clean);
+    }
 }

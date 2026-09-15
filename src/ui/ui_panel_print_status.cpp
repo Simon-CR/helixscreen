@@ -51,6 +51,7 @@
 #include "memory_utils.h"
 #include "observer_factory.h"
 #include "preprint_predictor.h"
+#include "print_start_checks.h"
 #include "print_status_layout_decision.h"
 #include "print_status_preview_decision.h"
 #include "printer_state.h"
@@ -2124,6 +2125,8 @@ void PrintStatusPanel::handle_reprint_button() {
         // still works (no U1 pre-send).
         spdlog::warn("[{}] No print controller for reprint — using direct start (no U1 pre-send)",
                      get_name());
+        helix::warn_printer_stop_check_skipped("a reprint", filename,
+                                               "a reprint does not scan the file");
         api_->job().start_print(
             filename,
             lifetime_.bg_cb("PrintStatusPanel::reprint_ok",

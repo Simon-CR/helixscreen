@@ -1191,6 +1191,7 @@ translations:
   FilamentSensor: FilamentSensor
   File: File
   File Size: File Size
+  File Will Stop the Printer: File Will Stop the Printer
   Filename: Filename
   Filter Fan: 'Filter Fan'
   'Filter Fan: Off': 'Filter Fan: Off'
@@ -1568,6 +1569,7 @@ translations:
   Light: Light
   Light will switch when the current operation finishes: Light will switch when the
     current operation finishes
+  Line {} calls {}, which this printer treats as an emergency stop. Re-slice the file with a profile made for this printer.: Line {} calls {}, which this printer treats as an emergency stop. Re-slice the file with a profile made for this printer.
   Listen to all theme sounds: Listen to all theme sounds
   Listening: Listening
   Live view from your webcam: Live view from your webcam
@@ -2195,6 +2197,7 @@ translations:
   Printer image set to auto-detect: Printer image set to auto-detect
   Printer is busy - {} stays in the queue: Printer is busy - {} stays in the queue
   Printer is not paired — pair it first: Printer is not paired — pair it first
+  'Printer message: {}': 'Printer message: {}'
   Printer name: Printer name
   Printer not connected: Printer not connected
   Printer not ready: Printer not ready

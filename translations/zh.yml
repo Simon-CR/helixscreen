@@ -1125,6 +1125,7 @@ translations:
   FilamentSensor: 耗材传感器
   File: 文件
   File Size: 文件大小
+  File Will Stop the Printer: '文件会使打印机停止'
   Filename: 文件名
   Filter Fan: 滤网风扇
   'Filter Fan: Off': '滤网风扇: 关'
@@ -1474,6 +1475,7 @@ translations:
   Lifetime Print Stats: 累计打印统计
   Light: 浅色
   Light will switch when the current operation finishes: 灯光将在当前操作完成后切换
+  Line {} calls {}, which this printer treats as an emergency stop. Re-slice the file with a profile made for this printer.: '第 {} 行调用 {}，此打印机将其视为紧急停止。请使用为此打印机制作的配置重新切片该文件。'
   Listen to all theme sounds: 试听所有主题声音
   Listening: 正在监听
   Live view from your webcam: 摄像头实时画面
@@ -2076,6 +2078,7 @@ translations:
   Printer image set to auto-detect: 打印机图片已设为自动检测
   Printer is busy - {} stays in the queue: '打印机忙碌中 – {} 保留在队列中'
   Printer is not paired — pair it first: 打印机未配对 — 请先进行配对
+  'Printer message: {}': '打印机消息：{}'
   Printer name: 打印机名称
   Printer not connected: 打印机未连接
   Printer not ready: 打印机未就绪

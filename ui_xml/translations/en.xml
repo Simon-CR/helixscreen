@@ -1106,6 +1106,7 @@
   <translation tag="FilamentSensor" en="FilamentSensor"/>
   <translation tag="File" en="File"/>
   <translation tag="File Size" en="File Size"/>
+  <translation tag="File Will Stop the Printer" en="File Will Stop the Printer"/>
   <translation tag="Filename" en="Filename"/>
   <translation tag="Filter Fan" en="Filter Fan"/>
   <translation tag="Filter Fan: Off" en="Filter Fan: Off"/>
@@ -1438,6 +1439,7 @@
   <translation tag="Lifetime Print Stats" en="Lifetime Print Stats"/>
   <translation tag="Light" en="Light"/>
   <translation tag="Light will switch when the current operation finishes" en="Light will switch when the current operation finishes"/>
+  <translation tag="Line {} calls {}, which this printer treats as an emergency stop. Re-slice the file with a profile made for this printer." en="Line {} calls {}, which this printer treats as an emergency stop. Re-slice the file with a profile made for this printer."/>
   <translation tag="Listen to all theme sounds" en="Listen to all theme sounds"/>
   <translation tag="Listening" en="Listening"/>
   <translation tag="Live view from your webcam" en="Live view from your webcam"/>
@@ -2026,6 +2028,7 @@
   <translation tag="Printer image set to auto-detect" en="Printer image set to auto-detect"/>
   <translation tag="Printer is busy - {} stays in the queue" en="Printer is busy - {} stays in the queue"/>
   <translation tag="Printer is not paired — pair it first" en="Printer is not paired — pair it first"/>
+  <translation tag="Printer message: {}" en="Printer message: {}"/>
   <translation tag="Printer name" en="Printer name"/>
   <translation tag="Printer not connected" en="Printer not connected"/>
   <translation tag="Printer not ready" en="Printer not ready"/>
