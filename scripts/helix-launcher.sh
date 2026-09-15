@@ -167,6 +167,7 @@ helix_load_env_file() {
     #   - `VAR = value` (spaces around the equals sign)
     # Malformed lines emit a stderr warning instead of being dropped silently.
     _lineno=0
+    _helix_file_set=""
     while IFS= read -r _line || [ -n "$_line" ]; do
         _lineno=$((_lineno + 1))
         # Normalize: strip CR, trim whitespace, drop optional `export ` prefix.
@@ -200,14 +201,28 @@ helix_load_env_file() {
         if [ -z "$_existing" ]; then
             if ! eval "export $_line" 2>/dev/null; then
                 log "warning: ${_helix_env_file}:${_lineno}: failed to export: $_line"
+            else
+                case " ${_helix_file_set} " in
+                    *" $_var "*) ;;
+                    *) _helix_file_set="${_helix_file_set}${_helix_file_set:+ }$_var" ;;
+                esac
             fi
         elif [ "${HELIX_DEBUG:-0}" = "1" ]; then
             # DEBUG_MODE is derived later in this script; the raw variable
-            # is all that exists at parse time.
-            log "note: ${_helix_env_file}:${_lineno}: $_var already set in environment; file value ignored"
+            # is all that exists at parse time. The note names the winning
+            # source: a duplicate key earlier in this file, or the parent
+            # environment.
+            case " ${_helix_file_set} " in
+                *" $_var "*)
+                    log "note: ${_helix_env_file}:${_lineno}: $_var already set by an earlier line of this file; this value ignored"
+                    ;;
+                *)
+                    log "note: ${_helix_env_file}:${_lineno}: $_var already set in environment; file value ignored"
+                    ;;
+            esac
         fi
     done < "$_helix_env_file"
-    unset _line _var _existing _lineno _helix_env_file
+    unset _line _var _existing _lineno _helix_file_set _helix_env_file
 }
 
 # --print-env NAME: resolve NAME exactly as the env-file read resolves it
