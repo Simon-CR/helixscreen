@@ -160,13 +160,40 @@ TEST_CASE("ThermalRateManager estimate_heating_seconds", "[thermal_rate]") {
 
 TEST_CASE("ThermalRateManager apply_archetype_defaults", "[thermal_rate]") {
     ThermalRateManager manager;
-    manager.apply_archetype_defaults(350.0f);
+    manager.apply_archetype_defaults(350.0f, "");
     REQUIRE(manager.get_model("extruder").best_rate() == Catch::Approx(0.25f));
     REQUIRE(manager.get_model("heater_bed").best_rate() == Catch::Approx(2.0f));
 
     ThermalRateManager manager2;
-    manager2.apply_archetype_defaults(235.0f);
+    manager2.apply_archetype_defaults(235.0f, "");
     REQUIRE(manager2.get_model("heater_bed").best_rate() == Catch::Approx(1.0f));
+}
+
+TEST_CASE("ThermalRateManager takes measured rates from the printer database", "[thermal_rate]") {
+    // A 256mm bed reads as a medium bed (1.5 s/C) to the size guess.
+    constexpr float BED_X_MAX = 256.0f;
+
+    SECTION("Centauri Carbon: 24.5 to 105C took ~484s on the printer") {
+        ThermalRateManager manager;
+        manager.apply_archetype_defaults(BED_X_MAX, "Elegoo Centauri Carbon");
+        REQUIRE(manager.estimate_heating_seconds("heater_bed", 24.5f, 105.0f) >= 400.0f);
+        REQUIRE(manager.get_model("heater_bed").best_rate() == Catch::Approx(6.0f));
+        REQUIRE(manager.get_model("extruder").best_rate() == Catch::Approx(0.4f));
+    }
+
+    SECTION("A printer without measured rates keeps the size guess") {
+        ThermalRateManager manager;
+        manager.apply_archetype_defaults(BED_X_MAX, "Voron 2.4");
+        REQUIRE(manager.get_model("heater_bed").best_rate() == Catch::Approx(1.5f));
+        REQUIRE(manager.get_model("extruder").best_rate() == Catch::Approx(0.25f));
+    }
+
+    SECTION("A rate learned on the printer still wins") {
+        ThermalRateManager manager;
+        manager.get_model("heater_bed").load_history(4.0f);
+        manager.apply_archetype_defaults(BED_X_MAX, "Elegoo Centauri Carbon");
+        REQUIRE(manager.get_model("heater_bed").best_rate() == Catch::Approx(4.0f));
+    }
 }
 
 // ============================================================================

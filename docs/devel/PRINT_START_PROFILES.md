@@ -334,6 +334,17 @@ In `assets/config/printer_database.json`, add the `print_start_profile` field to
 
 The value must match the JSON filename without the `.json` extension.
 
+Two more fields give a printer's first print a measured estimate instead of a generic one:
+
+```json
+{
+  "print_start_default_phases": { "HOMING": 25, "SOAKING": 60, "BED_MESH": 2, "PURGING": 15 },
+  "thermal_rates": { "heater_bed": 6.0, "extruder": 0.4 }
+}
+```
+
+`print_start_default_phases` is seconds per phase the prediction history keeps a duration for (HOMING, SOAKING, QGL, Z_TILT, BED_MESH, CLEANING, PURGING); any other name is ignored with a warning. Its HOMING value is also the homing time the print details estimate shows, never below 20s. The printer's own phase timings replace these from the next completed print on. `thermal_rates` is seconds per degree C per heater (`extruder` or `heater_bed`; any other name is ignored with a warning), used by `ThermalRateManager::apply_archetype_defaults()` in place of its guess from the bed size. A completed pre-print, a timeout completion included, saves the rates it measured, but the app loads saved rates only at startup (`Application` calls `ThermalRateManager::load_from_config()`), so until the next restart the database rates stay in use.
+
 If a printer has no `print_start_profile` field, or the profile fails to load, the system falls back to `default.json`, then to the compiled-in profile `make_builtin_default()` builds. This three-level fallback chain means nothing ever breaks. The compiled-in copy is hand-maintained, and the `[parity]` test described under "Existing Profiles" below is the only thing holding it level with the JSON.
 
 ### Step 4: Add to PrinterDetector (if new printer)

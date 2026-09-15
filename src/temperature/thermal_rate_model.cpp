@@ -4,6 +4,7 @@
 #include "thermal_rate_model.h"
 
 #include "config.h"
+#include "printer_detector.h"
 #include "spdlog/spdlog.h"
 
 #include <algorithm>
@@ -109,7 +110,7 @@ float ThermalRateManager::estimate_heating_seconds(const std::string& heater_nam
 }
 
 void ThermalRateManager::load_from_config(helix::Config& config) {
-    for (const auto& heater : {"extruder", "heater_bed"}) {
+    for (const char* heater : PERSISTED_HEATERS) {
         std::string path = std::string("/thermal/rates/") + heater + "/heat_rate";
         float rate = config.get<float>(path, 0.0f);
         if (rate > 0.0f) {
@@ -131,7 +132,8 @@ void ThermalRateManager::save_to_config(helix::Config& config) {
     config.save();
 }
 
-void ThermalRateManager::apply_archetype_defaults(float bed_x_max) {
+void ThermalRateManager::apply_archetype_defaults(float bed_x_max,
+                                                  const std::string& printer_type) {
     // Extruder: most hotends heat at 0.2-0.3 s/°C (e.g. AD5M does 183°C in ~40s)
     models_["extruder"].set_default_rate(0.25f);
 
@@ -151,6 +153,12 @@ void ThermalRateManager::apply_archetype_defaults(float bed_x_max) {
 
     spdlog::info("thermal: archetype defaults — extruder=0.25, bed={:.1f} (bed_x_max={:.0f})",
                  bed_rate, bed_x_max);
+
+    for (const auto& [heater, rate] : PrinterDetector::get_thermal_rates(printer_type)) {
+        models_[heater].set_default_rate(rate);
+        spdlog::info("thermal: {} default {:.2f} s/°C from the database entry for '{}'", heater,
+                     rate, printer_type);
+    }
 }
 
 void ThermalRateManager::reset() {

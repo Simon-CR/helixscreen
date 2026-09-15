@@ -56,6 +56,7 @@ class PrintPreparationManagerTestAccess {
 };
 
 #include "../mocks/mock_websocket_server.h"
+#include "../test_helpers/preprint_config_scope.h"
 #include "../ui_test_utils.h"
 #include "app_globals.h"
 #include "capability_matrix.h"
@@ -67,6 +68,7 @@ class PrintPreparationManagerTestAccess {
 #include "moonraker_client_mock.h"
 #include "moonraker_error.h"
 #include "operation_registry.h"
+#include "preprint_predictor.h"
 #include "print_start_analyzer.h"
 #include "printer_detector.h"
 #include "printer_state.h"
@@ -660,6 +662,37 @@ TEST_CASE_METHOD(HelixTestFixture, "PrintPreparationManager: capabilities come f
         PrintPreparationManager standalone_manager;
         REQUIRE(PrintPreparationManagerTestAccess::get_pre_start_gcode_lines(standalone_manager)
                     .empty());
+    }
+}
+
+TEST_CASE_METHOD(HelixTestFixture,
+                 "PrintPreparationManager: estimate takes its homing time from the predictor",
+                 "[print_preparation][estimate]") {
+    lv_init_safe();
+    PrinterState& printer_state = get_printer_state();
+    PrinterStateTestAccess::reset(printer_state);
+    printer_state.init_subjects(false);
+
+    PrintPreparationManager manager;
+    manager.set_dependencies(nullptr, &printer_state);
+    lv_subject_t* estimate = manager.get_preprint_estimate_subject();
+    const int homing = static_cast<int>(helix::PrintStartPhase::HOMING);
+
+    // Heaters idle and no pre-print options: the estimate is the homing time.
+    SECTION("a printer with measured default phases") {
+        const std::string name = "Elegoo Centauri Carbon";
+        PreprintConfigScope config(name);
+        printer_state.set_printer_type_sync(name);
+        manager.recalculate_estimate();
+        REQUIRE(lv_subject_get_int(estimate) ==
+                PrinterDetector::get_print_start_default_phases(name).at(homing));
+    }
+
+    SECTION("a printer on the generic defaults") {
+        PreprintConfigScope config;
+        manager.recalculate_estimate();
+        REQUIRE(lv_subject_get_int(estimate) ==
+                helix::PreprintPredictor::default_phase_durations().at(homing));
     }
 }
 

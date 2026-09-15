@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <map>
 #include <optional>
@@ -91,13 +92,20 @@ class Config;
  */
 class ThermalRateManager {
   public:
+    /// Heaters whose rates load_from_config() reads back between sessions; a
+    /// rate kept under any other name is never used again.
+    static constexpr std::array<const char*, 2> PERSISTED_HEATERS = {"extruder", "heater_bed"};
+
     static ThermalRateManager& instance();
     ThermalRateModel& get_model(const std::string& heater_name);
     float estimate_heating_seconds(const std::string& heater_name, float current_temp,
                                    float target_temp) const;
     void load_from_config(helix::Config& config);
     void save_to_config(helix::Config& config);
-    void apply_archetype_defaults(float bed_x_max);
+    /// Default heating rates for a printer with no learned history: the
+    /// database entry's measured `thermal_rates` where it has them, otherwise
+    /// a guess from the bed's X extent.
+    void apply_archetype_defaults(float bed_x_max, const std::string& printer_type);
     void reset(); // For testing
 
     ThermalRateManager() = default;

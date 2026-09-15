@@ -537,6 +537,7 @@ TEST_CASE("PrintStart: typical noise lines should not match phases", "[print][ne
 #include "ui_update_queue.h"
 
 #include "../lvgl_test_fixture.h"
+#include "../test_helpers/preprint_config_scope.h"
 #include "../test_helpers/print_start_collector_test_access.h"
 #include "../test_helpers/print_start_profile_test_access.h"
 #include "../test_helpers/update_queue_test_access.h"
@@ -2593,6 +2594,43 @@ TEST_CASE_METHOD(PrintStartCollectorHeaterFixture,
     REQUIRE(get_current_phase() == PrintStartPhase::COMPLETE);
 }
 
+TEST_CASE_METHOD(PrintStartCollectorHeaterFixture,
+                 "A timeout completion keeps the heating rates it measured",
+                 "[print][collector][timeout][thermal_rate]") {
+    PreprintConfigScope config;
+    struct ManagerReset {
+        ManagerReset() {
+            ThermalRateManager::instance().reset();
+        }
+        ~ManagerReset() {
+            ThermalRateManager::instance().reset();
+        }
+    } manager_reset;
+
+    set_all_temps(300, 1050, 1400, 1400);
+    collector().start();
+    drain_async_updates();
+
+    // A bed that climbed 60C in 360s measured 6 s/C along the way.
+    ThermalRateModel& bed = ThermalRateManager::instance().get_model("heater_bed");
+    bed.record_sample(30.0f, 1000);
+    bed.record_sample(90.0f, 361000);
+    REQUIRE(bed.measured_rate().has_value());
+
+    reset_collector_to_idle();
+    collector().enable_fallbacks();
+    set_all_temps(1050, 1050, 1400, 1400);
+    PrintStartCollectorTestAccess::set_predicted_total(collector(), 180.0f);
+    PrintStartCollectorTestAccess::set_elapsed_seconds(collector(), 400);
+    tick_fallbacks();
+    REQUIRE(get_current_phase() == PrintStartPhase::COMPLETE);
+
+    helix::Config* cfg = helix::Config::get_instance();
+    REQUIRE(cfg->get<float>("/thermal/rates/heater_bed/heat_rate", 0.0f) == Catch::Approx(6.0f));
+    // Phases a timeout cut short are not history.
+    REQUIRE(helix::PreprintPredictor::load_entries_from_config().empty());
+}
+
 // ============================================================================
 // PREDICTION SAVE/LOAD TESTS
 // ============================================================================
@@ -4440,9 +4478,16 @@ class CosmosPrintStartReplayFixture : public PrintStartCollectorHeaterFixture {
     };
 
     CosmosPrintStartReplayFixture() {
+        ThermalRateManager::instance().reset();
         auto profile = PrintStartProfile::load("cosmos_cc1");
         have_profile_ = !profile->is_default();
         collector().set_profile(std::move(profile));
+    }
+
+    ~CosmosPrintStartReplayFixture() override {
+        // The collector reads the process-wide manager; later tests must not
+        // inherit this printer's rates.
+        ThermalRateManager::instance().reset();
     }
 
     bool have_profile_ = false;
@@ -4616,6 +4661,8 @@ class CosmosPrintStartReplayFixture : public PrintStartCollectorHeaterFixture {
     }
 
   private:
+    /// The default phases a first print on this printer reads, and no saved history.
+    PreprintConfigScope config_{"Elegoo Centauri Carbon"};
     helix::sim::SimulatedClock::ManualScope clock_{helix::sim::SimSpeed::of(1.0)};
 };
 
@@ -4623,16 +4670,29 @@ TEST_CASE_METHOD(CosmosPrintStartReplayFixture,
                  "PrintStartCollector: real COSMOS pre-print completes at its last step",
                  "[print][collector][cosmos][integration]") {
     REQUIRE(have_profile_);
-    // bed_x_max 256 reads as a medium bed to the size guess: 1.5 s/C predicts
-    // about a third of the real pre-print, so every elapsed-time threshold
-    // short of the ceiling is spent before the bed nears its target.
-    ThermalRateManager::instance().apply_archetype_defaults(256.0f);
+    // bed_x_max 256 reads as a medium bed to the size guess.
+    constexpr float BED_X_MAX = 256.0f;
+    float min_prediction_s = 0.0f;
+
+    SECTION("with the size-guess heating rates") {
+        // 1.5 s/C predicts about a third of the real pre-print, so every
+        // elapsed-time threshold short of the ceiling is spent before the bed
+        // nears its target.
+        ThermalRateManager::instance().apply_archetype_defaults(BED_X_MAX, "");
+    }
+    SECTION("with the heating rates from the printer database") {
+        ThermalRateManager::instance().apply_archetype_defaults(BED_X_MAX,
+                                                                "Elegoo Centauri Carbon");
+        // The first print is predicted within 10% of the 618s it took.
+        min_prediction_s = 618.0f * 0.9f;
+    }
 
     const Result result = replay();
-    CAPTURE(result.trace);
+    CAPTURE(result.trace, result.first_prediction_s);
     REQUIRE(result.trace == "0:INITIALIZING 5:HEATING_BED 484:SOAKING 542:BED_MESH "
                             "542:HEATING_NOZZLE 605:PURGING 618:COMPLETE");
     REQUIRE(result.completed_at_ms == 618500);
+    REQUIRE(result.first_prediction_s >= min_prediction_s);
 }
 
 TEST_CASE_METHOD(CosmosPrintStartReplayFixture,
@@ -4642,7 +4702,7 @@ TEST_CASE_METHOD(CosmosPrintStartReplayFixture,
     // The soak is one "Heatsoak: 10.0m" line, then ten silent minutes of G4
     // with both heaters already at target: nothing else the collector can see
     // says the printer is still working.
-    ThermalRateManager::instance().apply_archetype_defaults(256.0f);
+    ThermalRateManager::instance().apply_archetype_defaults(256.0f, "Elegoo Centauri Carbon");
 
     CosmosReplayVariant variant;
     variant.heatsoak_minutes = "10.0";

@@ -5538,6 +5538,74 @@ TEST_CASE("PrinterDetector: Centauri Carbon uses the COSMOS pre-print profile",
     REQUIRE(PrinterDetector::get_print_start_profile("Elegoo Centauri Carbon") == "cosmos_cc1");
 }
 
+TEST_CASE("PrinterDetector: pre-print lookups share one entry, and rates name known heaters",
+          "[printer][preprint]") {
+    namespace fs = std::filesystem;
+    auto temp_root =
+        fs::temp_directory_path() / ("test_printer_detector_preprint_" + std::to_string(getpid()));
+    // Runs after the env and cwd guards below restore, even when a REQUIRE
+    // throws, so later tests get the bundled database back.
+    struct RestoreDatabase {
+        fs::path root;
+        ~RestoreDatabase() {
+            PrinterDetector::reload();
+            fs::remove_all(root);
+        }
+    } restore{temp_root};
+    {
+        EnvGuard data_g("HELIX_DATA_DIR");
+        EnvGuard config_g("HELIX_CONFIG_DIR");
+        CwdGuard cwd_g;
+
+        fs::remove_all(temp_root);
+        fs::create_directories(temp_root / "assets" / "config");
+        fs::create_directories(temp_root / "config_dir");
+        std::ofstream(temp_root / "assets" / "config" / "printer_database.json") << R"({
+                "version": "test-preprint-1.0",
+                "printers": [
+                    {
+                        "id": "preprint_printer",
+                        "name": "Preprint Test Printer",
+                        "manufacturer": "TestCorp",
+                        "kinematics": "cartesian",
+                        "print_start_profile": "preprint_profile",
+                        "print_start_default_phases": { "HOMING": 12, "SOAKING": 30, "HEATING_BED": 99 },
+                        "thermal_rates": { "heater_bed": 3.5, "bed": 9.0, "extruder": -1 },
+                        "heuristics": [
+                            {
+                                "type": "hostname_match",
+                                "field": "hostname",
+                                "pattern": "test-preprint-host",
+                                "confidence": 100,
+                                "reason": "Test preprint host match"
+                            }
+                        ]
+                    }
+                ]
+            })";
+        setenv("HELIX_DATA_DIR", temp_root.c_str(), 1);
+        setenv("HELIX_CONFIG_DIR", (temp_root / "config_dir").c_str(), 1);
+        REQUIRE(chdir(temp_root.c_str()) == 0);
+        PrinterDetector::reload();
+        REQUIRE(PrinterDetector::get_load_status().total_printers == 1);
+
+        // Names match case-insensitively, the same way for every field.
+        REQUIRE(PrinterDetector::get_print_start_profile("PREPRINT TEST PRINTER") ==
+                "preprint_profile");
+        // Heating has no stored duration, so its default is dropped.
+        const auto phases =
+            PrinterDetector::get_print_start_default_phases("preprint test printer");
+        REQUIRE(phases.size() == 2);
+        REQUIRE(phases.at(static_cast<int>(helix::PrintStartPhase::HOMING)) == 12);
+        REQUIRE(phases.at(static_cast<int>(helix::PrintStartPhase::SOAKING)) == 30);
+
+        // "bed" is no heater the rate model reads back, and -1 is no rate.
+        const auto rates = PrinterDetector::get_thermal_rates("Preprint Test Printer");
+        REQUIRE(rates.size() == 1);
+        REQUIRE(rates.at("heater_bed") == Catch::Approx(3.5f));
+    }
+}
+
 TEST_CASE("PrinterDetector: print_start_default_phases empty for unknown printer",
           "[printer][preprint]") {
     auto phases = PrinterDetector::get_print_start_default_phases("Not A Real Printer");

@@ -2093,15 +2093,8 @@ void PrintStartCollector::compute_predicted_weights() {
             }
         }
 
-        // Ensure homing has at least a default. History often records
-        // HOMING=0 on printers whose PRINT_START macros don't emit a
-        // distinct "Homing..." message before the next phase starts, so
-        // check both "missing" and "zero" cases.
-        int homing = static_cast<int>(PrintStartPhase::HOMING);
-        auto homing_it = durations.find(homing);
-        if (homing_it == durations.end() || homing_it->second < 20.0f) {
-            durations[homing] = 20.0f;
-        }
+        durations[static_cast<int>(PrintStartPhase::HOMING)] =
+            static_cast<float>(predictor_.predicted_homing_seconds());
 
         // When nozzle target is unknown (common with bed-first macros that
         // issue M109 after homing/mesh), include a placeholder so progress
@@ -2289,11 +2282,16 @@ void PrintStartCollector::query_mesh_probe_count() {
 }
 
 void PrintStartCollector::save_prediction_entry() {
-    // Don't save timing data from fallback timeout completions — phases may be
-    // interrupted or incomplete, producing misleading predictions
+    // A timeout completion cuts phases short wherever they stood, so its
+    // timings would teach the predictor a shorter pre-print than the real one.
+    // The heating rates came from real samples along the way and stay valid.
     if (fallback_completion_) {
-        spdlog::debug(
-            "[PrintStartCollector] Skipping prediction save (fallback timeout completion)");
+        spdlog::debug("[PrintStartCollector] Timeout completion: saving heating rates only");
+        helix::ui::queue_update([]() {
+            if (auto* cfg = Config::get_instance()) {
+                ThermalRateManager::instance().save_to_config(*cfg);
+            }
+        });
         return;
     }
 

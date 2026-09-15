@@ -465,6 +465,20 @@ class PrinterDetector {
      */
     static std::map<int, int> get_print_start_default_phases(const std::string& printer_name);
 
+    /**
+     * @brief Measured heating rates for a printer, in seconds per degree C
+     *
+     * Database field `thermal_rates` maps a heater name to the rate a first
+     * print should assume, e.g. `{"heater_bed": 6.0, "extruder": 0.4}`.
+     * ThermalRateManager uses these in place of its build-volume guess; a rate
+     * learned from this printer's own prints still wins. Only heaters in
+     * ThermalRateManager::PERSISTED_HEATERS are returned.
+     *
+     * @param printer_name Printer name (e.g., "Elegoo Centauri Carbon")
+     * @return heater name -> s/°C; empty when the entry declares none
+     */
+    static std::map<std::string, float> get_thermal_rates(const std::string& printer_name);
+
     // =========================================================================
     // User Extensions API
     // =========================================================================

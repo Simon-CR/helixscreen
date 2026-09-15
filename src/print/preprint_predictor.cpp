@@ -239,6 +239,13 @@ std::map<int, int> PreprintPredictor::predicted_phases() const {
     return result;
 }
 
+int PreprintPredictor::predicted_homing_seconds() const {
+    const auto phases = predicted_phases();
+    const auto it = phases.find(static_cast<int>(PrintStartPhase::HOMING));
+    const int predicted = it != phases.end() ? it->second : 0;
+    return std::max(predicted, MIN_HOMING_SECONDS);
+}
+
 int PreprintPredictor::predicted_total() const {
     // With no history, fall back to sum of default phase durations so UI
     // callers still get a ballpark.

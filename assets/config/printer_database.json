@@ -2839,6 +2839,11 @@
         "BED_MESH": 2,
         "PURGING": 15
       },
+      "_thermal_rates_comment": "Seconds per degree C for a first print, from the same COSMOS cold start: the bed took ~484s from 24.5C to 105C (about 4.3 s/C below 60C and 8 in the last 20C), the nozzle ~48s from 140C to 260C.",
+      "thermal_rates": {
+        "heater_bed": 6.0,
+        "extruder": 0.4
+      },
       "heuristics": [
         {
           "type": "kinematics_exclude",
