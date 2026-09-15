@@ -1064,6 +1064,8 @@
       "image": "creality-k1.png",
       "probe_type": "prtouch_v2",
       "preset": "k1",
+      "preset_default": true,
+      "_preset_default_comment": "The k1 family's default: a K1 preset install whose detection names no K1 machine persists this entry, the base model, rather than database order",
       "print_start_profile": "creality_k1",
       "pre_print_options": {
         "macro_name": "START_PRINT",
@@ -2113,6 +2115,8 @@
       "image": "creality-k1c.png",
       "probe_type": "prtouch_v2",
       "preset": "k1c",
+      "preset_default": true,
+      "_preset_default_comment": "The k1c family's default: a K1C preset install whose detection names no K1C machine persists this entry, the base model without CFS, rather than database order",
       "print_start_profile": "creality_k1",
       "_print_start_default_phases_comment": "Measured on a K1C 2026-08-19 (flowrate print, full prep chain): homing via CX_ROUGH_G28 ran 60s vs the 30s generic default; the nozzle wipe (CLEAR_NOZZLE_QUICK rounds) ran ~85s; a check-passed mesh (4-corner validation + 25-point sweep at 5.5s/point) ran 123s. Heating phases are omitted - the thermal model owns those.",
       "print_start_default_phases": {
@@ -5296,6 +5300,8 @@
       "manufacturer": "Anycubic",
       "image": "anycubic-kobra-3.png",
       "preset": "anycubic_kobra_3",
+      "preset_default": true,
+      "_preset_default_comment": "The anycubic_kobra_3 family's default: a preset install whose detection names no Kobra 3 machine persists this entry, the base model rather than the V2, rather than database order",
       "print_start_profile": "anycubic_kobra",
       "heuristics": [
         {

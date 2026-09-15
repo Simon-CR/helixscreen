@@ -700,3 +700,93 @@ TEST_CASE_METHOD(PresetConfigFixture, "k1 preset claims no aux fan and no fixed 
 
     TearDown();
 }
+
+// ============================================================================
+// apply_preset_file post-wizard migration 2: default_macros
+// ============================================================================
+
+namespace {
+
+constexpr const char* kStaleK2Cooldown = "SET_HEATER_TEMPERATURE HEATER=extruder TARGET=0\n"
+                                         "SET_HEATER_TEMPERATURE HEATER=heater_bed TARGET=0\n"
+                                         "SET_HEATER_TEMPERATURE HEATER=chamber_heater TARGET=0";
+
+/// The cooldown text the sandboxed copy of k2.json currently ships, so these
+/// tests track the shipped preset instead of a second hardcoded copy of it.
+std::string current_k2_cooldown_text(const std::string& temp_dir) {
+    std::ifstream in(temp_dir + "/presets/k2.json");
+    json preset = json::parse(in);
+    return preset["printer"]["default_macros"]["cooldown"].get<std::string>();
+}
+
+/// A filament_sensors block already at the role the shipped k2 preset wants,
+/// so migration 1 finds nothing to do and these tests isolate migration 2.
+json matching_k2_filament_sensors() {
+    return {{"master_enabled", true},
+            {"sensors",
+             {{{"enabled", true},
+               {"klipper_name", "filament_switch_sensor filament_sensor"},
+               {"role", "runout"},
+               {"type", "switch"}}}}};
+}
+
+} // namespace
+
+TEST_CASE_METHOD(PresetConfigFixture,
+                 "Config::apply_preset_file migrates a stale default_macros.cooldown post-wizard",
+                 "[config][preset][macros]") {
+    SetUp();
+
+    copy_shipped_preset("k2");
+    printer_data()["wizard_completed"] = true;
+    printer_data()["filament_sensors"] = matching_k2_filament_sensors();
+    printer_data()["default_macros"]["cooldown"] = kStaleK2Cooldown;
+
+    const std::string current_text = current_k2_cooldown_text(temp_dir);
+    REQUIRE(current_text != kStaleK2Cooldown);
+
+    REQUIRE(config.apply_preset_file("k2") == true);
+    REQUIRE(printer_data()["default_macros"]["cooldown"] == current_text);
+
+    TearDown();
+}
+
+TEST_CASE_METHOD(PresetConfigFixture,
+                 "Config::apply_preset_file never touches a customized default_macros.cooldown",
+                 "[config][preset][macros]") {
+    SetUp();
+
+    copy_shipped_preset("k2");
+    printer_data()["wizard_completed"] = true;
+    printer_data()["filament_sensors"] = matching_k2_filament_sensors();
+    printer_data()["default_macros"]["cooldown"] = "MY_CUSTOM_COOLDOWN_MACRO";
+
+    config.apply_preset_file("k2");
+
+    REQUIRE(printer_data()["default_macros"]["cooldown"] == "MY_CUSTOM_COOLDOWN_MACRO");
+
+    TearDown();
+}
+
+TEST_CASE_METHOD(PresetConfigFixture,
+                 "Config::apply_preset_file's default_macros migration is idempotent",
+                 "[config][preset][macros]") {
+    SetUp();
+
+    copy_shipped_preset("k2");
+    printer_data()["wizard_completed"] = true;
+    printer_data()["filament_sensors"] = matching_k2_filament_sensors();
+    printer_data()["default_macros"]["cooldown"] = kStaleK2Cooldown;
+
+    const std::string current_text = current_k2_cooldown_text(temp_dir);
+
+    REQUIRE(config.apply_preset_file("k2") == true);
+    REQUIRE(printer_data()["default_macros"]["cooldown"] == current_text);
+
+    // Second run: the stored text now equals the current one, not the stale
+    // one, so there is nothing left to migrate.
+    REQUIRE(config.apply_preset_file("k2") == false);
+    REQUIRE(printer_data()["default_macros"]["cooldown"] == current_text);
+
+    TearDown();
+}
