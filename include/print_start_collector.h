@@ -398,13 +398,18 @@ class PrintStartCollector : public std::enable_shared_from_this<PrintStartCollec
      * @brief Relabel between the two heating phases from live temps (bed-first).
      *
      * Compare-and-swap: applies the relabel only if current_phase_ is STILL a
-     * heating phase (HEATING_BED/HEATING_NOZZLE) at write time. A background
-     * gcode signal may have advanced current_phase_ past heating between the
-     * caller's temperature snapshot and this call; the CAS refuses in that case
-     * so a newer non-heating phase is never regressed back to heating. The
-     * label is derived from `resolved`.
+     * heating phase (HEATING_BED/HEATING_NOZZLE) at write time, or is a
+     * BED_MESH with no probing under way whose nozzle target rose after the
+     * mesh began and `resolved` is HEATING_NOZZLE. A background gcode signal
+     * may have advanced current_phase_ between the caller's temperature
+     * snapshot and this call; the CAS refuses in that case so a newer phase is
+     * never regressed back to heating. The label is derived from `resolved`.
      */
     void relabel_heating_phase(helix::PrintStartPhase resolved);
+
+    /// Whether BED_MESH is showing and a probe line arrived within
+    /// MESH_PROBE_GAP_RESET. Caller must hold state_mutex_.
+    bool mesh_probing_locked() const;
 
     /**
      * @brief Calculate overall progress based on detected phases
@@ -574,6 +579,11 @@ class PrintStartCollector : public std::enable_shared_from_this<PrintStartCollec
     // as the human label when rendering "<sub-phase> (N/M)" so the user sees
     // which sub-phase they're in. Empty when not in BED_MESH.
     std::string current_mesh_message_;
+
+    /// Nozzle target (°C) when BED_MESH was entered. A higher target while the
+    /// mesh is idle is the print-temperature heat that follows it. Guarded by
+    /// state_mutex_.
+    int mesh_entry_ext_target_ = 0;
 
     /// Last state string MATCHED from the profile's phase object. Klipper
     /// notifies on every field change in the object, so the same state

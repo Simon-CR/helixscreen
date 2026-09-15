@@ -124,6 +124,49 @@ TEST_CASE("ThermalRateModel blended_rate_for_save", "[thermal_rate]") {
     REQUIRE(blended == Catch::Approx(1.3f).margin(0.05f));
 }
 
+TEST_CASE("ThermalRateModel leaves a hold between two climbs out of the rate it keeps",
+          "[thermal_rate]") {
+    // A nozzle heated to a probing temperature, held there for five minutes,
+    // then heated to print temperature: 0.5 s/C on both climbs, sampled every
+    // 5s as the pre-print collector does.
+    ThermalRateModel model;
+    model.reset(30.0f);
+    uint32_t tick = 5000;
+    float temp = 30.0f;
+    for (; temp < 130.0f; tick += 5000, temp += 10.0f) {
+        model.record_sample(temp, tick);
+    }
+    for (int i = 0; i < 60; ++i, tick += 5000) {
+        model.record_sample(130.0f + ((i % 2 == 0) ? 0.3f : -0.3f), tick);
+    }
+    for (temp = 140.0f; temp <= 230.0f; tick += 5000, temp += 10.0f) {
+        model.record_sample(temp, tick);
+    }
+
+    CAPTURE(model.blended_rate_for_save(), model.measured_rate().value_or(-1.0f));
+    REQUIRE(model.blended_rate_for_save() == Catch::Approx(0.5f).margin(0.1f));
+    REQUIRE(model.measured_rate().value_or(0.0f) == Catch::Approx(0.5f).margin(0.1f));
+}
+
+TEST_CASE("ThermalRateModel keeps the rate of the whole climb, not its last approach",
+          "[thermal_rate]") {
+    // A bed climbs 60C at 0.5 s/C, then crawls its last 10C at 5 s/C: 80s for
+    // 70C over the whole climb.
+    ThermalRateModel model;
+    model.reset(30.0f);
+    uint32_t tick = 5000;
+    for (float temp = 30.0f; temp <= 90.0f; tick += 5000, temp += 10.0f) {
+        model.record_sample(temp, tick);
+    }
+    tick += 5000;
+    for (float temp = 92.0f; temp <= 100.0f; tick += 10000, temp += 2.0f) {
+        model.record_sample(temp, tick);
+    }
+
+    CAPTURE(model.blended_rate_for_save());
+    REQUIRE(model.blended_rate_for_save() == Catch::Approx(80.0f / 70.0f).margin(0.15f));
+}
+
 TEST_CASE("ThermalRateModel no measurement returns 0 for save", "[thermal_rate]") {
     ThermalRateModel model;
     model.reset(25.0f);

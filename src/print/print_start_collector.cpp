@@ -758,6 +758,13 @@ void PrintStartCollector::check_fallback_completion() {
             // `current` snapshot above and here is never regressed.
             relabel_heating_phase(resolved);
         }
+    } else if (current == PrintStartPhase::BED_MESH && ext_climbed && nozzle_heating &&
+               !bed_heating) {
+        // A stored mesh loads in under a second, and a macro that parks and
+        // purges without a word announces nothing between the mesh and the
+        // print-temperature M109. relabel_heating_phase() confirms the mesh is
+        // idle and the target rose after it began.
+        relabel_heating_phase(PrintStartPhase::HEATING_NOZZLE);
     }
 
     // =========================================================================
@@ -814,12 +821,8 @@ void PrintStartCollector::check_fallback_completion() {
     // making the temperature check unreliable. Active probing = we're making real progress.
     {
         std::lock_guard<std::mutex> lock(state_mutex_);
-        if (current_phase_ == PrintStartPhase::BED_MESH &&
-            (mesh_probe_current_ > 0 || mesh_points_.points() > 0)) {
-            auto since_last = helix::sim::SimulatedClock::now() - mesh_last_probe_time_;
-            if (since_last < MESH_PROBE_GAP_RESET) {
-                return; // Active probing — don't timeout
-            }
+        if (mesh_probing_locked()) {
+            return; // Active probing — don't timeout
         }
     }
 
@@ -1469,6 +1472,10 @@ void PrintStartCollector::maybe_reset_for_mesh_subphase_locked(PrintStartPhase n
         return;
     }
     const bool entering = (current_phase_ != PrintStartPhase::BED_MESH);
+    if (entering) {
+        // A nozzle target raised after this is not the one the mesh ran at.
+        mesh_entry_ext_target_ = cached_ext_target_.load(std::memory_order_relaxed);
+    }
     const bool message_changed = !entering && (next_message != current_mesh_message_);
     if (!entering && !message_changed) {
         return;
@@ -1665,17 +1672,27 @@ void PrintStartCollector::relabel_heating_phase(PrintStartPhase resolved) {
     bool has_predictions;
     {
         std::lock_guard<std::mutex> lock(state_mutex_);
-        // CAS guard: only relabel while we are STILL in a heating phase. A
-        // background gcode signal may have advanced current_phase_ past heating
-        // (e.g. to QGL) between the caller's temperature snapshot and now —
-        // relabeling then would regress a newer, correct phase back to heating.
-        if (current_phase_ != PrintStartPhase::HEATING_BED &&
-            current_phase_ != PrintStartPhase::HEATING_NOZZLE) {
+        // CAS guard: only relabel while we are STILL in a heating phase, or in
+        // a mesh that has finished its work while the nozzle heats to a target
+        // set after it began. A background gcode signal may have advanced
+        // current_phase_ (e.g. to QGL or PURGING) between the caller's
+        // temperature snapshot and now; relabeling then would regress a newer,
+        // correct phase back to heating.
+        const bool heating = current_phase_ == PrintStartPhase::HEATING_BED ||
+                             current_phase_ == PrintStartPhase::HEATING_NOZZLE;
+        const bool mesh_gave_way =
+            current_phase_ == PrintStartPhase::BED_MESH &&
+            resolved == PrintStartPhase::HEATING_NOZZLE && !mesh_probing_locked() &&
+            cached_ext_target_.load(std::memory_order_relaxed) > mesh_entry_ext_target_;
+        if (!heating && !mesh_gave_way) {
             return;
         }
         if (current_phase_ == resolved) {
             return; // already showing the right heater
         }
+        spdlog::info("[PrintStartCollector] Heating correction: phase {} -> {}",
+                     static_cast<int>(current_phase_), static_cast<int>(resolved));
+        maybe_reset_for_mesh_subphase_locked(resolved, "");
         current_phase_ = resolved;
         detected_phases_.insert(resolved);
         int phase_int = static_cast<int>(resolved);
@@ -1699,6 +1716,12 @@ void PrintStartCollector::relabel_heating_phase(PrintStartPhase resolved) {
                                                                    : lv_tr("Heating Nozzle...");
     // Call PrinterState outside the lock to avoid potential deadlocks
     state_.set_print_start_state(resolved, message, progress);
+}
+
+bool PrintStartCollector::mesh_probing_locked() const {
+    return current_phase_ == PrintStartPhase::BED_MESH &&
+           (mesh_probe_current_ > 0 || mesh_points_.points() > 0) &&
+           helix::sim::SimulatedClock::now() - mesh_last_probe_time_ < MESH_PROBE_GAP_RESET;
 }
 
 void PrintStartCollector::set_profile(std::shared_ptr<PrintStartProfile> profile) {

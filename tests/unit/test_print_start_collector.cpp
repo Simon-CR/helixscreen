@@ -4712,3 +4712,104 @@ TEST_CASE_METHOD(CosmosPrintStartReplayFixture,
                             "1082:HEATING_NOZZLE 1145:PURGING 1158:COMPLETE");
     REQUIRE(result.completed_at_ms == 618500 + 540000);
 }
+
+TEST_CASE_METHOD(CosmosPrintStartReplayFixture,
+                 "PrintStartCollector: a COSMOS pre-print learns the heating rates it took",
+                 "[print][collector][cosmos][thermal_rate]") {
+    REQUIRE(have_profile_);
+    // The bed took ~484s from 24.5C to 105C, about 6 s/C. The nozzle climbed
+    // to 140C in ~30s, held there for eight minutes, then took ~45s from 140C
+    // to 260C, about 0.38 s/C.
+    ThermalRateManager::instance().apply_archetype_defaults(256.0f, "Elegoo Centauri Carbon");
+
+    const Result result = replay();
+    REQUIRE(result.completed_at_ms == 618500);
+
+    auto& rates = ThermalRateManager::instance();
+    const float bed = rates.get_model("heater_bed").blended_rate_for_save();
+    const float nozzle = rates.get_model("extruder").blended_rate_for_save();
+    CAPTURE(bed, nozzle);
+    CHECK(bed >= 5.0f);
+    CHECK(bed <= 7.0f);
+    CHECK(nozzle >= 0.3f);
+    CHECK(nozzle <= 0.6f);
+
+    // The completion saved those rates for the next print.
+    helix::Config* cfg = helix::Config::get_instance();
+    CHECK(cfg->get<float>("/thermal/rates/heater_bed/heat_rate", 0.0f) == Catch::Approx(bed));
+    CHECK(cfg->get<float>("/thermal/rates/extruder/heat_rate", 0.0f) == Catch::Approx(nozzle));
+}
+
+TEST_CASE_METHOD(CosmosPrintStartReplayFixture,
+                 "PrintStartCollector: a quiet COSMOS park and purge shows the nozzle heating",
+                 "[print][collector][cosmos][integration]") {
+    REQUIRE(have_profile_);
+    // Without the smart park narration, the stored mesh line is the last word
+    // before M109 raises the nozzle from 140C to 260C.
+    ThermalRateManager::instance().apply_archetype_defaults(256.0f, "Elegoo Centauri Carbon");
+
+    CosmosReplayVariant variant;
+    variant.narrates_park_and_purge = false;
+    const Result result = replay(variant);
+    CAPTURE(result.trace);
+    REQUIRE(result.trace == "0:INITIALIZING 5:HEATING_BED 484:SOAKING 542:BED_MESH "
+                            "550:HEATING_NOZZLE 618:COMPLETE");
+}
+
+TEST_CASE_METHOD(PrintStartCollectorHeaterFixture,
+                 "A bed mesh with no probing under way gives way to the nozzle heat after it",
+                 "[print][collector][heating][mesh]") {
+    // A stored mesh loads in under a second, and a macro that goes on to heat
+    // the nozzle to print temperature without a word leaves nothing else to
+    // move the display off the mesh.
+    helix::sim::SimulatedClock::ManualScope clock(helix::sim::SimSpeed::of(1.0));
+
+    SECTION("a nozzle target raised after the mesh began") {
+        set_all_temps(1050, 1050, 1400, 1400);
+        collector().start();
+        drain_async_updates();
+        collector().enable_fallbacks();
+        tick_fallbacks();
+        send_gcode_response("BED_MESH_CALIBRATE");
+        REQUIRE(get_current_phase() == PrintStartPhase::BED_MESH);
+
+        set_all_temps(1050, 1050, 1400, 2600); // M109 S260
+        tick_fallbacks();
+        REQUIRE(get_current_phase() == PrintStartPhase::BED_MESH);
+
+        SECTION("gives way once the nozzle climbs") {
+            set_all_temps(1050, 1050, 1600, 2600);
+            tick_fallbacks();
+            REQUIRE(get_current_phase() == PrintStartPhase::HEATING_NOZZLE);
+            REQUIRE(get_current_message() == "Heating Nozzle...");
+        }
+
+        SECTION("keeps the mesh while a probe line is recent") {
+            send_gcode_response("// probe at 100.000,100.000 is z=0.031000");
+            set_all_temps(1050, 1050, 1600, 2600);
+            tick_fallbacks();
+            REQUIRE(get_current_phase() == PrintStartPhase::BED_MESH);
+
+            clock.advance(std::chrono::seconds(31));
+            set_all_temps(1050, 1050, 1800, 2600);
+            tick_fallbacks();
+            REQUIRE(get_current_phase() == PrintStartPhase::HEATING_NOZZLE);
+        }
+    }
+
+    SECTION("a nozzle still climbing to the target it had when the mesh began") {
+        set_all_temps(1050, 1050, 1000, 1500);
+        collector().start();
+        drain_async_updates();
+        collector().enable_fallbacks();
+        tick_fallbacks();
+        send_gcode_response("BED_MESH_CALIBRATE");
+        REQUIRE(get_current_phase() == PrintStartPhase::BED_MESH);
+
+        set_all_temps(1050, 1050, 1100, 1500);
+        tick_fallbacks();
+        set_all_temps(1050, 1050, 1200, 1500);
+        tick_fallbacks();
+        REQUIRE(get_current_phase() == PrintStartPhase::BED_MESH);
+    }
+}
