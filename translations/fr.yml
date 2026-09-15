@@ -2830,6 +2830,8 @@ translations:
   Spoolman has no spools configured: Spoolman n'a aucune bobine configurée
   Spoolman is not configured — nothing to remove.: 'Spoolman n''est pas configuré —
     rien à supprimer.'
+  Spoolman is offline, so brand and material can't be saved.: ''
+  Spoolman is offline. Brand and material can change once it's back.: ''
   Spoolman needs a brand for this filament.: ''
   Spoolman needs a color for this filament.: ''
   Spoolman needs a material for this filament.: ''

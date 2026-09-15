@@ -2530,6 +2530,8 @@
   <translation tag="Spoolman found! Configuring..." it="Spoolman trovato! Configurazione..."/>
   <translation tag="Spoolman has no spools configured" it="Spoolman non ha bobine configurate"/>
   <translation tag="Spoolman is not configured — nothing to remove." it="Spoolman non è configurato — niente da rimuovere."/>
+  <translation tag="Spoolman is offline, so brand and material can&apos;t be saved."/>
+  <translation tag="Spoolman is offline. Brand and material can change once it&apos;s back."/>
   <translation tag="Spoolman needs a brand for this filament."/>
   <translation tag="Spoolman needs a color for this filament."/>
   <translation tag="Spoolman needs a material for this filament."/>

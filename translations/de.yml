@@ -2814,6 +2814,8 @@ translations:
   Spoolman has no spools configured: Spoolman hat keine Spulen konfiguriert
   Spoolman is not configured — nothing to remove.: Spoolman ist nicht konfiguriert –
     nichts zu entfernen.
+  Spoolman is offline, so brand and material can't be saved.: ''
+  Spoolman is offline. Brand and material can change once it's back.: ''
   Spoolman needs a brand for this filament.: ''
   Spoolman needs a color for this filament.: ''
   Spoolman needs a material for this filament.: ''

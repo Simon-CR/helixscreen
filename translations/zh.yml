@@ -2593,6 +2593,8 @@ translations:
   Spoolman found! Configuring...: 已找到 Spoolman！正在配置...
   Spoolman has no spools configured: Spoolman 未配置料盘
   Spoolman is not configured — nothing to remove.: Spoolman 未配置 — 无需移除。
+  Spoolman is offline, so brand and material can't be saved.: ''
+  Spoolman is offline. Brand and material can change once it's back.: ''
   Spoolman needs a brand for this filament.: ''
   Spoolman needs a color for this filament.: ''
   Spoolman needs a material for this filament.: ''

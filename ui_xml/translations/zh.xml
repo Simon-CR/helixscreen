@@ -2530,6 +2530,8 @@
   <translation tag="Spoolman found! Configuring..." zh="已找到 Spoolman！正在配置..."/>
   <translation tag="Spoolman has no spools configured" zh="Spoolman 未配置料盘"/>
   <translation tag="Spoolman is not configured — nothing to remove." zh="Spoolman 未配置 — 无需移除。"/>
+  <translation tag="Spoolman is offline, so brand and material can&apos;t be saved."/>
+  <translation tag="Spoolman is offline. Brand and material can change once it&apos;s back."/>
   <translation tag="Spoolman needs a brand for this filament."/>
   <translation tag="Spoolman needs a color for this filament."/>
   <translation tag="Spoolman needs a material for this filament."/>

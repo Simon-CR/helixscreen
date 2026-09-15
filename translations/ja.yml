@@ -2601,6 +2601,8 @@ translations:
   Spoolman found! Configuring...: Spoolman を検出しました！設定中...
   Spoolman has no spools configured: Spoolman にスプールが設定されていません
   Spoolman is not configured — nothing to remove.: Spoolman が設定されていません — 削除する項目はありません。
+  Spoolman is offline, so brand and material can't be saved.: ''
+  Spoolman is offline. Brand and material can change once it's back.: ''
   Spoolman needs a brand for this filament.: ''
   Spoolman needs a color for this filament.: ''
   Spoolman needs a material for this filament.: ''

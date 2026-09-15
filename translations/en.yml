@@ -2750,6 +2750,8 @@ translations:
   Spoolman found! Configuring...: Spoolman found! Configuring...
   Spoolman has no spools configured: Spoolman has no spools configured
   Spoolman is not configured — nothing to remove.: Spoolman is not configured — nothing to remove.
+  Spoolman is offline, so brand and material can't be saved.: Spoolman is offline, so brand and material can't be saved.
+  Spoolman is offline. Brand and material can change once it's back.: Spoolman is offline. Brand and material can change once it's back.
   Spoolman needs a brand for this filament.: Spoolman needs a brand for this filament.
   Spoolman needs a color for this filament.: Spoolman needs a color for this filament.
   Spoolman needs a material for this filament.: Spoolman needs a material for this filament.

@@ -179,8 +179,14 @@ class AmsEditOverlay : public OverlayBase {
     lv_subject_t save_disabled_subject_; ///< 1=Save disabled ("ams_edit_save_disabled")
     lv_subject_t save_hidden_subject_;   ///< 1=header Save hidden ("ams_edit_save_hidden")
     lv_subject_t is_managed_subject_;    ///< 1=linked Spoolman spool ("ams_edit_is_managed")
+    /// 1 when the slot's identity is the linked spool's ("ams_edit_identity_is_spoolmans").
+    /// Carries no availability of its own: the XML combines it with
+    /// printer_has_spoolman, so no C++ observer has to join two subjects.
+    lv_subject_t identity_is_spoolmans_subject_;
+    lv_subject_t identity_text_subject_; ///< "Brand · Material" for the read-only row
     lv_subject_t chip_text_subject_;     ///< card identity label text
     lv_subject_t spoolman_id_subject_;   ///< "#19" beside the Spoolman mark, "" when untracked
+    char identity_text_buf_[96] = {0};
     char chip_text_buf_[96] = {0};
     char spoolman_id_buf_[16] = {0};
 
@@ -261,6 +267,14 @@ class AmsEditOverlay : public OverlayBase {
     // on-screen widgets and is_dirty() cannot see them; the overview gates on
     // the edit; and a save already in flight holds it shut on either view.
     [[nodiscard]] static bool save_is_disabled(int view, bool save_in_flight, bool dirty);
+
+    /// Whether the slot's brand and material are the linked spool's and cannot
+    /// be written right now. Spoolman owns a linked spool's identity, so with
+    /// the server unreachable there is nowhere for a change to go. The widgets
+    /// are not the guard: the XML hides the selector from the same two facts
+    /// and this is what the save path asks.
+    [[nodiscard]] static bool identity_locked(const SlotInfo& original, const SlotInfo& working,
+                                              bool spoolman_available);
 
     static bool is_material_identity_change(const SlotInfo& original, const SlotInfo& edited);
 

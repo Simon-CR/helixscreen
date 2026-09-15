@@ -1985,6 +1985,123 @@ TEST_CASE_METHOD(LVGLUITestFixture,
     process_lvgl(10);
 }
 
+// ============================================================================
+// Offline: a linked spool's identity is read-only, its colour is not
+// ============================================================================
+
+TEST_CASE_METHOD(LVGLUITestFixture,
+                 "a linked slot hides brand and material while Spoolman is "
+                 "offline",
+                 "[ams_edit_overlay][spool_edit][1653]") {
+    // A linked spool's brand and material are Spoolman's to change. With
+    // Spoolman unreachable there is nowhere to write them, so the catalog
+    // selector gives way to a row that states what the slot carries, and a Save
+    // that reaches the spool-edit view takes nothing from the selector.
+    auto* spoolman_subj = lv_xml_get_subject(nullptr, "printer_has_spoolman");
+    REQUIRE(spoolman_subj != nullptr);
+    lv_subject_set_int(spoolman_subj, 0);
+    get_printer_state().set_spoolman_available(false);
+    UpdateQueue::instance().drain();
+
+    auto& overlay = get_ams_edit_overlay();
+    AmsEditOverlayViewTestAccess access(overlay);
+
+    REQUIRE(overlay.show_for_slot(test_screen(), 0, tracked_slot(), nullptr, nullptr));
+    UpdateQueue::instance().drain();
+    process_lvgl(10);
+
+    access.call_enter_spool_edit();
+    UpdateQueue::instance().drain();
+    process_lvgl(10);
+    REQUIRE(access.view() == AmsEditOverlay::VIEW_SPOOL_EDIT);
+
+    SECTION("the selector gives way to the read-only row") {
+        lv_obj_t* selector = access.widget("details_catalog_selector");
+        lv_obj_t* readonly = access.widget("details_identity_readonly");
+        REQUIRE(selector != nullptr);
+        REQUIRE(readonly != nullptr);
+        CHECK(lv_obj_has_flag(selector, LV_OBJ_FLAG_HIDDEN));
+        CHECK_FALSE(lv_obj_has_flag(readonly, LV_OBJ_FLAG_HIDDEN));
+
+        // Spoolman coming back while the editor is open reverses it.
+        lv_subject_set_int(spoolman_subj, 1);
+        UpdateQueue::instance().drain();
+        process_lvgl(10);
+        CHECK_FALSE(lv_obj_has_flag(selector, LV_OBJ_FLAG_HIDDEN));
+        CHECK(lv_obj_has_flag(readonly, LV_OBJ_FLAG_HIDDEN));
+    }
+
+    SECTION("a Save with a product highlighted leaves brand and material alone") {
+        // Star a product of another brand and material, then highlight it: this
+        // is the pick a Save would otherwise adopt.
+        const std::vector<std::string> saved_ids = helix::Config::get_instance()->get_string_array(
+            helix::filament_favorites::kFavoriteIdsPath);
+        helix::Config::get_instance()->set(helix::filament_favorites::kFavoriteIdsPath,
+                                           std::vector<std::string>{"generic-abs"});
+
+        access.details_selector().change_vendor_for_test(0);
+        REQUIRE(FilamentCatalogSelector::is_favorites_vendor(
+            access.details_selector().current_vendor()));
+        access.details_selector().select_first_product_for_test();
+        const helix::printer::EffectiveFilament* pick = access.details_selector().highlighted();
+        REQUIRE(pick != nullptr);
+        REQUIRE(pick->type != tracked_slot().material);
+
+        access.call_handle_spool_edit_save();
+        UpdateQueue::instance().drain();
+        process_lvgl(10);
+
+        CHECK(access.working_info().material == tracked_slot().material);
+        CHECK(access.working_info().brand == tracked_slot().brand);
+
+        helix::Config::get_instance()->set(helix::filament_favorites::kFavoriteIdsPath, saved_ids);
+    }
+
+    lv_subject_set_int(spoolman_subj, 0);
+    NavigationManager::instance().go_back();
+    UpdateQueue::instance().drain();
+    process_lvgl(10);
+}
+
+TEST_CASE_METHOD(LVGLUITestFixture, "a linked slot still saves a color while Spoolman is offline",
+                 "[ams_edit_overlay][spool_edit][1653]") {
+    // Colour is the lane's own, not the spool's, so the read-only identity does
+    // not reach it: a swatch picked with Spoolman down still saves.
+    auto* spoolman_subj = lv_xml_get_subject(nullptr, "printer_has_spoolman");
+    REQUIRE(spoolman_subj != nullptr);
+    lv_subject_set_int(spoolman_subj, 0);
+    get_printer_state().set_spoolman_available(false);
+    UpdateQueue::instance().drain();
+
+    auto& overlay = get_ams_edit_overlay();
+    AmsEditOverlayViewTestAccess access(overlay);
+
+    bool fired = false;
+    AmsEditOverlay::EditResult captured;
+    REQUIRE(overlay.show_for_slot(test_screen(), 0, tracked_slot(), nullptr,
+                                  [&](const AmsEditOverlay::EditResult& r) {
+                                      fired = true;
+                                      captured = r;
+                                  }));
+    UpdateQueue::instance().drain();
+    process_lvgl(10);
+
+    access.call_enter_spool_edit();
+    UpdateQueue::instance().drain();
+    process_lvgl(10);
+    REQUIRE(access.view() == AmsEditOverlay::VIEW_SPOOL_EDIT);
+
+    access.set_details_color(0x112233);
+    access.call_handle_save(); // header Save on spool-edit finishes the edit
+    UpdateQueue::instance().drain();
+    process_lvgl(10);
+
+    REQUIRE(fired);
+    CHECK(captured.slot_info.color_rgb == 0x112233U);
+    CHECK(captured.slot_info.material == tracked_slot().material);
+    CHECK(captured.slot_info.brand == tracked_slot().brand);
+}
+
 TEST_CASE_METHOD(LVGLUITestFixture,
                  "Change-Filament picker selection returns to overview without closing",
                  "[ams_edit_overlay][picker]") {
