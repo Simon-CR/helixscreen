@@ -54,6 +54,33 @@ inline bool screensaver_same_bits(float a, float b) {
     return std::memcmp(&a, &b, sizeof(float)) == 0;
 }
 
+namespace helix::test {
+
+/// Records every area invalidated on `disp`, for as long as it lives.
+class InvalidatedAreas {
+  public:
+    explicit InvalidatedAreas(lv_display_t* disp) : disp_(disp) {
+        lv_display_add_event_cb(disp_, on_invalidate, LV_EVENT_INVALIDATE_AREA, this);
+    }
+    ~InvalidatedAreas() {
+        lv_display_remove_event_cb_with_user_data(disp_, on_invalidate, this);
+    }
+    InvalidatedAreas(const InvalidatedAreas&) = delete;
+    InvalidatedAreas& operator=(const InvalidatedAreas&) = delete;
+
+    std::vector<lv_area_t> areas;
+
+  private:
+    static void on_invalidate(lv_event_t* e) {
+        auto* self = static_cast<InvalidatedAreas*>(lv_event_get_user_data(e));
+        self->areas.push_back(*static_cast<const lv_area_t*>(lv_event_get_param(e)));
+    }
+
+    lv_display_t* disp_;
+};
+
+} // namespace helix::test
+
 class FlyingToasterScreensaverTestAccess {
   public:
     struct Sprite {
@@ -143,7 +170,7 @@ class StarfieldScreensaverTestAccess {
 
     static std::vector<StarState> stars(const StarfieldScreensaver& ss) {
         std::vector<StarState> out;
-        for (const auto& s : ss.stars_) {
+        for (const auto& s : ss.sim_.stars()) {
             out.push_back({s.x, s.y, s.z, s.speed, s.tint_r, s.tint_g, s.tint_b});
         }
         return out;
@@ -151,7 +178,7 @@ class StarfieldScreensaverTestAccess {
 
     /// Moves every star to one point, keeping each star's own speed.
     static void place_stars(StarfieldScreensaver& ss, float x, float y, float z) {
-        for (auto& s : ss.stars_) {
+        for (auto& s : ss.sim_.stars()) {
             s.x = x;
             s.y = y;
             s.z = z;

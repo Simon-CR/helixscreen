@@ -6,12 +6,12 @@
 
 #include "screensaver.h"
 #include "screensaver_motion.h"
+#include "screensaver_starfield_sim.h"
 
 #include <cstdint>
 #include <lvgl.h>
 #include <optional>
 #include <random>
-#include <vector>
 
 /**
  * @brief Windows 95-style Starfield screensaver
@@ -20,10 +20,9 @@
  * and dim near the center, growing larger and brighter as it approaches
  * the edges.
  *
- * Renders via direct pixel writes to the canvas buffer — no LVGL draw API
- * in the hot loop. Previous star positions are incrementally erased each
- * frame to avoid a full-buffer clear. Stars move by the time since the previous
- * frame, so their speed does not depend on the timer's rate.
+ * helix::ui::StarfieldSim draws each frame with direct pixel writes, erasing only where
+ * stars were, and moves the stars by the time since the previous frame. The timer steps it
+ * and invalidates the whole canvas.
  */
 class StarfieldScreensaver : public Screensaver {
   public:
@@ -44,24 +43,9 @@ class StarfieldScreensaver : public Screensaver {
     // the seed. See tests/test_helpers/screensaver_test_access.h.
     friend class StarfieldScreensaverTestAccess;
 
-    struct Star {
-        float x;        // normalized position (-1..1)
-        float y;        // normalized position (-1..1)
-        float z;        // depth (0..1, 1=far, approaches 0)
-        float speed;    // z decrement per 33 ms
-        uint8_t tint_r; // color tint (assigned at birth, visible when close)
-        uint8_t tint_g;
-        uint8_t tint_b;
-        // Previous frame screen position for incremental erase
-        int16_t prev_sx;
-        int16_t prev_sy;
-        uint8_t prev_size; // 0 = not yet drawn
-    };
-
-    void init_stars();
-    void recycle_star(Star& star);
-
     static void frame_timer_cb(lv_timer_t* timer);
+
+    /// Steps the stars and invalidates the whole canvas.
     void render_frame(uint32_t dt_ms);
 
     /// Shared by stop() and the destructor — a timer cancelled only in stop()
@@ -74,27 +58,23 @@ class StarfieldScreensaver : public Screensaver {
     lv_timer_t* timer_ = nullptr;
 
     // Draw buffer owned by the canvas, allocated at LVGL's row stride — see
-    // screensaver_canvas_stride_bytes(). render_frame() steps rows by
-    // draw_buf_stride_ so direct pixel writes land where the canvas reads them.
+    // screensaver_canvas_stride_bytes(). Frames step rows by draw_buf_stride_ so direct
+    // pixel writes land where the canvas reads them.
     uint8_t* draw_buf_ = nullptr;
     size_t draw_buf_size_ = 0;
     uint32_t draw_buf_stride_ = 0;
 
-    std::vector<Star> stars_;
+    helix::ui::StarfieldSim sim_;
 
-    // Owned random sequence, seeded in start(); initializing and recycling stars draw from it.
+    // Owned random sequence, seeded in start(); placing and recycling stars draw from it.
     std::minstd_rand rng_;
     // When set, start() seeds the random sequence from this instead of the clock, so a
     // run replays exactly.
     std::optional<uint32_t> fixed_seed_;
     helix::ui::screensaver::MotionClock clock_;
 
-    // Cached screen dimensions and projection constants
     int screen_w_ = 0;
     int screen_h_ = 0;
-    float cx_ = 0;    // screen center X
-    float cy_ = 0;    // screen center Y
-    float focal_ = 0; // projection focal length
 };
 
 #endif // HELIX_ENABLE_SCREENSAVER

@@ -9,37 +9,13 @@
 
 #include <spdlog/spdlog.h>
 
-#include <algorithm>
-#include <cmath>
-#include <cstring>
 #include <ctime>
 
+using helix::ui::FrameTarget;
 using helix::ui::SCREENSAVER_CANVAS_FORMAT;
-using helix::ui::screensaver::random_below;
-using helix::ui::screensaver::unit_random;
+using helix::ui::StarfieldSim;
 
 static_assert(LV_COLOR_DEPTH == 32, "the starfield canvas is XRGB8888 on a 32 bpp display");
-
-static constexpr int NUM_STARS = 150;
-// A star's speed is its depth change per this many ms of frame time
-static constexpr float SPEED_FRAME_MS = 33.0f;
-static constexpr float COLOR_THRESHOLD = 0.35f; // stars closer than this show color
-
-// Opaque black, with the X byte at the 0xFF SCREENSAVER_CANVAS_FORMAT requires
-static constexpr uint32_t PIXEL_BLACK = 0xFF000000;
-
-// Star color tints — blue dwarfs, red giants, yellow suns, blue-white hot stars
-static const uint8_t STAR_TINTS[][3] = {
-    {255, 255, 255}, // white (most common)
-    {255, 255, 255}, // white
-    {255, 255, 255}, // white
-    {255, 200, 150}, // warm yellow
-    {255, 160, 120}, // orange
-    {255, 120, 100}, // red giant
-    {150, 180, 255}, // blue dwarf
-    {200, 220, 255}, // blue-white
-};
-static constexpr int NUM_TINTS = sizeof(STAR_TINTS) / sizeof(STAR_TINTS[0]);
 
 void StarfieldScreensaver::start() {
     if (active_) {
@@ -57,9 +33,6 @@ void StarfieldScreensaver::start() {
 
     screen_w_ = lv_display_get_horizontal_resolution(disp);
     screen_h_ = lv_display_get_vertical_resolution(disp);
-    cx_ = static_cast<float>(screen_w_) / 2.0f;
-    cy_ = static_cast<float>(screen_h_) / 2.0f;
-    focal_ = static_cast<float>(screen_w_) / 3.0f;
 
     // Create black overlay on lv_layer_top() — absorbs touch input
     overlay_ = lv_obj_create(lv_layer_top());
@@ -98,9 +71,9 @@ void StarfieldScreensaver::start() {
     // cover-culled, so an opaque overlay background would be filled under it every frame.
     lv_obj_set_style_bg_opa(overlay_, LV_OPA_TRANSP, 0);
 
-    // Seed the owned random sequence and initialize stars
+    // Seed the owned random sequence and place the stars
     rng_.seed(fixed_seed_.value_or(static_cast<uint32_t>(time(nullptr))));
-    init_stars();
+    sim_.init(static_cast<uint32_t>(screen_w_), static_cast<uint32_t>(screen_h_), rng_);
 
     // Create render timer at the display refresh period
     clock_.reset(lv_tick_get());
@@ -108,7 +81,7 @@ void StarfieldScreensaver::start() {
 
     active_ = true;
     spdlog::debug("[Screensaver] Starfield started ({}x{}, {} stars)", screen_w_, screen_h_,
-                  NUM_STARS);
+                  StarfieldSim::NUM_STARS);
 }
 
 StarfieldScreensaver::~StarfieldScreensaver() {
@@ -152,42 +125,8 @@ void StarfieldScreensaver::stop() {
         canvas_ = nullptr; // deleted as child of overlay
     }
 
-    stars_.clear();
+    sim_.stars().clear();
     active_ = false;
-}
-
-static void assign_tint(std::minstd_rand& rng, uint8_t& r, uint8_t& g, uint8_t& b) {
-    int idx = random_below(rng, NUM_TINTS);
-    r = STAR_TINTS[idx][0];
-    g = STAR_TINTS[idx][1];
-    b = STAR_TINTS[idx][2];
-}
-
-void StarfieldScreensaver::init_stars() {
-    stars_.resize(NUM_STARS);
-    for (auto& star : stars_) {
-        float angle = unit_random(rng_) * 2.0f * 3.14159265f;
-        float radius = 0.1f + unit_random(rng_) * 0.9f;
-        star.x = radius * std::cos(angle);
-        star.y = radius * std::sin(angle);
-        star.z = 0.01f + unit_random(rng_) * 0.99f;
-        star.speed = 0.008f + unit_random(rng_) * 0.017f;
-        assign_tint(rng_, star.tint_r, star.tint_g, star.tint_b);
-        star.prev_sx = 0;
-        star.prev_sy = 0;
-        star.prev_size = 0;
-    }
-}
-
-void StarfieldScreensaver::recycle_star(Star& star) {
-    // Pick random angle + radius so stars fly uniformly in all directions
-    float angle = unit_random(rng_) * 2.0f * 3.14159265f;
-    float radius = 0.3f + unit_random(rng_) * 0.7f;
-    star.x = radius * std::cos(angle);
-    star.y = radius * std::sin(angle);
-    star.z = 1.0f;
-    star.speed = 0.008f + unit_random(rng_) * 0.017f;
-    assign_tint(rng_, star.tint_r, star.tint_g, star.tint_b);
 }
 
 void StarfieldScreensaver::frame_timer_cb(lv_timer_t* timer) {
@@ -200,104 +139,12 @@ void StarfieldScreensaver::frame_timer_cb(lv_timer_t* timer) {
 void StarfieldScreensaver::render_frame(uint32_t dt_ms) {
     if (!canvas_ || !draw_buf_)
         return;
-
-    auto* pixels = reinterpret_cast<uint32_t*>(draw_buf_);
-    // Rows step by the canvas's aligned stride in uint32_t units — indexing by
-    // w alone skews every row past the first when the stride exceeds w * 4.
-    const int stride_px = static_cast<int>(draw_buf_stride_ / 4);
-    int w = screen_w_;
-    int h = screen_h_;
-
-    // Erase previous star positions (incremental clear — avoids full-buffer memset)
-    for (auto& star : stars_) {
-        if (star.prev_size == 0)
-            continue;
-        int sx = star.prev_sx;
-        int sy = star.prev_sy;
-        int sz = star.prev_size;
-        for (int dy = 0; dy < sz; dy++) {
-            int py = sy + dy;
-            if (py < 0 || py >= h)
-                continue;
-            int row = py * stride_px;
-            for (int dx = 0; dx < sz; dx++) {
-                int px = sx + dx;
-                if (px >= 0 && px < w) {
-                    pixels[row + px] = PIXEL_BLACK;
-                }
-            }
-        }
-        star.prev_size = 0;
-    }
-
-    // Update and draw stars via direct pixel writes (no LVGL draw API)
-    const float frames = static_cast<float>(dt_ms) / SPEED_FRAME_MS;
-    for (auto& star : stars_) {
-        // Move star closer by its speed, scaled to the time since the previous frame
-        star.z -= star.speed * frames;
-
-        if (star.z <= 0.01f) {
-            recycle_star(star);
-            continue;
-        }
-
-        // Project to screen coordinates
-        float sx = cx_ + (star.x / star.z) * focal_;
-        float sy = cy_ + (star.y / star.z) * focal_;
-
-        // Check bounds
-        if (sx < 0 || sx >= w || sy < 0 || sy >= h) {
-            recycle_star(star);
-            continue;
-        }
-
-        int isx = static_cast<int>(sx);
-        int isy = static_cast<int>(sy);
-
-        // Size: larger when closer (z near 0)
-        int size = std::max(1, static_cast<int>(3.0f * (1.0f - star.z)));
-
-        // Brightness: brighter when closer, with minimum floor
-        float bright_f = 80.0f + 175.0f * (1.0f - star.z);
-
-        // Close stars show their color tint; distant stars stay white
-        uint8_t r, g, b;
-        if (star.z < COLOR_THRESHOLD) {
-            float tint_mix = (COLOR_THRESHOLD - star.z) / COLOR_THRESHOLD;
-            r = static_cast<uint8_t>(bright_f *
-                                     (1.0f - tint_mix + tint_mix * star.tint_r / 255.0f));
-            g = static_cast<uint8_t>(bright_f *
-                                     (1.0f - tint_mix + tint_mix * star.tint_g / 255.0f));
-            b = static_cast<uint8_t>(bright_f *
-                                     (1.0f - tint_mix + tint_mix * star.tint_b / 255.0f));
-        } else {
-            r = g = b = static_cast<uint8_t>(bright_f);
-        }
-
-        // Write pixel(s) directly to canvas buffer, X byte 0xFF from PIXEL_BLACK
-        uint32_t pixel =
-            PIXEL_BLACK | (static_cast<uint32_t>(r) << 16) | (static_cast<uint32_t>(g) << 8) | b;
-
-        for (int dy = 0; dy < size; dy++) {
-            int py = isy + dy;
-            if (py < 0 || py >= h)
-                continue;
-            int row = py * stride_px;
-            for (int dx = 0; dx < size; dx++) {
-                int px = isx + dx;
-                if (px >= 0 && px < w) {
-                    pixels[row + px] = pixel;
-                }
-            }
-        }
-
-        // Remember position for next frame's erase pass
-        star.prev_sx = static_cast<int16_t>(isx);
-        star.prev_sy = static_cast<int16_t>(isy);
-        star.prev_size = static_cast<uint8_t>(size);
-    }
-
-    // Tell LVGL the canvas content changed
+    FrameTarget target{draw_buf_, draw_buf_stride_, static_cast<uint32_t>(screen_w_),
+                       static_cast<uint32_t>(screen_h_)};
+    sim_.step(dt_ms, target, rng_);
+    // The whole canvas, not the box the step changed. On a double-buffered display a partial
+    // invalidation makes LVGL copy the previous frame's area minus this one into the other
+    // buffer, in strips, every frame; a full-canvas one leaves it nothing to sync.
     lv_obj_invalidate(canvas_);
 }
 

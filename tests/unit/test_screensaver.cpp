@@ -710,28 +710,7 @@ class DrawTaskCounter {
     lv_obj_t* obj_;
 };
 
-/// Records every area invalidated on `disp`, for as long as it lives.
-class InvalidatedAreas {
-  public:
-    explicit InvalidatedAreas(lv_display_t* disp) : disp_(disp) {
-        lv_display_add_event_cb(disp_, on_invalidate, LV_EVENT_INVALIDATE_AREA, this);
-    }
-    ~InvalidatedAreas() {
-        lv_display_remove_event_cb_with_user_data(disp_, on_invalidate, this);
-    }
-    InvalidatedAreas(const InvalidatedAreas&) = delete;
-    InvalidatedAreas& operator=(const InvalidatedAreas&) = delete;
-
-    std::vector<lv_area_t> areas;
-
-  private:
-    static void on_invalidate(lv_event_t* e) {
-        auto* self = static_cast<InvalidatedAreas*>(lv_event_get_user_data(e));
-        self->areas.push_back(*static_cast<const lv_area_t*>(lv_event_get_param(e)));
-    }
-
-    lv_display_t* disp_;
-};
+using helix::test::InvalidatedAreas;
 
 bool area_contains(const lv_area_t& outer, const lv_area_t& inner) {
     return outer.x1 <= inner.x1 && outer.y1 <= inner.y1 && outer.x2 >= inner.x2 &&
