@@ -56,7 +56,7 @@ PlatformTier classify_tier(size_t ram_mb, int cores) {
         return PlatformTier::EMBEDDED;
     }
 
-    // STANDARD: RAM >= 2GB AND 4+ cores
+    // STANDARD: RAM >= 768MB AND 4+ cores
     if (ram_mb >= PlatformCapabilities::STANDARD_RAM_THRESHOLD_MB &&
         cores >= PlatformCapabilities::STANDARD_CPU_CORES_MIN) {
         return PlatformTier::STANDARD;

@@ -21,9 +21,11 @@ namespace helix {
 
 namespace refresh_timing_detail {
 
-/// Whole milliseconds in [min_ms, max_ms]. An unset variable reads as nullopt; a set one
-/// that is not a plain decimal number in range reads as nullopt with a warning.
-inline std::optional<uint32_t> ms_from_env(const char* name, uint32_t min_ms, uint32_t max_ms) {
+/// Whole milliseconds in [min_ms, max_ms], or 0 when `zero_means_off`. An unset variable reads
+/// as nullopt; a set one that is not a plain decimal number it accepts reads as nullopt with a
+/// warning.
+inline std::optional<uint32_t> ms_from_env(const char* name, uint32_t min_ms, uint32_t max_ms,
+                                           bool zero_means_off = false) {
     const char* value = std::getenv(name);
     if (value == nullptr) {
         return std::nullopt;
@@ -36,11 +38,12 @@ inline std::optional<uint32_t> ms_from_env(const char* name, uint32_t min_ms, ui
         errno = 0;
         char* end = nullptr;
         parsed = std::strtoul(value, &end, 10);
-        ok = errno == 0 && *end == '\0' && parsed >= min_ms && parsed <= max_ms;
+        ok = errno == 0 && *end == '\0' &&
+             ((parsed >= min_ms && parsed <= max_ms) || (zero_means_off && parsed == 0));
     }
     if (!ok) {
-        spdlog::warn("[RefreshTiming] Ignoring {}='{}': expected whole milliseconds, {} to {}",
-                     name, value, min_ms, max_ms);
+        spdlog::warn("[RefreshTiming] Ignoring {}='{}': expected whole milliseconds, {} to {}{}",
+                     name, value, min_ms, max_ms, zero_means_off ? ", or 0 for off" : "");
         return std::nullopt;
     }
     return static_cast<uint32_t>(parsed);
@@ -72,26 +75,30 @@ inline RefreshTiming refresh_timing_from_env() {
     t.scope_all = refresh_timing_detail::scope_all_from_env();
     t.screensaver_refr_period_ms =
         ms_from_env("HELIX_SCREENSAVER_REFR_PERIOD_MS", RefreshTiming::MIN_PERIOD_MS,
-                    RefreshTiming::MAX_PERIOD_MS)
-            .value_or(0);
-    t.loop_min_sleep_ms = ms_from_env("HELIX_LOOP_MIN_SLEEP_MS", RefreshTiming::MIN_LOOP_SLEEP_MS,
-                                      RefreshTiming::MAX_LOOP_SLEEP_MS)
-                              .value_or(RefreshTiming::DEFAULT_LOOP_MIN_SLEEP_MS);
+                    RefreshTiming::MAX_PERIOD_MS, true)
+            .value_or(RefreshTiming::DEFAULT_SCREENSAVER_REFR_PERIOD_MS);
+    // A set floor applies everywhere; unset, a running screensaver gets its own lower one.
+    const std::optional<uint32_t> floor =
+        ms_from_env("HELIX_LOOP_MIN_SLEEP_MS", RefreshTiming::MIN_LOOP_SLEEP_MS,
+                    RefreshTiming::MAX_LOOP_SLEEP_MS);
+    t.loop_min_sleep_ms = floor.value_or(RefreshTiming::DEFAULT_LOOP_MIN_SLEEP_MS);
+    t.screensaver_loop_min_sleep_ms =
+        floor.value_or(RefreshTiming::DEFAULT_SCREENSAVER_LOOP_MIN_SLEEP_MS);
     return t;
 }
 
-/// An EGL presentation switch: `1` is on, `0` or unset is off, anything else is off with a
-/// warning.
+/// An EGL presentation switch, on by default: `0` turns it off, `1` or unset leaves it on, and
+/// anything else leaves it on with a warning.
 inline bool egl_switch_from_env(const char* name) {
     const char* value = std::getenv(name);
-    if (value == nullptr || std::strcmp(value, "0") == 0) {
-        return false;
-    }
-    if (std::strcmp(value, "1") == 0) {
+    if (value == nullptr || std::strcmp(value, "1") == 0) {
         return true;
     }
+    if (std::strcmp(value, "0") == 0) {
+        return false;
+    }
     spdlog::warn("[RefreshTiming] Ignoring {}='{}': expected 0 or 1", name, value);
-    return false;
+    return true;
 }
 
 /// HELIX_EGL_VSYNC: wait for each page flip.
@@ -111,13 +118,13 @@ inline bool egl_xrgb_from_env() {
 
 /// What became of an EGL switch the environment may have asked for.
 enum class EglSwitch {
-    Off,      ///< not asked for; the driver keeps its default
+    Off,      ///< turned off with 0; the driver keeps its default
     On,       ///< asked for, and the driver took it
     Declined, ///< asked for, and the driver refused it
 };
 
-/// Calls `turn_on` when the switch `name` asks for it; `turn_on` returns whether the driver
-/// took the setting.
+/// Calls `turn_on` unless the switch `name` is 0; `turn_on` returns whether the driver took the
+/// setting.
 inline EglSwitch apply_egl_switch_from_env(const char* name, const std::function<bool()>& turn_on) {
     if (!egl_switch_from_env(name)) {
         return EglSwitch::Off;
@@ -125,8 +132,8 @@ inline EglSwitch apply_egl_switch_from_env(const char* name, const std::function
     return turn_on() ? EglSwitch::On : EglSwitch::Declined;
 }
 
-/// Calls `set_vsync(true)` when HELIX_EGL_VSYNC asks for it, and reports whether it did.
-/// Otherwise the driver keeps its own default.
+/// Calls `set_vsync(true)` unless HELIX_EGL_VSYNC is 0, and reports whether it did. With 0 the
+/// driver keeps its own default.
 inline bool apply_egl_vsync_from_env(const std::function<void(bool)>& set_vsync) {
     return apply_egl_switch_from_env("HELIX_EGL_VSYNC", [&set_vsync] {
                set_vsync(true);

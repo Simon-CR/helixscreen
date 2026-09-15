@@ -45,17 +45,17 @@ enum class PlatformTier {
 
     /**
      * BASIC: Mid-range embedded hardware
-     * - RAM 512MB-2GB OR 2-3 cores
+     * - RAM 512-767 MB OR 2-3 cores
      * - Simplified charts (50 points), no animations
-     * - Examples: Raspberry Pi 3, older Pi 4 models
+     * - Examples: 512 MB boards, 2-3 core boards
      */
     BASIC,
 
     /**
      * STANDARD: Modern capable hardware
-     * - RAM >= 2GB AND 4+ cores
+     * - RAM >= 768 MB AND 4+ cores
      * - Full charts (200 points) with animations
-     * - Examples: Raspberry Pi 4/5 (2GB+), desktop
+     * - Examples: Raspberry Pi 3B (1 GB) and 4/5, desktop
      */
     STANDARD
 };
@@ -101,7 +101,7 @@ struct PlatformCapabilities {
     static constexpr size_t EMBEDDED_RAM_THRESHOLD_MB = 512;
 
     /// RAM at or above this threshold (with enough cores) = STANDARD tier
-    static constexpr size_t STANDARD_RAM_THRESHOLD_MB = 2048;
+    static constexpr size_t STANDARD_RAM_THRESHOLD_MB = 768;
 
     /// Minimum cores for STANDARD tier (with enough RAM)
     static constexpr int STANDARD_CPU_CORES_MIN = 4;

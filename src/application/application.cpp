@@ -52,6 +52,7 @@
 #include "printer_cache_registry.h"
 #include "printer_recovery_service.h"
 #include "recovery_modal_presenter.h"
+#include "refresh_period_hold.h"
 #ifdef HELIX_ENABLE_REMOTE_CONTROL
 #include "remote_control_server.h"
 #endif
@@ -4369,8 +4370,12 @@ int Application::main_loop() {
             // When display is sleeping, extend sleep to 200ms — no rendering
             // needed, just need to stay responsive to wake events.
             if (!loop_config.benchmark_mode) {
+                helix::RefreshTiming timing = m_display->refresh_timing();
+                // A running screensaver's refresh-period hold lowers the floor to pace its frames.
+                timing.loop_min_sleep_ms =
+                    helix::active_refresh_period_hold().loop_min_sleep_ms(timing.loop_min_sleep_ms);
                 DisplayManager::delay(helix::main_loop_sleep_ms(
-                    time_till_next, m_display->is_display_sleeping(), m_display->refresh_timing()));
+                    time_till_next, m_display->is_display_sleeping(), timing));
             } else {
                 DisplayManager::delay(1);
             }

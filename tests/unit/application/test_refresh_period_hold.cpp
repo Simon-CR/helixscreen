@@ -253,20 +253,22 @@ TEST_CASE_METHOD(LVGLTestFixture,
     CHECK(helix::ui::UpdateQueueTestAccess::timer_period(helix::ui::UpdateQueue::instance()) == 20);
 }
 
-TEST_CASE_METHOD(LVGLTestFixture, "apply_refresh_timing with nothing set changes nothing",
+TEST_CASE_METHOD(LVGLTestFixture,
+                 "apply_refresh_timing with nothing set keeps the global timers and arms the "
+                 "screensaver period",
                  "[application][display][refresh_period]") {
     ScopedTimerPeriods restore;
     ScopedTimerPeriods::set(40, 45);
     ScopedIndev input;
     const uint32_t read_before = read_timer_period(input.indev);
-    helix::active_refresh_period_hold().set_period(16);
+    helix::active_refresh_period_hold().set_period(33);
 
     helix::apply_refresh_timing(helix::RefreshTiming{});
 
     CHECK(default_refr_timer_period() == 40);
     CHECK(anim_timer_period() == 45);
     CHECK(read_timer_period(input.indev) == read_before);
-    CHECK(helix::active_refresh_period_hold().period() == 0);
+    CHECK(helix::active_refresh_period_hold().period() == 16);
 }
 
 TEST_CASE_METHOD(LVGLTestFixture,
@@ -373,5 +375,34 @@ TEST_CASE_METHOD(
         hold.release();
         CHECK(default_refr_timer_period() == 20);
         CHECK(anim_timer_period() == 20);
+    }
+}
+
+TEST_CASE_METHOD(LVGLTestFixture,
+                 "the main loop takes the screensaver floor only while the hold runs its timers",
+                 "[application][display][refresh_period]") {
+    ScopedTimerPeriods restore;
+    ScopedTimerPeriods::set(40, 45);
+    RefreshPeriodHold& hold = helix::active_refresh_period_hold();
+    ReleaseActiveHold release_on_exit;
+    helix::RefreshTiming timing; // floor 5, screensaver floor 1, screensaver period 16
+
+    SECTION("with a screensaver period") {
+        helix::apply_refresh_timing(timing);
+        CHECK(hold.loop_min_sleep_ms(timing.loop_min_sleep_ms) == 5);
+        hold.acquire();
+        REQUIRE(default_refr_timer_period() == 16);
+        CHECK(hold.loop_min_sleep_ms(timing.loop_min_sleep_ms) == 1);
+        hold.release();
+        CHECK(hold.loop_min_sleep_ms(timing.loop_min_sleep_ms) == 5);
+    }
+
+    SECTION("with the screensaver period off") {
+        timing.screensaver_refr_period_ms = 0;
+        helix::apply_refresh_timing(timing);
+        hold.acquire();
+        REQUIRE(default_refr_timer_period() == 40);
+        CHECK(hold.loop_min_sleep_ms(timing.loop_min_sleep_ms) == 5);
+        hold.release();
     }
 }

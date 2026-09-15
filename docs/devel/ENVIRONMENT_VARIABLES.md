@@ -539,68 +539,69 @@ Display refresh and animation period while a screensaver runs. Set before the sa
 
 | Property | Value |
 |----------|-------|
-| **Values** | Whole milliseconds, `8` to `100` |
-| **Default** | Unset: savers run at the global period |
+| **Values** | Whole milliseconds, `8` to `100`, or `0` to run savers at the global period |
+| **Default** | `16` |
 | **Invalid** | Ignored with a warning |
 | **File** | `include/refresh_period_hold.h`, `src/ui/screensaver_manager.cpp` |
 
 ```bash
-HELIX_SCREENSAVER_REFR_PERIOD_MS=16 HELIX_SCREENSAVER_NOW=1 ./build/bin/helix-screen --test -vv
+# Savers at the global period instead of 16 ms
+HELIX_SCREENSAVER_REFR_PERIOD_MS=0 HELIX_SCREENSAVER_NOW=1 ./build/bin/helix-screen --test -vv
 ```
 
 Requires a build with `HELIX_ENABLE_SCREENSAVER`.
 
 ### `HELIX_LOOP_MIN_SLEEP_MS`
 
-Shortest sleep the main loop takes between `lv_timer_handler()` calls. The loop sleeps for LVGL's "next timer due" hint, but never less than this, so with a 16 ms refresh period the default floor of 5 ms can make a frame up to 4 ms late. A lower floor paces frames more closely at the cost of more wakeups.
+Shortest sleep the main loop takes between `lv_timer_handler()` calls. The loop sleeps for LVGL's "next timer due" hint, but never less than this, so with a 16 ms refresh period the default floor of 5 ms can make a frame up to 4 ms late. A lower floor paces frames more closely at the cost of more wakeups. While a screensaver holds its refresh period the floor is 1 ms, so its 16 ms frames land on time; everywhere else it is 5 ms. Setting this variable sets the floor in both places.
 
 | Property | Value |
 |----------|-------|
 | **Values** | Whole milliseconds, `1` to `33` |
-| **Default** | `5` |
+| **Default** | `5`; `1` while a screensaver runs |
 | **Invalid** | Ignored with a warning |
 | **File** | `include/refresh_timing_env.h`; `main_loop_sleep_ms()` in `include/refresh_timing.h`, used in `src/application/application.cpp` |
 
 ### `HELIX_EGL_VSYNC`
 
-EGL presentation mode on the DRM backend (`helix-screen-egl`). By default a frame finished while the previous page flip is still in flight waits as pending, and the next frame replaces it before it is ever shown, so an animation can skip frames or leave its last frame unshown. `1` makes the flush wait for the in-flight flip, so every rendered frame reaches the screen; the cost is that the LVGL thread blocks for up to one refresh interval inside the flush. Flips are latched to vblank either way, so neither mode tears.
+EGL presentation mode on the DRM backend (`helix-screen-egl`). By default the flush waits for the in-flight flip, so every rendered frame reaches the screen; the cost is that the LVGL thread blocks for up to one refresh interval inside the flush. `0` turns the wait off: a frame finished while the previous page flip is still in flight then waits as pending, and the next frame replaces it before it is ever shown, so an animation can skip frames or leave its last frame unshown. Flips are latched to vblank either way, so neither mode tears.
 
 | Property | Value |
 |----------|-------|
-| **Values** | `1` (wait for each flip), `0` |
-| **Default** | `0` |
-| **Invalid** | Any other value is ignored with a warning |
+| **Values** | `1` (wait for each flip), `0` (do not wait) |
+| **Default** | `1` |
+| **Invalid** | Any other value is ignored with a warning, and the default is kept |
 | **File** | `src/api/display_backend_drm.cpp` (EGL builds only), `patches/lvgl-egl-vsync.patch` |
 
 The dumb-buffer DRM binary (`helix-screen`) already waits for every page flip; this variable does not affect it.
 
 ### `HELIX_EGL_PARTIAL_UPLOAD`
 
-How much of each frame the EGL presentation path (`helix-screen-egl`) copies into the display texture. By default every frame uploads the whole buffer, however little of it changed. `1` uploads only the areas LVGL flushed. The first frame, a frame into a recreated or resized texture, and the frame after pixels changed outside the flush path still upload the whole buffer: the flush callback put back after the splash or a panel power-off, and a color transform change.
+How much of each frame the EGL presentation path (`helix-screen-egl`) copies into the display texture. By default only the areas LVGL flushed are uploaded. `0` uploads the whole buffer every frame, however little of it changed. The first frame, a frame into a recreated or resized texture, and the frame after pixels changed outside the flush path still upload the whole buffer: the flush callback put back after the splash or a panel power-off, and a color transform change.
 
-Uploading a sub-rectangle needs `GL_UNPACK_ROW_LENGTH` (OpenGL ES 3, or `GL_EXT_unpack_subimage` on OpenGL ES 2). A GL driver without it keeps uploading whole frames and logs a warning. A driver may also make an upload wait while the previous frame still draws from the texture, so measure CPU and frame rate before keeping it.
+Uploading a sub-rectangle needs `GL_UNPACK_ROW_LENGTH` (OpenGL ES 3, or `GL_EXT_unpack_subimage` on OpenGL ES 2). A GL driver without it keeps uploading whole frames and logs a warning. A driver may also make an upload wait while the previous frame still draws from the texture; `0` is the way out on such a driver.
 
 | Property | Value |
 |----------|-------|
-| **Values** | `1` (flushed areas only), `0` |
-| **Default** | `0` |
-| **Invalid** | Any other value is ignored with a warning |
+| **Values** | `1` (flushed areas only), `0` (whole frames) |
+| **Default** | `1` |
+| **Invalid** | Any other value is ignored with a warning, and the default is kept |
 | **File** | `src/api/display_backend_drm.cpp` (EGL builds only), `patches/lvgl-egl-partial-upload.patch`; the decision is `lv_linux_drm_egl_upload_plan()` in `lib/lvgl/src/drivers/display/drm/lv_linux_drm_egl_upload.h` |
 
 A stale region after waking the panel or leaving the splash is the failure to look for, and only the panel shows it: `ctl screenshot` re-renders the widget tree instead of reading the texture.
 
 ### `HELIX_EGL_XRGB`
 
-Pixel format of the display on the EGL presentation path (`helix-screen-egl`). LVGL's 32 bpp format is XRGB8888, whose fourth byte LVGL leaves undefined, and this path would present that byte as alpha (`docs/devel/GPU_ACCELERATION.md` § "The alpha trap"). By default the backend switches the display to ARGB8888 so LVGL keeps the byte a real alpha. `1` keeps XRGB8888 and has the display shader ignore the fourth byte instead, and LVGL then skips clearing each area before redrawing it.
+Pixel format of the display on the EGL presentation path (`helix-screen-egl`). LVGL's 32 bpp format is XRGB8888, whose fourth byte LVGL leaves undefined, and this path would present that byte as alpha (`docs/devel/GPU_ACCELERATION.md` § "The alpha trap"). By default the display stays XRGB8888 and the display shader ignores the fourth byte, and LVGL then skips clearing each area before redrawing it. `0` switches the display to ARGB8888 so LVGL keeps the byte a real alpha instead.
 
 | Property | Value |
 |----------|-------|
-| **Values** | `1` (keep XRGB8888), `0` |
-| **Default** | `0` |
-| **Invalid** | Any other value is ignored with a warning |
+| **Values** | `1` (keep XRGB8888), `0` (switch to ARGB8888) |
+| **Default** | `1` |
+| **Invalid** | Any other value is ignored with a warning, and the default is kept |
 | **File** | `src/api/display_backend_drm.cpp` (EGL builds only), `patches/lvgl-egl-xrgb-shader.patch` |
 
-On aarch64, LVGL's NEON blends into an XRGB8888 destination write 0 into the fourth byte of every pixel they mix through a mask or partial opacity, fully covered pixels included (a plain full-opacity fill writes `0xFF`), so with `1` that byte is 0 wherever anything was antialiased or masked and the shader has to ignore it outright. The C blends an x86 test build uses leave the byte alone, so only the device shows this. The default ARGB8888 display has the opposite trap: LVGL copies an XRGB8888 image or canvas into it byte for byte, so whatever the source's fourth byte holds, including the 0 those blends leave, arrives as alpha.
+On aarch64, LVGL's NEON blends into an XRGB8888 destination write 0 into the fourth byte of every pixel they mix through a mask or partial opacity, fully covered pixels included (a plain full-opacity fill writes `0xFF`), so with the default that byte is 0 wherever anything was antialiased or masked and the shader has to ignore it outright. The C blends an x86 test build uses leave the byte alone, so only the device shows this. An ARGB8888 display (`0`) has the opposite trap: LVGL copies an XRGB8888 image or canvas into it byte for byte, so whatever the source's fourth byte holds, including the 0 those blends leave, arrives as alpha.
 
 A defect here is invisible to `ctl screenshot` for the same reason. Check the panel by eye: icons, borders and antialiased text must not turn black.
 

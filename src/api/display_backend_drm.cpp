@@ -455,31 +455,34 @@ lv_display_t* DisplayBackendDRM::create_display(int width, int height) {
     }
 
 #if LV_LINUX_DRM_USE_EGL
-    // LVGL's 32bpp native format is XRGB8888 and it leaves the X byte at 0x00.
-    // The EGL path uploads that buffer as GL_RGBA, so X arrives as alpha, and
-    // the fragment shader multiplies RGB by it -- every pixel LVGL did not make
-    // fully opaque loses its colour. ARGB8888 makes LVGL maintain the byte as a
-    // real alpha instead. Same defect the AD5M hit through its LCD controller
-    // (see DisplayBackendFbdev::init), reached here through a different consumer.
-    // An XRGB8888 image or canvas drawn into the ARGB8888 display is copied byte for
-    // byte, so its X byte arrives as alpha too.
-    // HELIX_EGL_XRGB keeps XRGB8888 instead: the display shader presents an XRGB8888
-    // display with the X byte ignored, so nothing depends on LVGL maintaining it. It
-    // must ignore the byte outright: on aarch64 LVGL's NEON blends into XRGB8888 write
-    // 0 there.
+    // LVGL's 32bpp native format is XRGB8888 and it leaves the X byte at 0x00. The EGL path
+    // uploads that buffer as GL_RGBA, so X arrives as alpha.
+    // By default (HELIX_EGL_XRGB) the display stays XRGB8888 and the display shader presents
+    // it with the X byte ignored, so nothing depends on LVGL maintaining it. It must ignore the
+    // byte outright: on aarch64 LVGL's NEON blends into XRGB8888 write 0 there.
+    // HELIX_EGL_XRGB=0 switches the display to ARGB8888. There the fragment shader multiplies
+    // RGB by the alpha byte, so LVGL must maintain it as a real alpha or every pixel it did not
+    // make fully opaque loses its colour. Same defect the AD5M hit through its LCD controller
+    // (see DisplayBackendFbdev::init), reached here through a different consumer. An XRGB8888
+    // image or canvas drawn into the ARGB8888 display is copied byte for byte, so its X byte
+    // arrives as alpha too.
     if (lv_display_get_color_format(display_) == LV_COLOR_FORMAT_XRGB8888) {
         if (helix::egl_xrgb_from_env()) {
             spdlog::info("[DRM Backend] Color format stays XRGB8888 on the EGL path, X byte "
                          "ignored (HELIX_EGL_XRGB)");
         } else {
             lv_display_set_color_format(display_, LV_COLOR_FORMAT_ARGB8888);
-            spdlog::info("[DRM Backend] Color format XRGB8888 -> ARGB8888 for the EGL path");
+            spdlog::info("[DRM Backend] Color format XRGB8888 -> ARGB8888 for the EGL path "
+                         "(HELIX_EGL_XRGB=0)");
         }
     }
 
     if (helix::apply_egl_vsync_from_env(
             [this](bool vsync) { lv_linux_drm_egl_set_vsync(display_, vsync); })) {
         spdlog::info("[DRM Backend] EGL presentation waits for each page flip (HELIX_EGL_VSYNC)");
+    } else {
+        spdlog::info(
+            "[DRM Backend] EGL presentation does not wait for page flips (HELIX_EGL_VSYNC=0)");
     }
 
     switch (helix::apply_egl_switch_from_env("HELIX_EGL_PARTIAL_UPLOAD", [this] {
@@ -493,6 +496,7 @@ lv_display_t* DisplayBackendDRM::create_display(int width, int height) {
                      "warning above says why); uploading whole frames");
         break;
     case helix::EglSwitch::Off:
+        spdlog::info("[DRM Backend] EGL uploads whole frames (HELIX_EGL_PARTIAL_UPLOAD=0)");
         break;
     }
 #endif

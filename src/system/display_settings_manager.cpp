@@ -368,10 +368,10 @@ void DisplaySettingsManager::init_subjects() {
 
 #ifdef HELIX_ENABLE_SCREENSAVER
     // Screensaver type — tier-aware default via supports_animations.
-    // Devices that can run smooth animations (STANDARD tier on Pi 4/5, desktop)
-    // default to Flying Toasters (1). BASIC (Pi 3B-class) and EMBEDDED (AD5M,
-    // AD5X) default to OFF (0) because animated screensavers starve Klipper's
-    // CPU budget and cause print failures.
+    // Devices that can run smooth animations (STANDARD tier: Pi 3B, Pi 4/5,
+    // desktop) default to Flying Toasters (1). BASIC and EMBEDDED (AD5M, AD5X)
+    // default to OFF (0) because animated screensavers starve Klipper's CPU
+    // budget and cause print failures.
     const int screensaver_default = PlatformCapabilities::detect().supports_animations ? 1 : 0;
 
     int screensaver_type = screensaver_default;

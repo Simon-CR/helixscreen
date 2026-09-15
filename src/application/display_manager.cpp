@@ -482,14 +482,12 @@ bool DisplayManager::init(const Config& config) {
     // timers they set all exist.
     m_refresh_timing = helix::refresh_timing_from_env();
     helix::apply_refresh_timing(m_refresh_timing);
-    if (m_refresh_timing.refr_period_ms != 0 || m_refresh_timing.screensaver_refr_period_ms != 0 ||
-        m_refresh_timing.loop_min_sleep_ms != helix::RefreshTiming::DEFAULT_LOOP_MIN_SLEEP_MS) {
-        spdlog::info(
-            "[DisplayManager] Refresh pacing: period {} ms (scope {}), screensaver {} ms, "
-            "loop floor {} ms (0 = LVGL default)",
-            m_refresh_timing.refr_period_ms, m_refresh_timing.scope_all ? "all" : "display",
-            m_refresh_timing.screensaver_refr_period_ms, m_refresh_timing.loop_min_sleep_ms);
-    }
+    spdlog::info("[DisplayManager] Refresh pacing: period {} ms (0 = LVGL default, scope {}), "
+                 "screensaver {} ms (0 = global period), loop floor {} ms, {} ms while a "
+                 "screensaver runs",
+                 m_refresh_timing.refr_period_ms, m_refresh_timing.scope_all ? "all" : "display",
+                 m_refresh_timing.screensaver_refr_period_ms, m_refresh_timing.loop_min_sleep_ms,
+                 m_refresh_timing.screensaver_loop_min_sleep_ms);
 
     // Create backlight backend (auto-detects hardware)
     m_backlight = BacklightBackend::create();
@@ -1060,8 +1058,9 @@ void RefreshPeriodHold::take_timers() {
         m_saved_anim = true;
         lv_timer_set_period(anim, m_period_ms);
     }
-    spdlog::debug("[RefreshPeriodHold] Refresh period {} ms -> {} ms", m_saved_refr_period_ms,
-                  m_period_ms);
+    spdlog::debug("[RefreshPeriodHold] Refresh period {} ms -> {} ms, main-loop floor {} ms "
+                  "(0 = the loop's own)",
+                  m_saved_refr_period_ms, m_period_ms, m_loop_min_sleep_ms);
 }
 
 void RefreshPeriodHold::release() {
@@ -1107,6 +1106,7 @@ RefreshPeriodHold& active_refresh_period_hold() {
 void apply_refresh_timing(const RefreshTiming& timing) {
     RefreshPeriodHold& hold = active_refresh_period_hold();
     hold.set_period(timing.screensaver_refr_period_ms);
+    hold.set_loop_min_sleep(timing.screensaver_loop_min_sleep_ms);
     if (!lv_is_initialized()) {
         return;
     }

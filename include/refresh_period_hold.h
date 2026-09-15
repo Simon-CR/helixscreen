@@ -23,6 +23,8 @@ class RefreshPeriodHoldTestAccess;
  *
  * - The first acquire() records both timers' periods and sets them to period(). With no
  *   period configured, no default display, or no refresh timer, it changes nothing.
+ * - While it runs the timers, loop_min_sleep_ms() gives the main loop this hold's floor, so a
+ *   frame due every period() is not held back by the loop's usual floor.
  * - Nested acquire() calls only count.
  * - The final release() puts back the periods the first acquire() recorded, which is the
  *   global HELIX_REFR_PERIOD_MS when one is configured. It writes only to the display it
@@ -42,6 +44,17 @@ class RefreshPeriodHold {
 
     uint32_t period() const {
         return m_period_ms;
+    }
+
+    /// Main-loop floor, in ms, while this hold runs the timers. 0 leaves the loop's own floor.
+    void set_loop_min_sleep(uint32_t ms) {
+        m_loop_min_sleep_ms = ms;
+    }
+
+    /// The shortest sleep the main loop takes: this hold's floor while it runs the refresh
+    /// timer, otherwise `base_ms`.
+    uint32_t loop_min_sleep_ms(uint32_t base_ms) const {
+        return m_display != nullptr && m_loop_min_sleep_ms != 0 ? m_loop_min_sleep_ms : base_ms;
     }
 
     void acquire();
@@ -76,6 +89,7 @@ class RefreshPeriodHold {
     uint32_t m_saved_anim_period_ms = 0;
     bool m_saved_anim = false;
     uint32_t m_period_ms = 0;
+    uint32_t m_loop_min_sleep_ms = 0;
     int m_count = 0;
 };
 
