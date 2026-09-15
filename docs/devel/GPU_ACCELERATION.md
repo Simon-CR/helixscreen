@@ -249,6 +249,27 @@ nothing from this rung.
 
 ---
 
+## Pi 3B screensaver pacing (2026-09-14)
+
+A Raspberry Pi 3B (1 GB) running the screensavers on the EGL build unless a row says otherwise, with each arm also run under a load gate (`cyclictest` wake latency beside `stress-ng --cpu 2`). The shipped defaults are the "+ both" row: a 16 ms screensaver period, vsync, a 1 ms main-loop floor while a saver runs, partial upload and an XRGB8888 display.
+
+| Arm | Toasters fps / CPU | Starfield fps / CPU | Frame gap p50 / p90 (ms) | Load gate |
+|---|---|---|---|---|
+| default 33 ms period | 28.6 / 12.4% | 28.5 / 23.7% | 35 / 38 | pass |
+| screensaver period 16 ms | 48.0 / 22.0% | 48.1 / 43.5% | 20 / 30 (16 and 33 mixed) | pass |
+| + vsync + 1 ms loop floor | 58.6 / 23.3% | 58.7 / 45.9% | 16.7 / 17.3 | pass, max 7.9 ms |
+| EGL control (16 ms, vsync, 1 ms floor) | 59.0 / 22.2% | 59.5 / 43.1% | 16.7 / 17 | pass |
+| + partial upload | 58.9 / 8.2% | 59.2 / 42.5% | 16.7 / 18 | pass, worst max 15.7 ms |
+| + XRGB8888 display | 59.2 / 22.1% | 59.6 / 37.5% | 16.7 / 17 | pass |
+| + both | 58.6 / 8.1% | 59.7 / 36.9% | 16.7 / 17-18 | pass, worst max 7.7 ms |
+| dumb DRM binary, matched (16 ms, 1 ms floor) | 58.6 / 6.1% | 58.8 / 15.7% | 16.7 / 17.4-20.1 | pass, worst p99 1.5 ms |
+
+Partial upload cuts toaster CPU to about a third, and the XRGB8888 display helps full-screen redraws such as starfield. With both, EGL is within about 2 points of the dumb DRM binary everywhere except starfield, which redraws nearly the whole screen each frame.
+
+Under the load gate the 3B reaches 80-84 C and its firmware caps the ARM clock (818 of 1200 MHz at 83.8 C, `throttled=0x20002`, visible in `vcgencmd measure_clock arm` but not in `scaling_cur_freq`), so its load-gate results come from a throttled CPU.
+
+The same defaults double the frame rate on a Pi 5 (4 GB, 60 Hz DSI panel) as well, on both binaries (`HELIX_DISPLAY_BACKEND=drm` and `=egl` alike): starfield 30.1 to 60.0 fps at 2.4-2.5% of a core (frame gap p50/p90 16.7 ms), toasters with 49 sprites 29.8 to 59.5 fps at 4.5%, pipes and idle unchanged at about 1% and 0.7%. The load gate passes everywhere (p99 under 0.2 ms, max about 6 ms) and the board never throttles: 66 C at the full 2400 MHz.
+
 ## nanovg: why it is unusable
 
 Three independent defects, all upstream in LVGL 9.5. The first alone is
@@ -314,9 +335,17 @@ before upload.
 
 ## The alpha trap, and why nothing automated caught it
 
-**LVGL's 32bpp native format is `XRGB8888`, and it leaves the X byte at
-`0x00`.** That byte is don't-care by contract, so LVGL writes `0xFF` there on
-full-word draw paths and leaves it alone otherwise.
+**LVGL's 32bpp native format is `XRGB8888`, and it does not keep the X byte.**
+That byte is don't-care by contract. A plain full-opacity fill writes `0xFF`
+there. On aarch64 the NEON blends that mix through a mask or partial opacity
+(`lv_color_24_24_mix_4_internal` and its siblings under
+`src/draw/sw/blend/neon/`) write `0`, fully covered pixels included, while the
+C blends an x86 build uses leave the byte alone. So masked and antialiased
+pixels carry `X=0x00` on the device and never in the unit tests. An `XRGB8888`
+image drawn into an `ARGB8888` layer is copied byte for byte, so those pixels
+render transparent there as well: the pipes screensaver draws into an
+`ARGB8888` canvas for that reason, and starfield writes every pixel itself and
+stays `XRGB8888`.
 
 The EGL path gives it meaning. `lv_linux_drm_egl.c` uploads the buffer as
 `GL_RGBA`, so X arrives as alpha, and the fragment shader in
@@ -331,6 +360,10 @@ maintains the byte. `DisplayBackendFbdev::init` already did the same thing for
 the AD5M, whose LCD controller read that byte as alpha and produced a magenta
 ghost. Same defect, two different consumers. fbdev, DRM dumb buffers and SDL are
 all immune because they ignore the fourth byte of XRGB.
+
+`HELIX_EGL_XRGB=1` takes the other exit: the display stays `XRGB8888`, and
+`lv_opengles_render_display()` draws it as 24-bit so both display shaders ignore
+the fourth byte (`patches/lvgl-egl-xrgb-shader.patch`). It is off by default.
 
 **This is the part worth remembering.** Every automated signal said the broken
 build was healthy:

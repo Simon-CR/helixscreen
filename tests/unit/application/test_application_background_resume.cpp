@@ -34,6 +34,7 @@
 
 #include "app_globals.h"
 #include "application_test_fixture.h"
+#include "display/lv_display_private.h" // inv_en_cnt, restored after every test
 #include "lvgl/lvgl.h"
 #include "panel_lifecycle.h"
 #include "runtime_config.h"
@@ -111,6 +112,7 @@ class BackgroundResumeFixture : public ApplicationTestFixture {
 
         display_ = lv_display_get_default();
         REQUIRE(display_ != nullptr);
+        saved_inv_en_cnt_ = display_->inv_en_cnt;
         theme_manager_register_responsive_spacing(display_);
 
         auto& nav = NavigationManager::instance();
@@ -139,8 +141,10 @@ class BackgroundResumeFixture : public ApplicationTestFixture {
     }
 
     ~BackgroundResumeFixture() override {
-        // Never leave a test with rendering suppressed for the next one.
-        lv_display_enable_invalidation(nullptr, true);
+        // Leave the display's invalidation count as this test found it. An enable with
+        // no disable of its own would raise it past 1, and a single disable anywhere
+        // later in the shard would then no longer suppress rendering.
+        display_->inv_en_cnt = saved_inv_en_cnt_;
         auto& nav = NavigationManager::instance();
         // Leave the suspend latch cleared for the next test, whatever this one did.
         nav.resume_active();
@@ -173,6 +177,7 @@ class BackgroundResumeFixture : public ApplicationTestFixture {
     CountingPanel panel_;
     std::array<lv_obj_t*, UI_PANEL_COUNT> root_panels_{};
     lv_display_t* display_ = nullptr;
+    decltype(lv_display_t::inv_en_cnt) saved_inv_en_cnt_ = 0;
     bool sound_was_disabled_ = false;
 };
 

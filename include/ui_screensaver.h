@@ -5,6 +5,7 @@
 #ifdef HELIX_ENABLE_SCREENSAVER
 
 #include "screensaver.h"
+#include "screensaver_motion.h"
 
 #include <cstdint>
 #include <lvgl.h>
@@ -21,9 +22,9 @@
  *   stop()   — Delete everything, clean shutdown
  *   is_active() — Check if screensaver is currently running
  *
- * All animation (flight + wing flap) is driven by a single lv_timer: ~20 fps on
- * STANDARD hardware, ~7 fps on BASIC/EMBEDDED to reduce dirty-region CPU cost.
- * Positions are computed from elapsed time rather than using per-object LVGL animations.
+ * All animation (flight + wing flap) is driven by a single lv_timer running at the
+ * display refresh period. Positions and wing frames are computed from elapsed time, so
+ * the toasters keep their speed however often or unevenly the timer fires.
  */
 class FlyingToasterScreensaver : public Screensaver {
   public:
@@ -50,6 +51,10 @@ class FlyingToasterScreensaver : public Screensaver {
     }
 
   private:
+    // Test-only seam: reads the timer, sprites and decoded frames so frame-time-driven
+    // motion can be pinned. See tests/test_helpers/screensaver_test_access.h.
+    friend class FlyingToasterScreensaverTestAccess;
+
     struct FlyingObject {
         lv_obj_t* img;
         bool is_toaster;
@@ -57,11 +62,10 @@ class FlyingToasterScreensaver : public Screensaver {
         int16_t start_y;
         int fly_ms;
         int delay_ms;
-        // Flap state (toasters only)
-        uint8_t flap_frame;
-        bool flap_forward;
-        int8_t flap_counter;
-        int8_t ticks_per_flap; // pre-computed: ticks between frame changes
+        // Wing flap (toasters only)
+        uint8_t initial_frame;
+        uint8_t flap_frame;    // frame currently shown
+        uint16_t flap_step_ms; // how long each wing frame holds
         // Previous position — skip lv_obj_set_pos() when unchanged to avoid invalidation
         int16_t prev_x = INT16_MIN;
         int16_t prev_y = INT16_MIN;
@@ -101,8 +105,8 @@ class FlyingToasterScreensaver : public Screensaver {
     lv_obj_t* m_overlay = nullptr;
     std::vector<FlyingObject> m_objects;
     lv_timer_t* m_tick_timer = nullptr;
-    uint32_t m_elapsed_ms = 0;
-    uint32_t m_tick_period_ms = 50; // actual period set at start() time
+    helix::ui::screensaver::MotionClock m_clock;
+    uint32_t m_elapsed_ms = 0; // time the saver has run, advanced by m_clock each tick
 
     // Pre-decoded sprite buffers (avoid per-frame PNG file I/O + decompression)
     lv_draw_buf_t* m_decoded_frames[4] = {}; // toaster_0..3

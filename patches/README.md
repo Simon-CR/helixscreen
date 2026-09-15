@@ -36,6 +36,9 @@ Applied in order by `mk/patches.mk`. Grouped by subsystem.
 | `lvgl-drm-flush-rotation.patch` | `lv_linux_drm.c`, `.h` | DRM plane rotation API + 180deg software rotation via shadow buffer + legacy drmModeSetCrtc fallback | Project-specific |
 | `lvgl-drm-mmap64.patch` | `lv_linux_drm.c` | `_FILE_OFFSET_BITS 64` so the dumb-buffer `mmap()` keeps DRM's >4 GiB map offset on 32-bit targets (pi32), widen `drm_buffer_t::offset` to 64 bits, fix the `%u`/`%lu` log formats | Upstream bug, not yet submitted |
 | `lvgl-drm-egl-getters.patch` | `lv_linux_drm_egl.c` | EGL display/context/config getters (implementation only; header decls are in drm-flush-rotation) | Project-specific |
+| `lvgl-egl-vsync.patch` | `lv_opengles_egl.c`, `.h`, `lv_linux_drm_egl.c`, `lv_linux_drm.h` | `lv_opengles_egl_set_vsync()` and the display-level `lv_linux_drm_egl_set_vsync()`: the EGL context hardcodes `vsync = false`, so a frame finished while a flip is in flight is replaced unshown. `HELIX_EGL_VSYNC=1` turns the wait on (`src/api/display_backend_drm.cpp`) | Project-specific |
+| `lvgl-egl-partial-upload.patch` | `lv_linux_drm_egl.c`, `lv_linux_drm_egl_private.h`, `lv_linux_drm.h`; creates `lv_linux_drm_egl_upload.h` | `lv_linux_drm_egl_set_partial_upload()` and `lv_linux_drm_egl_request_full_upload()`: the flush sends the display texture only the flushed areas (`glTexSubImage2D`), and the whole buffer on the first frame, into a new texture or size, and after a request. The decision is `lv_linux_drm_egl_upload_plan()`, a pure header the unit tests include. `HELIX_EGL_PARTIAL_UPLOAD=1` turns it on (`src/api/display_backend_drm.cpp`) | Project-specific |
+| `lvgl-egl-xrgb-shader.patch` | `lv_opengles_driver.c`, `.h`, `assets/lv_opengles_shader.c` | `lv_opengles_render_display()` draws an `XRGB8888` display as 24-bit, and both display shaders (GLSL 100 and 300 es) then ignore the texture's fourth byte. `lv_opengles_driver.h` gains `HELIX_LV_OPENGLES_XRGB_IGNORES_X`, and `display_backend_drm.cpp` refuses to compile the EGL backend without it. `HELIX_EGL_XRGB=1` keeps the display `XRGB8888` | Project-specific |
 
 ### Draw Pipeline
 
@@ -69,6 +72,7 @@ Applied in order by `mk/patches.mk`. Grouped by subsystem.
 | `lvgl_observer_debug.patch` | `lv_observer.c` | Enhanced error logging with pointer/type info | Project-specific |
 | `lvgl_observer_remove_null_guard.patch` | `lv_observer.c` | NULL guard for observer removal | Project-specific |
 | `lvgl_obj_delete_null_guards.patch` | `lv_global.h`, `lv_event.c`, `lv_obj.c`, `lv_obj_tree.c` | Event depth counter for corruption detection, NULL guards + alignment/depth-limit checks in event_mark_deleted, async cancel before child recursion in obj_delete_core | Pending |
+| `lvgl_obj_flag_screen_parent_null_guard.patch` | `lv_obj.c`, `lv_obj.h` | NULL-parent guards on the layout-dirty calls in `lv_obj_add_flag`/`lv_obj_remove_flag`, so a screen (no parent) can be hidden and unhidden; `ScreenHideHold` unhides the active screen after a screensaver or software sleep. `lv_obj.h` gains `HELIX_LV_OBJ_FLAG_SCREEN_PARENT_GUARD`, and `display_manager.cpp` refuses to compile without it | Upstream bug, not yet submitted |
 | `lvgl_event_crash_hook.patch` | `lv_obj_event.c` | Weak-linked `helix_crash_note_event()` call at top of `event_send_core` — records innermost dispatch target+code for crash diagnostic reports | Project-specific |
 
 ### Project-Specific (not submitted upstream)

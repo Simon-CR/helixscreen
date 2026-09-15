@@ -11,11 +11,19 @@
 
 #include <algorithm>
 #include <cmath>
-#include <cstdlib>
 #include <cstring>
 #include <ctime>
 
-static constexpr uint32_t TICK_PERIOD_MS = 100;
+using helix::ui::PIPES_CANVAS_FORMAT;
+using helix::ui::screensaver::random_below;
+using helix::ui::screensaver::unit_random;
+
+static_assert(LV_COLOR_DEPTH == 32, "the pipes canvas is ARGB8888 on a 32 bpp display");
+
+// A pipe grows one grid step per STEP_MS of frame time, whatever the timer's rate.
+static constexpr uint32_t STEP_MS = 100;
+// Most steps one callback draws after a late frame; steps past it are dropped, not owed.
+static constexpr uint32_t MAX_STEPS_PER_TICK = 3;
 static constexpr float PIPE_RADIUS = 0.22f; // Reference uses 0.2
 static constexpr float JOINT_RADIUS =
     PIPE_RADIUS * 1.5f;                      // Reference: ballJointRadius = pipeRadius * 1.5
@@ -69,8 +77,8 @@ static lv_color_t get_pipe_color(int index) {
 
 void PipesScreensaver::setup_camera() {
     // Randomize camera angle each reset (reference: 50% head-on, 50% random rotation)
-    float angle = (static_cast<float>(rand()) / RAND_MAX) * 2.0f * PI_F;
-    float elevation = 0.3f + (static_cast<float>(rand()) / RAND_MAX) * 0.4f;
+    float angle = unit_random(rng_) * 2.0f * PI_F;
+    float elevation = 0.3f + unit_random(rng_) * 0.4f;
 
     cam_pos_[0] = CAM_DISTANCE * std::cos(elevation) * std::cos(angle);
     cam_pos_[1] = CAM_DISTANCE * std::sin(elevation);
@@ -148,11 +156,12 @@ void PipesScreensaver::start() {
     lv_obj_set_size(canvas_, screen_w_, screen_h_);
     lv_obj_set_pos(canvas_, 0, 0);
 
-    // Allocate ARGB8888 draw buffer at LVGL's row stride: lv_canvas_set_buffer()
+    // Allocate the draw buffer at LVGL's row stride: lv_canvas_set_buffer()
     // steps rows by the aligned stride and lv_canvas_fill_bg() writes the full
     // extent immediately, so a tightly-packed w * h * 4 allocation under-runs it.
-    size_t buf_size =
-        static_cast<size_t>(helix::ui::screensaver_canvas_stride_bytes(screen_w_)) * screen_h_;
+    size_t buf_size = static_cast<size_t>(helix::ui::screensaver_canvas_stride_bytes(
+                          screen_w_, PIPES_CANVAS_FORMAT)) *
+                      screen_h_;
     draw_buf_ = static_cast<uint8_t*>(lv_malloc(buf_size));
     if (!draw_buf_) {
         spdlog::error("[Screensaver] Failed to allocate {}KB draw buffer for pipes",
@@ -163,11 +172,14 @@ void PipesScreensaver::start() {
     }
     draw_buf_size_ = buf_size;
 
-    lv_canvas_set_buffer(canvas_, draw_buf_, screen_w_, screen_h_, LV_COLOR_FORMAT_ARGB8888);
+    lv_canvas_set_buffer(canvas_, draw_buf_, screen_w_, screen_h_, PIPES_CANVAS_FORMAT);
     lv_canvas_fill_bg(canvas_, lv_color_black(), LV_OPA_COVER);
+    // The opaque canvas covers the whole overlay. Top-layer children are never
+    // cover-culled, so an opaque overlay background would be filled under it every frame.
+    lv_obj_set_style_bg_opa(overlay_, LV_OPA_TRANSP, 0);
 
-    // Seed RNG, setup camera, initialize grid
-    srand(static_cast<unsigned>(time(nullptr)));
+    // Seed the owned random sequence, setup camera, initialize grid
+    rng_.seed(fixed_seed_.value_or(static_cast<uint32_t>(time(nullptr))));
     setup_camera();
     reset_grid();
 
@@ -177,8 +189,10 @@ void PipesScreensaver::start() {
         start_new_pipe(pipes_[i]);
     }
 
-    // Create tick timer
-    timer_ = lv_timer_create(tick_timer_cb, TICK_PERIOD_MS, this);
+    // Create tick timer at the display refresh period
+    clock_.reset(lv_tick_get());
+    steps_.reset();
+    timer_ = lv_timer_create(tick_timer_cb, helix::ui::screensaver_timer_period_ms(), this);
 
     active_ = true;
     spdlog::debug("[Screensaver] Pipes started ({}x{}, perspective camera)", screen_w_, screen_h_);
@@ -210,8 +224,11 @@ void PipesScreensaver::stop() {
 
     cancel_timer();
 
-    // Free draw buffer BEFORE deleting overlay — the canvas (child of overlay)
-    // may access the buffer during deletion
+    // The overlay is deleted on a later timer pass. The canvas is hidden first, so
+    // no refresh or snapshot before then draws from the buffer freed here.
+    if (canvas_) {
+        lv_obj_add_flag(canvas_, LV_OBJ_FLAG_HIDDEN);
+    }
     if (draw_buf_) {
         lv_free(draw_buf_);
         draw_buf_ = nullptr;
@@ -244,14 +261,14 @@ void PipesScreensaver::start_new_pipe(ActivePipe& pipe) {
     // Find a random empty cell (like reference: randomIntegerVector3WithinBox)
     for (int attempt = 0; attempt < 100; attempt++) {
         GridPos pos;
-        pos.x = rand() % GRID_DIM;
-        pos.y = rand() % GRID_DIM;
-        pos.z = rand() % GRID_DIM;
+        pos.x = random_below(rng_, GRID_DIM);
+        pos.y = random_below(rng_, GRID_DIM);
+        pos.z = random_below(rng_, GRID_DIM);
 
         if (!grid_[pos.x][pos.y][pos.z]) {
             pipe.pos = pos;
             grid_[pos.x][pos.y][pos.z] = true;
-            pipe.dir = static_cast<Direction>(rand() % 6);
+            pipe.dir = static_cast<Direction>(random_below(rng_, 6));
             pipe.color = get_pipe_color(color_index_++);
             pipe.shadow_color = lv_color_mix(pipe.color, lv_color_black(), LV_OPA_50);
             pipe.highlight_color = lv_color_mix(pipe.color, lv_color_white(), LV_OPA_40);
@@ -269,7 +286,7 @@ void PipesScreensaver::start_new_pipe(ActivePipe& pipe) {
                 lv_layer_t layer;
                 lv_canvas_init_layer(canvas_, &layer);
                 draw_joint(&layer, sx, sy, depth, pipe);
-                lv_canvas_finish_layer(canvas_, &layer);
+                finish_layer(&layer);
             }
             return;
         }
@@ -283,27 +300,35 @@ void PipesScreensaver::tick_timer_cb(lv_timer_t* timer) {
     auto* self = static_cast<PipesScreensaver*>(lv_timer_get_user_data(timer));
     if (!self || !self->active_)
         return;
-    self->tick();
+    self->tick(self->clock_.advance(lv_tick_get()));
 }
 
-void PipesScreensaver::tick() {
+void PipesScreensaver::tick(uint32_t dt_ms) {
     if (!canvas_)
         return;
 
-    // Reset when grid is full
-    if (total_segments_ > MAX_SEGMENTS) {
-        lv_canvas_fill_bg(canvas_, lv_color_black(), LV_OPA_COVER);
-        reset_grid();
-        setup_camera(); // New random camera angle on reset
-        for (auto& p : pipes_)
-            p.alive = false;
-        for (int i = 0; i < 2; i++) {
-            start_new_pipe(pipes_[i]);
+    const uint32_t steps = steps_.steps_due(dt_ms, STEP_MS, MAX_STEPS_PER_TICK);
+    for (uint32_t step = 0; step < steps; step++) {
+        // Reset when grid is full. Steps still due belong to the finished scene, and the
+        // new scene's first step comes a full step later.
+        if (total_segments_ > MAX_SEGMENTS) {
+            lv_canvas_fill_bg(canvas_, lv_color_black(), LV_OPA_COVER);
+            reset_grid();
+            setup_camera(); // New random camera angle on reset
+            for (auto& p : pipes_)
+                p.alive = false;
+            for (int i = 0; i < 2; i++) {
+                start_new_pipe(pipes_[i]);
+            }
+            steps_.reset();
+            return;
         }
-        return;
+        grow_step();
     }
+}
 
-    // Single layer session for all pipe growth this tick
+void PipesScreensaver::grow_step() {
+    // Single layer session for all pipe growth this step
     lv_layer_t layer;
     lv_canvas_init_layer(canvas_, &layer);
 
@@ -319,7 +344,7 @@ void PipesScreensaver::tick() {
         }
     }
 
-    lv_canvas_finish_layer(canvas_, &layer);
+    finish_layer(&layer);
 
     // Start new pipes when old ones die (reference: multiple pipes simultaneously)
     if (alive_count < MAX_ACTIVE_PIPES) {
@@ -332,18 +357,52 @@ void PipesScreensaver::tick() {
     }
 }
 
+// ---------- Layer sessions ----------
+
+void PipesScreensaver::mark_dirty(int32_t x1, int32_t y1, int32_t x2, int32_t y2) {
+    dirty_areas_.push_back({x1, y1, x2, y2});
+}
+
+void PipesScreensaver::finish_layer(lv_layer_t* layer) {
+    // The body of lv_canvas_finish_layer(), which ends by invalidating the whole canvas
+    // where a grow step changes a few pipe-sized patches of it. Suppressing invalidation
+    // around lv_canvas_finish_layer() is no substitute: the display's enable count is
+    // shared, and while it is above 1 a single disable leaves invalidation on.
+    if (layer->draw_task_head) {
+        layer->all_tasks_added = true;
+        lv_display_t* disp = lv_obj_get_display(canvas_);
+        while (layer->draw_task_head) {
+            lv_draw_dispatch_wait_for_request();
+            if (!lv_draw_dispatch_layer(disp, layer)) {
+                lv_draw_wait_for_finish();
+                lv_draw_dispatch_request();
+            }
+        }
+        lv_draw_unit_send_event(nullptr, LV_EVENT_SCREEN_LOAD_START, layer);
+    }
+    lv_draw_unit_send_event(nullptr, LV_EVENT_CHILD_DELETED, layer);
+
+    lv_area_t coords;
+    lv_obj_get_coords(canvas_, &coords);
+    for (lv_area_t area : dirty_areas_) {
+        lv_area_move(&area, coords.x1, coords.y1);
+        lv_obj_invalidate_area(canvas_, &area);
+    }
+    dirty_areas_.clear();
+}
+
 // ---------- Growth ----------
 
 bool PipesScreensaver::grow_pipe(ActivePipe& pipe, lv_layer_t* layer) {
     Direction try_dir = pipe.dir;
 
     // Reference: chance(1/2) && lastDirectionVector ? continue straight : random direction
-    if (pipe.has_prev_dir && rand() % 2 == 0) {
+    if (pipe.has_prev_dir && random_below(rng_, 2) == 0) {
         // Continue straight (50%)
         try_dir = pipe.dir;
     } else {
         // Random direction — pick random axis + sign (reference: chooseFrom("xyz") + [+1,-1])
-        try_dir = static_cast<Direction>(rand() % 6);
+        try_dir = static_cast<Direction>(random_below(rng_, 6));
     }
 
     // Try the chosen direction
@@ -429,6 +488,10 @@ void PipesScreensaver::draw_segment(lv_layer_t* layer, int sx1, int sy1, int sx2
     int inset1 = std::max(1, thickness / 5);
     int inset2 = std::max(2, thickness / 3);
 
+    // lv_draw_line() draws within its width of the end points; the shadow line is the widest.
+    mark_dirty(std::min(sx1, sx2) - thickness, std::min(sy1, sy2) - thickness,
+               std::max(sx1, sx2) + thickness, std::max(sy1, sy2) + thickness);
+
     lv_draw_line_dsc_t dsc;
     lv_draw_line_dsc_init(&dsc);
     dsc.opa = LV_OPA_COVER;
@@ -460,6 +523,8 @@ void PipesScreensaver::draw_joint(lv_layer_t* layer, int sx, int sy, float depth
     // Ball joint radius scales with depth (reference: SphereGeometry(ballJointRadius, 8, 8))
     float projected_radius = JOINT_RADIUS * focal_ / depth;
     int ball_r = std::max(3, static_cast<int>(projected_radius));
+    // The shadow sphere contains the other two.
+    mark_dirty(sx - ball_r, sy - ball_r, sx + ball_r, sy + ball_r);
 
     lv_draw_rect_dsc_t dsc;
     lv_draw_rect_dsc_init(&dsc);

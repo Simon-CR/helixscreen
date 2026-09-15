@@ -28,11 +28,15 @@
 #include "display_settings_manager.h"
 #include "flush_stride.h"
 #include "helix-xml/src/xml/lv_xml.h"
+#include "lvgl/src/misc/lv_timer_private.h" // lv_timer_t::period; LVGL has no period getter
 #include "lvgl/src/others/translation/lv_translation.h"
 #include "lvgl_log_handler.h"
 #include "printer_state.h"
+#include "refresh_period_hold.h"
+#include "refresh_timing_env.h"
 #include "remote_screen_fb0_sink.h"
 #include "runtime_config.h"
+#include "screen_hide_hold.h"
 #include "tap_latch.h"
 #ifdef HELIX_ENABLE_SCREENSAVER
 #include "ui_nav_manager.h"
@@ -474,6 +478,17 @@ bool DisplayManager::init(const Config& config) {
         spdlog::trace("[DisplayManager] Physical keyboard input enabled");
     }
 
+    // Refresh pacing overrides, now that the refresh, animation, input and update-queue
+    // timers they set all exist.
+    m_refresh_timing = helix::refresh_timing_from_env();
+    helix::apply_refresh_timing(m_refresh_timing);
+    spdlog::info("[DisplayManager] Refresh pacing: period {} ms (0 = LVGL default, scope {}), "
+                 "screensaver {} ms (0 = global period), loop floor {} ms, {} ms while a "
+                 "screensaver runs",
+                 m_refresh_timing.refr_period_ms, m_refresh_timing.scope_all ? "all" : "display",
+                 m_refresh_timing.screensaver_refr_period_ms, m_refresh_timing.loop_min_sleep_ms,
+                 m_refresh_timing.screensaver_loop_min_sleep_ms);
+
     // Create backlight backend (auto-detects hardware)
     m_backlight = BacklightBackend::create();
     spdlog::info("[DisplayManager] Backlight: {} (available: {})", m_backlight->name(),
@@ -644,7 +659,11 @@ void DisplayManager::shutdown() {
 
     // Sleep overlay is an LVGL object freed by lv_deinit() — just clear the pointer.
     // Don't call destroy_sleep_overlay() here because lv_obj_delete() ordering
-    // relative to other LVGL teardown is fragile.
+    // relative to other LVGL teardown is fragile. The screen hold the overlay took is
+    // released here; this does not release a hold a running screensaver has taken.
+    if (m_sleep_overlay) {
+        helix::active_screen_hide_hold().release();
+    }
     m_sleep_overlay = nullptr;
     m_use_hardware_blank = false;
     m_use_power_off = false;
@@ -808,6 +827,9 @@ void DisplayManager::rebuild_input_after_backend_swap() {
         setup_keyboard_group();
     }
 
+    // The new devices, and a display the swap recreated, start at LVGL's default periods.
+    helix::apply_refresh_timing(m_refresh_timing);
+
     spdlog::info("[DisplayManager] Input rebuilt after backend swap (pointer={}, keyboard={})",
                  m_pointer ? "ok" : "null", m_keyboard ? "ok" : "null");
 }
@@ -952,6 +974,175 @@ void DisplayManager::set_keep_screen_on(bool keep_on) {
 }
 
 // ============================================================================
+// Active-screen hide hold
+// ============================================================================
+
+// Unhiding a screen marks its parent's layout dirty, and a screen has no parent. The
+// LVGL patch that guards that call defines this marker in lv_obj.h.
+#if !defined(HELIX_LV_OBJ_FLAG_SCREEN_PARENT_GUARD)
+#error "lib/lvgl lacks lvgl_obj_flag_screen_parent_null_guard.patch: unhiding a screen derefs NULL"
+#endif
+
+namespace helix {
+
+void ScreenHideHold::acquire(lv_obj_t* screen) {
+    if (m_count++ > 0) {
+        return;
+    }
+    m_screen = screen;
+    m_hid_screen = screen != nullptr && !lv_obj_has_flag(screen, LV_OBJ_FLAG_HIDDEN);
+    if (m_hid_screen) {
+        // DECLARATIVE_OK: screen hidden under an opaque top-layer overlay
+        lv_obj_add_flag(screen, LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
+void ScreenHideHold::release() {
+    if (m_count == 0 || --m_count > 0) {
+        return;
+    }
+    show_hidden_screen();
+}
+
+void ScreenHideHold::show_hidden_screen() {
+    // A freed screen's address can come back as any other widget, so only a live
+    // object that is still a screen is unhidden.
+    if (m_hid_screen && lv_is_initialized() && lv_obj_is_valid(m_screen) &&
+        lv_obj_get_parent(m_screen) == nullptr) {
+        // DECLARATIVE_OK: screen hidden under an opaque top-layer overlay
+        lv_obj_remove_flag(m_screen, LV_OBJ_FLAG_HIDDEN);
+    }
+    m_screen = nullptr;
+    m_hid_screen = false;
+}
+
+ScreenHideHold& active_screen_hide_hold() {
+    static ScreenHideHold hold;
+    return hold;
+}
+
+namespace {
+
+bool display_is_live(const lv_display_t* disp) {
+    for (lv_display_t* d = lv_display_get_next(nullptr); d != nullptr; d = lv_display_get_next(d)) {
+        if (d == disp) {
+            return true;
+        }
+    }
+    return false;
+}
+
+} // namespace
+
+void RefreshPeriodHold::acquire() {
+    if (m_count++ > 0) {
+        return;
+    }
+    take_timers();
+}
+
+void RefreshPeriodHold::take_timers() {
+    if (m_period_ms == 0 || !lv_is_initialized()) {
+        return;
+    }
+    lv_display_t* disp = lv_display_get_default();
+    lv_timer_t* refr = disp != nullptr ? lv_display_get_refr_timer(disp) : nullptr;
+    if (refr == nullptr) {
+        return;
+    }
+    m_display = disp;
+    m_saved_refr_period_ms = refr->period;
+    lv_timer_set_period(refr, m_period_ms);
+    if (lv_timer_t* anim = lv_anim_get_timer()) {
+        m_saved_anim_period_ms = anim->period;
+        m_saved_anim = true;
+        lv_timer_set_period(anim, m_period_ms);
+    }
+    spdlog::debug("[RefreshPeriodHold] Refresh period {} ms -> {} ms, main-loop floor {} ms "
+                  "(0 = the loop's own)",
+                  m_saved_refr_period_ms, m_period_ms, m_loop_min_sleep_ms);
+}
+
+void RefreshPeriodHold::release() {
+    if (m_count == 0 || --m_count > 0) {
+        return;
+    }
+    restore_timers();
+}
+
+void RefreshPeriodHold::rebase(const std::function<void()>& set_baseline) {
+    if (m_count == 0) {
+        set_baseline();
+        return;
+    }
+    restore_timers();
+    set_baseline();
+    take_timers();
+}
+
+void RefreshPeriodHold::restore_timers() {
+    if (m_display != nullptr && lv_is_initialized()) {
+        // A deleted display took its refresh timer with it.
+        if (display_is_live(m_display)) {
+            if (lv_timer_t* refr = lv_display_get_refr_timer(m_display)) {
+                lv_timer_set_period(refr, m_saved_refr_period_ms);
+            }
+        }
+        if (m_saved_anim) {
+            if (lv_timer_t* anim = lv_anim_get_timer()) {
+                lv_timer_set_period(anim, m_saved_anim_period_ms);
+            }
+        }
+    }
+    m_display = nullptr;
+    m_saved_anim = false;
+}
+
+RefreshPeriodHold& active_refresh_period_hold() {
+    static RefreshPeriodHold hold;
+    return hold;
+}
+
+void apply_refresh_timing(const RefreshTiming& timing) {
+    RefreshPeriodHold& hold = active_refresh_period_hold();
+    hold.set_period(timing.screensaver_refr_period_ms);
+    hold.set_loop_min_sleep(timing.screensaver_loop_min_sleep_ms);
+    if (!lv_is_initialized()) {
+        return;
+    }
+    const uint32_t period = timing.refr_period_ms;
+    // A running screensaver keeps its own period; the global one becomes what it restores.
+    hold.rebase([period] {
+        if (period == 0) {
+            return;
+        }
+        if (lv_display_t* disp = lv_display_get_default()) {
+            if (lv_timer_t* refr = lv_display_get_refr_timer(disp)) {
+                lv_timer_set_period(refr, period);
+            }
+        }
+        if (lv_timer_t* anim = lv_anim_get_timer()) {
+            lv_timer_set_period(anim, period);
+        }
+    });
+    if (period == 0 || !timing.scope_all) {
+        return;
+    }
+    // Looked up afresh on every call: a backend swap deletes and recreates the devices.
+    for (lv_indev_t* indev = lv_indev_get_next(nullptr); indev != nullptr;
+         indev = lv_indev_get_next(indev)) {
+        if (lv_timer_t* read = lv_indev_get_read_timer(indev)) {
+            lv_timer_set_period(read, period);
+        }
+    }
+    if (lv_timer_t* queue = ui::UpdateQueue::instance().timer()) {
+        lv_timer_set_period(queue, period);
+    }
+}
+
+} // namespace helix
+
+// ============================================================================
 // Software Sleep Overlay
 // ============================================================================
 
@@ -966,6 +1157,7 @@ void DisplayManager::create_sleep_overlay() {
     lv_obj_set_style_border_width(m_sleep_overlay, 0, 0);
     lv_obj_set_style_pad_all(m_sleep_overlay, 0, 0);
     lv_obj_remove_flag(m_sleep_overlay, LV_OBJ_FLAG_CLICKABLE);
+    helix::active_screen_hide_hold().acquire(lv_screen_active());
     spdlog::debug("[DisplayManager] Software sleep overlay created");
 }
 
@@ -975,6 +1167,7 @@ void DisplayManager::destroy_sleep_overlay() {
     }
     lv_obj_delete(m_sleep_overlay);
     m_sleep_overlay = nullptr;
+    helix::active_screen_hide_hold().release();
     spdlog::debug("[DisplayManager] Software sleep overlay destroyed");
 }
 
@@ -1014,13 +1207,21 @@ void DisplayManager::restore_flush_after_sleep() {
     }
     m_flush_suppressed_for_sleep = false;
     if (m_display) {
-        if (m_saved_flush_cb_for_sleep) {
-            lv_display_set_flush_cb(m_display, m_saved_flush_cb_for_sleep);
-        }
+        restore_flush_cb(m_saved_flush_cb_for_sleep);
         lv_display_enable_invalidation(m_display, true);
     }
     m_saved_flush_cb_for_sleep = nullptr;
     spdlog::debug("[DisplayManager] Flush restored on wake");
+}
+
+void DisplayManager::restore_flush_cb(lv_display_flush_cb_t flush_cb) {
+    if (!m_display || !flush_cb) {
+        return;
+    }
+    lv_display_set_flush_cb(m_display, flush_cb);
+    if (m_backend) {
+        m_backend->request_full_upload();
+    }
 }
 
 // ============================================================================
@@ -2242,6 +2443,10 @@ void DisplayManager::set_color_transform(float gamma, int warmth, int tint) {
     if (m_display) {
         // Force a full repaint so the new LUT is visible immediately.
         lv_obj_invalidate(lv_display_get_screen_active(m_display));
+        // Every pixel the backend already holds carries the previous transform.
+        if (m_backend) {
+            m_backend->request_full_upload();
+        }
     }
     spdlog::info("[DisplayManager] Color transform: gamma={:.2f}, warmth={}, tint={} (identity={})",
                  gamma, warmth, tint, m_color_transform.is_identity());

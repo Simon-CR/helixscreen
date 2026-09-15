@@ -32,6 +32,8 @@
 #include "display_manager.h"
 #include "display_settings_manager.h"
 #include "lvgl_test_fixture.h"
+#include "screen_hide_hold.h"
+#include "test_helpers/application_test_access.h"
 #include "test_helpers/display_manager_test_access.h"
 
 #include "../../catch_amalgamated.hpp"
@@ -85,10 +87,15 @@ class FakePowerOffBackend : public DisplayBackend {
         return true;
     }
 
+    void request_full_upload() override {
+        ++full_upload_requests;
+    }
+
     int power_off_calls = 0;
     int power_on_calls = 0;
     int blank_calls = 0;
     int unblank_calls = 0;
+    int full_upload_requests = 0;
 
   private:
     bool m_supports;
@@ -569,4 +576,296 @@ TEST_CASE_METHOD(LVGLTestFixture, "hardware-blank path keeps the flush live (AD5
 
     DisplayManagerTestAccess::restore_display_output(mgr);
     DisplayManagerTestAccess::set_display(mgr, nullptr);
+}
+
+// ============================================================================
+// The software sleep overlay hides the screen beneath it
+// ============================================================================
+
+TEST_CASE_METHOD(LVGLTestFixture, "software sleep overlay hides the screen until it is removed",
+                 "[application][display][sleep][screen_hide]") {
+    REQUIRE_FALSE(helix::active_screen_hide_hold().is_held());
+    DisplayManager mgr;
+    DisplayManagerTestAccess::set_backend(
+        mgr, std::make_unique<FakePowerOffBackend>(/*supports_power_off=*/false));
+    DisplayManagerTestAccess::set_use_hardware_blank(mgr, false);
+    DisplayManagerTestAccess::set_use_power_off(mgr, false);
+    lv_obj_t* screen = lv_screen_active();
+    REQUIRE_FALSE(lv_obj_has_flag(screen, LV_OBJ_FLAG_HIDDEN));
+
+    DisplayManagerTestAccess::enter_sleep(mgr, 60);
+    REQUIRE(DisplayManagerTestAccess::last_sleep_mechanism(mgr) ==
+            DisplayManager::SleepMechanism::SoftwareOverlay);
+    REQUIRE(DisplayManagerTestAccess::sleep_overlay(mgr) != nullptr);
+    CHECK(lv_obj_has_flag(screen, LV_OBJ_FLAG_HIDDEN));
+
+    SECTION("the wake-side restore shows the screen again") {
+        DisplayManagerTestAccess::restore_display_output(mgr);
+        CHECK(DisplayManagerTestAccess::sleep_overlay(mgr) == nullptr);
+        CHECK_FALSE(lv_obj_has_flag(screen, LV_OBJ_FLAG_HIDDEN));
+    }
+
+    SECTION("a repeated create or destroy keeps the hold balanced") {
+        DisplayManagerTestAccess::create_sleep_overlay(mgr);
+        DisplayManagerTestAccess::destroy_sleep_overlay(mgr);
+        CHECK(DisplayManagerTestAccess::sleep_overlay(mgr) == nullptr);
+        CHECK_FALSE(lv_obj_has_flag(screen, LV_OBJ_FLAG_HIDDEN));
+
+        DisplayManagerTestAccess::destroy_sleep_overlay(mgr);
+        CHECK_FALSE(lv_obj_has_flag(screen, LV_OBJ_FLAG_HIDDEN));
+    }
+
+    CHECK_FALSE(helix::active_screen_hide_hold().is_held());
+}
+
+// ============================================================================
+// Refresh period across sleep and input rebuilds
+// ============================================================================
+
+#include "refresh_period_hold.h"
+#include "refresh_timing_env.h"
+#include "test_helpers/refresh_period_hold_test_access.h"
+#include "test_helpers/scoped_env.h"
+#ifdef HELIX_ENABLE_SCREENSAVER
+#include "screensaver.h"
+#endif
+
+namespace {
+
+void noop_pointer_read(lv_indev_t* /*indev*/, lv_indev_data_t* data) {
+    data->state = LV_INDEV_STATE_RELEASED;
+}
+
+lv_indev_t* create_noop_pointer() {
+    lv_indev_t* indev = lv_indev_create();
+    lv_indev_set_type(indev, LV_INDEV_TYPE_POINTER);
+    lv_indev_set_read_cb(indev, noop_pointer_read);
+    return indev;
+}
+
+/// A backend whose pointer is a real LVGL input device, so an input rebuild creates one.
+class IndevBackend : public FakePowerOffBackend {
+  public:
+    IndevBackend() : FakePowerOffBackend(/*supports_power_off=*/false) {}
+
+    lv_indev_t* create_input_pointer() override {
+        return create_noop_pointer();
+    }
+};
+
+} // namespace
+
+#ifdef HELIX_ENABLE_SCREENSAVER
+TEST_CASE_METHOD(LVGLTestFixture,
+                 "entering sleep gives back a running screensaver's refresh period",
+                 "[application][display][sleep][refresh_period]") {
+    helix::ScopedTimerPeriods timers;
+    helix::ScopedEnv global("HELIX_REFR_PERIOD_MS");
+    helix::ScopedEnv scope("HELIX_REFR_PERIOD_SCOPE");
+    helix::ScopedEnv saver("HELIX_SCREENSAVER_REFR_PERIOD_MS");
+    unsetenv("HELIX_REFR_PERIOD_MS");
+    unsetenv("HELIX_REFR_PERIOD_SCOPE");
+    setenv("HELIX_SCREENSAVER_REFR_PERIOD_MS", "16", 1);
+    helix::apply_refresh_timing(helix::refresh_timing_from_env());
+    const uint32_t baseline = helix::default_refr_timer_period();
+    REQUIRE(baseline != 16);
+
+    DisplayManager mgr;
+    DisplayManagerTestAccess::set_backend(
+        mgr, std::make_unique<FakePowerOffBackend>(/*supports_power_off=*/false));
+    DisplayManagerTestAccess::set_use_hardware_blank(mgr, false);
+    DisplayManagerTestAccess::set_use_power_off(mgr, false);
+    struct StopSavers {
+        ~StopSavers() {
+            ScreensaverManager::instance().stop();
+        }
+    } stop_savers;
+
+    auto& savers = ScreensaverManager::instance();
+    savers.start(ScreensaverType::FLYING_TOASTERS);
+    REQUIRE(savers.is_active());
+    DisplayManagerTestAccess::set_screensaver_active(mgr, true);
+    CHECK(helix::default_refr_timer_period() == 16);
+
+    DisplayManagerTestAccess::enter_sleep(mgr, 60);
+
+    CHECK_FALSE(savers.is_active());
+    CHECK_FALSE(helix::active_refresh_period_hold().is_held());
+    CHECK(helix::default_refr_timer_period() == baseline);
+    CHECK(helix::anim_timer_period() == baseline);
+
+    DisplayManagerTestAccess::restore_display_output(mgr);
+}
+#endif
+
+TEST_CASE_METHOD(LVGLTestFixture, "an input rebuild paces its new devices by the refresh timing",
+                 "[application][display][refresh_period]") {
+    helix::ScopedTimerPeriods timers;
+    helix::RefreshTiming timing;
+    timing.refr_period_ms = 20;
+    timing.scope_all = GENERATE(true, false);
+    CAPTURE(timing.scope_all);
+
+    lv_indev_t* probe = create_noop_pointer();
+    const uint32_t default_read_period = lv_indev_get_read_timer(probe)->period;
+    lv_indev_delete(probe);
+    REQUIRE(default_read_period != 20);
+
+    DisplayManager mgr;
+    DisplayManagerTestAccess::set_backend(mgr, std::make_unique<IndevBackend>());
+    DisplayManagerTestAccess::set_refresh_timing(mgr, timing);
+    struct DeletePointer {
+        DisplayManager& dm;
+        ~DeletePointer() {
+            DisplayManagerTestAccess::delete_pointer_input(dm);
+        }
+    } delete_pointer{mgr};
+
+    DisplayManagerTestAccess::rebuild_input_after_backend_swap(mgr);
+
+    lv_indev_t* pointer = mgr.pointer_input();
+    REQUIRE(pointer != nullptr);
+    const lv_timer_t* read = lv_indev_get_read_timer(pointer);
+    REQUIRE(read != nullptr);
+    CHECK(read->period == (timing.scope_all ? 20u : default_read_period));
+    CHECK(helix::default_refr_timer_period() == 20);
+}
+
+TEST_CASE_METHOD(LVGLTestFixture,
+                 "an input rebuild keeps a held screensaver refresh period until release",
+                 "[application][display][refresh_period]") {
+    helix::ScopedTimerPeriods timers;
+    helix::RefreshTiming timing;
+    timing.refr_period_ms = 20;
+    timing.screensaver_refr_period_ms = 16;
+    helix::apply_refresh_timing(timing);
+    REQUIRE(helix::default_refr_timer_period() == 20);
+
+    DisplayManager mgr;
+    DisplayManagerTestAccess::set_backend(mgr, std::make_unique<IndevBackend>());
+    DisplayManagerTestAccess::set_refresh_timing(mgr, timing);
+    struct DeletePointer {
+        DisplayManager& dm;
+        ~DeletePointer() {
+            DisplayManagerTestAccess::delete_pointer_input(dm);
+        }
+    } delete_pointer{mgr};
+    struct ReleaseHold {
+        ~ReleaseHold() {
+            helix::active_refresh_period_hold().release();
+        }
+    } release_hold;
+
+    auto& hold = helix::active_refresh_period_hold();
+    hold.acquire();
+    REQUIRE(helix::default_refr_timer_period() == 16);
+
+    DisplayManagerTestAccess::rebuild_input_after_backend_swap(mgr);
+
+    CHECK(hold.is_held());
+    CHECK(helix::default_refr_timer_period() == 16);
+    CHECK(helix::anim_timer_period() == 16);
+
+    hold.release();
+    CHECK(helix::default_refr_timer_period() == 20);
+    CHECK(helix::anim_timer_period() == 20);
+}
+
+// ============================================================================
+// A backend that presents only the areas LVGL flushes keeps stale pixels wherever
+// the image changed without a flush reaching it, so those paths ask for a full upload.
+// ============================================================================
+
+TEST_CASE_METHOD(LVGLTestFixture,
+                 "a color transform change asks the backend to upload the whole next frame",
+                 "[application][display][egl_upload]") {
+    DisplayManager mgr;
+    auto backend = std::make_unique<FakePowerOffBackend>(/*supports_power_off=*/false,
+                                                         DisplayBackendType::DRM);
+    FakePowerOffBackend* raw = backend.get();
+    DisplayManagerTestAccess::set_backend(mgr, std::move(backend));
+    DisplayManagerTestAccess::set_display(mgr, lv_display_get_default());
+    REQUIRE(raw->full_upload_requests == 0);
+
+    mgr.set_color_transform(0.8f, 20, 0);
+    CHECK(raw->full_upload_requests == 1);
+
+    DisplayManagerTestAccess::set_display(mgr, nullptr);
+}
+
+TEST_CASE_METHOD(LVGLTestFixture,
+                 "waking from power-off sleep asks the backend to upload the whole next frame",
+                 "[application][display][sleep][poweroff][egl_upload]") {
+    DisplayManager mgr;
+    auto backend =
+        std::make_unique<FakePowerOffBackend>(/*supports_power_off=*/true, DisplayBackendType::DRM);
+    FakePowerOffBackend* raw = backend.get();
+    DisplayManagerTestAccess::set_backend(mgr, std::move(backend));
+    DisplayManagerTestAccess::set_use_hardware_blank(mgr, false);
+    DisplayManagerTestAccess::set_use_power_off(mgr, true);
+    lv_display_t* disp = lv_display_get_default();
+    REQUIRE(disp != nullptr);
+    DisplayManagerTestAccess::set_display(mgr, disp);
+    lv_display_set_flush_cb(disp, test_sentinel_flush_cb);
+
+    DisplayManagerTestAccess::enter_sleep(mgr, 60);
+    REQUIRE(DisplayManagerTestAccess::is_flush_suppressed(mgr));
+
+    DisplayManagerTestAccess::restore_display_output(mgr);
+    REQUIRE(disp->flush_cb == test_sentinel_flush_cb);
+    CHECK(raw->full_upload_requests == 1);
+
+    // Nothing is swapped out on a second wake, so nothing asks again.
+    DisplayManagerTestAccess::restore_display_output(mgr);
+    CHECK(raw->full_upload_requests == 1);
+
+    DisplayManagerTestAccess::set_display(mgr, nullptr);
+}
+
+TEST_CASE_METHOD(LVGLTestFixture,
+                 "putting back a swapped-out flush callback asks the backend for a full upload",
+                 "[application][display][egl_upload]") {
+    DisplayManager mgr;
+    auto backend = std::make_unique<FakePowerOffBackend>(/*supports_power_off=*/false,
+                                                         DisplayBackendType::DRM);
+    FakePowerOffBackend* raw = backend.get();
+    DisplayManagerTestAccess::set_backend(mgr, std::move(backend));
+    lv_display_t* disp = lv_display_get_default();
+    REQUIRE(disp != nullptr);
+    DisplayManagerTestAccess::set_display(mgr, disp);
+    lv_display_set_flush_cb(
+        disp, [](lv_display_t* d, const lv_area_t*, uint8_t*) { lv_display_flush_ready(d); });
+    REQUIRE(disp->flush_cb != test_sentinel_flush_cb);
+
+    mgr.restore_flush_cb(test_sentinel_flush_cb);
+    CHECK(disp->flush_cb == test_sentinel_flush_cb);
+    CHECK(raw->full_upload_requests == 1);
+
+    DisplayManagerTestAccess::set_display(mgr, nullptr);
+}
+
+TEST_CASE_METHOD(LVGLTestFixture,
+                 "the splash handoff's flush restore asks the backend for a full upload",
+                 "[application][display][egl_upload]") {
+    Application app;
+    ApplicationTestAccess::neutralize_destructor(app);
+    auto mgr = std::make_unique<DisplayManager>();
+    auto backend = std::make_unique<FakePowerOffBackend>(/*supports_power_off=*/false,
+                                                         DisplayBackendType::DRM);
+    FakePowerOffBackend* raw = backend.get();
+    DisplayManagerTestAccess::set_backend(*mgr, std::move(backend));
+    lv_display_t* disp = lv_display_get_default();
+    REQUIRE(disp != nullptr);
+    DisplayManagerTestAccess::set_display(*mgr, disp);
+    ApplicationTestAccess::set_display_manager(app, std::move(mgr));
+    lv_display_set_flush_cb(
+        disp, [](lv_display_t* d, const lv_area_t*, uint8_t*) { lv_display_flush_ready(d); });
+    ApplicationTestAccess::original_flush_cb(app) = test_sentinel_flush_cb;
+
+    ApplicationTestAccess::restore_flush_callback(app);
+    CHECK(disp->flush_cb == test_sentinel_flush_cb);
+    CHECK(raw->full_upload_requests == 1);
+    CHECK(ApplicationTestAccess::original_flush_cb(app) == nullptr);
+
+    DisplayManagerTestAccess::set_display(*ApplicationTestAccess::display_manager(app), nullptr);
 }
