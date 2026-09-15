@@ -43,6 +43,28 @@ static void test_display_flush_cb(lv_display_t* disp, const lv_area_t* /*area*/,
 LVGLTestFixture::LVGLTestFixture() : m_test_screen(nullptr) {
     ensure_lvgl_initialized();
 
+    // The display is a process-wide singleton, so anything a previous test in
+    // this shard did to it - or to the default-display slot - survives into
+    // this case. Every responsive decision downstream inherits it:
+    // theme_manager_init() republishes the breakpoint subjects from
+    // lv_display_get_default(), and that slot is not this fixture's by right -
+    // test translation units create a display in static initialisers before
+    // main(), and LVGL promotes the most recently created remaining display
+    // when one is deleted. Reclaim the slot for the fixture's own display and
+    // put its geometry back, before anything reads either; a test that wants a
+    // different display for its own body scopes that inside the body
+    // (ScopedResolution, or its own display).
+    if (s_display != nullptr) {
+        const int32_t w = lv_display_get_horizontal_resolution(s_display);
+        const int32_t h = lv_display_get_vertical_resolution(s_display);
+        if (w != TEST_DISPLAY_WIDTH || h != TEST_DISPLAY_HEIGHT) {
+            lv_display_set_resolution(s_display, TEST_DISPLAY_WIDTH, TEST_DISPLAY_HEIGHT);
+        }
+        if (lv_display_get_default() != s_display) {
+            lv_display_set_default(s_display);
+        }
+    }
+
     // Initialize update queue once (static guard) - CRITICAL for helix::ui::queue_update()
     // Per L053/L054: Tests using UpdateQueue need proper lifecycle
     if (!s_queue_initialized) {

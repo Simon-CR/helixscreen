@@ -68,6 +68,22 @@
 using namespace helix;
 using namespace helix::widget_size;
 
+// The display singleton is shared by every case in a shard, and the case
+// below judges its resize ladder against the tier that display yields
+// (w_normal() at the fixture's 800x480 is Medium's 174px; at this case's
+// 1080x1920 the narrow axis is XXLarge's 309px, which swallows the 233px
+// Medium cell below). This case moves the resolution and deliberately does
+// not put it back: LVGLTestFixture's constructor reclaims the display -
+// default slot and geometry both - before the next case, and if that reset
+// ever stops, the case below goes red at its Medium-tier step.
+TEST_CASE_METHOD(LVGLUITestFixture,
+                 "camera: a leaked display resolution does not reach the next case",
+                 "[widget_size][camera]") {
+    lv_display_t* disp = lv_display_get_default();
+    REQUIRE(disp != nullptr);
+    lv_display_set_resolution(disp, 1080, 1920);
+}
+
 TEST_CASE_METHOD(LVGLUITestFixture,
                  "camera compact/live layout follows width alone, and stream "
                  "start/stop stays edge-triggered",
