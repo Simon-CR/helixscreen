@@ -55,7 +55,7 @@ The invariant: **vendor JSON schemas are translated to the generic `ChamberHeate
 | `src/printer/chamber_heater_backend_generic.cpp` | Generic keyword backend + the registry itself (`registry()`, `match()`, `backend_by_id()`) and the keyword-confidence tiers |
 | `src/printer/chamber_heater_backend_dragonbreath.cpp` | DragonBreath appliance backend: 24-field `dragonbreath` status parse, `DRAGONBREATH_RESET`, filter pin, 60°C conservative cap. Schema verified live on the U1 rig 2026-08 |
 | `src/printer/chamber_heater_backend_panda_breath.cpp` | Panda Breath backend: heater + 60°C ceiling only (schema not yet hardware-verified), documents stock Auto mode via `device_autonomous_control()` |
-| `include/chamber_heater_assignment.h` | `chamber::resolve_heater()`: the one rule for which chamber heater the printer has, given the "auto" / "none" / named-object assignment |
+| `include/chamber_heater_assignment.h` | `chamber::resolve_heater()` and `chamber::resolve_sensor()`: the one rule for which chamber heater and which chamber sensor the printer has, given each role's "auto" / "none" / named-object assignment |
 | `include/printer_discovery.h` | `try_set_chamber_heater` lambda in `parse_objects()` — first registry consult, records backend id + diagnostics object + filter pin on discovery |
 | `src/api/moonraker_discovery_sequence.cpp` | Subscription-builder block adding the backend's diagnostics object + filter pin (`chamber::required_status_objects`) |
 | `src/printer/printer_temperature_state.cpp` | Diagnostics parse block: translates backend output to subjects; also owns all `chamber_heater_*` / `chamber_filter_fan_*` subject registration and display-string formatters |
@@ -129,6 +129,26 @@ object, so every working chamber heater is a `heater_generic` or `temperature_fa
 reports.
 
 The matched backend id survives on `PrinterDiscovery` (`chamber_heater_backend_id()`) and is re-consulted in `PrinterState::set_hardware`: the diagnostics source and the action surface apply **only while the resolved chamber heater is the discovery pick** — a manual override to another heater (or "none") detaches both, and the actions revert to no-ops.
+
+### Which chamber sensor the printer has
+
+The chamber-sensor assignment (`temp_sensors/chamber` in the printer's settings, edited from Sensor
+settings) is `"auto"`, `"none"`, or a Klipper object name. `chamber::resolve_sensor()`
+(`include/chamber_heater_assignment.h`) is the only code that turns it into a sensor, and it applies
+the heater's rule against discovery's sensor pick:
+
+- `"auto"` takes the discovery pick; `"none"` means no chamber sensor.
+- A named object counts only while Klipper reports it in its object list. A saved name the printer
+  does not report, such as one a model preset seeded, falls back to discovery's sensor pick, so the
+  chamber reads the sensor the printer does have. The fallback is always discovery's sensor pick,
+  never its heater pick; the heater keeps its own type-blind fallback above.
+
+`PrinterState::set_hardware` publishes the result as `temperature_state().chamber_sensor_name()`
+and the `printer_has_chamber_sensor` capability, and re-resolves it on every discovery (each klippy
+ready and reconnect), so a named sensor that appears or disappears is followed without a restart.
+Consumers read what was published. The one reader of discovery's own sensor pick is the chamber
+sensor dropdown in Sensor settings (`src/ui/ui_settings_sensors.cpp#populate_chamber_assignment`),
+whose "Auto" entry names the sensor `auto` takes.
 
 ---
 

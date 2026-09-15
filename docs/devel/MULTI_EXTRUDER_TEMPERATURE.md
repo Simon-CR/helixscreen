@@ -209,7 +209,7 @@ PrinterTemperatureState::update_from_status(status)
 
 ### Chamber Sensor
 
-The chamber temperature sensor name is configurable via `set_chamber_sensor_name()`. It's set during discovery when `PrinterDiscovery` detects a `temperature_sensor` with "chamber" in the name. The status JSON key for chamber varies per printer (e.g., `"temperature_sensor chamber"`, `"temperature_sensor Chamber_Temp"`).
+The chamber temperature sensor name is set through `set_chamber_sensor_name()` by `src/printer/printer_state.cpp#set_hardware`, which resolves the saved chamber sensor assignment with `helix::chamber::resolve_sensor()` (`include/chamber_heater_assignment.h`): `auto` takes the sensor `PrinterDiscovery` picked by name, `none` disables it, and a named sensor counts only while Klipper reports that object, otherwise discovery's pick stands. Consumers read `PrinterTemperatureState::chamber_sensor_name()` and the `printer_has_chamber_sensor` capability, not discovery's own pick. The one exception is the Settings > Sensors chamber sensor dropdown (`src/ui/ui_settings_sensors.cpp#populate_chamber_assignment`): its "Auto (X)" entry names discovery's pick, because that is the sensor `auto` takes. The status JSON key for chamber varies per printer (e.g., `"temperature_sensor chamber"`, `"temperature_sensor Chamber_Temp"`).
 
 ---
 

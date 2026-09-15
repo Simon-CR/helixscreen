@@ -3,12 +3,12 @@
 
 /**
  * @file test_chamber_heater_assignment.cpp
- * @brief helix::chamber::resolve_heater(): which chamber heater a printer has
- *        under its chamber-heater assignment.
+ * @brief helix::chamber::resolve_heater() and resolve_sensor(): which chamber
+ *        heater and chamber sensor a printer has under its chamber assignments.
  *
  * The wiring (PrinterState publishing the answer, and the consumers reading
  * it) is pinned in test_printer_state.cpp, test_temperature_controller.cpp,
- * test_material_temps_chamber.cpp and test_filament_panel_chamber.cpp.
+ * test_filament_panel_chamber.cpp and test_temperature_service_chamber.cpp.
  */
 
 #include "chamber_heater_assignment.h"
@@ -21,6 +21,7 @@
 
 using helix::PrinterDiscovery;
 using helix::chamber::resolve_heater;
+using helix::chamber::resolve_sensor;
 
 namespace {
 
@@ -96,5 +97,77 @@ TEST_CASE("a named heater Klipper does not report is not the chamber heater",
         const PrinterDiscovery hw;
         REQUIRE_FALSE(hw.objects_reported());
         CHECK(resolve_heater(PRESET_CHAMBER_HEATER, hw).empty());
+    }
+}
+
+// ============================================================================
+// resolve_sensor()
+// ============================================================================
+
+namespace {
+
+/// A chamber sensor name an older model preset seeded, still saved on a printer
+/// whose configuration names its chamber sensor differently.
+constexpr const char* STALE_CHAMBER_SENSOR = "temperature_sensor box";
+
+/// The temperature objects an Elegoo Centauri Carbon on COSMOS reports: one
+/// chamber sensor, and neither a chamber heater nor a chamber-named fan.
+PrinterDiscovery centauri_carbon() {
+    return discovered({"temperature_sensor chamber", "temperature_sensor mcu_toolhead",
+                       "temperature_sensor mcu_bed", "temperature_host mainboard",
+                       "temperature_fan mainboard", "extruder", "heater_bed"});
+}
+
+} // namespace
+
+TEST_CASE("auto takes the chamber sensor discovery picked", "[chamber][assignment]") {
+    CHECK(resolve_sensor("auto", centauri_carbon()) == "temperature_sensor chamber");
+    CHECK(resolve_sensor("auto", discovered({"temperature_sensor mcu_temp", "extruder"})).empty());
+}
+
+TEST_CASE("none disables a chamber sensor discovery found", "[chamber][assignment]") {
+    const auto hw = centauri_carbon();
+    REQUIRE(hw.has_chamber_sensor());
+    CHECK(resolve_sensor("none", hw).empty());
+}
+
+TEST_CASE("a named sensor Klipper reports is the chamber sensor", "[chamber][assignment]") {
+    SECTION("one no chamber keyword names, so only the assignment can pick it") {
+        const auto hw = discovered({"temperature_sensor external_bme", "extruder", "heater_bed"});
+        REQUIRE_FALSE(hw.has_chamber_sensor());
+        CHECK(resolve_sensor("temperature_sensor external_bme", hw) ==
+              "temperature_sensor external_bme");
+    }
+    SECTION("over the sensor discovery picked") {
+        const auto hw =
+            discovered({"temperature_sensor chamber", "temperature_sensor external_bme"});
+        REQUIRE(hw.chamber_sensor_name() == "temperature_sensor chamber");
+        CHECK(resolve_sensor("temperature_sensor external_bme", hw) ==
+              "temperature_sensor external_bme");
+    }
+}
+
+TEST_CASE("a named sensor Klipper does not report is not the chamber sensor",
+          "[chamber][assignment]") {
+    SECTION("a printer whose chamber sensor has another name reads that sensor") {
+        CHECK(resolve_sensor(STALE_CHAMBER_SENSOR, centauri_carbon()) ==
+              "temperature_sensor chamber");
+    }
+    SECTION("a printer with no chamber sensor has none") {
+        const auto hw = discovered({"temperature_sensor mcu_temp", "extruder", "heater_bed"});
+        REQUIRE_FALSE(hw.has_chamber_sensor());
+        CHECK(resolve_sensor(STALE_CHAMBER_SENSOR, hw).empty());
+    }
+    SECTION("never the chamber heater discovery picked") {
+        const auto hw =
+            discovered({"heater_generic chamber", "temperature_sensor mcu_temp", "extruder"});
+        REQUIRE(hw.chamber_heater_name() == "heater_generic chamber");
+        REQUIRE_FALSE(hw.has_chamber_sensor());
+        CHECK(resolve_sensor(STALE_CHAMBER_SENSOR, hw).empty());
+    }
+    SECTION("nothing counts before Klipper has reported its objects") {
+        const PrinterDiscovery hw;
+        REQUIRE(hw.printer_objects().empty());
+        CHECK(resolve_sensor(STALE_CHAMBER_SENSOR, hw).empty());
     }
 }
