@@ -342,8 +342,7 @@ AmsError AmsBackendAce::do_load_filament(int slot_index) {
     std::string gcode = "ACE_CHANGE_TOOL TOOL=" + std::to_string(slot_index);
     auto token = lifetime_.token();
 
-    spdlog::info("[ACE] Executing G-code: {}", gcode);
-    api_->execute_gcode(
+    return execute_gcode(
         gcode,
         [this, token, slot_index]() {
             // L081 Mechanism C: marshal member writes (system_info_) to main.
@@ -352,25 +351,27 @@ AmsError AmsBackendAce::do_load_filament(int slot_index) {
                 {
                     std::lock_guard<std::mutex> lock(mutex_);
                     system_info_.action = AmsAction::IDLE;
-                    seat_from_local_index_locked(slot_index);
 
-                    // Same derivation the parse paths use, so the next status
-                    // frame re-applies this stamp instead of erasing it.
-                    apply_seated_slot_stamp_locked();
+                    // Where firmware states the seat itself, the ack is only
+                    // "the command was accepted" and the seat waits for the
+                    // driver to confirm it moved.
+                    if (!manager_states_seat_) {
+                        seat_from_local_index_locked(slot_index);
+
+                        // Same derivation the parse paths use, so the next
+                        // status frame re-applies this stamp instead of
+                        // erasing it.
+                        apply_seated_slot_stamp_locked();
+                    }
                 }
                 PostOpCooldownManager::instance().schedule();
                 emit_event(EVENT_STATE_CHANGED);
             });
         },
-        [this, token, gcode](const MoonrakerError& err) {
-            // Log + reset to IDLE only — nothing here reaches the user, so the
-            // execute_gcode() call below declares caller_surfaces_errors=false.
-            token.defer("AmsBackendAce::load_err", [this, err, gcode]() {
-                if (err.type == MoonrakerErrorType::TIMEOUT) {
-                    spdlog::warn("[ACE] Load gcode timed out (may still be running): {}", gcode);
-                } else {
-                    spdlog::error("[ACE] Load gcode failed: {} - {}", gcode, err.message);
-                }
+        [this, token](const MoonrakerError&) {
+            // The send failed, so the optimistic LOADING has to be unwound or
+            // the sidebar waits on a transition that never starts.
+            token.defer("AmsBackendAce::load_err", [this]() {
                 {
                     std::lock_guard<std::mutex> lock(mutex_);
                     system_info_.action = AmsAction::IDLE;
@@ -378,13 +379,7 @@ AmsError AmsBackendAce::do_load_filament(int slot_index) {
                 emit_event(EVENT_STATE_CHANGED);
             });
         },
-        IMoonrakerAPI::AMS_OPERATION_TIMEOUT_MS, /*silent=*/false, /*on_queued=*/nullptr,
-        // See include/rpc_error_policy.h: a log-only error callback that claims
-        // the report silences GcodeErrorRouter's `!!` copy, which is the only
-        // surface that would have told the user the load failed.
-        /*caller_surfaces_errors=*/false);
-
-    return AmsErrorHelper::success();
+        /*silent=*/false);
 }
 
 AmsError AmsBackendAce::do_unload_filament(int /*slot_index*/) {
@@ -399,8 +394,7 @@ AmsError AmsBackendAce::do_unload_filament(int /*slot_index*/) {
     std::string gcode = "ACE_CHANGE_TOOL TOOL=-1";
     auto token = lifetime_.token();
 
-    spdlog::info("[ACE] Executing G-code: {}", gcode);
-    api_->execute_gcode(
+    return execute_gcode(
         gcode,
         [this, token]() {
             // L081 Mechanism C: marshal member writes (system_info_) to main.
@@ -409,26 +403,27 @@ AmsError AmsBackendAce::do_unload_filament(int /*slot_index*/) {
                 {
                     std::lock_guard<std::mutex> lock(mutex_);
                     system_info_.action = AmsAction::IDLE;
-                    seat_from_local_index_locked(-1);
 
-                    // Releases the stamp back to the status the parse wrote,
-                    // rather than assuming AVAILABLE for a slot firmware may
-                    // have called EMPTY.
-                    apply_seated_slot_stamp_locked();
+                    // Symmetric with the load path: a driver that states the
+                    // seat also clears it, and an unload it declined would
+                    // otherwise read as an empty toolhead.
+                    if (!manager_states_seat_) {
+                        seat_from_local_index_locked(-1);
+
+                        // Releases the stamp back to the status the parse
+                        // wrote, rather than assuming AVAILABLE for a slot
+                        // firmware may have called EMPTY.
+                        apply_seated_slot_stamp_locked();
+                    }
                 }
                 PostOpCooldownManager::instance().schedule();
                 emit_event(EVENT_STATE_CHANGED);
             });
         },
-        [this, token, gcode](const MoonrakerError& err) {
-            // Log + reset to IDLE only — nothing here reaches the user, so the
-            // execute_gcode() call below declares caller_surfaces_errors=false.
-            token.defer("AmsBackendAce::unload_err", [this, err, gcode]() {
-                if (err.type == MoonrakerErrorType::TIMEOUT) {
-                    spdlog::warn("[ACE] Unload gcode timed out (may still be running): {}", gcode);
-                } else {
-                    spdlog::error("[ACE] Unload gcode failed: {} - {}", gcode, err.message);
-                }
+        [this, token](const MoonrakerError&) {
+            // The send failed, so the optimistic UNLOADING has to be unwound or
+            // the sidebar waits on a transition that never starts.
+            token.defer("AmsBackendAce::unload_err", [this]() {
                 {
                     std::lock_guard<std::mutex> lock(mutex_);
                     system_info_.action = AmsAction::IDLE;
@@ -436,11 +431,7 @@ AmsError AmsBackendAce::do_unload_filament(int /*slot_index*/) {
                 emit_event(EVENT_STATE_CHANGED);
             });
         },
-        IMoonrakerAPI::AMS_OPERATION_TIMEOUT_MS, /*silent=*/false, /*on_queued=*/nullptr,
-        // Same reasoning as the load path above — see include/rpc_error_policy.h.
-        /*caller_surfaces_errors=*/false);
-
-    return AmsErrorHelper::success();
+        /*silent=*/false);
 }
 
 AmsError AmsBackendAce::do_select_slot(int slot_index) {
@@ -1052,6 +1043,7 @@ void AmsBackendAce::parse_ace_object(const json& data) {
     // would leave the previous slot reading loaded forever. Fourth and last
     // explicit signal; last one wins (#1069).
     if (data.contains("current_index") && data["current_index"].is_number_integer()) {
+        manager_states_seat_ = true;
         seat_from_global_index_locked(data["current_index"].get<int>());
     }
 
@@ -1477,6 +1469,7 @@ bool AmsBackendAce::parse_status_response(const json& data) {
     if (data.contains("ace_manager") && data["ace_manager"].is_object() &&
         data["ace_manager"].contains("current_index") &&
         data["ace_manager"]["current_index"].is_number_integer()) {
+        manager_states_seat_ = true;
         changed |= seat_from_global_index_locked(data["ace_manager"]["current_index"].get<int>());
     }
 

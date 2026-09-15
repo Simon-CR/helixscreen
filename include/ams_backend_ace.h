@@ -481,6 +481,14 @@ class AmsBackendAce : public AmsSubscriptionBackend {
     int seated_stamp_slot_ = -1;
     SlotStatus seated_stamp_prev_ = SlotStatus::UNKNOWN;
 
+    /// Set once a manager object has stated `current_index` (object path or the
+    /// REST bridge's `ace_manager`). That driver owns the seat, so a G-code ack
+    /// must not stamp one: it answers a toolchange it will not perform with a
+    /// plain respond_info and no error, and `current_index` then stays at -1 —
+    /// unchanged, so Klipper sends no frame to contradict the stamp
+    /// (prestonbrown/helixscreen#1676).
+    bool manager_states_seat_ = false;
+
     // Shared helper used by every override-clear path (hardware event and
     // explicit user request). Caller must hold mutex_. Erases
     // overrides_[slot_index], resets override-exclusive fields on the

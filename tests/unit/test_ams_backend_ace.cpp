@@ -276,6 +276,26 @@ class AmsBackendAceTestHelper : public AmsBackendAce {
     DryerInfo get_test_dryer_info() const {
         return get_dryer_info();
     }
+
+    // Filament ops refuse unless the backend is started; these tests drive the
+    // op hooks without a Moonraker connection.
+    void set_running(bool state) {
+        running_ = state;
+    }
+
+    // Load and unload resolve through this seam, so a test can assert what was
+    // sent and fire the driver's ack when it chooses. A driver that ignores a
+    // toolchange still acks it, which is the case worth reproducing.
+    std::vector<std::string> captured_gcodes;
+    std::function<void()> pending_ack;
+
+    helix::AmsError execute_gcode(const std::string& gcode, std::function<void()> on_complete,
+                                  std::function<void(const MoonrakerError&)> /*on_error*/,
+                                  bool /*silent*/) override {
+        captured_gcodes.push_back(gcode);
+        pending_ack = std::move(on_complete);
+        return helix::AmsErrorHelper::success();
+    }
 };
 
 // ============================================================================
@@ -685,6 +705,42 @@ TEST_CASE("ACE operations require API", "[ams][ace][preconditions]") {
 
     err = helper.start_drying(45.0f, 240);
     REQUIRE(!err.success());
+}
+
+// ============================================================================
+// The G-code ack is not proof of a load (prestonbrown/helixscreen#1676)
+//
+// The ACEPRO driver answers a toolchange it will not perform with a plain
+// respond_info and no error, so the ack arrives for a load that never moved.
+// The manager's current_index is the seat signal, and an ignored load leaves it
+// unchanged at -1 — Klipper notifies on field changes, so no frame follows and
+// nothing arrives to contradict a stamp taken from the ack.
+// ============================================================================
+
+TEST_CASE("ACE load does not seat a slot the driver never moved to", "[ams][ace][1676]") {
+    AmsBackendAceTestHelper helper;
+    helper.set_running(true);
+
+    // Fork rig with nothing loaded: four ready slots, manager seat -1.
+    AceTestAccess::parse_ace(helper, make_kobra_instance_object());
+    AceTestAccess::parse_ace(helper, make_kobra_manager_object(-1));
+    REQUIRE_FALSE(helper.get_test_system_info().filament_loaded);
+
+    REQUIRE(helper.load_filament(2).success());
+
+    // The absence checked below is only meaningful if the load actually
+    // dispatched and an ack is really waiting.
+    REQUIRE(helper.captured_gcodes.size() == 1);
+    REQUIRE(helper.captured_gcodes[0] == "ACE_CHANGE_TOOL TOOL=2");
+    REQUIRE(helper.pending_ack != nullptr);
+
+    helper.pending_ack();
+    helix::ui::UpdateQueue::instance().drain();
+
+    const auto info = helper.get_test_system_info();
+    CHECK_FALSE(info.filament_loaded);
+    CHECK(info.current_slot == -1);
+    CHECK(helper.get_slot_info(2).status != SlotStatus::LOADED);
 }
 
 // ============================================================================
