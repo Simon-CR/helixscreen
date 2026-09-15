@@ -511,16 +511,21 @@ void MemoryMonitor::fire_warning(MemoryPressureLevel level, const std::string& r
         spdlog::warn("[MemoryMonitor] No pressure responders registered — nothing to free");
     }
 
-    // Deferred completion log: both new responders (PrintStatusPanel tree,
-    // LVGL image cache) hop to the UI thread via queue_update, and a
-    // destroyed widget tree is actually freed by lv_obj_delete_async on the
-    // next LVGL async-handler pass. A sync get_current_stats() right after
-    // the loop would systematically undercount — the RSS delta would read
-    // "+0kB" even when multi-hundred-KB reclaim succeeded. Instead, hop
-    // through queue_update (runs in the next UpdateQueue tick, after our
-    // deferred reclaim work) and lv_async_call (runs AFTER process_pending's
-    // async-delete drain in the same lv_timer_handler pass), so the
-    // post-sample reflects sync responders, cache drops, AND widget deletes.
+    // Deferred completion log: responders (print-status tree, LVGL image
+    // cache) hop to the UI thread via queue_update, and a destroyed widget
+    // tree is actually freed by lv_obj_delete_async — a period-0 one-shot
+    // timer. A sync get_current_stats() right after the loop would
+    // systematically undercount: the RSS delta would read "+0kB" even when
+    // multi-hundred-KB reclaim succeeded. But so does a period-0 hop created
+    // after the responders' own hops: lv_timer_create() inserts every new
+    // timer at the HEAD of LVGL's timer list and lv_timer_handler() restarts
+    // its walk from the head whenever a timer is created, so a completion
+    // timer created later in the same UpdateQueue drain lands AHEAD of the
+    // delete timers and runs first. The completion is therefore a one-shot
+    // lv_timer with a nonzero period: not-ready makes the walk skip it, the
+    // period-0 delete timers run past it, and the sample fires on the next
+    // lv_timer_handler pass — reflecting sync responders, cache drops, AND
+    // widget deletes.
     if (responders_fired > 0) {
 #ifdef __linux__
         struct CompletionCtx {
@@ -529,19 +534,28 @@ void MemoryMonitor::fire_warning(MemoryPressureLevel level, const std::string& r
         };
         auto* ctx = new CompletionCtx{before_stats.vm_rss_kb, responders_fired};
         helix::ui::queue_update([ctx]() {
-            lv_async_call(
-                [](void* ud) {
-                    auto* c = static_cast<CompletionCtx*>(ud);
+            lv_timer_t* timer = lv_timer_create(
+                [](lv_timer_t* t) {
+                    auto* c = static_cast<CompletionCtx*>(lv_timer_get_user_data(t));
                     MemoryStats after = MemoryMonitor::get_current_stats();
                     int64_t delta_kb = static_cast<int64_t>(after.vm_rss_kb) -
                                        static_cast<int64_t>(c->before_rss_kb);
-                    spdlog::warn("[MemoryMonitor] Pressure response complete: {} responder(s), "
+                    spdlog::warn("[MemoryMonitor] Pressure response complete: "
+                                 "{} responder(s), "
                                  "RSS {}MB -> {}MB ({:+}kB)",
                                  c->fired, c->before_rss_kb / 1024, after.vm_rss_kb / 1024,
                                  delta_kb);
                     delete c;
                 },
-                ctx);
+                1, ctx);
+            if (timer != nullptr) {
+                lv_timer_set_repeat_count(timer, 1);
+            } else {
+                // lv_timer_create fails only under allocation failure — the
+                // very state this monitor reports on. Drop the context rather
+                // than leak it on a box that is out of memory.
+                delete ctx;
+            }
         });
 #endif
     }

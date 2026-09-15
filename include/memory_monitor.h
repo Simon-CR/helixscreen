@@ -211,6 +211,8 @@ class MemoryMonitor {
     void fire_warning(MemoryPressureLevel level, const std::string& reason,
                       const MemoryStats& stats, const MemoryInfo& sys_info, int64_t growth_kb);
 
+    friend class MemoryMonitorTestAccess;
+
     std::atomic<bool> running_{false};
     std::atomic<int> interval_ms_{5000};
     std::thread monitor_thread_;

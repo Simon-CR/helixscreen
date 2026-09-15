@@ -3,7 +3,18 @@
 
 #include "memory_monitor.h"
 
+#ifdef __linux__
+#include "ui_update_queue.h"
+
+#include "../lvgl_test_fixture.h"
+#include "../test_helpers/log_capture.h"
+#include "../test_helpers/memory_monitor_test_access.h"
+#endif
+
+#include <spdlog/spdlog.h>
+
 #include <atomic>
+#include <string>
 
 #include "../catch_amalgamated.hpp"
 
@@ -529,3 +540,63 @@ TEST_CASE("compute_pressure_level: sustained time cannot invent pressure that is
                                         t.sustained_warning_secs_to_critical * 10);
     REQUIRE(level == MemoryPressureLevel::none);
 }
+
+#ifdef __linux__
+// =============================================================================
+// Pressure-response completion ordering
+// =============================================================================
+
+TEST_CASE_METHOD(LVGLTestFixture,
+                 "MemoryMonitor: pressure completion sample runs after async widget deletes",
+                 "[memory_monitor][1675]") {
+    // The completion log's RSS sample must land after the widget deletes the
+    // responders deferred. Both hop to the UI thread through the UpdateQueue,
+    // and lv_timer_create() inserts at the HEAD of LVGL's timer list, so the
+    // relative position of the completion timer and the delete timers decides
+    // which runs first. The tracked object logs its delete event into the same
+    // ring the completion line lands in: capture order is execution order.
+    LogCapture log(512);
+
+    lv_obj_t* parent = lv_obj_create(test_screen());
+    lv_obj_t* tracked = lv_obj_create(parent);
+    lv_obj_add_event_cb(
+        tracked, [](lv_event_t*) { spdlog::info("[1675] tracked object deleted"); },
+        LV_EVENT_DELETE, nullptr);
+
+    auto& monitor = MemoryMonitor::instance();
+    // A stub widget-tree responder: hop to the UI thread, then defer the delete
+    // one async step, the way the print-status teardown responder does.
+    lv_obj_t* doomed = tracked;
+    auto id = monitor.add_pressure_responder([doomed](MemoryPressureLevel) {
+        helix::ui::queue_update([doomed]() { lv_obj_delete_async(doomed); });
+    });
+
+    MemoryMonitorTestAccess::fire_warning(monitor, MemoryPressureLevel::warning, "test pressure",
+                                          MemoryStats{}, MemoryInfo{}, 0);
+
+    // The first pump drains the queue — creating the delete timer and the
+    // completion timer — and fires whatever is ready; the second lets a
+    // nonzero-period completion timer come due.
+    process_lvgl(50);
+
+    monitor.remove_pressure_responder(id);
+
+    const auto lines = log.lines();
+    size_t deleted_at = lines.size();
+    size_t complete_at = lines.size();
+    for (size_t i = 0; i < lines.size(); i++) {
+        if (deleted_at == lines.size() &&
+            lines[i].find("tracked object deleted") != std::string::npos) {
+            deleted_at = i;
+        }
+        if (complete_at == lines.size() &&
+            lines[i].find("Pressure response complete") != std::string::npos) {
+            complete_at = i;
+        }
+    }
+
+    REQUIRE(deleted_at < lines.size());  // the deferred delete actually ran
+    REQUIRE(complete_at < lines.size()); // ...and the completion sampled
+    REQUIRE(deleted_at < complete_at);   // the sample lands after the delete
+}
+#endif
