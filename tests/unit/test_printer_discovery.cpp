@@ -1135,6 +1135,34 @@ TEST_CASE("PrinterDiscovery detects chamber heater and sensor", "[printer_discov
         REQUIRE(hw.has_chamber_heater());
     }
 
+    SECTION("Chamber temperature_fan is the sensor pick when no chamber temperature_sensor "
+            "exists") {
+        json objects = {"temperature_fan chamber_exhaust_fans", "temperature_sensor mcu_temp"};
+        hw.parse_objects(objects);
+
+        REQUIRE(hw.has_chamber_sensor());
+        REQUIRE(hw.chamber_sensor_name() == "temperature_fan chamber_exhaust_fans");
+    }
+
+    SECTION("Equal chamber keyword prefers the passive temperature_sensor over the fan") {
+        // Both orders: the pick must not depend on Moonraker's iteration order.
+        json fan_first = {"temperature_fan chamber", "temperature_sensor chamber"};
+        hw.parse_objects(fan_first);
+        REQUIRE(hw.chamber_sensor_name() == "temperature_sensor chamber");
+
+        PrinterDiscovery hw2;
+        json fan_last = {"temperature_sensor chamber", "temperature_fan chamber"};
+        hw2.parse_objects(fan_last);
+        REQUIRE(hw2.chamber_sensor_name() == "temperature_sensor chamber");
+    }
+
+    SECTION("Stronger fan keyword beats weaker sensor keyword for the sensor pick") {
+        json objects = {"temperature_fan chamber", "temperature_sensor enclosure"};
+        hw.parse_objects(objects);
+
+        REQUIRE(hw.chamber_sensor_name() == "temperature_fan chamber");
+    }
+
     SECTION("Box sensor is treated as chamber (Elegoo COSMOS)") {
         json objects = {"temperature_sensor box"};
         hw.parse_objects(objects);
