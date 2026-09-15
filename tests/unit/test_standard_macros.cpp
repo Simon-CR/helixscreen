@@ -654,7 +654,7 @@ TEST_CASE("resolve_macro_script - substitution and self-preparation",
         CHECK_FALSE(r.takes_profile_arg);
     }
 
-    SECTION("a shipped sequence its entry marks self-preparing keeps its own preparation") {
+    SECTION("a shipped sequence that its entry marks self-preparing keeps its own preparation") {
         info.detected_macro = "BED_MESH_CALIBRATE";
         info.shipped_macro = "LOAD_CELL_TARE\nBED_MESH_CALIBRATE";
         info.shipped_self_prepares = true;

@@ -468,6 +468,10 @@ namespace {
 helix::PrinterStopCheck check_printer_stop_commands(const std::string& content, size_t limit) {
     helix::PrinterStopCheck check;
     auto& macros = helix::MacroParamCache::instance();
+    // Read first, so a populate landing mid-scan can only stamp the answer older
+    // than the data it describes. That direction costs a rescan; the reverse
+    // would let a stale answer pass for a current one.
+    check.macro_generation = macros.generation();
     if (!macros.is_populated()) {
         check.not_run_reason = "the printer's macros have not been read";
         return check;
@@ -496,14 +500,19 @@ helix::PrinterStopCheck check_printer_stop_commands(const std::string& content, 
 helix::PrinterStopCheck printer_stop_not_run(std::string reason) {
     helix::PrinterStopCheck check;
     check.not_run_reason = std::move(reason);
+    check.macro_generation = helix::MacroParamCache::instance().generation();
     return check;
 }
 } // namespace
 
 void PrintPreparationManager::scan_file_for_operations(const std::string& filename,
                                                        const std::string& current_path) {
-    // Skip if already cached for this file
-    if (cached_scan_filename_ == filename && cached_scan_result_.has_value()) {
+    // The cached result is reusable only while its printer-stopping command
+    // answer still holds. An answer computed before the printer's macros were
+    // read, or against a macro set it has since replaced, says nothing about
+    // this printer, so the file is scanned again.
+    if (cached_scan_filename_ == filename && cached_scan_result_.has_value() &&
+        has_printer_stop_answer_for(filename)) {
         spdlog::debug("[PrintPreparationManager] Using cached scan result for {}", filename);
         return;
     }
@@ -593,11 +602,12 @@ PrintPreparationManager::printer_stop_check_for(const std::string& filename) con
     if (has_printer_stop_answer_for(filename)) {
         return printer_stop_check_;
     }
-    return printer_stop_not_run("the file scan has not answered");
+    return printer_stop_not_run("the file scan has not answered for the printer's current macros");
 }
 
 bool PrintPreparationManager::has_printer_stop_answer_for(const std::string& filename) const {
-    return !filename.empty() && printer_stop_check_filename_ == filename;
+    return !filename.empty() && printer_stop_check_filename_ == filename &&
+           printer_stop_check_.macro_generation == helix::MacroParamCache::instance().generation();
 }
 
 void PrintPreparationManager::set_on_scan_answered(std::function<void()> cb) {

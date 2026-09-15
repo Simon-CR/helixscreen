@@ -80,6 +80,8 @@ void MacroParamCache::populate_from_configfile(
     const nlohmann::json& config, const std::unordered_set<std::string>& known_macros) {
     std::lock_guard<std::mutex> lock(mutex_);
     cache_.clear();
+    populated_ = false;
+    ++generation_;
 
     if (!config.is_object()) {
         spdlog::warn("[MacroParamCache] configfile.config is not an object");
@@ -172,6 +174,11 @@ bool MacroParamCache::is_populated() const {
     return populated_;
 }
 
+uint64_t MacroParamCache::generation() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return generation_;
+}
+
 CachedMacroInfo MacroParamCache::get(const std::string& macro_name) const {
     std::lock_guard<std::mutex> lock(mutex_);
     std::string lower = macro_name;
@@ -198,6 +205,7 @@ void MacroParamCache::clear() {
     std::lock_guard<std::mutex> lock(mutex_);
     cache_.clear();
     populated_ = false;
+    ++generation_;
     spdlog::debug("[MacroParamCache] Cache cleared");
 }
 

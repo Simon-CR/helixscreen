@@ -14,6 +14,7 @@
 #include "filament_mapper.h"
 #include "moonraker_types.h"
 
+#include <cstdint>
 #include <map>
 #include <optional>
 #include <set>
@@ -66,6 +67,10 @@ struct PrinterStopCheck {
     std::string command;        ///< The first call's command word as the file writes it
     size_t line_number = 0;     ///< Its 1-indexed line
     std::string stop_message;   ///< The macro's literal stop message; empty when unknown
+    /// The MacroParamCache generation this answer was computed against. An
+    /// answer from an older generation describes a macro set the printer may no
+    /// longer have, so it is treated as no answer at all.
+    uint64_t macro_generation = 0;
 };
 
 /// Everything a gate may read. Gathered fresh by the controller per pipeline

@@ -817,4 +817,21 @@ TEST_CASE_METHOD(DetailDownloadFixture,
             tap_before_scan("printer_stop_clean_" + pid + ".gcode", "G28\nG1 X10 Y10 E1\n");
         CHECK(check.state == helix::PrinterStopCheck::State::Clean);
     }
+
+    SECTION("an answer stops being current once the printer's macros change") {
+        const std::string name = "printer_stop_regen_" + pid + ".gcode";
+        const auto check = tap_before_scan(name, "G28\nM729\nG1 X10 Y10 E1\n");
+        REQUIRE(check.state == helix::PrinterStopCheck::State::Stops);
+
+        auto* prep = view_.get_prep_manager();
+        REQUIRE(prep != nullptr);
+        REQUIRE(prep->has_printer_stop_answer_for(name));
+
+        // A reconnect re-reads the printer's macros, so the set the scan
+        // answered against is no longer the set this printer has.
+        helix::MacroParamCache::instance().clear();
+
+        CHECK_FALSE(prep->has_printer_stop_answer_for(name));
+        CHECK(prep->printer_stop_check_for(name).state == helix::PrinterStopCheck::State::NotRun);
+    }
 }

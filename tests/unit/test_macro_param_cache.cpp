@@ -269,3 +269,36 @@ TEST_CASE("MacroParamCache records which macros stop the printer",
     CHECK_FALSE(cache.is_populated());
     CHECK(cache.printer_stop_commands().empty());
 }
+
+TEST_CASE("MacroParamCache generation moves whenever the macro set may have changed",
+          "[macro_param_cache][printer_stop]") {
+    auto& cache = MacroParamCache::instance();
+    cache.clear();
+    const uint64_t cleared = cache.generation();
+
+    nlohmann::json config;
+    config["gcode_macro M729"] = {{"gcode", "{action_emergency_stop(\"no\")}"}};
+    cache.populate_from_configfile(config, {});
+    const uint64_t populated = cache.generation();
+    CHECK(populated != cleared);
+    CHECK(cache.is_populated());
+
+    SECTION("a clear moves it again") {
+        cache.clear();
+        CHECK(cache.generation() != populated);
+    }
+
+    SECTION("a second populate moves it, so an answer from the first is not current") {
+        cache.populate_from_configfile(config, {});
+        CHECK(cache.generation() != populated);
+    }
+
+    SECTION("a configfile that is not an object populates nothing and still moves it") {
+        cache.populate_from_configfile(nlohmann::json("not an object"), {});
+        CHECK_FALSE(cache.is_populated());
+        CHECK(cache.printer_stop_commands().empty());
+        CHECK(cache.generation() != populated);
+    }
+
+    cache.clear();
+}

@@ -4,6 +4,7 @@
 
 #include "macro_param_modal.h"
 
+#include <cstdint>
 #include <map>
 #include <mutex>
 #include <string>
@@ -64,6 +65,11 @@ class MacroParamCache {
     /// Whether populate_from_configfile() has read a configfile since the last clear().
     [[nodiscard]] bool is_populated() const;
 
+    /// Changes whenever the cached macro set may have changed (any populate or
+    /// clear). An answer computed against an older value describes a macro set
+    /// this printer may no longer have, so it is not reusable.
+    [[nodiscard]] uint64_t generation() const;
+
     /// Clear all cached state (call on disconnect/reconnect).
     void clear();
 
@@ -74,6 +80,7 @@ class MacroParamCache {
     // Key: lowercase macro name (e.g., "clean_nozzle")
     std::unordered_map<std::string, CachedMacroInfo> cache_;
     bool populated_ = false;
+    uint64_t generation_ = 0;
 };
 
 } // namespace helix
