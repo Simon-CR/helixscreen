@@ -582,4 +582,6 @@ TEST_CASE_METHOD(ApplicationTestFixture,
     DisplayManagerTestAccess::debug_touch_tick(timer);
 
     CHECK(lv_obj_get_child_count(lv_layer_top()) == children_before);
+
+    lv_timer_delete(timer);
 }
