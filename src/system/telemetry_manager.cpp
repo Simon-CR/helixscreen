@@ -21,6 +21,7 @@
 #include "hv/requests.h"
 #include "i_moonraker_api.h"
 #include "json_utils.h"
+#include "klipper_extruder_naming.h"
 #include "moonraker_client.h"
 #include "moonraker_types.h"
 #include "panel_widget_config.h"
@@ -1563,10 +1564,13 @@ nlohmann::json TelemetryManager::build_session_event() const {
         printer["mcu_count"] = static_cast<int>(hw.mcu_list().empty() ? (hw.mcu().empty() ? 0 : 1)
                                                                       : hw.mcu_list().size());
 
-        // Count extruders from heaters list (names starting with "extruder")
+        // Count extruders with the strict naming grammar: an extruder count
+        // is a tool count, so an extruder-prefixed heater that is not a
+        // numbered extruder (extruder_mixing, extruder_stepper) must not
+        // inflate it.
         int extruder_count = 0;
         for (const auto& heater : hw.heaters()) {
-            if (heater.rfind("extruder", 0) == 0 && heater.rfind("extruder_stepper", 0) != 0) {
+            if (helix::is_extruder_name(heater)) {
                 extruder_count++;
             }
         }
@@ -2059,10 +2063,12 @@ nlohmann::json TelemetryManager::build_hardware_profile_event() const {
             }
 
             // ---- extruders section ----
+            // Strict grammar, same as the session event's extruder_count:
+            // this counts tools, not extruder-prefixed heaters.
             json extruders;
             int extruder_count = 0;
             for (const auto& heater : hw.heaters()) {
-                if (heater.rfind("extruder", 0) == 0 && heater.rfind("extruder_stepper", 0) != 0) {
+                if (helix::is_extruder_name(heater)) {
                     extruder_count++;
                 }
             }

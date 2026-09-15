@@ -456,8 +456,8 @@ TEST_CASE_METHOD(TelemetryTestFixture, "Session event: app.zip_tool is on EVERY 
 
     const std::set<std::string> legal_values{"unzip", "python", "none"};
     for (const auto& event : snapshot) {
-        REQUIRE(event["app"].contains("zip_tool"));
-        const std::string zip_tool = event["app"]["zip_tool"];
+        REQUIRE(event.at("app").contains("zip_tool"));
+        const std::string zip_tool = event.at("app").at("zip_tool");
         REQUIRE(legal_values.count(zip_tool) == 1);
     }
     REQUIRE(snapshot[0]["app"]["zip_tool"] == snapshot[1]["app"]["zip_tool"]);
@@ -2003,7 +2003,7 @@ json hardware_profile_with_url(const std::string& websocket_url) {
     tm.record_hardware_profile();
 
     for (const auto& event : tm.get_queue_snapshot()) {
-        if (event["event"] == "hardware_profile") {
+        if (event.value("event", "") == "hardware_profile") {
             return event;
         }
     }
@@ -2052,7 +2052,7 @@ TEST_CASE_METHOD(TelemetryTestFixture,
     REQUIRE_FALSE(snapshot.empty());
 
     for (const auto& event : snapshot) {
-        if (event["event"] == "hardware_profile") {
+        if (event.value("event", "") == "hardware_profile") {
             CHECK_FALSE(event.contains("moonraker_is_local"));
         }
     }
@@ -2074,6 +2074,61 @@ TEST_CASE_METHOD(TelemetryTestFixture, "record_hardware_profile creates valid ev
     CHECK(event.contains("timestamp"));
     // Hardware profile may have empty sections in test mode (no printer connected)
     // but the event itself should be valid
+}
+
+namespace {
+
+/// Installs a global Moonraker client for a scope and restores the previous one.
+class ScopedMoonrakerClient {
+  public:
+    explicit ScopedMoonrakerClient(helix::IMoonrakerClient* client)
+        : previous_(get_moonraker_client()) {
+        set_moonraker_client(client);
+    }
+    ~ScopedMoonrakerClient() {
+        set_moonraker_client(previous_);
+    }
+
+    ScopedMoonrakerClient(const ScopedMoonrakerClient&) = delete;
+    ScopedMoonrakerClient& operator=(const ScopedMoonrakerClient&) = delete;
+
+  private:
+    helix::IMoonrakerClient* previous_;
+};
+
+} // namespace
+
+TEST_CASE_METHOD(TelemetryTestFixture,
+                 "session and hardware_profile extruder counts use the strict extruder grammar",
+                 "[telemetry][extruder_count][1502]") {
+    // Both events count tools, and a tool count is exactly the question
+    // is_extruder_name() answers: an extruder-prefixed heater that is not a
+    // numbered extruder (extruder_mixing, extruder_stepper) is not a tool and
+    // must not inflate the count.
+    MoonrakerClientMock client;
+    client.set_heaters({"extruder", "extruder1", "extruder2", "extruder_mixing", "extruder_stepper",
+                        "heater_bed"});
+    ScopedMoonrakerClient installed(&client);
+
+    auto& tm = TelemetryManager::instance();
+    tm.set_enabled(true);
+    tm.clear_queue();
+    tm.record_session();
+    tm.record_hardware_profile();
+
+    bool saw_session = false;
+    bool saw_hw_profile = false;
+    for (const auto& event : tm.get_queue_snapshot()) {
+        if (event.value("event", "") == "session") {
+            saw_session = true;
+            CHECK(event.at("printer").at("extruder_count") == 3);
+        } else if (event.value("event", "") == "hardware_profile") {
+            saw_hw_profile = true;
+            CHECK(event.at("extruders").at("count") == 3);
+        }
+    }
+    REQUIRE(saw_session);
+    REQUIRE(saw_hw_profile);
 }
 
 // ============================================================================
@@ -2518,11 +2573,11 @@ TEST_CASE_METHOD(TelemetryTestFixture, "Snapshot: snapshot_seq increments on eac
 
     int first_seq = -1, second_seq = -1;
     for (const auto& ev : queue) {
-        if (ev["event"] == "panel_usage") {
+        if (ev.value("event", "") == "panel_usage") {
             if (first_seq < 0)
-                first_seq = ev["snapshot_seq"].get<int>();
+                first_seq = ev.value("snapshot_seq", -1);
             else
-                second_seq = ev["snapshot_seq"].get<int>();
+                second_seq = ev.value("snapshot_seq", -1);
         }
     }
     REQUIRE(first_seq == 0);
