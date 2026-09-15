@@ -420,7 +420,7 @@ jobs:
     name: AddressSanitizer
     needs: gate
     runs-on: ubuntu-22.04
-    timeout-minutes: 240
+    timeout-minutes: 350
 
     steps:
     - name: Checkout repository
@@ -460,11 +460,17 @@ jobs:
         key: deps-ubuntu-22.04-${{ hashFiles('lib/libhv/**/*.c', 'lib/libhv/**/*.cpp', 'lib/libhv/**/*.h', 'lib/wpa_supplicant/src/**/*.c', 'lib/wpa_supplicant/src/**/*.h', 'Makefile', 'mk/deps.mk') }}
         restore-keys: deps-ubuntu-22.04-
 
-    # No ccache restore here on purpose. -fsanitize=address is part of every
-    # object hash (ASAN_FLAGS, mk/tests.mk), and this job runs only
-    # `make test-asan`, so build.yml's ordinary objects can never match:
-    # restoring would download ~1.7 GB for a guaranteed 0% hit rate. The
-    # 240-minute cap already covers a fully cold ASAN build.
+    # Keyed on this job's OWN prior run. build.yml's objects can never match,
+    # because -fsanitize=address is part of every object hash (ASAN_FLAGS,
+    # mk/tests.mk) - but last night's ASAN tree matches almost entirely. A cold
+    # ASAN build runs 3-4 hours, so this cache is what keeps the job inside its
+    # timeout rather than racing it.
+    - name: Cache ASAN ccache
+      uses: actions/cache@v5
+      with:
+        path: ~/.cache/ccache
+        key: ccache-asan-ubuntu-22.04-${{ github.sha }}
+        restore-keys: ccache-asan-ubuntu-22.04-
 
     - name: Cache npm downloads
       uses: actions/cache@v5
@@ -483,7 +489,7 @@ jobs:
 
     - name: Configure ccache
       run: |
-        ccache --set-config=max_size=1G
+        ccache --set-config=max_size=3G
         ccache --set-config=compression=true
         ccache -z
 
@@ -493,8 +499,12 @@ jobs:
     - name: Apply submodule patches
       run: make apply-patches
 
-    - name: Build and run with ASAN
-      timeout-minutes: 230
+    - name: Build with ASAN
+      timeout-minutes: 300
+      run: make test-asan-build
+
+    - name: Run ASAN tests
+      timeout-minutes: 45
       run: |
         make test-asan
         echo "ASAN tests complete"
@@ -514,7 +524,7 @@ jobs:
     name: ThreadSanitizer
     needs: gate
     runs-on: ubuntu-22.04
-    timeout-minutes: 240
+    timeout-minutes: 350
 
     steps:
     - name: Checkout repository
@@ -554,11 +564,17 @@ jobs:
         key: deps-ubuntu-22.04-${{ hashFiles('lib/libhv/**/*.c', 'lib/libhv/**/*.cpp', 'lib/libhv/**/*.h', 'lib/wpa_supplicant/src/**/*.c', 'lib/wpa_supplicant/src/**/*.h', 'Makefile', 'mk/deps.mk') }}
         restore-keys: deps-ubuntu-22.04-
 
-    # No ccache restore here on purpose. -fsanitize=thread is part of every
-    # object hash (TSAN_FLAGS, mk/tests.mk), and this job runs only
-    # `make test-tsan`, so build.yml's ordinary objects can never match:
-    # restoring would download ~1.7 GB for a guaranteed 0% hit rate. The
-    # 240-minute cap already covers a fully cold TSAN build.
+    # Keyed on this job's OWN prior run. build.yml's objects can never match,
+    # because -fsanitize=thread is part of every object hash (TSAN_FLAGS,
+    # mk/tests.mk) - but last night's TSAN tree matches almost entirely. A cold
+    # TSAN build runs 3-4 hours, so this cache is what keeps the job inside its
+    # timeout rather than racing it.
+    - name: Cache TSAN ccache
+      uses: actions/cache@v5
+      with:
+        path: ~/.cache/ccache
+        key: ccache-tsan-ubuntu-22.04-${{ github.sha }}
+        restore-keys: ccache-tsan-ubuntu-22.04-
 
     - name: Cache npm downloads
       uses: actions/cache@v5
@@ -577,7 +593,7 @@ jobs:
 
     - name: Configure ccache
       run: |
-        ccache --set-config=max_size=1G
+        ccache --set-config=max_size=3G
         ccache --set-config=compression=true
         ccache -z
 
@@ -587,12 +603,16 @@ jobs:
     - name: Apply submodule patches
       run: make apply-patches
 
-    - name: Build and run with TSAN
-      timeout-minutes: 230
+    - name: Build with TSAN
+      timeout-minutes: 300
+      run: make test-tsan-build
+
+    - name: Run TSAN tests
+      timeout-minutes: 60
       run: |
         # Exclude [eventloop] and [slow] tests — eventloop tests have their own
         # dedicated CI job, and [slow] tests (MoonrakerClientMock fixture) are
-        # too expensive under TSAN's 10-50x overhead, causing 230-min timeout.
+        # too expensive to finish under TSAN's 10-50x overhead.
         make test-tsan TSAN_FILTER="~[.] ~[eventloop] ~[slow]"
         echo "TSAN tests complete"
 
