@@ -33,36 +33,74 @@ setup() {
 # platform_pre_start itself, the helpers it calls, everywhere. A hook export
 # reaches the launcher's environment from any function the launcher's
 # platform_pre_start call runs, so the defaulting rule cannot be scoped to
-# one function body. Exports of other variables (camera plumbing configured
-# inside a subshell around a daemon start) never escape that subshell and are
-# outside this contract. Indent class is a literal space AND tab, matching
-# the launcher's env parser.
+# one function body. The name list comes from word-splitting each export
+# statement, so `export NAME` (assign-then-export) and
+# `export OTHER=1 NAME=2` (multi-assignment) are seen too: any spelling
+# that exports a HELIX_* name counts. Exports of other variables (camera
+# plumbing configured inside a subshell around a daemon start) never escape
+# that subshell and are outside this contract.
 helix_exports() {
-    grep -E '^[ 	]*export HELIX_[A-Z0-9_]*=' "$1" || true
+    awk '
+        /^[ \t]*export([ \t]|$)/ {
+            for (i = 2; i <= NF; i++) {
+                name = $i
+                sub(/=.*$/, "", name)
+                if (name ~ /^HELIX_[A-Z0-9_]+$/) { print; break }
+            }
+        }
+    ' "$1"
 }
 
-# The export lines in $1 that assign unconditionally and so discard a value
-# the operator already set.
+# The export statements in $1 that assign a HELIX_* variable unconditionally
+# and so discard a value the operator already set: a statement is unguarded
+# when any HELIX_* name it exports appears without the `${NAME:-` defaulting
+# form on that same line.
 unguarded_hook_exports() {
-    helix_exports "$1" | while IFS= read -r line; do
-        [ -n "$line" ] || continue
-        var="$(echo "$line" | sed -E 's/^[ 	]*export (HELIX_[A-Z0-9_]*)=.*/\1/')"
-        echo "$line" | grep -qF "\${$var:-" || echo "$line"
-    done
+    awk '
+        /^[ \t]*export([ \t]|$)/ {
+            bad = 0
+            for (i = 2; i <= NF; i++) {
+                name = $i
+                sub(/=.*$/, "", name)
+                if (name !~ /^HELIX_[A-Z0-9_]+$/) continue
+                if (index($0, "${" name ":-") == 0) bad = 1
+            }
+            if (bad) print
+        }
+    ' "$1"
 }
 
 # export statements at file scope (outside every function body). The
 # function-entry rule and the reset rule each `next` on their own line, so a
 # closing brace always resets the scan: an export below the last function is
-# as visible as one above the first. The indent class holds a literal space
-# AND tab (the launcher's env parser precedent): a tab-indented export inside
-# a file-scope `if` block is exactly the offender the gate exists to catch.
+# as visible as one above the first. Heredoc content is skipped line by line
+# (delimiters are identifier-shaped; the terminator is the delimiter alone
+# on its line, however indented): a here-document can carry a column-0
+# `name() {` line with no matching `}`, which would otherwise flip the scan
+# into function scope and swallow every file-scope export below it. The
+# indent class holds a literal space AND tab (the launcher's env parser
+# precedent): a tab-indented export inside a file-scope `if` block is
+# exactly the offender the gate exists to catch.
 file_scope_exports() {
     awk '
+        heredoc != "" {
+            if ($0 ~ "^[ \t]*" heredoc "[ \t]*$") heredoc = ""
+            next
+        }
+        {
+            detect = $0
+            sub(/#.*/, "", detect)
+            if ((i = index(detect, "<<")) > 0) {
+                tail = substr(detect, i + 2)
+                sub(/^-/, "", tail)
+                if (match(tail, /[A-Za-z_][A-Za-z0-9_-]*/))
+                    heredoc = substr(tail, RSTART, RLENGTH)
+            }
+        }
         /^[a-zA-Z_][a-zA-Z0-9_]*\(\) ?\{/ { infn = 1; next }
         infn && /^}/ { infn = 0; next }
         infn { next }
-        /^[ 	]*export / { print }
+        /^[ \t]*export / { print }
     ' "$1"
 }
 
@@ -170,6 +208,55 @@ EOF
     if echo "$output" | grep -q 'INSIDE'; then
         fail "scan reports an export from inside a function body"
     fi
+}
+
+@test "the defaulting scan sees every export spelling a hook can use" {
+    # `export NAME=value` is not the only spelling that reaches the
+    # launcher's environment: a bare `export NAME` after an assignment, and
+    # a multi-assignment `export OTHER=1 NAME=2`, export NAME just the same.
+    # A scan anchored on `export NAME=` is blind to both. The one-line
+    # guarded form remains the only spelling whose guarantee the scan can
+    # verify without dataflow, so an assign-then-export pair is reported
+    # even when a surrounding `if [ -z ]` guards it: write
+    # `export NAME="${NAME:-default}"`.
+    local fixture="$BATS_TEST_TMPDIR/spellings-fixture.sh"
+    cat > "$fixture" << 'EOF'
+platform_pre_start() {
+    export HELIX_BARE
+    export V4L2_TOOL=imposter HELIX_MULTI=2
+    HELIX_LATER=/hard/coded
+    export HELIX_LATER
+    export HELIX_GUARDED="${HELIX_GUARDED:-ok}"
+}
+EOF
+    run unguarded_hook_exports "$fixture"
+    [ "$status" -eq 0 ]
+    echo "$output" | grep -q 'export HELIX_BARE$'
+    echo "$output" | grep -q 'HELIX_MULTI=2'
+    echo "$output" | grep -q 'export HELIX_LATER$'
+    if echo "$output" | grep -q 'HELIX_GUARDED'; then
+        fail "scan flags a guarded default"
+    fi
+}
+
+@test "the file-scope scan does not go blind inside a heredoc" {
+    # A hook writing a config file through a heredoc can carry content lines
+    # that look like function headers (`name() {`) with no matching
+    # column-0 `}` to close them. The scan must skip heredoc content rather
+    # than flipping into function scope there and swallowing every
+    # file-scope export below the heredoc. Multi-line quoted strings keep
+    # the same hazard and stay out of scope: no hook spells one at column 0.
+    local fixture="$BATS_TEST_TMPDIR/heredoc-fixture.sh"
+    cat > "$fixture" << 'EOF'
+cat > /etc/init.d/capture <<'UNIT'
+start_capture() {
+    exec /usr/bin/capture
+UNIT
+export HELIX_AFTER_HEREDOC=1
+EOF
+    run file_scope_exports "$fixture"
+    [ "$status" -eq 0 ]
+    echo "$output" | grep -q 'HELIX_AFTER_HEREDOC'
 }
 
 @test "the defaulting form keeps a preset value and supplies one otherwise" {
