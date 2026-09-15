@@ -423,7 +423,11 @@ jobs:
     name: AddressSanitizer
     needs: gate
     runs-on: ubuntu-22.04
-    timeout-minutes: 350
+    # The job cap has to clear the sum of its step caps plus checkout,
+    # dependency setup and artifact upload. Below that, a step that reaches
+    # its own limit is killed by the job first and reports as a test failure
+    # rather than a timeout.
+    timeout-minutes: 360
 
     steps:
     - name: Checkout repository
@@ -521,7 +525,11 @@ jobs:
     name: ThreadSanitizer
     needs: gate
     runs-on: ubuntu-22.04
-    timeout-minutes: 350
+    # The job cap has to clear the sum of its step caps plus checkout,
+    # dependency setup and artifact upload. Below that, a step that reaches
+    # its own limit is killed by the job first and reports as a test failure
+    # rather than a timeout.
+    timeout-minutes: 375
 
     steps:
     - name: Checkout repository
