@@ -247,6 +247,18 @@ export HELIX_PATCHES_FROM_CLEAN
 HELIX_FROM_CLEAN_SENTINEL := $(BUILD_DIR)/.patches-from-clean
 export HELIX_FROM_CLEAN_SENTINEL
 
+# Presence, not applicability. Each wired patch names one line in
+# mk/patch-markers.tsv that it adds (or removes) and upstream never contained,
+# and every build greps the checkout for it. The apply verdict above needs git
+# and stays ambiguous while sibling patches share files; a marker is a plain
+# text search, so it also works in a docker tree rsynced from a worktree, where
+# the submodules are not git repositories at all. 'make regen-patch-markers'
+# rederives the table; the recorded patch hash makes a changed patch fail
+# loudly instead of silently checking a marker that no longer exists.
+PATCH_MARKERS_TSV := mk/patch-markers.tsv
+PATCH_MARKER_STAMP := $(BUILD_DIR)/.patch-markers-verified
+PATCH_MARKER_DEPS := $(shell awk -F'\t' 'NR>1 && !seen[$$4"/"$$5]++ {printf "%s/%s ", ($$4=="LVGL_DIR"?"$(LVGL_DIR)":"$(LIBHV_DIR)"), $$5}' $(PATCH_MARKERS_TSV) 2>/dev/null)
+
 # Patches applied outside this file. Keep this list empty if you can; an entry
 # here means something applies the patch by hand, so nothing verifies it.
 # libnl-socket-time-include.patch (65d0ba93a, GCC 14+ libnl build fix) has no
@@ -404,6 +416,29 @@ apply-patches: $(PATCHES_STAMP)
 force-apply-patches:
 	@rm -f $(PATCHES_STAMP)
 	@$(MAKE) $(PATCHES_STAMP)
+
+# The marker stamp re-verifies whenever the patch stamp, the table, or any file
+# a marker reads is newer, so restoring a submodule file between builds cannot
+# hide a missing patch behind a current patch stamp: the restored file is newer
+# than this stamp, and the check runs before anything compiles against it.
+$(PATCH_MARKER_STAMP): $(PATCHES_STAMP) $(PATCH_MARKERS_TSV) $(PATCH_MARKER_DEPS)
+	$(Q)if ! command -v python3 >/dev/null 2>&1; then \
+		echo "$(YELLOW)⚠ python3 not found - patch marker check skipped$(RESET)"; \
+		exit 0; \
+	fi
+	$(Q)python3 scripts/check_patch_markers.py --mk mk/patches.mk \
+		--tsv $(PATCH_MARKERS_TSV) --patch-dir $(PATCH_DIR) \
+		--lvgl $(LVGL_DIR) --libhv $(LIBHV_DIR)
+	$(Q)touch $@
+
+# Rederive the marker table. Reapplies patches first: derivation reads the
+# patched checkout, and a checkout missing a patch has no marker to find.
+.PHONY: regen-patch-markers
+regen-patch-markers:
+	$(Q)$(MAKE) reapply-patches
+	$(Q)python3 scripts/gen_patch_markers.py --write --mk mk/patches.mk \
+		--tsv $(PATCH_MARKERS_TSV) --patch-dir $(PATCH_DIR) \
+		--lvgl $(LVGL_DIR) --libhv $(LIBHV_DIR)
 
 # The actual stamp file - only rebuilt when patches or submodules change
 $(PATCHES_STAMP): $(PATCH_FILES) $(LVGL_HEAD) $(LIBHV_HEAD) $(APPLIED_STAMP_ID)

@@ -1031,6 +1031,7 @@ check), or report that it matches no reachable state of the submodule.
 - `⚠ <label> is not verifiable in place` - Neither check passes on an already-patched tree; run `make reapply-patches` to judge from clean
 - `⚠ <submodule> is not pristine, so this run cannot judge patches from clean` - `HELIX_PATCHES_FROM_CLEAN=1` was set but the submodule already carries changes (the state `make clean` leaves), so the fatal verdict is not available and every patch is judged in place; run `make reapply-patches` to reset and judge from clean
 - `✗ <label> does not apply to a clean checkout` - The patch and the submodule disagree, on a run verified to have started from pristine submodules; regenerate the patch
+- `✗ <patch> ... Its marker is missing from <file>` - The patch's one distinctive line is absent from the checkout, so the build stops before compiling against unpatched code; run `make reapply-patches`. The marker check is a text search that needs no git, so it also fires in docker builds rsynced from worktrees. Companion messages name a changed patch file (`make regen-patch-markers`) and a wired stanza with no marker row.
 
 ### Adding New Patches
 
@@ -1047,10 +1048,18 @@ To add a new submodule patch:
    files are shared today (`src/misc/lv_event.c` by seven patches). Check with
    `grep -l "diff --git a/<path>" patches/*.patch` and use the pristine-file method in
    `patches/README.md` § "Regenerating a patch whose file is shared".
-3. **Update Makefile** to apply the patch in the `apply-patches` target. Use
-   `git -C $(LVGL_DIR) apply --check <patch>` as the apply condition rather than a
-   "is file X dirty?" test, which breaks as soon as another patch touches X.
-4. **Document** in `patches/README.md`
+3. **Update Makefile** to apply the patch in the `apply-patches` target, as one helper
+   stanza beside the others:
+   ```make
+   $(Q)$(APPLY_PATCH) $(LVGL_DIR) $(PATCH_DIR)/my-new-patch.patch "My new patch" "Without it <consequence>"
+   ```
+   The note is optional and names the runtime consequence of building without the patch;
+   the marker check prints it when the patch goes missing.
+4. **Regenerate the marker table** with `make regen-patch-markers` (it reapplies from
+   clean first, then rederives `mk/patch-markers.tsv`). Until you do, the build fails
+   naming the new patch — a wired stanza without a marker row is a coverage gap, not a
+   state the check tolerates.
+5. **Document** in `patches/README.md`
 
 ### Patch Gotchas (hard-won)
 
@@ -1061,18 +1070,15 @@ update checks failed with "Connection failed"). Both are now regression-tested i
 
 1. **Guard on the actual change, not on a side effect.** A patch that adds NEW
    files *and* edits an existing one must not gate re-application on the new
-   file's existence. The old guard used `[ ! -f base/dns_resolv.c ]`; a submodule
-   reset reverted the tracked `base/hsocket.c` (the wiring) but left the
-   untracked `dns_resolv.c` orphaned, so the guard declared "already applied" and
-   never re-wired `hsocket.c`. Result: resolver compiled but **never called**.
-   Guard on a marker string *inside the edited file* and self-heal:
-   ```make
-   if ! grep -q "dns_resolv_resolve" "$(LIBHV_DIR)/base/hsocket.c"; then
-       rm -f .../base/dns_resolv.c .../base/dns_resolv.h;   # drop orphans
-       git -C $(LIBHV_DIR) checkout -- base/hsocket.c;       # pristine
-       git -C $(LIBHV_DIR) apply .../libhv-dns-resolver-fallback.patch
-   fi
-   ```
+   file's existence. A submodule reset reverts the tracked `base/hsocket.c`
+   (the wiring) but leaves an untracked `dns_resolv.c` orphaned, so a
+   file-existence guard declares "already applied" and never re-wires
+   `hsocket.c` — the resolver compiles but is **never called**. Both layers in
+   `mk/patches.mk` answer this now: every stanza routes through the
+   `$(APPLY_PATCH)` verdict helper (which resets nothing and never assumes),
+   and `mk/patch-markers.tsv` fails the build when the patch's one distinctive
+   line is absent from the file it edits — on every build, docker trees
+   included.
 
 2. **A patched file compiled into a static `.a` must invalidate that `.a`.**
    `$(LIBHV_LIB)` (build/<plat>/lib/libhv.a) originally had **no

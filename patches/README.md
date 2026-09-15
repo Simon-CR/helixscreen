@@ -166,6 +166,20 @@ stanza has dirtied a shared file) by asking git whether the patched files are pr
 writes the answer where the helper reads it. A checkout that is not pristine — the state
 `make clean` leaves behind, stamp gone but submodules still patched — downgrades the fatal to
 the in-place warn with the remedy named, instead of failing a healthy tree and telling you to
-regenerate correct patches. CI runners are fresh clones, so every workflow's `make
-apply-patches` step passes `HELIX_PATCHES_FROM_CLEAN=1` — `scripts/check_workflow_submodules.py`
-fails a workflow whose apply step drops it.
+regenerate correct patches. CI runners are fresh clones, so every workflow sets
+`HELIX_PATCHES_FROM_CLEAN=1` at the workflow level, reaching applies inside plain `make -j`
+build steps — `scripts/check_workflow_submodules.py` fails a workflow that drops it.
+
+**Patch markers:** presence is checked separately from applicability. `mk/patch-markers.tsv`
+names, for every wired patch, one line it adds (or removes) that upstream never contained, and
+`scripts/check_patch_markers.py` greps the checkout for each on every build, failing with the
+patch's name and its consequence when one is missing. The marker is a plain text search: it
+needs no git, so it holds in a docker build rsynced from a worktree where the submodules are
+not repositories at all, and a sibling patch moving shared context cannot make a healthy tree
+fail it the way an apply-check can. Three states fail loudly rather than pass vacuously: a
+wired stanza with no row (new patch), a patch file whose hash no longer matches the table
+(changed patch), and a missing or reintroduced marker (missing patch). `make
+regen-patch-markers` reapplies from clean and rederives the table; run it whenever a patch
+changes. A patch qualifies for a marker with one added or removed line of at least 12
+characters that upstream does not contain and no other patch introduces — any real fix has
+one, and the generator refuses rather than leave a silent gap.
