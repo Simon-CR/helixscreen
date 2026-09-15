@@ -489,7 +489,7 @@ Force the screensaver to start immediately instead of waiting for the idle timeo
 
 | Property | Value |
 |----------|-------|
-| **Values** | `starfield`, `pipes`, or `1` / any other value (uses the configured type, falling back to flying toasters) |
+| **Values** | `toasters`, `starfield`, `pipes`, `bounce`, or `1` / any other value (uses the configured type, falling back to flying toasters) |
 | **Default** | Unset — normal idle-timeout behavior |
 | **File** | `src/application/display_manager.cpp` |
 

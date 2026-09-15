@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <lvgl.h>
 #include <memory>
+#include <string>
 #include <vector>
 
 /**
@@ -19,6 +20,7 @@ enum class ScreensaverType : int {
     FLYING_TOASTERS = 1,
     STARFIELD = 2,
     PIPES_3D = 3,
+    BOUNCING_PRINTER = 4,
 };
 
 namespace helix::ui {
@@ -70,6 +72,19 @@ inline uint32_t screensaver_canvas_stride_bytes(int32_t w, lv_color_format_t cf)
 uint32_t screensaver_timer_period_ms();
 
 } // namespace helix::ui
+
+/**
+ * @brief Map a HELIX_SCREENSAVER_NOW value onto a screensaver type
+ *
+ * A name selects that screensaver. Anything else — "1" included — means the
+ * configured one, falling back to flying toasters when nothing is configured.
+ *
+ * @param value      The environment variable's value
+ * @param configured The type from settings, used when @p value names none
+ */
+namespace helix {
+ScreensaverType screensaver_type_from_env(const std::string& value, ScreensaverType configured);
+} // namespace helix
 
 /**
  * @brief Abstract base class for all screensaver implementations

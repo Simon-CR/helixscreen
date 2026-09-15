@@ -310,6 +310,7 @@
   <translation tag="Both belts are overtightened." de="Beide Riemen sind zu stark gespannt."/>
   <translation tag="Both belts need tightening." de="Beide Riemen müssen nachgespannt werden."/>
   <translation tag="Both belts read the same to within what this measurement can resolve. Nothing to adjust." de="Beide Riemen sind innerhalb der Auflösung dieser Messung gleich. Nichts anzupassen."/>
+  <translation tag="Bouncing Printer" de="Bouncing Printer"/>
   <translation tag="Bowden Length" de="Bowden-Länge"/>
   <translation tag="Bowden tube length from hub to toolhead" de="Länge des Bowdenschlauchs vom Hub zum Werkzeugkopf"/>
   <translation tag="Brand" de="Marke"/>
