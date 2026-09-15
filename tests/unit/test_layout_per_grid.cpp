@@ -25,6 +25,7 @@
 #include "panel_widget_config.h"
 #include "panel_widget_registry.h"
 
+#include <filesystem>
 #include <fstream>
 #include <string>
 
