@@ -61,8 +61,11 @@ concurrency:
 #
 # test-asan and test-tsan restore nothing at all. -fsanitize=... is part of
 # every object hash, so build.yml's objects can never match them: a restore
-# there would download ~1.7 GB for a guaranteed 0% hit rate. Their 240-minute
-# caps already cover a cold sanitizer build.
+# there would download ~1.7 GB for a guaranteed 0% hit rate, and saving their
+# own family would cost ~3 GB of the budget above. They build cold every night,
+# which is wall clock nobody waits on -- but a cold sanitizer build runs 3-4
+# hours, so each job budgets its build and its test phase as separate steps.
+# One cap covering both let a slow build consume the test phase instead.
 
 env:
   CC: ccache clang
@@ -460,17 +463,11 @@ jobs:
         key: deps-ubuntu-22.04-${{ hashFiles('lib/libhv/**/*.c', 'lib/libhv/**/*.cpp', 'lib/libhv/**/*.h', 'lib/wpa_supplicant/src/**/*.c', 'lib/wpa_supplicant/src/**/*.h', 'Makefile', 'mk/deps.mk') }}
         restore-keys: deps-ubuntu-22.04-
 
-    # Keyed on this job's OWN prior run. build.yml's objects can never match,
-    # because -fsanitize=address is part of every object hash (ASAN_FLAGS,
-    # mk/tests.mk) - but last night's ASAN tree matches almost entirely. A cold
-    # ASAN build runs 3-4 hours, so this cache is what keeps the job inside its
-    # timeout rather than racing it.
-    - name: Cache ASAN ccache
-      uses: actions/cache@v5
-      with:
-        path: ~/.cache/ccache
-        key: ccache-asan-ubuntu-22.04-${{ github.sha }}
-        restore-keys: ccache-asan-ubuntu-22.04-
+    # No ccache here, restored or saved. -fsanitize=address is part of every
+    # object hash (ASAN_FLAGS, mk/tests.mk), so build.yml's objects can never match;
+    # saving this job's own family would cost ~3 GB of the 10 GB repo budget the
+    # policy at the top of this file exists to protect. This job builds cold, and
+    # the step split below is what keeps that affordable.
 
     - name: Cache npm downloads
       uses: actions/cache@v5
@@ -489,7 +486,7 @@ jobs:
 
     - name: Configure ccache
       run: |
-        ccache --set-config=max_size=3G
+        ccache --set-config=max_size=1G
         ccache --set-config=compression=true
         ccache -z
 
@@ -564,17 +561,11 @@ jobs:
         key: deps-ubuntu-22.04-${{ hashFiles('lib/libhv/**/*.c', 'lib/libhv/**/*.cpp', 'lib/libhv/**/*.h', 'lib/wpa_supplicant/src/**/*.c', 'lib/wpa_supplicant/src/**/*.h', 'Makefile', 'mk/deps.mk') }}
         restore-keys: deps-ubuntu-22.04-
 
-    # Keyed on this job's OWN prior run. build.yml's objects can never match,
-    # because -fsanitize=thread is part of every object hash (TSAN_FLAGS,
-    # mk/tests.mk) - but last night's TSAN tree matches almost entirely. A cold
-    # TSAN build runs 3-4 hours, so this cache is what keeps the job inside its
-    # timeout rather than racing it.
-    - name: Cache TSAN ccache
-      uses: actions/cache@v5
-      with:
-        path: ~/.cache/ccache
-        key: ccache-tsan-ubuntu-22.04-${{ github.sha }}
-        restore-keys: ccache-tsan-ubuntu-22.04-
+    # No ccache here, restored or saved. -fsanitize=thread is part of every
+    # object hash (TSAN_FLAGS, mk/tests.mk), so build.yml's objects can never match;
+    # saving this job's own family would cost ~3 GB of the 10 GB repo budget the
+    # policy at the top of this file exists to protect. This job builds cold, and
+    # the step split below is what keeps that affordable.
 
     - name: Cache npm downloads
       uses: actions/cache@v5
@@ -593,7 +584,7 @@ jobs:
 
     - name: Configure ccache
       run: |
-        ccache --set-config=max_size=3G
+        ccache --set-config=max_size=1G
         ccache --set-config=compression=true
         ccache -z
 
