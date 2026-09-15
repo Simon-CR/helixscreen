@@ -510,11 +510,12 @@ fi
 # guarded default fills only what nothing else set —
 #   shell environment > helixscreen.env > platform hook > built-in.
 # That rule governs this launcher's environment. A caller's own pre-launch
-# reads (the init script's early-splash HELIX_NO_SPLASH check) see only the
-# shell environment and hook file-scope assignments — nothing reads
-# helixscreen.env before this point. Any caller that runs platform_pre_start
-# before exec'ing this script must confine its exports the way the init
-# script does, or its hook defaults arrive as "already set" and outrank the
+# reads (the init script's early-splash HELIX_NO_SPLASH check) resolve the
+# same order for that one variable via a single-variable env-file read of
+# its own, ahead of the hooks it sources — so the two splash decisions see
+# one operator intent. Any caller that runs platform_pre_start before
+# exec'ing this script must confine its exports the way the init script
+# does, or its hook defaults arrive as "already set" and outrank the
 # operator's env file.
 PLATFORM_HOOKS="${INSTALL_DIR}/platform/hooks.sh"
 if [ -f "${PLATFORM_HOOKS}" ]; then

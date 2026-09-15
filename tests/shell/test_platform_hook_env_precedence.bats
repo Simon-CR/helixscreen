@@ -16,8 +16,9 @@
 # Hooks supply the platform DEFAULT. Anything already set wins.
 # Precedence: shell environment > helixscreen.env > platform hook > built-in.
 # That ordering holds inside the launcher; the init script's own early-splash
-# read of HELIX_NO_SPLASH precedes any env-file access and sees only the
-# shell environment plus the hook's file-scope assignment.
+# read of HELIX_NO_SPLASH resolves the same order through a single-variable
+# env-file read ahead of the hooks it sources, so both splash decisions see
+# one operator intent.
 
 WORKTREE_ROOT="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)"
 HOOKS_DIR="$WORKTREE_ROOT/assets/config/platform"
@@ -234,6 +235,89 @@ HOOKEOF
         echo "dest:${HELIX_LOG_DEST:-unset}"
     ' > "$BATS_TEST_TMPDIR/leak.out" 2>&1
     grep -q '^dest:unset$' "$BATS_TEST_TMPDIR/leak.out"
+}
+
+# The init script's single-variable env-file read, taken from the real script
+# as one block (outer `if` at column zero, inner `fi`s indented), so these
+# tests run what ships.
+init_no_splash_read() {
+    awk '/^if \[ -z .*HELIX_NO_SPLASH.*; then$/ { printing = 1 }
+         printing && /^fi$/ { print; exit }
+         printing { print }' "$INIT_SCRIPT"
+}
+
+# The shipped early-splash gate condition, as a bare command whose exit
+# status IS the branch decision (0 = splash starts).
+init_early_splash_gate() {
+    awk '/^ *if \[ -x "\$SPLASH" \] && .*HELIX_NO_SPLASH.*; then$/ { print; exit }' "$INIT_SCRIPT" \
+        | sed -e 's/^ *if //' -e 's/; then$//'
+}
+
+@test "init's early-splash read resolves HELIX_NO_SPLASH in the launcher's order" {
+    # Forge-X shape: the hook assigns HELIX_NO_SPLASH at file scope when
+    # nothing else did. The gate must see the operator's env file ahead of
+    # that default, the shell environment ahead of the file, and the hook's
+    # default when the file is silent.
+    read_block="$(init_no_splash_read)"
+    # An empty extraction would make every assertion below vacuously green.
+    [ -n "$read_block" ]
+    printf '%s\n' "$read_block" > "$BATS_TEST_TMPDIR/no-splash-read.sh"
+    gate="$(init_early_splash_gate)"
+    [ -n "$gate" ]
+
+    MOCK_INSTALL="$BATS_TEST_TMPDIR/helixscreen"
+    mkdir -p "$MOCK_INSTALL/bin" "$MOCK_INSTALL/config" "$MOCK_INSTALL/platform"
+    printf '#!/bin/sh\nexit 0\n' > "$MOCK_INSTALL/bin/helix-splash"
+    chmod +x "$MOCK_INSTALL/bin/helix-splash"
+    cat > "$MOCK_INSTALL/platform/hooks.sh" << 'EOF'
+if [ -z "${HELIX_NO_SPLASH}" ]; then
+    HELIX_NO_SPLASH=0
+fi
+EOF
+    cat > "$MOCK_INSTALL/config/helixscreen.env" << 'EOF'
+HELIX_NO_SPLASH=1
+EOF
+
+    resolve_without_env() {
+        DAEMON_DIR="$MOCK_INSTALL" sh -c '
+            unset HELIX_NO_SPLASH
+            . "'"$BATS_TEST_TMPDIR"'/no-splash-read.sh"
+            . "'"$MOCK_INSTALL"'/platform/hooks.sh"
+            echo "${HELIX_NO_SPLASH:-unset}"
+        '
+    }
+    resolve_with_env() {
+        HELIX_NO_SPLASH="$1" DAEMON_DIR="$MOCK_INSTALL" sh -c '
+            . "'"$BATS_TEST_TMPDIR"'/no-splash-read.sh"
+            . "'"$MOCK_INSTALL"'/platform/hooks.sh"
+            echo "${HELIX_NO_SPLASH:-unset}"
+        '
+    }
+    gate_branch() {
+        # Exit status of the shipped gate condition after the same resolution.
+        DAEMON_DIR="$MOCK_INSTALL" SPLASH="$MOCK_INSTALL/bin/helix-splash" sh -c '
+            unset HELIX_NO_SPLASH
+            . "'"$BATS_TEST_TMPDIR"'/no-splash-read.sh"
+            . "'"$MOCK_INSTALL"'/platform/hooks.sh"
+            '"$gate"'
+        '
+    }
+
+    # Operator file beats the hook default: splash disabled, in the value the
+    # gate compares and in the shipped gate's own branch.
+    [ "$(resolve_without_env)" = "1" ]
+    if gate_branch; then
+        fail "shipped gate starts the splash despite the operator's file value"
+    fi
+    # Shell environment beats the file.
+    [ "$(resolve_with_env 0)" = "0" ]
+    # Last line in the file wins.
+    printf 'HELIX_NO_SPLASH=0\nHELIX_NO_SPLASH=1\n' > "$MOCK_INSTALL/config/helixscreen.env"
+    [ "$(resolve_without_env)" = "1" ]
+    # No file at all: the hook default is authoritative and the splash starts.
+    rm "$MOCK_INSTALL/config/helixscreen.env"
+    [ "$(resolve_without_env)" = "0" ]
+    gate_branch || fail "shipped gate skips the splash with no file and the hook default"
 }
 
 @test "e2e: through the init ordering, helixscreen.env outranks a hook default" {
