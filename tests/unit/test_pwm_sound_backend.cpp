@@ -1157,7 +1157,11 @@ TEST_CASE("clear_render_source joins the render thread even while parked", "[sou
     REQUIRE(wait_for([&] { return PWMSoundBackendTestAccess::parked(*run.backend); }));
     run.backend->clear_render_source();
 
-    REQUIRE(wait_for([&] { return helix::test::live_thread_count() == before; }, 500));
+    // The tid lingers in /proc/<pid>/task after join() returns: kernel task
+    // teardown trails the join wakeup. This asserts the thread exits, not how
+    // quickly, and a sharded run oversubscribes every core and stretches that
+    // tail well past any fixed budget worth hardcoding.
+    REQUIRE(wait_for([&] { return helix::test::live_thread_count() == before; }));
 }
 
 // SCHED_IDLE is a Linux scheduling policy. On a host that has no such policy
