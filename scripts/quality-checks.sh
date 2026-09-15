@@ -1561,15 +1561,25 @@ if [ "$STAGED_ONLY" = true ]; then
   # Get all staged .cpp and .xml files for audit. ACMRT admits a rename: a
   # `git mv` plus an edit reports as R (destination path only), which plain
   # ACM silently drops - the audit would then never see the edited content.
-  AUDIT_FILES=$(git diff --cached --name-only --diff-filter=ACMRT | grep -E '\.(cpp|xml)$' || true)
+  #
+  # Built NUL-delimited (-z) into an array, one path per element, rather than
+  # a plain `git diff | grep` string later expanded unquoted: a space in a
+  # staged path is not C-quoted by `--name-only`, so an unquoted expansion
+  # word-splits it into bogus tokens that resolve to nothing and the audit
+  # silently never sees it.
+  AUDIT_FILES=()
+  while IFS= read -r -d '' af_f; do
+    case "$af_f" in
+      *.cpp|*.xml) AUDIT_FILES+=("$af_f") ;;
+    esac
+  done < <(git diff --cached --name-only -z --diff-filter=ACMRT)
 
-  if [ -n "$AUDIT_FILES" ]; then
+  if [ ${#AUDIT_FILES[@]} -gt 0 ]; then
     echo "🛡️  Running memory safety audit on staged files..."
 
     if [ -f "scripts/audit_codebase.sh" ]; then
       # Run audit in file mode - only check critical patterns (errors fail, warnings pass)
-      # shellcheck disable=SC2086
-      if ./scripts/audit_codebase.sh --files $AUDIT_FILES 2>/dev/null; then
+      if ./scripts/audit_codebase.sh --files "${AUDIT_FILES[@]}" 2>/dev/null; then
         echo "✅ Memory safety audit passed"
       else
         echo "❌ Memory safety audit found critical issues!"

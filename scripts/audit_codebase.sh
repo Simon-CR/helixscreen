@@ -170,35 +170,35 @@ if [ "$STAGED_FILE_MODE" = true ] && [ ${#FILES[@]} -gt 0 ]; then
     FILES=("${STAGED_COPIES[@]}")
 fi
 
-# Filter files to only include relevant types
+# Filter files to only include relevant types. NUL-delimited output, never a
+# space-joined echo: a path with an embedded space (a real path this script
+# receives via --files from a staged-file list) would otherwise be torn back
+# apart the moment a caller re-reads it with plain word-splitting.
 filter_cpp_files() {
-    local result=()
+    local f
     for f in "${FILES[@]}"; do
         if [[ "$f" == *.cpp && -f "$f" ]]; then
-            result+=("$f")
+            printf '%s\0' "$f"
         fi
     done
-    echo "${result[@]:-}"
 }
 
 filter_xml_files() {
-    local result=()
+    local f
     for f in "${FILES[@]}"; do
         if [[ "$f" == *.xml && -f "$f" ]]; then
-            result+=("$f")
+            printf '%s\0' "$f"
         fi
     done
-    echo "${result[@]:-}"
 }
 
 filter_ui_cpp_files() {
-    local result=()
+    local f
     for f in "${FILES[@]}"; do
         if [[ "$f" == *ui_*.cpp && -f "$f" ]]; then
-            result+=("$f")
+            printf '%s\0' "$f"
         fi
     done
-    echo "${result[@]:-}"
 }
 
 # ============================================================================
@@ -210,11 +210,12 @@ if [ "$FILE_MODE" = true ]; then
     echo "Checking ${#FILES[@]} file(s)"
     echo "========================================"
 
-    # Get filtered file lists (filter_* echo one space-joined line; read -ra
-    # reproduces the word splitting the old array assignment did)
-    read -ra cpp_files <<< "$(filter_cpp_files)"
-    read -ra ui_cpp_files <<< "$(filter_ui_cpp_files)"
-    read -ra xml_files <<< "$(filter_xml_files)"
+    cpp_files=()
+    while IFS= read -r -d '' f; do cpp_files+=("$f"); done < <(filter_cpp_files)
+    ui_cpp_files=()
+    while IFS= read -r -d '' f; do ui_cpp_files+=("$f"); done < <(filter_ui_cpp_files)
+    xml_files=()
+    while IFS= read -r -d '' f; do xml_files+=("$f"); done < <(filter_xml_files)
 
     if [ ${#cpp_files[@]} -eq 0 ] && [ ${#xml_files[@]} -eq 0 ]; then
         echo "No auditable files (.cpp, .xml) in changeset"

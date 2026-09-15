@@ -71,3 +71,34 @@ setup_tmp_repo() {
     run bash "$GATE_ORIG" src/ui/ui_panel_foo.cpp
     [ "$status" -eq 1 ]
 }
+
+@test "--files catches a violation staged at a path containing a space" {
+    # A space in a staged path is not C-quoted by plain `git diff --cached
+    # --name-only`, so it survives verbatim - and then two separate things
+    # can tear it apart: quality-checks.sh's qc_mem_safety expanding the list
+    # unquoted (fixed here by building it NUL-delimited, exactly as below),
+    # and audit_codebase.sh's own filter_*_files() functions round-tripping
+    # through an `echo`-then-`read -ra`, which re-splits on whitespace no
+    # matter how carefully the caller quoted its argv. Both had to be fixed;
+    # this only proves something if BOTH still work.
+    setup_tmp_repo
+    mkdir -p "src/ui/my dir"
+    printf 'void f() {\n    int x = 1;\n}\n' > "src/ui/my dir/ui_panel_widget.cpp"
+    git add -A && git commit -qm "add the file"
+    printf 'void f() {\n    lv_obj_t* o = lv_obj_create(NULL);\n    lv_obj_set_user_data(o, new int(5));\n}\n' \
+        > "src/ui/my dir/ui_panel_widget.cpp"
+    git add "src/ui/my dir/ui_panel_widget.cpp"
+
+    # The exact list-building shape qc_mem_safety uses in quality-checks.sh.
+    AUDIT_FILES=()
+    while IFS= read -r -d '' af_f; do
+        case "$af_f" in
+            *.cpp|*.xml) AUDIT_FILES+=("$af_f") ;;
+        esac
+    done < <(git diff --cached --name-only -z --diff-filter=ACMRT)
+    [ "${#AUDIT_FILES[@]}" -eq 1 ]
+
+    run bash "$GATE_ORIG" --files "${AUDIT_FILES[@]}"
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"allocates user_data with 'new' but has no LV_EVENT_DELETE handler"* ]]
+}

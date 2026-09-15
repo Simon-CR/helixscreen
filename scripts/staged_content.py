@@ -102,17 +102,36 @@ def catfile_batch(items: Iterable[tuple[str, str]],
     neither side is reading the other free, forever. A label with no blob at
     its revision (deleted, a gitlink/submodule, or a bad spec) reports
     "missing" and is skipped, never yielded with stale content.
+
+    A revision containing a literal newline (a path with an embedded `\\n`,
+    which `-z` delivers as a real byte rather than escaping it) never enters
+    that stream: `cat-file --batch`'s protocol is one revision per line, so
+    the embedded newline would read as two requests to git and desync every
+    response after it - not just this one path, but the next real entry
+    behind it too. Read separately instead, with the revision passed as an
+    argv to a one-off `git cat-file blob`, which carries the byte safely.
     """
     items = list(items)
     if not items:
         return
     root = root or repo_root()
-    proc = subprocess.Popen(
-        ['git', '-C', str(root), 'cat-file', '--batch'],
-        stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-    )
+    proc: subprocess.Popen | None = None
     try:
         for label, revision in items:
+            if '\n' in revision:
+                out = subprocess.run(
+                    ['git', '-C', str(root), 'cat-file', 'blob', revision],
+                    capture_output=True, check=False,
+                )
+                if out.returncode == 0:
+                    yield (label, out.stdout.decode('utf-8', 'ignore'))
+                continue
+
+            if proc is None:
+                proc = subprocess.Popen(
+                    ['git', '-C', str(root), 'cat-file', '--batch'],
+                    stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                )
             assert proc.stdin is not None and proc.stdout is not None
             proc.stdin.write(f'{revision}\n'.encode())
             proc.stdin.flush()
@@ -126,9 +145,10 @@ def catfile_batch(items: Iterable[tuple[str, str]],
             proc.stdout.read(1)  # trailing newline after each blob
             yield (label, content.decode('utf-8', 'ignore'))
     finally:
-        if proc.stdin is not None and not proc.stdin.closed:
-            proc.stdin.close()
-        proc.wait()
+        if proc is not None:
+            if proc.stdin is not None and not proc.stdin.closed:
+                proc.stdin.close()
+            proc.wait()
 
 
 def read_index_blobs(paths: Iterable[str], root: Path | None = None) -> Iterator[tuple[str, str]]:

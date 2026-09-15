@@ -156,3 +156,33 @@ def test_catfile_batch_skips_a_missing_revision_without_desyncing(tmp_path):
     items = [("a", ":a.txt"), ("missing", ":never-staged.txt"), ("b", ":b.txt")]
     result = dict(staged_content.catfile_batch(items, root=tmp_path))
     assert result == {"a": "a\n", "b": "b\n"}
+
+
+def test_a_staged_path_with_an_embedded_newline_does_not_desync_its_neighbors(tmp_path):
+    """`cat-file --batch`'s protocol is one revision per line. `-z` delivers
+    a path holding a literal `\\n` as the real byte (fixing the round-1
+    quoting bug), but writing that revision straight into the batch stream
+    reads as TWO requests to git - which consumes the `readline()` meant for
+    the next real entry, silently dropping it along with the odd path
+    itself. Three files ordered `aaa.txt`, a newline-named file, `zzz.txt`:
+    all three must read back correctly, not just the first.
+    """
+    _init_repo(tmp_path)
+    _write(tmp_path, "aaa.txt", "aaa content\n")
+    _write(tmp_path, "zzz.txt", "zzz content\n")
+    _commit(tmp_path)
+    _write(tmp_path, "aaa.txt", "aaa content 2\n")
+    newline_rel = "dir/line1\nline2.txt"
+    _write(tmp_path, newline_rel, "newline content\n")
+    _write(tmp_path, "zzz.txt", "zzz content 2\n")
+    _stage(tmp_path)
+
+    paths = staged_content.staged_paths(root=tmp_path)
+    assert "aaa.txt" in paths
+    assert newline_rel in paths
+    assert "zzz.txt" in paths
+
+    blobs = dict(staged_content.read_index_blobs(paths, root=tmp_path))
+    assert blobs["aaa.txt"] == "aaa content 2\n"
+    assert blobs[newline_rel] == "newline content\n"
+    assert blobs["zzz.txt"] == "zzz content 2\n"
