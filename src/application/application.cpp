@@ -4083,9 +4083,8 @@ void Application::init_action_prompt() {
 
 void Application::restore_flush_callback() {
     if (m_original_flush_cb) {
-        lv_display_t* disp = lv_display_get_default();
-        if (disp) {
-            lv_display_set_flush_cb(disp, m_original_flush_cb);
+        if (m_display) {
+            m_display->restore_flush_cb(m_original_flush_cb);
         }
         m_original_flush_cb = nullptr;
     }

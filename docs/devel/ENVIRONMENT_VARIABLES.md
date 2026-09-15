@@ -574,6 +574,36 @@ EGL presentation mode on the DRM backend (`helix-screen-egl`). By default a fram
 
 The dumb-buffer DRM binary (`helix-screen`) already waits for every page flip; this variable does not affect it.
 
+### `HELIX_EGL_PARTIAL_UPLOAD`
+
+How much of each frame the EGL presentation path (`helix-screen-egl`) copies into the display texture. By default every frame uploads the whole buffer, however little of it changed. `1` uploads only the areas LVGL flushed. The first frame, a frame into a recreated or resized texture, and the frame after pixels changed outside the flush path still upload the whole buffer: the flush callback put back after the splash or a panel power-off, and a color transform change.
+
+Uploading a sub-rectangle needs `GL_UNPACK_ROW_LENGTH` (OpenGL ES 3, or `GL_EXT_unpack_subimage` on OpenGL ES 2). A GL driver without it keeps uploading whole frames and logs a warning. A driver may also make an upload wait while the previous frame still draws from the texture, so measure CPU and frame rate before keeping it.
+
+| Property | Value |
+|----------|-------|
+| **Values** | `1` (flushed areas only), `0` |
+| **Default** | `0` |
+| **Invalid** | Any other value is ignored with a warning |
+| **File** | `src/api/display_backend_drm.cpp` (EGL builds only), `patches/lvgl-egl-partial-upload.patch`; the decision is `lv_linux_drm_egl_upload_plan()` in `lib/lvgl/src/drivers/display/drm/lv_linux_drm_egl_upload.h` |
+
+A stale region after waking the panel or leaving the splash is the failure to look for, and only the panel shows it: `ctl screenshot` re-renders the widget tree instead of reading the texture.
+
+### `HELIX_EGL_XRGB`
+
+Pixel format of the display on the EGL presentation path (`helix-screen-egl`). LVGL's 32 bpp format is XRGB8888, whose fourth byte LVGL leaves undefined, and this path would present that byte as alpha (`docs/devel/GPU_ACCELERATION.md` § "The alpha trap"). By default the backend switches the display to ARGB8888 so LVGL keeps the byte a real alpha. `1` keeps XRGB8888 and has the display shader ignore the fourth byte instead, and LVGL then skips clearing each area before redrawing it.
+
+| Property | Value |
+|----------|-------|
+| **Values** | `1` (keep XRGB8888), `0` |
+| **Default** | `0` |
+| **Invalid** | Any other value is ignored with a warning |
+| **File** | `src/api/display_backend_drm.cpp` (EGL builds only), `patches/lvgl-egl-xrgb-shader.patch` |
+
+On aarch64, LVGL's NEON blends into an XRGB8888 destination write 0 into the fourth byte of every pixel they mix through a mask or partial opacity, fully covered pixels included (a plain full-opacity fill writes `0xFF`), so with `1` that byte is 0 wherever anything was antialiased or masked and the shader has to ignore it outright. The C blends an x86 test build uses leave the byte alone, so only the device shows this. The default ARGB8888 display has the opposite trap: LVGL copies an XRGB8888 image or canvas into it byte for byte, so whatever the source's fourth byte holds, including the 0 those blends leave, arrives as alpha.
+
+A defect here is invisible to `ctl screenshot` for the same reason. Check the panel by eye: icons, borders and antialiased text must not turn black.
+
 ### `HELIX_HEADLESS`
 
 Make `scripts/screenshot.sh` run without a display server by forcing SDL's dummy

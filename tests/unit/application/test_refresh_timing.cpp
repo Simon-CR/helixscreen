@@ -20,6 +20,8 @@ constexpr const char* REFR_SCOPE = "HELIX_REFR_PERIOD_SCOPE";
 constexpr const char* SAVER_PERIOD = "HELIX_SCREENSAVER_REFR_PERIOD_MS";
 constexpr const char* LOOP_FLOOR = "HELIX_LOOP_MIN_SLEEP_MS";
 constexpr const char* EGL_VSYNC = "HELIX_EGL_VSYNC";
+constexpr const char* EGL_PARTIAL = "HELIX_EGL_PARTIAL_UPLOAD";
+constexpr const char* EGL_XRGB = "HELIX_EGL_XRGB";
 
 /// Restores every refresh-timing variable when the test ends, and starts from none set.
 struct RefreshEnv {
@@ -28,9 +30,12 @@ struct RefreshEnv {
     ScopedEnv saver{SAVER_PERIOD};
     ScopedEnv floor{LOOP_FLOOR};
     ScopedEnv vsync{EGL_VSYNC};
+    ScopedEnv partial{EGL_PARTIAL};
+    ScopedEnv xrgb{EGL_XRGB};
 
     RefreshEnv() {
-        for (const char* name : {REFR_PERIOD, REFR_SCOPE, SAVER_PERIOD, LOOP_FLOOR, EGL_VSYNC}) {
+        for (const char* name : {REFR_PERIOD, REFR_SCOPE, SAVER_PERIOD, LOOP_FLOOR, EGL_VSYNC,
+                                 EGL_PARTIAL, EGL_XRGB}) {
             unsetenv(name);
         }
     }
@@ -183,4 +188,57 @@ TEST_CASE("HELIX_EGL_VSYNC reaches the vsync setter only when it asks for vsync"
     CHECK(helix::apply_egl_vsync_from_env(record));
     REQUIRE(calls.size() == 1);
     CHECK(calls[0]);
+}
+
+TEST_CASE("each EGL presentation switch reads only its own variable, and only 1 is on",
+          "[application][display][refresh_period][egl_upload]") {
+    RefreshEnv env;
+    CHECK_FALSE(helix::egl_partial_upload_from_env());
+    CHECK_FALSE(helix::egl_xrgb_from_env());
+
+    setenv(EGL_PARTIAL, "1", 1);
+    CHECK(helix::egl_partial_upload_from_env());
+    CHECK_FALSE(helix::egl_xrgb_from_env());
+    CHECK_FALSE(helix::egl_vsync_from_env());
+
+    unsetenv(EGL_PARTIAL);
+    setenv(EGL_XRGB, "1", 1);
+    CHECK(helix::egl_xrgb_from_env());
+    CHECK_FALSE(helix::egl_partial_upload_from_env());
+    CHECK_FALSE(helix::egl_vsync_from_env());
+
+    for (const char* off : {"0", "yes", "true", "on", "2", "", " 1", "1 "}) {
+        CAPTURE(off);
+        setenv(EGL_PARTIAL, off, 1);
+        setenv(EGL_XRGB, off, 1);
+        CHECK_FALSE(helix::egl_partial_upload_from_env());
+        CHECK_FALSE(helix::egl_xrgb_from_env());
+    }
+}
+
+TEST_CASE("an EGL switch reaches the driver only when asked, and reports a refusal",
+          "[application][display][refresh_period][egl_upload]") {
+    RefreshEnv env;
+    int calls = 0;
+    const auto accept = [&calls] {
+        ++calls;
+        return true;
+    };
+    const auto refuse = [&calls] {
+        ++calls;
+        return false;
+    };
+
+    CHECK(helix::apply_egl_switch_from_env(EGL_PARTIAL, accept) == helix::EglSwitch::Off);
+    setenv(EGL_PARTIAL, "0", 1);
+    CHECK(helix::apply_egl_switch_from_env(EGL_PARTIAL, accept) == helix::EglSwitch::Off);
+    setenv(EGL_PARTIAL, "on", 1);
+    CHECK(helix::apply_egl_switch_from_env(EGL_PARTIAL, accept) == helix::EglSwitch::Off);
+    CHECK(calls == 0);
+
+    setenv(EGL_PARTIAL, "1", 1);
+    CHECK(helix::apply_egl_switch_from_env(EGL_PARTIAL, accept) == helix::EglSwitch::On);
+    CHECK(calls == 1);
+    CHECK(helix::apply_egl_switch_from_env(EGL_PARTIAL, refuse) == helix::EglSwitch::Declined);
+    CHECK(calls == 2);
 }

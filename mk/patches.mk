@@ -40,8 +40,12 @@ LVGL_PATCHED_FILES := \
 	src/drivers/display/drm/lv_linux_drm.c \
 	src/drivers/display/drm/lv_linux_drm.h \
 	src/drivers/display/drm/lv_linux_drm_egl.c \
+	src/drivers/display/drm/lv_linux_drm_egl_private.h \
 	src/drivers/opengles/lv_opengles_egl.c \
 	src/drivers/opengles/lv_opengles_egl.h \
+	src/drivers/opengles/lv_opengles_driver.c \
+	src/drivers/opengles/lv_opengles_driver.h \
+	src/drivers/opengles/assets/lv_opengles_shader.c \
 	src/drivers/evdev/lv_evdev.c \
 	src/drivers/evdev/lv_evdev.h \
 	src/draw/lv_draw_arc.c \
@@ -349,6 +353,8 @@ reset-patches:
 	@# Not in LVGL_PATCHED_FILES: the backport patch creates it, so there is no
 	@# tracked version to compare against.
 	$(Q)rm -f $(LVGL_DIR)/src/misc/lv_check_arg.h
+	@# Same for the header the EGL partial upload patch creates.
+	$(Q)rm -f $(LVGL_DIR)/src/drivers/display/drm/lv_linux_drm_egl_upload.h
 	$(ECHO) "$(YELLOW)Resetting libhv patches to upstream state...$(RESET)"
 	$(call reset_submodule_patches,$(LIBHV_DIR),$(LIBHV_PATCHED_FILES))
 	@# The drift stamp describes a PATCHED checkout. Everything above just put
@@ -792,6 +798,20 @@ $(PATCHES_STAMP): $(PATCH_FILES) $(LVGL_HEAD) $(LIBHV_HEAD) $(APPLIED_STAMP_ID)
 		echo "$(GREEN)✓ EGL vsync setter patch applied$(RESET)"; \
 	else \
 		echo "$(GREEN)✓ LVGL EGL vsync setter patch already applied$(RESET)"; \
+	fi
+	$(Q)if git -C $(LVGL_DIR) apply --check $(PATCH_DIR)/lvgl-egl-partial-upload.patch 2>/dev/null; then \
+		echo "$(YELLOW)→ Applying LVGL EGL partial upload patch...$(RESET)"; \
+		git -C $(LVGL_DIR) apply $(PATCH_DIR)/lvgl-egl-partial-upload.patch && \
+		echo "$(GREEN)✓ EGL partial upload patch applied$(RESET)"; \
+	else \
+		echo "$(GREEN)✓ LVGL EGL partial upload patch already applied$(RESET)"; \
+	fi
+	$(Q)if git -C $(LVGL_DIR) apply --check $(PATCH_DIR)/lvgl-egl-xrgb-shader.patch 2>/dev/null; then \
+		echo "$(YELLOW)→ Applying LVGL EGL XRGB display shader patch...$(RESET)"; \
+		git -C $(LVGL_DIR) apply $(PATCH_DIR)/lvgl-egl-xrgb-shader.patch && \
+		echo "$(GREEN)✓ EGL XRGB display shader patch applied$(RESET)"; \
+	else \
+		echo "$(GREEN)✓ LVGL EGL XRGB display shader patch already applied$(RESET)"; \
 	fi
 	$(Q)if git -C $(LVGL_DIR) apply --check $(PATCH_DIR)/lvgl_texture_cache_null_guard.patch 2>/dev/null; then \
 		echo "$(YELLOW)→ Applying LVGL texture cache NULL guard patch (upstream ec053a0)...$(RESET)"; \

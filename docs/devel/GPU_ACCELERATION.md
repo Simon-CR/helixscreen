@@ -314,9 +314,17 @@ before upload.
 
 ## The alpha trap, and why nothing automated caught it
 
-**LVGL's 32bpp native format is `XRGB8888`, and it leaves the X byte at
-`0x00`.** That byte is don't-care by contract, so LVGL writes `0xFF` there on
-full-word draw paths and leaves it alone otherwise.
+**LVGL's 32bpp native format is `XRGB8888`, and it does not keep the X byte.**
+That byte is don't-care by contract. A plain full-opacity fill writes `0xFF`
+there. On aarch64 the NEON blends that mix through a mask or partial opacity
+(`lv_color_24_24_mix_4_internal` and its siblings under
+`src/draw/sw/blend/neon/`) write `0`, fully covered pixels included, while the
+C blends an x86 build uses leave the byte alone. So masked and antialiased
+pixels carry `X=0x00` on the device and never in the unit tests. An `XRGB8888`
+image drawn into an `ARGB8888` layer is copied byte for byte, so those pixels
+render transparent there as well: the pipes screensaver draws into an
+`ARGB8888` canvas for that reason, and starfield writes every pixel itself and
+stays `XRGB8888`.
 
 The EGL path gives it meaning. `lv_linux_drm_egl.c` uploads the buffer as
 `GL_RGBA`, so X arrives as alpha, and the fragment shader in
@@ -331,6 +339,10 @@ maintains the byte. `DisplayBackendFbdev::init` already did the same thing for
 the AD5M, whose LCD controller read that byte as alpha and produced a magenta
 ghost. Same defect, two different consumers. fbdev, DRM dumb buffers and SDL are
 all immune because they ignore the fourth byte of XRGB.
+
+`HELIX_EGL_XRGB=1` takes the other exit: the display stays `XRGB8888`, and
+`lv_opengles_render_display()` draws it as 24-bit so both display shaders ignore
+the fourth byte (`patches/lvgl-egl-xrgb-shader.patch`). It is off by default.
 
 **This is the part worth remembering.** Every automated signal said the broken
 build was healthy:

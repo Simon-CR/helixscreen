@@ -3,7 +3,9 @@
 #pragma once
 
 #include "application.h"
+#include "display_manager.h"
 
+#include <memory>
 #include <string>
 
 namespace helix {
@@ -82,5 +84,23 @@ class ApplicationTestAccess {
 
     static bool backgrounded(const Application& app) {
         return app.m_backgrounded;
+    }
+
+    /// The splash handoff restores the flush callback through the display manager, which
+    /// is otherwise only built by init_display().
+    static void set_display_manager(Application& app, std::unique_ptr<DisplayManager> display) {
+        app.m_display = std::move(display);
+    }
+
+    static DisplayManager* display_manager(Application& app) {
+        return app.m_display.get();
+    }
+
+    static lv_display_flush_cb_t& original_flush_cb(Application& app) {
+        return app.m_original_flush_cb;
+    }
+
+    static void restore_flush_callback(Application& app) {
+        app.restore_flush_callback();
     }
 };

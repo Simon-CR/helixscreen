@@ -1207,13 +1207,21 @@ void DisplayManager::restore_flush_after_sleep() {
     }
     m_flush_suppressed_for_sleep = false;
     if (m_display) {
-        if (m_saved_flush_cb_for_sleep) {
-            lv_display_set_flush_cb(m_display, m_saved_flush_cb_for_sleep);
-        }
+        restore_flush_cb(m_saved_flush_cb_for_sleep);
         lv_display_enable_invalidation(m_display, true);
     }
     m_saved_flush_cb_for_sleep = nullptr;
     spdlog::debug("[DisplayManager] Flush restored on wake");
+}
+
+void DisplayManager::restore_flush_cb(lv_display_flush_cb_t flush_cb) {
+    if (!m_display || !flush_cb) {
+        return;
+    }
+    lv_display_set_flush_cb(m_display, flush_cb);
+    if (m_backend) {
+        m_backend->request_full_upload();
+    }
 }
 
 // ============================================================================
@@ -2435,6 +2443,10 @@ void DisplayManager::set_color_transform(float gamma, int warmth, int tint) {
     if (m_display) {
         // Force a full repaint so the new LUT is visible immediately.
         lv_obj_invalidate(lv_display_get_screen_active(m_display));
+        // Every pixel the backend already holds carries the previous transform.
+        if (m_backend) {
+            m_backend->request_full_upload();
+        }
     }
     spdlog::info("[DisplayManager] Color transform: gamma={:.2f}, warmth={}, tint={} (identity={})",
                  gamma, warmth, tint, m_color_transform.is_identity());

@@ -33,6 +33,7 @@
 #include "display_settings_manager.h"
 #include "lvgl_test_fixture.h"
 #include "screen_hide_hold.h"
+#include "test_helpers/application_test_access.h"
 #include "test_helpers/display_manager_test_access.h"
 
 #include "../../catch_amalgamated.hpp"
@@ -86,10 +87,15 @@ class FakePowerOffBackend : public DisplayBackend {
         return true;
     }
 
+    void request_full_upload() override {
+        ++full_upload_requests;
+    }
+
     int power_off_calls = 0;
     int power_on_calls = 0;
     int blank_calls = 0;
     int unblank_calls = 0;
+    int full_upload_requests = 0;
 
   private:
     bool m_supports;
@@ -763,4 +769,103 @@ TEST_CASE_METHOD(LVGLTestFixture,
     hold.release();
     CHECK(helix::default_refr_timer_period() == 20);
     CHECK(helix::anim_timer_period() == 20);
+}
+
+// ============================================================================
+// A backend that presents only the areas LVGL flushes keeps stale pixels wherever
+// the image changed without a flush reaching it, so those paths ask for a full upload.
+// ============================================================================
+
+TEST_CASE_METHOD(LVGLTestFixture,
+                 "a color transform change asks the backend to upload the whole next frame",
+                 "[application][display][egl_upload]") {
+    DisplayManager mgr;
+    auto backend = std::make_unique<FakePowerOffBackend>(/*supports_power_off=*/false,
+                                                         DisplayBackendType::DRM);
+    FakePowerOffBackend* raw = backend.get();
+    DisplayManagerTestAccess::set_backend(mgr, std::move(backend));
+    DisplayManagerTestAccess::set_display(mgr, lv_display_get_default());
+    REQUIRE(raw->full_upload_requests == 0);
+
+    mgr.set_color_transform(0.8f, 20, 0);
+    CHECK(raw->full_upload_requests == 1);
+
+    DisplayManagerTestAccess::set_display(mgr, nullptr);
+}
+
+TEST_CASE_METHOD(LVGLTestFixture,
+                 "waking from power-off sleep asks the backend to upload the whole next frame",
+                 "[application][display][sleep][poweroff][egl_upload]") {
+    DisplayManager mgr;
+    auto backend =
+        std::make_unique<FakePowerOffBackend>(/*supports_power_off=*/true, DisplayBackendType::DRM);
+    FakePowerOffBackend* raw = backend.get();
+    DisplayManagerTestAccess::set_backend(mgr, std::move(backend));
+    DisplayManagerTestAccess::set_use_hardware_blank(mgr, false);
+    DisplayManagerTestAccess::set_use_power_off(mgr, true);
+    lv_display_t* disp = lv_display_get_default();
+    REQUIRE(disp != nullptr);
+    DisplayManagerTestAccess::set_display(mgr, disp);
+    lv_display_set_flush_cb(disp, test_sentinel_flush_cb);
+
+    DisplayManagerTestAccess::enter_sleep(mgr, 60);
+    REQUIRE(DisplayManagerTestAccess::is_flush_suppressed(mgr));
+
+    DisplayManagerTestAccess::restore_display_output(mgr);
+    REQUIRE(disp->flush_cb == test_sentinel_flush_cb);
+    CHECK(raw->full_upload_requests == 1);
+
+    // Nothing is swapped out on a second wake, so nothing asks again.
+    DisplayManagerTestAccess::restore_display_output(mgr);
+    CHECK(raw->full_upload_requests == 1);
+
+    DisplayManagerTestAccess::set_display(mgr, nullptr);
+}
+
+TEST_CASE_METHOD(LVGLTestFixture,
+                 "putting back a swapped-out flush callback asks the backend for a full upload",
+                 "[application][display][egl_upload]") {
+    DisplayManager mgr;
+    auto backend = std::make_unique<FakePowerOffBackend>(/*supports_power_off=*/false,
+                                                         DisplayBackendType::DRM);
+    FakePowerOffBackend* raw = backend.get();
+    DisplayManagerTestAccess::set_backend(mgr, std::move(backend));
+    lv_display_t* disp = lv_display_get_default();
+    REQUIRE(disp != nullptr);
+    DisplayManagerTestAccess::set_display(mgr, disp);
+    lv_display_set_flush_cb(
+        disp, [](lv_display_t* d, const lv_area_t*, uint8_t*) { lv_display_flush_ready(d); });
+    REQUIRE(disp->flush_cb != test_sentinel_flush_cb);
+
+    mgr.restore_flush_cb(test_sentinel_flush_cb);
+    CHECK(disp->flush_cb == test_sentinel_flush_cb);
+    CHECK(raw->full_upload_requests == 1);
+
+    DisplayManagerTestAccess::set_display(mgr, nullptr);
+}
+
+TEST_CASE_METHOD(LVGLTestFixture,
+                 "the splash handoff's flush restore asks the backend for a full upload",
+                 "[application][display][egl_upload]") {
+    Application app;
+    ApplicationTestAccess::neutralize_destructor(app);
+    auto mgr = std::make_unique<DisplayManager>();
+    auto backend = std::make_unique<FakePowerOffBackend>(/*supports_power_off=*/false,
+                                                         DisplayBackendType::DRM);
+    FakePowerOffBackend* raw = backend.get();
+    DisplayManagerTestAccess::set_backend(*mgr, std::move(backend));
+    lv_display_t* disp = lv_display_get_default();
+    REQUIRE(disp != nullptr);
+    DisplayManagerTestAccess::set_display(*mgr, disp);
+    ApplicationTestAccess::set_display_manager(app, std::move(mgr));
+    lv_display_set_flush_cb(
+        disp, [](lv_display_t* d, const lv_area_t*, uint8_t*) { lv_display_flush_ready(d); });
+    ApplicationTestAccess::original_flush_cb(app) = test_sentinel_flush_cb;
+
+    ApplicationTestAccess::restore_flush_callback(app);
+    CHECK(disp->flush_cb == test_sentinel_flush_cb);
+    CHECK(raw->full_upload_requests == 1);
+    CHECK(ApplicationTestAccess::original_flush_cb(app) == nullptr);
+
+    DisplayManagerTestAccess::set_display(*ApplicationTestAccess::display_manager(app), nullptr);
 }

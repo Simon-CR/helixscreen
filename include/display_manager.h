@@ -467,6 +467,15 @@ class DisplayManager : public helix::ICalibrationSink {
      */
     void set_color_transform(float gamma, int warmth, int tint);
 
+    /**
+     * @brief Put back the flush callback a no-op stood in for.
+     *
+     * Frames rendered meanwhile never reached the backend, so it is asked to present the
+     * whole next frame (DisplayBackend::request_full_upload()). No-op without a display
+     * or a callback.
+     */
+    void restore_flush_cb(lv_display_flush_cb_t flush_cb);
+
     /** @brief Access the color transform (read-only — used by flush hook). */
     const helix::ColorTransform& color_transform() const {
         return m_color_transform;
