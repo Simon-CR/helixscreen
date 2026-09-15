@@ -4714,11 +4714,13 @@ TEST_CASE_METHOD(PrinterDetectorFixture,
             result.runner_up_confidence, result.margin(), result.tied_count);
 
     // Three extruders must not satisfy tool_count_4 through a loose-prefix
-    // heater name. The detection itself must hold too: a database edit that
-    // made this hardware match nothing would otherwise turn this into a
-    // vacuous pass.
+    // heater name. With tool_count cold, scoring rests on kinematics alone:
+    // a corexy tie at 40 broken by database order, so the tie is pinned by
+    // margin and the winner by name — under loose counting AD5X's
+    // tool_count_4 fires and it wins outright at 88.
     REQUIRE(result.detected());
-    REQUIRE(result.type_name != "FlashForge Adventurer 5X");
+    REQUIRE(result.margin() == 0);
+    REQUIRE(result.type_name == "Voron 2.4");
 }
 
 // ============================================================================
