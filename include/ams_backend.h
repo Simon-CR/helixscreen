@@ -1561,17 +1561,19 @@ class AmsBackend {
                                    const helix::ams::Observation* declared = nullptr) = 0;
 
     /**
-     * @brief Repaint a slot from the lane model once an edit's declaration is on it.
+     * @brief Repaint a slot from the lane model once its lane was written from outside.
      *
      * commit_user_edit() calls this after it files the user's declaration,
-     * which it does only once set_slot_info() has returned. A backend that
+     * which it does only once set_slot_info() has returned: a backend that
      * paints the slot from the lane inside set_slot_info() painted the lane as
-     * it stood before that filing, so a field an earlier edit declared would go
-     * on showing the old value until the next frame. The default does nothing:
-     * a backend whose set_slot_info() writes the edit straight onto the slot
-     * already shows it.
+     * it stood before that filing. SpoolmanManager calls it after a fetch
+     * changes the lane's Spoolman record or a denial drops it, with no frame to
+     * follow. Either way a slot painted only while a frame is parsed would go on
+     * showing the old value until the next frame. The default does nothing, for
+     * a backend that keeps no such slot; AmsSubscriptionBackend repaints the one
+     * its cached_slot_locked() names.
      *
-     * @param slot_index Slot the edit was written through (0-based, global)
+     * @param slot_index Slot whose lane was written (0-based, global)
      */
     virtual void repaint_slot_from_lane(int slot_index) {
         (void)slot_index;

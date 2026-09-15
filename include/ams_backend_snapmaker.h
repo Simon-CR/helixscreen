@@ -340,6 +340,7 @@ class AmsBackendSnapmaker : public AmsSubscriptionBackend {
     const char* backend_log_tag() const override {
         return "[AMS Snapmaker]";
     }
+    SlotInfo* cached_slot_locked(int slot_index) override;
 
   private:
     friend class SnapmakerTestAccess;

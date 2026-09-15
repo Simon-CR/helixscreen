@@ -13,10 +13,12 @@
 #include "ui_spoolman_overlay.h"
 #include "ui_update_queue.h"
 
+#include "../test_helpers/ad5x_ifs_test_access.h"
 #include "../test_helpers/registered_backend.h"
 #include "../test_helpers/seeded_override.h"
 #include "../test_helpers/update_queue_test_access.h"
 #include "../ui_test_utils.h"
+#include "ams_backend_ad5x_ifs.h"
 #include "ams_backend_mock.h"
 #include "ams_state.h"
 #include "app_globals.h"
@@ -466,7 +468,9 @@ TEST_CASE_METHOD(SpoolmanFixture,
 // The lane's Spoolman record follows every fetch (prestonbrown/helixscreen#1653)
 // ============================================================================
 
+using helix::Ad5xIfsTestAccess;
 using helix::AmsBackend;
+using helix::AmsBackendAd5xIfs;
 using helix::AmsBackendMock;
 using helix::AmsState;
 using helix::SlotInfo;
@@ -483,6 +487,27 @@ class LocalWeightBackend : public AmsBackendMock {
         return true;
     }
 };
+
+/// A backend that records every slot it is asked to repaint.
+class RepaintRecordingBackend : public AmsBackendMock {
+  public:
+    using AmsBackendMock::AmsBackendMock;
+
+    void repaint_slot_from_lane(int slot_index) override {
+        repainted.push_back(slot_index);
+        AmsBackendMock::repaint_slot_from_lane(slot_index);
+    }
+
+    [[nodiscard]] long repaints_of(int slot_index) const {
+        return std::count(repainted.begin(), repainted.end(), slot_index);
+    }
+
+    std::vector<int> repainted;
+};
+
+/// A colour no backend paints, written into a slot's colour subject so that
+/// only a resync can take it back out.
+constexpr int kUnsyncedColor = 0x123456;
 
 } // namespace
 
@@ -774,4 +799,133 @@ TEST_CASE_METHOD(SpoolmanLaneFixture,
         REQUIRE(record.has_value());
         CHECK(record->brand == "Cached Brand");
     }
+}
+
+// ============================================================================
+// A backend that serves its slots from a cache shows a filing at once
+// (prestonbrown/helixscreen#1653)
+// ============================================================================
+
+namespace {
+
+/// An AD5X port whose firmware reports a PLA spool in 898989, so the lane's
+/// vendor cache states a colour of its own.
+void seat_firmware_spool(AmsBackendAd5xIfs& ad5x) {
+    Ad5xIfsTestAccess::set_port_presence(ad5x, 0, true);
+    Ad5xIfsTestAccess::set_material(ad5x, 0, "PLA");
+    Ad5xIfsTestAccess::set_color(ad5x, 0, "898989");
+}
+
+/// The firmware restating the port unchanged, which re-reads it and paints the
+/// cached slot from the lane as every frame does.
+void restate_firmware_spool(AmsBackendAd5xIfs& ad5x) {
+    Ad5xIfsTestAccess::set_color(ad5x, 0, "898989");
+}
+
+} // namespace
+
+TEST_CASE_METHOD(SpoolmanLaneFixture,
+                 "SpoolmanManager: an AD5X slot shows a spool edited on the server as soon as its "
+                 "fetch lands",
+                 "[spoolman][lane][ad5x_ifs][1653]") {
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> ad5x(nullptr, nullptr);
+    seat_firmware_spool(*ad5x);
+    link(*ad5x, 0, 1);
+    state_polymaker_pla(server_spool(1));
+    poll();
+    restate_firmware_spool(*ad5x);
+    REQUIRE(ad5x->get_slot_info(0).color_rgb == 0x1A1A2EU);
+
+    drain();
+    lv_subject_t* shown = AmsState::instance().get_slot_color_subject(0);
+    REQUIRE(shown != nullptr);
+    lv_subject_set_int(shown, kUnsyncedColor);
+
+    // The weights stay put, so the answer changes nothing on the slot but what
+    // the lane now resolves, and no backend event resyncs the subject.
+    server_spool(1).color_hex = "FF5500";
+    poll();
+
+    CHECK(ad5x->get_slot_info(0).color_rgb == 0xFF5500U);
+    CHECK(lv_subject_get_int(shown) == 0xFF5500);
+}
+
+TEST_CASE_METHOD(SpoolmanLaneFixture,
+                 "SpoolmanManager: an AD5X slot stops showing a spool Spoolman denies as soon as "
+                 "the answer lands",
+                 "[spoolman][lane][ad5x_ifs][1653]") {
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> ad5x(nullptr, nullptr);
+    seat_firmware_spool(*ad5x);
+    link(*ad5x, 0, 1);
+
+    // The record a backend's start filed from its stored override, painted by
+    // the next frame.
+    helix::ams::Observation cached(helix::ams::ObservationSource::Spoolman);
+    cached.spoolman_id = 1;
+    cached.color_rgb = 0x1A1A2EU;
+    helix::ams::ingest(ad5x.lane(0), cached);
+    restate_firmware_spool(*ad5x);
+    REQUIRE(ad5x->get_slot_info(0).color_rgb == 0x1A1A2EU);
+
+    drain();
+    lv_subject_t* shown = AmsState::instance().get_slot_color_subject(0);
+    REQUIRE(shown != nullptr);
+    lv_subject_set_int(shown, kUnsyncedColor);
+
+    remove_server_spool(1);
+    poll();
+
+    REQUIRE_FALSE(helix::ams::lane_sources(ad5x.lane(0)).spoolman.has_value());
+    // Colour, because the firmware states it too. A cached slot keeps a field no
+    // remaining source states (#1672), so such a field cannot show a repaint.
+    CHECK(ad5x->get_slot_info(0).color_rgb == 0x898989U);
+    CHECK(lv_subject_get_int(shown) == 0x898989);
+}
+
+TEST_CASE_METHOD(SpoolmanLaneFixture,
+                 "SpoolmanManager: a fetch that changes nothing on the lane neither repaints nor "
+                 "resyncs the slot",
+                 "[spoolman][lane][1653]") {
+    helix::test::RegisteredBackend<RepaintRecordingBackend> backend(2);
+    link(*backend, 0, 1);
+    state_polymaker_pla(server_spool(1));
+    poll();
+    REQUIRE(backend->repaints_of(0) == 1);
+
+    drain();
+    lv_subject_t* shown = AmsState::instance().get_slot_color_subject(0);
+    REQUIRE(shown != nullptr);
+    lv_subject_set_int(shown, kUnsyncedColor);
+    // Only an answer clears the failure count, so a cleared count shows the
+    // second fetch was answered.
+    TA::set_consecutive_failures(SpoolmanManager::instance(), 1);
+
+    poll();
+
+    REQUIRE(TA::consecutive_failures(SpoolmanManager::instance()) == 0);
+    CHECK(backend->repaints_of(0) == 1);
+    CHECK(lv_subject_get_int(shown) == kUnsyncedColor);
+}
+
+TEST_CASE_METHOD(SpoolmanLaneFixture,
+                 "SpoolmanManager: a spool Spoolman denies on a lane holding no record of it "
+                 "neither repaints nor resyncs the slot",
+                 "[spoolman][lane][1653]") {
+    helix::test::RegisteredBackend<RepaintRecordingBackend> backend(2);
+    link(*backend, 0, 1);
+    REQUIRE_FALSE(helix::ams::lane_sources(backend.lane(0)).spoolman.has_value());
+
+    drain();
+    lv_subject_t* shown = AmsState::instance().get_slot_color_subject(0);
+    REQUIRE(shown != nullptr);
+    lv_subject_set_int(shown, kUnsyncedColor);
+
+    remove_server_spool(1);
+    poll();
+
+    // The denial was answered and reached a slot still bound to the spool.
+    REQUIRE(SpoolmanManager::is_identity_unresolvable(1));
+    REQUIRE(backend->get_slot_info(0).spoolman_id == 1);
+    CHECK(backend->repaints_of(0) == 0);
+    CHECK(lv_subject_get_int(shown) == kUnsyncedColor);
 }

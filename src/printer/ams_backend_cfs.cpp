@@ -1802,6 +1802,10 @@ SlotInfo AmsBackendCfs::get_slot_info(int slot_index) const {
     return SlotInfo{};
 }
 
+SlotInfo* AmsBackendCfs::cached_slot_locked(int slot_index) {
+    return system_info_.get_slot_global(slot_index);
+}
+
 // --- Path segments ---
 
 PathSegment AmsBackendCfs::get_filament_segment() const {

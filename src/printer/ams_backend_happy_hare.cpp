@@ -330,6 +330,15 @@ SlotInfo AmsBackendHappyHare::get_slot_info(int slot_index) const {
     return empty;
 }
 
+SlotInfo* AmsBackendHappyHare::cached_slot_locked(int slot_index) {
+    // A repaint needs no refresh_gate_statuses_locked() after it. The lane's
+    // presence is the sensed record this backend files from gate_status_raw_,
+    // the same array that refresh reads, so the status a repaint narrows is
+    // already the one the refresh derived.
+    auto* entry = slots_.get_mut(slot_index);
+    return entry ? &entry->info : nullptr;
+}
+
 // get_current_action(), get_current_tool(), get_current_slot(), is_filament_loaded()
 // provided by AmsSubscriptionBackend
 

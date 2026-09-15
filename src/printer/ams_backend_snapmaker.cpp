@@ -350,6 +350,10 @@ SlotInfo AmsBackendSnapmaker::get_slot_info(int slot_index) const {
     return empty;
 }
 
+SlotInfo* AmsBackendSnapmaker::cached_slot_locked(int slot_index) {
+    return system_info_.get_slot_global(slot_index);
+}
+
 AmsBackend::OperationStepModel
 AmsBackendSnapmaker::get_operation_step_model(StepOperationType op) const {
     // Per-direction firmware step sequence. Each step's phase_id is the index the

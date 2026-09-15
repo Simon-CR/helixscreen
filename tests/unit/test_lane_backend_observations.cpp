@@ -3187,3 +3187,133 @@ TEST_CASE_METHOD(LVGLTestFixture, "a resync with no store is a no-op, not a cras
 
     CHECK(helix::ams::known_lanes().empty());
 }
+
+// ============================================================================
+// A lane written from outside a backend reaches its cached slot on request
+// (prestonbrown/helixscreen#1653)
+// ============================================================================
+
+namespace {
+
+constexpr uint32_t kFiledColor = 0x1A1A2E;
+
+/// Files a Spoolman colour on slot 0's lane with no frame after it. The slot
+/// the backend serves keeps what its last frame painted until the backend is
+/// asked to repaint, and then shows the filing.
+void expect_repaint_shows_filing(helix::AmsBackend& backend, helix::ams::LaneId lane,
+                                 uint32_t frame_color) {
+    const helix::SlotInfo painted = backend.get_slot_info(0);
+    REQUIRE(painted.color_rgb == frame_color);
+
+    helix::ams::Observation filed(helix::ams::ObservationSource::Spoolman);
+    filed.color_rgb = kFiledColor;
+    helix::ams::ingest(lane, filed);
+    REQUIRE(backend.get_slot_info(0).color_rgb == frame_color);
+
+    backend.repaint_slot_from_lane(0);
+
+    CHECK(backend.get_slot_info(0).color_rgb == kFiledColor);
+    // A filing states no presence, so the status the frame derived stands.
+    CHECK(backend.get_slot_info(0).status == painted.status);
+}
+
+struct CachedSlotBackend {
+    const char* name;
+    void (*run)();
+};
+
+/// Every backend that paints a stored SlotInfo from the lane only while it
+/// parses a frame. ACE is not here: it re-reads its slots on a short poll.
+const CachedSlotBackend kCachedSlotBackends[] = {
+    {"AD5X IFS",
+     [] {
+         Ad5xHarness harness(nullptr, nullptr);
+         Ad5xIfsTestAccess::set_port_presence(*harness, 0, true);
+         Ad5xIfsTestAccess::set_color(*harness, 0, "ED2C2C");
+         expect_repaint_shows_filing(*harness, harness.lane(0), 0xED2C2C);
+     }},
+    {"AFC",
+     [] {
+         AfcHarness harness(nullptr, nullptr);
+         init_afc_lanes(*harness);
+         feed_afc_lane(*harness, "lane1",
+                       {{"prep", true},
+                        {"load", true},
+                        {"status", "Loaded"},
+                        {"color", "#ED2C2C"},
+                        {"material", "PETG"}});
+         expect_repaint_shows_filing(*harness, harness.lane(0), 0xED2C2C);
+     }},
+    {"CFS",
+     [] {
+         CfsHarness harness(nullptr, nullptr);
+         feed_cfs_box(*harness,
+                      flat_box(nlohmann::json::array({nlohmann::json{{"index", 0},
+                                                                     {"material", "PLA"},
+                                                                     {"color", "#ED2C2C"},
+                                                                     {"present", true},
+                                                                     {"loaded", false}}})));
+         expect_repaint_shows_filing(*harness, harness.lane(0), 0xED2C2C);
+     }},
+    {"Happy Hare",
+     [] {
+         HappyHareHarness harness(nullptr, nullptr);
+         feed_mmu(*harness, {{"gate_status", nlohmann::json::array({1})},
+                             {"gate_color", nlohmann::json::array({"ed2c2c"})},
+                             {"gate_material", nlohmann::json::array({"PETG"})}});
+         expect_repaint_shows_filing(*harness, harness.lane(0), 0xED2C2C);
+     }},
+    {"Snapmaker",
+     [] {
+         SnapmakerHarness harness(nullptr, nullptr);
+         feed_filament_detect(
+             *harness, nlohmann::json{
+                           {"state", nlohmann::json::array({1, 0, 0, 0})},
+                           {"info", nlohmann::json::array({nlohmann::json{
+                                        {"MAIN_TYPE", "PLA"},
+                                        {"ARGB_COLOR", 0xFFED2C2C},
+                                        {"CARD_UID", nlohmann::json::array({144, 32, 196, 2})},
+                                    }})},
+                       });
+         expect_repaint_shows_filing(*harness, harness.lane(0), 0xED2C2C);
+     }},
+    {"ToolChanger",
+     [] {
+         ToolChangerHarness harness(nullptr, nullptr);
+         harness->set_discovered_tools({"T0", "T1"});
+         feed_toolchanger(
+             *harness, nlohmann::json{{"toolchanger", {{"status", "ready"}, {"tool_number", 0}}}});
+         expect_repaint_shows_filing(*harness, harness.lane(0), helix::AMS_DEFAULT_SLOT_COLOR);
+     }},
+};
+
+} // namespace
+
+TEST_CASE_METHOD(LVGLTestFixture,
+                 "a backend serving its slots from a cache repaints one from its lane on request",
+                 "[lane][1653]") {
+    for (const auto& backend : kCachedSlotBackends) {
+        DYNAMIC_SECTION(backend.name) {
+            backend.run();
+        }
+    }
+}
+
+TEST_CASE_METHOD(LVGLTestFixture,
+                 "a tool changer frame paints a lane whose only identity is its Spoolman record",
+                 "[lane][toolchanger][1653]") {
+    ToolChangerHarness harness(nullptr, nullptr);
+    harness->set_discovered_tools({"T0", "T1"});
+    REQUIRE_FALSE(ToolChangerTestAccess::has_overrides(*harness));
+
+    helix::ams::Observation filed(helix::ams::ObservationSource::Spoolman);
+    filed.spoolman_id = 7;
+    filed.color_rgb = kFiledColor;
+    helix::ams::ingest(harness.lane(0), filed);
+    REQUIRE(harness->get_slot_info(0).color_rgb == helix::AMS_DEFAULT_SLOT_COLOR);
+
+    feed_toolchanger(*harness,
+                     nlohmann::json{{"toolchanger", {{"status", "ready"}, {"tool_number", 0}}}});
+
+    CHECK(harness->get_slot_info(0).color_rgb == kFiledColor);
+}

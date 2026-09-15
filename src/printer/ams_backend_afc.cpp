@@ -579,6 +579,11 @@ SlotInfo AmsBackendAfc::get_slot_info(int slot_index) const {
     return empty;
 }
 
+SlotInfo* AmsBackendAfc::cached_slot_locked(int slot_index) {
+    auto* entry = slots_.get_mut(slot_index);
+    return entry ? &entry->info : nullptr;
+}
+
 // get_current_action(), get_current_tool(), get_current_slot(), is_filament_loaded()
 // provided by AmsSubscriptionBackend
 

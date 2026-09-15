@@ -98,7 +98,7 @@ void AmsBackendToolChanger::on_started() {
         // set_discovered_tools() built the slots before start() ran, so they
         // predate everything just loaded. Layer it on now rather than leaving
         // the panel grey until the first status frame arrives.
-        if (!overrides_.empty() && !system_info_.units.empty()) {
+        if (!system_info_.units.empty()) {
             auto& slots = system_info_.units[0].slots;
             for (size_t i = 0; i < slots.size(); ++i) {
                 apply_resolved_lane(slots[i], static_cast<int>(i));
@@ -142,6 +142,10 @@ SlotInfo AmsBackendToolChanger::get_slot_info(int slot_index) const {
     SlotInfo empty;
     empty.slot_index = -1;
     return empty;
+}
+
+SlotInfo* AmsBackendToolChanger::cached_slot_locked(int slot_index) {
+    return system_info_.get_slot_global(slot_index);
 }
 
 // get_current_action(), get_current_tool(), get_current_slot(), is_filament_loaded()
@@ -510,8 +514,10 @@ void AmsBackendToolChanger::handle_status_update(const nlohmann::json& notificat
             }
         }
 
-        // Re-layer the user's spool metadata last, so nothing above can undo it.
-        if (state_changed && !overrides_.empty() && !system_info_.units.empty()) {
+        // Re-layer what the lane resolves last, so nothing above can undo it. A
+        // lane whose only identity is its Spoolman record has no stored
+        // override, so this paints whether or not overrides_ holds one.
+        if (state_changed && !system_info_.units.empty()) {
             auto& slots = system_info_.units[0].slots;
             for (size_t i = 0; i < slots.size(); ++i) {
                 apply_resolved_lane(slots[i], static_cast<int>(i));
@@ -901,12 +907,12 @@ void AmsBackendToolChanger::initialize_tools() {
     refresh_slot_statuses_locked();
 
     // initialize_tools() has just reset every slot to default grey with the tool
-    // name as a placeholder. That reset IS the wipe: on a backend where the
-    // store is the only source of filament identity, a rediscovery would
-    // otherwise throw away the user's colour and material. Re-layer here rather
-    // than waiting for the next status frame, so get_slot_info() is never
-    // briefly wrong.
-    if (!overrides_.empty() && !system_info_.units.empty()) {
+    // name as a placeholder. That reset IS the wipe: klipper-toolchanger reports
+    // no filament identity, so everything a slot shows comes from its lane, and
+    // a rediscovery would otherwise throw it away. Re-layer here rather than
+    // waiting for the next status frame, so get_slot_info() is never briefly
+    // wrong.
+    if (!system_info_.units.empty()) {
         auto& slots = system_info_.units[0].slots;
         for (size_t i = 0; i < slots.size(); ++i) {
             apply_resolved_lane(slots[i], static_cast<int>(i));

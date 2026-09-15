@@ -984,6 +984,8 @@ void AmsBackendAce::parse_ace_object(const json& data) {
                 // that includes color and material, since ACE hardware
                 // doesn't carry brand/spool_name/weights at all and the user
                 // edit is the authoritative source for color/material too.
+                // The REST poll brings every slot through here each
+                // POLL_INTERVAL_MS, so ACE names no slot to cached_slot_locked().
                 apply_resolved_lane(slot, idx);
             }
         }

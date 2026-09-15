@@ -533,6 +533,7 @@ class AmsBackendAfc : public AmsSubscriptionBackend {
     const char* backend_log_tag() const override {
         return "[AMS AFC]";
     }
+    SlotInfo* cached_slot_locked(int slot_index) override;
 
     /// dispatch_operation() sets the optimistic action (begin_dispatch_locked)
     /// BEFORE calling ensure_homed_then() -- on decline, the base class's

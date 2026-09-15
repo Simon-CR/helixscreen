@@ -306,9 +306,12 @@ struct RememberedAfcLaneFixture : AfcCommitFixture {
 };
 
 /// An AFC lane linked to spool 42 the way a restart leaves it: the stored
-/// record in both stores, and firmware naming the same spool.
+/// record in both stores, and firmware naming the same spool. @p stored must
+/// name spool 42.
 struct RestartedAfcLinkFixture : AfcCommitFixture {
-    RestartedAfcLinkFixture() : AfcCommitFixture(linked_record(42)) {
+    explicit RestartedAfcLinkFixture(
+        const helix::ams::FilamentSlotOverride& stored = linked_record(42))
+        : AfcCommitFixture(stored) {
         feed_afc_lane(*afc, "lane1", {{"prep", true}, {"status", "Loaded"}, {"spool_id", 42}});
         REQUIRE(helix::ams::resolve(helix::ams::lane_sources(lane())).spoolman_id == 42);
     }
@@ -1045,7 +1048,13 @@ TEST_CASE("Clear Spool on a linked lane leaves nothing remembered and no catalog
 
 TEST_CASE("an edit that keeps the same spool keeps the stored record's authorship",
           "[ams][commit][lane][spoolman][afc][1653]") {
-    RestartedAfcLinkFixture f;
+    // The stored record names no brand, so the spool's identity cannot outrank
+    // the brand the user declares.
+    helix::ams::FilamentSlotOverride unbranded = linked_record(42);
+    unbranded.brand.clear();
+    RestartedAfcLinkFixture f(unbranded);
+    REQUIRE_FALSE(helix::ams::resolve(helix::ams::lane_sources(f.lane())).brand.has_value());
+
     f.edit([](SlotInfo& slot) {
         slot.color_rgb = 0xBCBCBC;
         slot.brand = "Sunlu";
@@ -1058,6 +1067,22 @@ TEST_CASE("an edit that keeps the same spool keeps the stored record's authorshi
     CHECK(stored.user_locked_color);
     CHECK(stored.user_locked_material);
     CHECK(helix::ams::declared_field_names(stored.declared) == nlohmann::json::array({"brand"}));
+}
+
+TEST_CASE("an edit on a linked AFC lane shows the lane's resolved brand at once",
+          "[ams][commit][lane][spoolman][afc][1653]") {
+    RestartedAfcLinkFixture f;
+    f.edit([](SlotInfo& slot) {
+        slot.color_rgb = 0xBCBCBC;
+        slot.brand = "Sunlu";
+    });
+
+    // On a linked lane the brand is the spool's and outranks one the user
+    // declares, so the slot shows the spool's brand as every later frame paints it.
+    const helix::ams::ResolvedLane resolved =
+        helix::ams::resolve(helix::ams::lane_sources(f.lane()));
+    REQUIRE(resolved.brand == std::string("Polymaker"));
+    CHECK(f.afc->get_slot_info(0).brand == *resolved.brand);
 }
 
 TEST_CASE("a later edit amends the user's record instead of replacing it", "[ams][commit][lane]") {

@@ -2949,14 +2949,12 @@ AmsError AmsBackendAd5xIfs::set_slot_info(int slot_index, const SlotInfo& info, 
     return AmsErrorHelper::success();
 }
 
-void AmsBackendAd5xIfs::repaint_slot_from_lane(int slot_index) {
-    // set_slot_info() paints through update_slot_from_state() before the edit's
-    // declaration is filed. Only the lane's resolution is stale by now: the
-    // readings and baselines that call took are this edit's own.
-    std::lock_guard<std::mutex> lock(mutex_);
-    if (auto* entry = slots_.get_mut(slot_index)) {
-        apply_resolved_lane(entry->info, slot_index);
-    }
+SlotInfo* AmsBackendAd5xIfs::cached_slot_locked(int slot_index) {
+    // Only the lane's resolution goes stale between frames: the readings and
+    // baselines update_slot_from_state() took are still this port's own, so a
+    // repaint re-runs the paint alone.
+    auto* entry = slots_.get_mut(slot_index);
+    return entry ? &entry->info : nullptr;
 }
 
 void AmsBackendAd5xIfs::update_slot_weight_impl(int slot_index, float remaining_weight_g,

@@ -498,6 +498,7 @@ class AmsBackendCfs : public AmsSubscriptionBackend {
         return "[AMS CFS]";
     }
     void on_started() override;
+    SlotInfo* cached_slot_locked(int slot_index) override;
 
     /// Push the user's chosen slot identity back to firmware via the
     /// `BOX_MODIFY_TN_DATA` gcode (registered by the box_wrapper C extension,

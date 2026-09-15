@@ -355,9 +355,21 @@ void SpoolmanManager::refresh_spoolman_weights() {
                                 const auto bound =
                                     slot_still_bound_to(backend_index, slot_index, spoolman_id);
                                 if (bound) {
+                                    const helix::ams::LaneId lane =
+                                        bound->owner->lane_id(slot_index);
+                                    const bool had_record =
+                                        helix::ams::lane_sources(lane).spoolman.has_value();
                                     helix::ams::drop_lane_source(
-                                        bound->owner->lane_id(slot_index),
-                                        helix::ams::ObservationSource::Spoolman);
+                                        lane, helix::ams::ObservationSource::Spoolman);
+                                    // A backend serving its slots from a cache
+                                    // painted this one while the record stood,
+                                    // and the drop raises no backend event to
+                                    // resync the slot's subjects.
+                                    if (had_record) {
+                                        bound->owner->repaint_slot_from_lane(slot_index);
+                                        AmsState::instance().update_slot_for_backend(backend_index,
+                                                                                     slot_index);
+                                    }
                                 }
                             });
                             return;
@@ -442,8 +454,21 @@ void SpoolmanManager::refresh_spoolman_weights() {
                             // already seen it. Ahead of the weights-unchanged
                             // return for the same reason. Refiling an unchanged
                             // record is harmless, since it replaces the old one.
-                            file_spool_on_lane(owner->lane_id(d->slot_index), d->spool,
-                                               d->local_weight);
+                            const bool lane_changed = file_spool_on_lane(
+                                owner->lane_id(d->slot_index), d->spool, d->local_weight);
+
+                            // A backend serving its slots from a cache painted
+                            // this one from the lane as it stood before the
+                            // filing, and the slot's subjects follow backend
+                            // events, of which a filing raises none. Every poll
+                            // refiles every linked lane, so only a changed record
+                            // is worth the repaint and the resync. `slot` is a
+                            // copy taken before, so the weight comparison below
+                            // still reads the old values.
+                            if (lane_changed) {
+                                owner->repaint_slot_from_lane(d->slot_index);
+                                ams.update_slot_for_backend(d->backend_index, d->slot_index);
+                            }
 
                             // When backend tracks weight locally, only update total_weight
                             // (initial weight from Spoolman). Preserve the backend's
@@ -602,7 +627,7 @@ void SpoolmanManager::refresh_spoolman_weights() {
     }
 }
 
-void SpoolmanManager::file_spool_on_lane(helix::ams::LaneId lane, const SpoolInfo& spool,
+bool SpoolmanManager::file_spool_on_lane(helix::ams::LaneId lane, const SpoolInfo& spool,
                                          bool backend_tracks_weight_locally) {
     helix::ams::Observation stated = helix::ams::spool_identity_observation(spool);
     // Spoolman computes the remaining weight from the initial one and serves
@@ -614,7 +639,15 @@ void SpoolmanManager::file_spool_on_lane(helix::ams::LaneId lane, const SpoolInf
             stated.remaining_weight_g = static_cast<float>(spool.remaining_weight_g);
         }
     }
+    // Read back rather than compared with `stated`: the store is what decides
+    // whether the lane took the filing at all.
+    const std::optional<helix::ams::Observation> before = helix::ams::lane_sources(lane).spoolman;
     helix::ams::ingest(lane, stated);
+    const std::optional<helix::ams::Observation> after = helix::ams::lane_sources(lane).spoolman;
+    if (before.has_value() != after.has_value()) {
+        return true;
+    }
+    return before.has_value() && before->fields() != after->fields();
 }
 
 // ============================================================================

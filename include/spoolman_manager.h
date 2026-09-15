@@ -145,8 +145,10 @@ class SpoolmanManager {
      * @param lane The lane the spool is linked on
      * @param spool The record Spoolman returned
      * @param backend_tracks_weight_locally The owning backend's tracks_weight_locally()
+     * @return true when the lane's Spoolman record differs from the one it held
+     *         before, which is what makes the lane's slots worth repainting
      */
-    static void file_spool_on_lane(helix::ams::LaneId lane, const SpoolInfo& spool,
+    static bool file_spool_on_lane(helix::ams::LaneId lane, const SpoolInfo& spool,
                                    bool backend_tracks_weight_locally);
 
     /// Mark a spool id as unresolvable (Spoolman answered "no such spool").

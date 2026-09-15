@@ -327,6 +327,7 @@ class AmsBackendHappyHare : public AmsSubscriptionBackend {
     const char* backend_log_tag() const override {
         return "[AMS HappyHare]";
     }
+    SlotInfo* cached_slot_locked(int slot_index) override;
 
   private:
     // === User-attached slot identity (FilamentSlotOverrideStore) =============
