@@ -71,7 +71,7 @@ Applied in order by `mk/patches.mk`. Grouped by subsystem.
 | `lvgl-strdup-null-guard.patch` | `lv_string_builtin.c`, `lv_string_clib.c` | NULL input guard for lv_strdup | PR #9827 rejected — permanent |
 | `lvgl_observer_debug.patch` | `lv_observer.c` | Enhanced error logging with pointer/type info | Project-specific |
 | `lvgl_observer_remove_null_guard.patch` | `lv_observer.c` | NULL guard for observer removal | Project-specific |
-| `lvgl_obj_delete_null_guards.patch` | `lv_global.h`, `lv_event.c`, `lv_obj.c`, `lv_obj_tree.c` | Event depth counter for corruption detection, NULL guards + alignment/depth-limit checks in event_mark_deleted, async cancel before child recursion in obj_delete_core | Pending |
+| `lvgl_obj_delete_null_guards.patch` | `lv_obj.c` | NULL guard at the top of `lv_obj_destructor` reporting `obj_destructor_null` through the helix telemetry hook | Project-specific |
 | `lvgl_obj_flag_screen_parent_null_guard.patch` | `lv_obj.c`, `lv_obj.h` | NULL-parent guards on the layout-dirty calls in `lv_obj_add_flag`/`lv_obj_remove_flag`, so a screen (no parent) can be hidden and unhidden; `ScreenHideHold` unhides the active screen after a screensaver or software sleep. `lv_obj.h` gains `HELIX_LV_OBJ_FLAG_SCREEN_PARENT_GUARD`, and `display_manager.cpp` refuses to compile without it | Upstream bug, not yet submitted |
 | `lvgl_event_crash_hook.patch` | `lv_obj_event.c` | Weak-linked `helix_crash_note_event()` call at top of `event_send_core` — records innermost dispatch target+code for crash diagnostic reports | Project-specific |
 
@@ -149,7 +149,11 @@ Then `make reapply-patches` from clean and confirm every patch still reports as 
 folded patch usually still applies on a clean tree, so the duplication only surfaces later as
 a conflict or a doubled hunk.
 
-**Apply-check sentinels:** each patch's block in `mk/patches.mk` decides whether to apply. Some
-older blocks test "is file X dirty?", which breaks when a patch stops touching X or when another
-patch dirties it first. Prefer `git -C $(LVGL_DIR) apply --check <patch>` as the condition — it
-asks the real question and does not depend on file ownership.
+**Apply verdicts:** each patch's block in `mk/patches.mk` calls
+`scripts/apply_submodule_patch.sh <submodule-dir> <patch> <label>`, which decides three ways:
+apply it, recognize it as already applied (reverse check), or refuse. A bare `apply --check`
+cannot tell "already applied" from "drifted and will never apply" — both exit non-zero — and a
+file-dirty test breaks when a patch stops touching X or when another patch dirties it first.
+Patches that share a file can fail both checks on a correctly patched tree, so in-place runs
+warn and `make reapply-patches` is the run that judges: from clean, a patch that will not take
+its apply branch is fatal.

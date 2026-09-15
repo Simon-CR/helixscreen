@@ -1016,23 +1016,20 @@ The build system automatically applies patches to git submodules before compilat
 - `HELIX_SDL_XPOS` - X coordinate for exact window position
 - `HELIX_SDL_YPOS` - Y coordinate for exact window position
 
-**Application Logic** (in `Makefile`):
+**Application Logic** (in `mk/patches.mk`):
 ```makefile
-apply-patches:
-	@echo "Checking LVGL patches..."
-	@if git -C $(LVGL_DIR) diff --quiet src/drivers/sdl/lv_sdl_window.c; then \
-		# File is clean, apply patch
-		git -C $(LVGL_DIR) apply ../patches/lvgl_sdl_window_position.patch
-	else \
-		# File already modified (patch applied)
-		echo "✓ LVGL SDL window position patch already applied"
-	fi
+	$(Q)$(APPLY_PATCH) $(LVGL_DIR) $(PATCH_DIR)/lvgl_sdl_window.patch "LVGL SDL window patch"
 ```
 
+`$(APPLY_PATCH)` is `scripts/apply_submodule_patch.sh`, which owns a three-way
+verdict for every patch: apply it, recognize it as already applied (reverse
+check), or report that it matches no reachable state of the submodule.
+
 **Status Messages**:
-- `✓ Patch applied successfully` - Patch was applied during this build
-- `✓ LVGL SDL window position patch already applied` - Patch was already present
-- `⚠ Cannot apply patch (already applied or conflicts)` - Manual intervention needed
+- `✓ <label> applied` - Patch was applied during this build
+- `✓ <label> already applied` - Reverse check recognized it; the tree keeps it
+- `⚠ <label> is not verifiable in place` - Neither check passes on an already-patched tree; run `make reapply-patches` to judge from clean
+- `✗ <label> does not apply to a clean checkout` - The patch and the submodule disagree; regenerate the patch
 
 ### Adding New Patches
 
@@ -1666,25 +1663,19 @@ SDL2_LIBS := $(shell sdl2-config --libs)
 
 ### Patch Application Fails
 
-**Symptom**: `⚠ Cannot apply patch (already applied or conflicts)`
+**Symptom**: `✗ <label> does not apply to a clean checkout` (from `make reapply-patches`),
+or `⚠ <label> is not verifiable in place` (from an incremental build)
 
 **Causes**:
-1. Submodule was manually modified (expected if patch is working)
-2. Patch conflicts with newer LVGL version
-3. Patch file is corrupted
+1. The patch drifted: a sibling patch moved the context it needs, and it
+   matches no reachable state of the submodule
+2. The patch was edited without regenerating it against the patched tree
 
-**Solutions**:
+**Solution** — let the from-clean run name every drifted patch, then
+regenerate each one it names (`patches/README.md` § "Regenerating a patch
+whose file is shared"):
 ```bash
-# Check if file is modified (expected)
-git -C lvgl diff src/drivers/sdl/lv_sdl_window.c
-
-# Revert to original (re-applies patch on next build)
-git -C lvgl checkout src/drivers/sdl/lv_sdl_window.c
-make apply-patches
-
-# Force re-apply
-git -C lvgl checkout src/drivers/sdl/lv_sdl_window.c
-git -C lvgl apply ../patches/lvgl_sdl_window_position.patch
+make reapply-patches
 ```
 
 ### Build Performance
