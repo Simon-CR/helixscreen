@@ -4370,11 +4370,8 @@ int Application::main_loop() {
             // When display is sleeping, extend sleep to 200ms — no rendering
             // needed, just need to stay responsive to wake events.
             if (!loop_config.benchmark_mode) {
-                uint32_t max_sleep = m_display->is_display_sleeping() ? 200 : 33;
-                uint32_t sleep_ms = std::min(time_till_next, max_sleep);
-                if (sleep_ms < 5)
-                    sleep_ms = 5;
-                DisplayManager::delay(sleep_ms);
+                DisplayManager::delay(helix::main_loop_sleep_ms(
+                    time_till_next, m_display->is_display_sleeping(), m_display->refresh_timing()));
             } else {
                 DisplayManager::delay(1);
             }

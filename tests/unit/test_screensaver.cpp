@@ -914,4 +914,160 @@ TEST_CASE_METHOD(LVGLTestFixture,
     }
 }
 
+// ============================================================================
+// Refresh period while a saver runs
+// ============================================================================
+
+#include "../test_helpers/refresh_period_hold_test_access.h"
+#include "../test_helpers/scoped_env.h"
+#include "../test_helpers/screensaver_manager_test_access.h"
+#include "refresh_period_hold.h"
+#include "refresh_timing_env.h"
+
+namespace {
+
+using helix::anim_timer_period;
+using helix::default_refr_timer_period;
+
+constexpr uint32_t GLOBAL_PERIOD_MS = 40;
+constexpr uint32_t SAVER_PERIOD_MS = 16;
+
+/// Sets the global and screensaver refresh periods through the environment and applies
+/// them as DisplayManager::init() does. Puts the environment and both timers back when the
+/// test ends.
+struct SaverRefreshEnv {
+    helix::ScopedTimerPeriods timers;
+    helix::ScopedEnv global{"HELIX_REFR_PERIOD_MS"};
+    helix::ScopedEnv scope{"HELIX_REFR_PERIOD_SCOPE"};
+    helix::ScopedEnv saver{"HELIX_SCREENSAVER_REFR_PERIOD_MS"};
+
+    SaverRefreshEnv() {
+        setenv("HELIX_REFR_PERIOD_MS", "40", 1);
+        unsetenv("HELIX_REFR_PERIOD_SCOPE");
+        setenv("HELIX_SCREENSAVER_REFR_PERIOD_MS", "16", 1);
+        helix::apply_refresh_timing(helix::refresh_timing_from_env());
+    }
+};
+
+/// Period of the timer the manager's running saver ticks on.
+uint32_t running_saver_timer_period(ScreensaverType type) {
+    Screensaver* active =
+        helix::ScreensaverManagerTestAccess::active(ScreensaverManager::instance());
+    REQUIRE(active != nullptr);
+    REQUIRE(active->type() == type);
+    const lv_timer_t* timer = nullptr;
+    switch (type) {
+    case ScreensaverType::FLYING_TOASTERS:
+        timer = FlyingToasterScreensaverTestAccess::tick_timer(
+            static_cast<const FlyingToasterScreensaver&>(*active));
+        break;
+    case ScreensaverType::STARFIELD:
+        timer = StarfieldScreensaverTestAccess::timer(
+            static_cast<const StarfieldScreensaver&>(*active));
+        break;
+    case ScreensaverType::PIPES_3D:
+        timer = PipesScreensaverTestAccess::timer(static_cast<const PipesScreensaver&>(*active));
+        break;
+    case ScreensaverType::OFF:
+        break;
+    }
+    REQUIRE(timer != nullptr);
+    return timer->period;
+}
+
+} // namespace
+
+TEST_CASE_METHOD(LVGLTestFixture,
+                 "a running screensaver ticks at HELIX_SCREENSAVER_REFR_PERIOD_MS until it stops",
+                 "[screensaver][refresh_period]") {
+    const ScreensaverType type = GENERATE(ScreensaverType::FLYING_TOASTERS,
+                                          ScreensaverType::STARFIELD, ScreensaverType::PIPES_3D);
+    CAPTURE(static_cast<int>(type));
+    auto& mgr = ScreensaverManager::instance();
+    SaverRefreshEnv env;
+    StopSaverOnExit stop_on_exit;
+    REQUIRE_FALSE(helix::active_refresh_period_hold().is_held());
+    CHECK(default_refr_timer_period() == GLOBAL_PERIOD_MS);
+
+    mgr.start(type);
+    REQUIRE(mgr.is_active());
+    // The saver reads the refresh period when it starts, so this is only the configured
+    // value if the period was set before start().
+    CHECK(running_saver_timer_period(type) == SAVER_PERIOD_MS);
+    CHECK(default_refr_timer_period() == SAVER_PERIOD_MS);
+    CHECK(anim_timer_period() == SAVER_PERIOD_MS);
+
+    mgr.stop();
+    CHECK_FALSE(helix::active_refresh_period_hold().is_held());
+    CHECK(default_refr_timer_period() == GLOBAL_PERIOD_MS);
+    CHECK(anim_timer_period() == GLOBAL_PERIOD_MS);
+}
+
+TEST_CASE_METHOD(LVGLTestFixture, "switching screensaver type keeps the saver refresh period",
+                 "[screensaver][refresh_period]") {
+    auto& mgr = ScreensaverManager::instance();
+    SaverRefreshEnv env;
+    StopSaverOnExit stop_on_exit;
+    REQUIRE_FALSE(helix::active_refresh_period_hold().is_held());
+
+    for (ScreensaverType type : {ScreensaverType::FLYING_TOASTERS, ScreensaverType::STARFIELD,
+                                 ScreensaverType::PIPES_3D}) {
+        CAPTURE(static_cast<int>(type));
+        mgr.start(type);
+        REQUIRE(mgr.is_active());
+        CHECK(running_saver_timer_period(type) == SAVER_PERIOD_MS);
+        CHECK(default_refr_timer_period() == SAVER_PERIOD_MS);
+    }
+
+    // One stop gives back everything the three starts took.
+    mgr.stop();
+    CHECK_FALSE(helix::active_refresh_period_hold().is_held());
+    CHECK(default_refr_timer_period() == GLOBAL_PERIOD_MS);
+    CHECK(anim_timer_period() == GLOBAL_PERIOD_MS);
+}
+
+TEST_CASE_METHOD(LVGLTestFixture, "a screensaver that fails to start gives the refresh period back",
+                 "[screensaver][refresh_period]") {
+    auto& mgr = ScreensaverManager::instance();
+    SaverRefreshEnv env;
+    StopSaverOnExit stop_on_exit;
+    REQUIRE_FALSE(helix::active_refresh_period_hold().is_held());
+
+    SECTION("no saver is registered for the requested type") {
+        mgr.start(ScreensaverType::FLYING_TOASTERS);
+        REQUIRE(mgr.is_active());
+        REQUIRE(default_refr_timer_period() == SAVER_PERIOD_MS);
+
+        mgr.start(static_cast<ScreensaverType>(7));
+
+        CHECK_FALSE(mgr.is_active());
+        CHECK_FALSE(helix::active_refresh_period_hold().is_held());
+        CHECK(default_refr_timer_period() == GLOBAL_PERIOD_MS);
+        CHECK(anim_timer_period() == GLOBAL_PERIOD_MS);
+    }
+
+    SECTION("the saver refuses to start") {
+        const ScreensaverType type =
+            GENERATE(ScreensaverType::STARFIELD, ScreensaverType::PIPES_3D);
+        CAPTURE(static_cast<int>(type));
+        // Starfield and pipes refuse to start without a default display.
+        lv_display_t* disp = lv_display_get_default();
+        REQUIRE(disp != nullptr);
+        lv_display_set_default(nullptr);
+        mgr.start(type);
+        lv_display_set_default(disp);
+
+        CHECK_FALSE(mgr.is_active());
+        CHECK_FALSE(helix::active_refresh_period_hold().is_held());
+        CHECK(default_refr_timer_period() == GLOBAL_PERIOD_MS);
+    }
+
+    // Nothing was left behind: the next saver that does start still gets the fast period.
+    mgr.start(ScreensaverType::FLYING_TOASTERS);
+    REQUIRE(mgr.is_active());
+    CHECK(running_saver_timer_period(ScreensaverType::FLYING_TOASTERS) == SAVER_PERIOD_MS);
+    mgr.stop();
+    CHECK(default_refr_timer_period() == GLOBAL_PERIOD_MS);
+}
+
 #endif // HELIX_ENABLE_SCREENSAVER

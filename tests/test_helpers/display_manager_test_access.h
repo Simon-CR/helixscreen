@@ -165,4 +165,24 @@ class DisplayManagerTestAccess {
     static void destroy_sleep_overlay(DisplayManager& dm) {
         dm.destroy_sleep_overlay();
     }
+
+    // Refresh pacing as init() would have read it from the environment.
+    static void set_refresh_timing(DisplayManager& dm, const helix::RefreshTiming& timing) {
+        dm.m_refresh_timing = timing;
+    }
+
+    // Deletes the pointer device a test-driven input rebuild created.
+    static void delete_pointer_input(DisplayManager& dm) {
+        if (dm.m_pointer) {
+            lv_indev_delete(dm.m_pointer);
+            dm.m_pointer = nullptr;
+        }
+    }
+
+#ifdef HELIX_ENABLE_SCREENSAVER
+    // What check_display_sleep() records when it starts a screensaver.
+    static void set_screensaver_active(DisplayManager& dm, bool active) {
+        dm.m_screensaver_active = active;
+    }
+#endif
 };

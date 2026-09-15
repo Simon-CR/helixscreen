@@ -6,6 +6,7 @@
 
 #include "display_settings_manager.h"
 #include "lvgl/src/misc/lv_timer_private.h" // lv_timer_t::period; LVGL has no period getter
+#include "refresh_period_hold.h"
 #include "screen_hide_hold.h"
 #include "screensaver.h"
 #include "screensaver_pipes.h"
@@ -55,15 +56,19 @@ void ScreensaverManager::start(ScreensaverType type) {
         spdlog::warn("[ScreensaverManager] No screensaver registered for type {}",
                      static_cast<int>(type));
         release_screen();
+        release_refresh_period();
         return;
     }
 
+    // The saver reads the refresh period as it starts, so the hold goes out first.
+    hold_refresh_period();
     ss->start();
     if (!ss->is_active()) {
         spdlog::warn("[ScreensaverManager] Screensaver type {} did not start",
                      static_cast<int>(type));
         active_ = nullptr;
         release_screen();
+        release_refresh_period();
         return;
     }
 
@@ -80,6 +85,7 @@ void ScreensaverManager::stop() {
         active_ = nullptr;
     }
     release_screen();
+    release_refresh_period();
 }
 
 void ScreensaverManager::hold_screen() {
@@ -93,6 +99,20 @@ void ScreensaverManager::release_screen() {
     if (holds_screen_) {
         holds_screen_ = false;
         helix::active_screen_hide_hold().release();
+    }
+}
+
+void ScreensaverManager::hold_refresh_period() {
+    if (!holds_refresh_period_) {
+        helix::active_refresh_period_hold().acquire();
+        holds_refresh_period_ = true;
+    }
+}
+
+void ScreensaverManager::release_refresh_period() {
+    if (holds_refresh_period_) {
+        holds_refresh_period_ = false;
+        helix::active_refresh_period_hold().release();
     }
 }
 

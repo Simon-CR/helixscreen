@@ -13,6 +13,7 @@
 #include "drm_rotation_strategy.h"
 #include "helix_display_telemetry.h"
 #include "input_device_scanner.h"
+#include "refresh_timing_env.h"
 #include "touch_calibration.h"
 #include "touch_calibration_wrapper.h"
 
@@ -457,6 +458,11 @@ lv_display_t* DisplayBackendDRM::create_display(int width, int height) {
     if (lv_display_get_color_format(display_) == LV_COLOR_FORMAT_XRGB8888) {
         lv_display_set_color_format(display_, LV_COLOR_FORMAT_ARGB8888);
         spdlog::info("[DRM Backend] Color format XRGB8888 -> ARGB8888 for the EGL path");
+    }
+
+    if (helix::apply_egl_vsync_from_env(
+            [this](bool vsync) { lv_linux_drm_egl_set_vsync(display_, vsync); })) {
+        spdlog::info("[DRM Backend] EGL presentation waits for each page flip (HELIX_EGL_VSYNC)");
     }
 #endif
 

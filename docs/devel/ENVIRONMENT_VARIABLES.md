@@ -503,6 +503,77 @@ HELIX_SCREENSAVER_NOW=1 ./build/bin/helix-screen --test -vv
 
 Requires a build with `HELIX_ENABLE_SCREENSAVER` — the whole block is `#ifdef`-ed out otherwise, and the variable is then ignored.
 
+### `HELIX_REFR_PERIOD_MS`
+
+Display refresh and animation timer period, in milliseconds. LVGL's default is 33 ms (~30 fps); the panel on a Raspberry Pi is 60 Hz, so `16` asks for every refresh the panel can show. Read once when the display comes up. The refresh timer pauses itself while nothing is invalidated, so a shorter period costs nothing on an idle screen.
+
+When the period is longer than 33 ms, the main loop's awake sleep cap follows it instead of waking every 33 ms for nothing.
+
+| Property | Value |
+|----------|-------|
+| **Values** | Whole milliseconds, `8` to `100` |
+| **Default** | Unset: LVGL's 33 ms |
+| **Invalid** | Anything else (out of range, `16ms`, negative, empty) is ignored with a warning, and the default is kept |
+| **File** | `include/refresh_timing_env.h`, applied in `src/application/display_manager.cpp` |
+
+```bash
+HELIX_REFR_PERIOD_MS=16 ./build/bin/helix-screen --test -vv
+```
+
+### `HELIX_REFR_PERIOD_SCOPE`
+
+Which timers `HELIX_REFR_PERIOD_MS` sets. `display` sets the display refresh and animation timers. `all` also sets every input device's read timer and the UpdateQueue drain timer, and applies them again when the input devices are rebuilt after a backend swap. Has no effect without `HELIX_REFR_PERIOD_MS`. The synthetic pointer `helix-screen ctl` creates on its first pointer command appears after startup, so it keeps LVGL's default read period.
+
+| Property | Value |
+|----------|-------|
+| **Values** | `display`, `all` |
+| **Default** | `display` |
+| **Invalid** | Any other value is ignored with a warning |
+| **File** | `include/refresh_timing_env.h` |
+
+`all` wakes the main loop at the configured period even on an idle screen, because input and queue timers never pause. Measure CPU before keeping it.
+
+### `HELIX_SCREENSAVER_REFR_PERIOD_MS`
+
+Display refresh and animation period while a screensaver runs. Set before the saver starts, so the saver's own tick timer, which follows the refresh period, runs at it too. Switching between saver types keeps it, and so does an input rebuild after a backend swap, which makes the new global period the one stopping puts back. Stopping the saver, a saver that fails to start, and entering sleep all put back the period in force before (`HELIX_REFR_PERIOD_MS`, or LVGL's default). The static software sleep overlay does not use it.
+
+| Property | Value |
+|----------|-------|
+| **Values** | Whole milliseconds, `8` to `100` |
+| **Default** | Unset: savers run at the global period |
+| **Invalid** | Ignored with a warning |
+| **File** | `include/refresh_period_hold.h`, `src/ui/screensaver_manager.cpp` |
+
+```bash
+HELIX_SCREENSAVER_REFR_PERIOD_MS=16 HELIX_SCREENSAVER_NOW=1 ./build/bin/helix-screen --test -vv
+```
+
+Requires a build with `HELIX_ENABLE_SCREENSAVER`.
+
+### `HELIX_LOOP_MIN_SLEEP_MS`
+
+Shortest sleep the main loop takes between `lv_timer_handler()` calls. The loop sleeps for LVGL's "next timer due" hint, but never less than this, so with a 16 ms refresh period the default floor of 5 ms can make a frame up to 4 ms late. A lower floor paces frames more closely at the cost of more wakeups.
+
+| Property | Value |
+|----------|-------|
+| **Values** | Whole milliseconds, `1` to `33` |
+| **Default** | `5` |
+| **Invalid** | Ignored with a warning |
+| **File** | `include/refresh_timing_env.h`; `main_loop_sleep_ms()` in `include/refresh_timing.h`, used in `src/application/application.cpp` |
+
+### `HELIX_EGL_VSYNC`
+
+EGL presentation mode on the DRM backend (`helix-screen-egl`). By default a frame finished while the previous page flip is still in flight waits as pending, and the next frame replaces it before it is ever shown, so an animation can skip frames or leave its last frame unshown. `1` makes the flush wait for the in-flight flip, so every rendered frame reaches the screen; the cost is that the LVGL thread blocks for up to one refresh interval inside the flush. Flips are latched to vblank either way, so neither mode tears.
+
+| Property | Value |
+|----------|-------|
+| **Values** | `1` (wait for each flip), `0` |
+| **Default** | `0` |
+| **Invalid** | Any other value is ignored with a warning |
+| **File** | `src/api/display_backend_drm.cpp` (EGL builds only), `patches/lvgl-egl-vsync.patch` |
+
+The dumb-buffer DRM binary (`helix-screen`) already waits for every page flip; this variable does not affect it.
+
 ### `HELIX_HEADLESS`
 
 Make `scripts/screenshot.sh` run without a display server by forcing SDL's dummy

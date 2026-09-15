@@ -40,6 +40,8 @@ LVGL_PATCHED_FILES := \
 	src/drivers/display/drm/lv_linux_drm.c \
 	src/drivers/display/drm/lv_linux_drm.h \
 	src/drivers/display/drm/lv_linux_drm_egl.c \
+	src/drivers/opengles/lv_opengles_egl.c \
+	src/drivers/opengles/lv_opengles_egl.h \
 	src/drivers/evdev/lv_evdev.c \
 	src/drivers/evdev/lv_evdev.h \
 	src/draw/lv_draw_arc.c \
@@ -783,6 +785,13 @@ $(PATCHES_STAMP): $(PATCH_FILES) $(LVGL_HEAD) $(LIBHV_HEAD) $(APPLIED_STAMP_ID)
 		echo "$(GREEN)✓ DRM EGL render mode fix applied$(RESET)"; \
 	else \
 		echo "$(GREEN)✓ LVGL DRM EGL render mode fix already applied$(RESET)"; \
+	fi
+	$(Q)if git -C $(LVGL_DIR) apply --check $(PATCH_DIR)/lvgl-egl-vsync.patch 2>/dev/null; then \
+		echo "$(YELLOW)→ Applying LVGL EGL vsync setter patch...$(RESET)"; \
+		git -C $(LVGL_DIR) apply $(PATCH_DIR)/lvgl-egl-vsync.patch && \
+		echo "$(GREEN)✓ EGL vsync setter patch applied$(RESET)"; \
+	else \
+		echo "$(GREEN)✓ LVGL EGL vsync setter patch already applied$(RESET)"; \
 	fi
 	$(Q)if git -C $(LVGL_DIR) apply --check $(PATCH_DIR)/lvgl_texture_cache_null_guard.patch 2>/dev/null; then \
 		echo "$(YELLOW)→ Applying LVGL texture cache NULL guard patch (upstream ec053a0)...$(RESET)"; \

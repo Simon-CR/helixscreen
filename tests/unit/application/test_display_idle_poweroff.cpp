@@ -611,3 +611,156 @@ TEST_CASE_METHOD(LVGLTestFixture, "software sleep overlay hides the screen until
 
     CHECK_FALSE(helix::active_screen_hide_hold().is_held());
 }
+
+// ============================================================================
+// Refresh period across sleep and input rebuilds
+// ============================================================================
+
+#include "refresh_period_hold.h"
+#include "refresh_timing_env.h"
+#include "test_helpers/refresh_period_hold_test_access.h"
+#include "test_helpers/scoped_env.h"
+#ifdef HELIX_ENABLE_SCREENSAVER
+#include "screensaver.h"
+#endif
+
+namespace {
+
+void noop_pointer_read(lv_indev_t* /*indev*/, lv_indev_data_t* data) {
+    data->state = LV_INDEV_STATE_RELEASED;
+}
+
+lv_indev_t* create_noop_pointer() {
+    lv_indev_t* indev = lv_indev_create();
+    lv_indev_set_type(indev, LV_INDEV_TYPE_POINTER);
+    lv_indev_set_read_cb(indev, noop_pointer_read);
+    return indev;
+}
+
+/// A backend whose pointer is a real LVGL input device, so an input rebuild creates one.
+class IndevBackend : public FakePowerOffBackend {
+  public:
+    IndevBackend() : FakePowerOffBackend(/*supports_power_off=*/false) {}
+
+    lv_indev_t* create_input_pointer() override {
+        return create_noop_pointer();
+    }
+};
+
+} // namespace
+
+#ifdef HELIX_ENABLE_SCREENSAVER
+TEST_CASE_METHOD(LVGLTestFixture,
+                 "entering sleep gives back a running screensaver's refresh period",
+                 "[application][display][sleep][refresh_period]") {
+    helix::ScopedTimerPeriods timers;
+    helix::ScopedEnv global("HELIX_REFR_PERIOD_MS");
+    helix::ScopedEnv scope("HELIX_REFR_PERIOD_SCOPE");
+    helix::ScopedEnv saver("HELIX_SCREENSAVER_REFR_PERIOD_MS");
+    unsetenv("HELIX_REFR_PERIOD_MS");
+    unsetenv("HELIX_REFR_PERIOD_SCOPE");
+    setenv("HELIX_SCREENSAVER_REFR_PERIOD_MS", "16", 1);
+    helix::apply_refresh_timing(helix::refresh_timing_from_env());
+    const uint32_t baseline = helix::default_refr_timer_period();
+    REQUIRE(baseline != 16);
+
+    DisplayManager mgr;
+    DisplayManagerTestAccess::set_backend(
+        mgr, std::make_unique<FakePowerOffBackend>(/*supports_power_off=*/false));
+    DisplayManagerTestAccess::set_use_hardware_blank(mgr, false);
+    DisplayManagerTestAccess::set_use_power_off(mgr, false);
+    struct StopSavers {
+        ~StopSavers() {
+            ScreensaverManager::instance().stop();
+        }
+    } stop_savers;
+
+    auto& savers = ScreensaverManager::instance();
+    savers.start(ScreensaverType::FLYING_TOASTERS);
+    REQUIRE(savers.is_active());
+    DisplayManagerTestAccess::set_screensaver_active(mgr, true);
+    CHECK(helix::default_refr_timer_period() == 16);
+
+    DisplayManagerTestAccess::enter_sleep(mgr, 60);
+
+    CHECK_FALSE(savers.is_active());
+    CHECK_FALSE(helix::active_refresh_period_hold().is_held());
+    CHECK(helix::default_refr_timer_period() == baseline);
+    CHECK(helix::anim_timer_period() == baseline);
+
+    DisplayManagerTestAccess::restore_display_output(mgr);
+}
+#endif
+
+TEST_CASE_METHOD(LVGLTestFixture, "an input rebuild paces its new devices by the refresh timing",
+                 "[application][display][refresh_period]") {
+    helix::ScopedTimerPeriods timers;
+    helix::RefreshTiming timing;
+    timing.refr_period_ms = 20;
+    timing.scope_all = GENERATE(true, false);
+    CAPTURE(timing.scope_all);
+
+    lv_indev_t* probe = create_noop_pointer();
+    const uint32_t default_read_period = lv_indev_get_read_timer(probe)->period;
+    lv_indev_delete(probe);
+    REQUIRE(default_read_period != 20);
+
+    DisplayManager mgr;
+    DisplayManagerTestAccess::set_backend(mgr, std::make_unique<IndevBackend>());
+    DisplayManagerTestAccess::set_refresh_timing(mgr, timing);
+    struct DeletePointer {
+        DisplayManager& dm;
+        ~DeletePointer() {
+            DisplayManagerTestAccess::delete_pointer_input(dm);
+        }
+    } delete_pointer{mgr};
+
+    DisplayManagerTestAccess::rebuild_input_after_backend_swap(mgr);
+
+    lv_indev_t* pointer = mgr.pointer_input();
+    REQUIRE(pointer != nullptr);
+    const lv_timer_t* read = lv_indev_get_read_timer(pointer);
+    REQUIRE(read != nullptr);
+    CHECK(read->period == (timing.scope_all ? 20u : default_read_period));
+    CHECK(helix::default_refr_timer_period() == 20);
+}
+
+TEST_CASE_METHOD(LVGLTestFixture,
+                 "an input rebuild keeps a held screensaver refresh period until release",
+                 "[application][display][refresh_period]") {
+    helix::ScopedTimerPeriods timers;
+    helix::RefreshTiming timing;
+    timing.refr_period_ms = 20;
+    timing.screensaver_refr_period_ms = 16;
+    helix::apply_refresh_timing(timing);
+    REQUIRE(helix::default_refr_timer_period() == 20);
+
+    DisplayManager mgr;
+    DisplayManagerTestAccess::set_backend(mgr, std::make_unique<IndevBackend>());
+    DisplayManagerTestAccess::set_refresh_timing(mgr, timing);
+    struct DeletePointer {
+        DisplayManager& dm;
+        ~DeletePointer() {
+            DisplayManagerTestAccess::delete_pointer_input(dm);
+        }
+    } delete_pointer{mgr};
+    struct ReleaseHold {
+        ~ReleaseHold() {
+            helix::active_refresh_period_hold().release();
+        }
+    } release_hold;
+
+    auto& hold = helix::active_refresh_period_hold();
+    hold.acquire();
+    REQUIRE(helix::default_refr_timer_period() == 16);
+
+    DisplayManagerTestAccess::rebuild_input_after_backend_swap(mgr);
+
+    CHECK(hold.is_held());
+    CHECK(helix::default_refr_timer_period() == 16);
+    CHECK(helix::anim_timer_period() == 16);
+
+    hold.release();
+    CHECK(helix::default_refr_timer_period() == 20);
+    CHECK(helix::anim_timer_period() == 20);
+}

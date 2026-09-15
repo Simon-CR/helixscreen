@@ -7,6 +7,7 @@
 #include "color_transform.h"
 #include "display_backend.h"
 #include "indev_delete_watch.h"
+#include "refresh_timing.h"
 #include "remote_screen_manager.h"
 #include "touch_calibration.h"
 #include "touch_calibration_session.h"
@@ -384,6 +385,11 @@ class DisplayManager : public helix::ICalibrationSink {
         return m_display_sleeping;
     }
 
+    /// Refresh pacing read from the environment by init(); the main loop sleeps by it.
+    const helix::RefreshTiming& refresh_timing() const {
+        return m_refresh_timing;
+    }
+
     /**
      * @brief Register callback for display sleep/wake transitions
      *
@@ -703,6 +709,10 @@ class DisplayManager : public helix::ICalibrationSink {
     // Remote-screen frame mirror (fb0 sink on the Snapmaker U1). Fed from the
     // flush hook per dirty area; a cheap early-out when no sinks are attached.
     helix::RemoteScreenManager m_remote_screen;
+
+    // Refresh pacing from the environment, parsed once by init() and applied again after
+    // an input rebuild, whose new devices start at LVGL's default read period.
+    helix::RefreshTiming m_refresh_timing;
 
     // Display sleep state
     bool m_display_sleeping = false;

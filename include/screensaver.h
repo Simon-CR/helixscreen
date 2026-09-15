@@ -94,6 +94,10 @@ class Screensaver {
     virtual ScreensaverType type() const = 0;
 };
 
+namespace helix {
+class ScreensaverManagerTestAccess;
+}
+
 /**
  * @brief Registry and router for screensaver instances
  *
@@ -115,8 +119,11 @@ class ScreensaverManager {
      *
      * While a saver runs, the active screen is hidden beneath its overlay
      * (helix::ScreenHideHold), and it stays hidden across a switch between types.
-     * A saver that fails to start leaves the manager inactive and the screen as it
-     * was before any saver ran.
+     * For the same span the display refreshes at HELIX_SCREENSAVER_REFR_PERIOD_MS when
+     * one is configured (helix::RefreshPeriodHold), set before the saver starts so the
+     * saver's own timer follows it.
+     * A saver that fails to start leaves the manager inactive, and the screen and
+     * refresh period as they were before any saver ran.
      */
     void start(ScreensaverType type);
 
@@ -130,6 +137,8 @@ class ScreensaverManager {
     static ScreensaverType configured_type();
 
   private:
+    friend class helix::ScreensaverManagerTestAccess;
+
     ScreensaverManager();
     ~ScreensaverManager() = default;
 
@@ -142,9 +151,16 @@ class ScreensaverManager {
     /** @brief Give back the hold taken by hold_screen(), if one is out */
     void release_screen();
 
+    /** @brief Take the refresh period hold, once however many savers run in turn */
+    void hold_refresh_period();
+
+    /** @brief Give back the hold taken by hold_refresh_period(), if one is out */
+    void release_refresh_period();
+
     std::vector<std::unique_ptr<Screensaver>> screensavers_;
     Screensaver* active_ = nullptr;
     bool holds_screen_ = false;
+    bool holds_refresh_period_ = false;
 };
 
 #endif // HELIX_ENABLE_SCREENSAVER

@@ -36,6 +36,7 @@ Applied in order by `mk/patches.mk`. Grouped by subsystem.
 | `lvgl-drm-flush-rotation.patch` | `lv_linux_drm.c`, `.h` | DRM plane rotation API + 180deg software rotation via shadow buffer + legacy drmModeSetCrtc fallback | Project-specific |
 | `lvgl-drm-mmap64.patch` | `lv_linux_drm.c` | `_FILE_OFFSET_BITS 64` so the dumb-buffer `mmap()` keeps DRM's >4 GiB map offset on 32-bit targets (pi32), widen `drm_buffer_t::offset` to 64 bits, fix the `%u`/`%lu` log formats | Upstream bug, not yet submitted |
 | `lvgl-drm-egl-getters.patch` | `lv_linux_drm_egl.c` | EGL display/context/config getters (implementation only; header decls are in drm-flush-rotation) | Project-specific |
+| `lvgl-egl-vsync.patch` | `lv_opengles_egl.c`, `.h`, `lv_linux_drm_egl.c`, `lv_linux_drm.h` | `lv_opengles_egl_set_vsync()` and the display-level `lv_linux_drm_egl_set_vsync()`: the EGL context hardcodes `vsync = false`, so a frame finished while a flip is in flight is replaced unshown. `HELIX_EGL_VSYNC=1` turns the wait on (`src/api/display_backend_drm.cpp`) | Project-specific |
 
 ### Draw Pipeline
 
