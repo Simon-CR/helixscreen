@@ -29,6 +29,7 @@
 #include "ams_backend_toolchanger.h"
 #include "ams_types.h"
 #include "filament_slot_override_store.h"
+#include "lane_source_store.h"
 #include "moonraker_api_mock.h"
 #include "moonraker_client_mock.h"
 #include "printer_state.h"
@@ -375,4 +376,68 @@ TEST_CASE("Starting with a live API does not deadlock",
 
     backend.stop();
     helix::ui::UpdateQueue::instance().drain();
+}
+
+// ============================================================================
+// A lane whose only identity is its Spoolman record
+// ============================================================================
+//
+// No stored override describes such a lane, so every place the backend lays its
+// lanes onto freshly built slots has to paint it whether or not overrides_
+// holds anything.
+
+namespace {
+
+constexpr uint32_t kSpoolmanOnlyColor = 0x2E7D32;
+
+/// Files a Spoolman record naming a colour, and nothing else, on @p lane.
+void file_spoolman_colour(helix::ams::LaneId lane) {
+    helix::ams::Observation filed(helix::ams::ObservationSource::Spoolman);
+    filed.spoolman_id = 42;
+    filed.color_rgb = kSpoolmanOnlyColor;
+    helix::ams::ingest(lane, filed);
+}
+
+} // namespace
+
+TEST_CASE("a tool changer rediscovery keeps a lane whose only identity is its Spoolman record",
+          "[lane][toolchanger][1653]") {
+    helix::test::RegisteredBackend<SlotMemoryHelper> h_reg(4);
+    SlotMemoryHelper& h = *h_reg;
+    file_spoolman_colour(h_reg.lane(1));
+
+    // A preview write puts a name on the live slot that nothing but the
+    // rediscovery's reset takes off again, and stages no override.
+    helix::SlotInfo preview = h.get_slot_info(1);
+    preview.spool_name = "Preview name";
+    REQUIRE(h.set_slot_info(1, preview, /*persist=*/false).success());
+    REQUIRE(h.get_slot_info(1).spool_name == "Preview name");
+    REQUIRE_FALSE(helix::ToolChangerTestAccess::has_overrides(h));
+
+    h.set_tools(4);
+
+    // The reset ran: the slot is back on its tool-name placeholder.
+    REQUIRE(h.get_slot_info(1).spool_name == "T1");
+    CHECK(h.get_slot_info(1).color_rgb == kSpoolmanOnlyColor);
+}
+
+TEST_CASE("a tool changer start paints a lane whose only identity is its Spoolman record",
+          "[lane][toolchanger][1653][slow]") {
+    ScopedCacheDir tmp("spoolman_only_start");
+    MoonrakerClientMock client(MoonrakerClientMock::PrinterType::VORON_24);
+    helix::PrinterState state;
+    state.init_subjects(false);
+    MoonrakerAPIMock api(client, state);
+
+    helix::test::RegisteredBackend<StoreBackedHelper> h_reg(&api, 4);
+    StoreBackedHelper& h = *h_reg;
+    file_spoolman_colour(h_reg.lane(1));
+    REQUIRE(h.get_slot_info(1).color_rgb == helix::AMS_DEFAULT_SLOT_COLOR);
+
+    helix::ToolChangerTestAccess::call_on_started(h);
+
+    // The load ran, against a store holding nothing for any tool.
+    REQUIRE(helix::ToolChangerTestAccess::store_namespace(h) == "lane_data");
+    REQUIRE_FALSE(helix::ToolChangerTestAccess::has_overrides(h));
+    CHECK(h.get_slot_info(1).color_rgb == kSpoolmanOnlyColor);
 }
