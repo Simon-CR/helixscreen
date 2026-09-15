@@ -66,10 +66,10 @@ $(TRANS_XML): $(TRANS_YAML) $(TRANS_SCRIPT) $(TRANS_LANG_STAMP)
 	$(ECHO) "$(CYAN)Generating translations from YAML...$(if $(HELIX_LANG), (HELIX_LANG=$(HELIX_LANG)))$(RESET)"
 	$(Q)mkdir -p $(TRANS_GEN_DIR)
 	$(Q)if [ -x "$(VENV_PYTHON_TRANS)" ] && $(VENV_PYTHON_TRANS) -c "import yaml" 2>/dev/null; then \
-		$(VENV_PYTHON_TRANS) $(TRANS_SCRIPT) $(TRANS_LANG_FLAG); \
+		$(VENV_PYTHON_TRANS) $(TRANS_SCRIPT) $(TRANS_LANG_FLAG) && \
 		echo "$(GREEN)✓ Translations generated$(RESET)"; \
 	elif python3 -c "import yaml" 2>/dev/null; then \
-		python3 $(TRANS_SCRIPT) $(TRANS_LANG_FLAG); \
+		python3 $(TRANS_SCRIPT) $(TRANS_LANG_FLAG) && \
 		echo "$(GREEN)✓ Translations generated (system python3)$(RESET)"; \
 	elif [ -f "$(TRANS_XML)" ]; then \
 		echo "$(YELLOW)⚠ Python venv not available - using existing generated translations$(RESET)"; \
@@ -85,7 +85,7 @@ translations:
 	$(ECHO) "$(CYAN)Regenerating translations...$(RESET)"
 	$(Q)mkdir -p $(TRANS_GEN_DIR)
 	$(Q)if [ -x "$(VENV_PYTHON_TRANS)" ]; then \
-		$(VENV_PYTHON_TRANS) $(TRANS_SCRIPT); \
+		$(VENV_PYTHON_TRANS) $(TRANS_SCRIPT) && \
 		echo "$(GREEN)✓ Translations regenerated$(RESET)"; \
 	else \
 		echo "$(RED)✗ Python venv not available - run 'make venv-setup'$(RESET)"; \
