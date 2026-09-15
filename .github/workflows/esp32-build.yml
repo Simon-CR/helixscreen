@@ -16,6 +16,15 @@ concurrency:
   # cancels anyway.
   cancel-in-progress: ${{ fromJSON(github.ref != 'refs/heads/main') }}
 
+# Every patch application in this workflow is judged from clean: a runner is a
+# fresh clone, so a patch that can neither apply nor reverse is dead, and the
+# build must stop rather than link unpatched code. The flag rides the
+# environment rather than individual steps because the apply that matters
+# usually runs inside `make -j` - a step-level flag on a later apply step finds
+# the stamp current and judges nothing.
+env:
+  HELIX_PATCHES_FROM_CLEAN: "1"
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -27,7 +36,7 @@ jobs:
         with:
           submodules: recursive
       - name: Apply submodule patches
-        run: make apply-patches HELIX_PATCHES_FROM_CLEAN=1
+        run: make apply-patches
       - name: Build firmware
         # Pinned to a commit, not the rolling @v1 major tag: @v1 moves, and this
         # action's whole job is choosing and running a toolchain container, so a

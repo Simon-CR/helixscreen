@@ -20,6 +20,15 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || (startsWith(github.ref, 'refs/heads/release/') && github.sha || github.ref) }}
   cancel-in-progress: true
 
+# Every patch application in this workflow is judged from clean: a runner is a
+# fresh clone, so a patch that can neither apply nor reverse is dead, and the
+# build must stop rather than link unpatched code. The flag rides the
+# environment rather than individual steps because the apply that matters
+# usually runs inside `make -j` - a step-level flag on a later apply step finds
+# the stamp current and judges nothing.
+env:
+  HELIX_PATCHES_FROM_CLEAN: "1"
+
 jobs:
   quality-checks:
     name: Code Quality Checks
@@ -48,7 +57,7 @@ jobs:
     # with a correct table on every run. qc_patch_drift also does a real
     # comparison here rather than reporting "patches not applied yet".
     - name: Apply submodule patches
-      run: make apply-patches HELIX_PATCHES_FROM_CLEAN=1
+      run: make apply-patches
 
     - name: Install pinned tooling (clang-format) into .venv
       uses: nick-fields/retry@v4

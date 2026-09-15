@@ -67,9 +67,12 @@ concurrency:
 # hours, so each job budgets its build and its test phase as separate steps.
 # One cap covering both let a slow build consume the test phase instead.
 
+# CC/CXX ride the same block as the from-clean flag (see build.yml for why the
+# flag is environment-wide rather than per-step).
 env:
   CC: ccache clang
   CXX: ccache clang++
+  HELIX_PATCHES_FROM_CLEAN: "1"
 
 jobs:
   gate:
@@ -407,7 +410,7 @@ jobs:
     # see the post-build state they expect. This also exercises mk/patches.mk's
     # apply logic in CI — the exact machinery that regressed in #700.
     - name: Apply submodule patches
-      run: make apply-patches HELIX_PATCHES_FROM_CLEAN=1
+      run: make apply-patches
 
     - name: Install bats
       run: |
@@ -494,7 +497,7 @@ jobs:
       run: make venv-setup
 
     - name: Apply submodule patches
-      run: make apply-patches HELIX_PATCHES_FROM_CLEAN=1
+      run: make apply-patches
 
     - name: Build with ASAN
       timeout-minutes: 300
@@ -592,7 +595,7 @@ jobs:
       run: make venv-setup
 
     - name: Apply submodule patches
-      run: make apply-patches HELIX_PATCHES_FROM_CLEAN=1
+      run: make apply-patches
 
     - name: Build with TSAN
       timeout-minutes: 300

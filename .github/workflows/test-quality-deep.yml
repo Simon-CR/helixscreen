@@ -46,6 +46,15 @@ concurrency:
   group: test-quality-deep-${{ github.ref }}
   cancel-in-progress: true
 
+# Every patch application in this workflow is judged from clean: a runner is a
+# fresh clone, so a patch that can neither apply nor reverse is dead, and the
+# build must stop rather than link unpatched code. The flag rides the
+# environment rather than individual steps because the apply that matters
+# usually runs inside `make -j` - a step-level flag on a later apply step finds
+# the stamp current and judges nothing.
+env:
+  HELIX_PATCHES_FROM_CLEAN: "1"
+
 jobs:
   cov-diff:
     name: Diff coverage
@@ -75,7 +84,7 @@ jobs:
           libpng-dev libjpeg-dev libnl-3-dev libnl-genl-3-dev
 
     - name: Apply submodule patches
-      run: make apply-patches HELIX_PATCHES_FROM_CLEAN=1
+      run: make apply-patches
 
     - name: Build instrumented test binary
       timeout-minutes: 120
@@ -119,7 +128,7 @@ jobs:
           libpng-dev libjpeg-dev libnl-3-dev libnl-genl-3-dev
 
     - name: Apply submodule patches
-      run: make apply-patches HELIX_PATCHES_FROM_CLEAN=1
+      run: make apply-patches
 
     - name: What would be mutated
       run: |

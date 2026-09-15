@@ -10,6 +10,15 @@ concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 
+# Every patch application in this workflow is judged from clean: a runner is a
+# fresh clone, so a patch that can neither apply nor reverse is dead, and the
+# build must stop rather than link unpatched code. The flag rides the
+# environment rather than individual steps because the apply that matters
+# usually runs inside `make -j` - a step-level flag on a later apply step finds
+# the stamp current and judges nothing.
+env:
+  HELIX_PATCHES_FROM_CLEAN: "1"
+
 jobs:
   # ============================================================================
   # Validate shell scripts before building release packages
@@ -34,7 +43,7 @@ jobs:
       uses: ./.github/actions/init-submodules
 
     - name: Apply submodule patches
-      run: make apply-patches HELIX_PATCHES_FROM_CLEAN=1
+      run: make apply-patches
 
     - name: Install bats
       run: sudo npm install -g bats
@@ -199,6 +208,7 @@ jobs:
           -v "${{ github.workspace }}":/src \
           -v /tmp/.ccache-${{ matrix.docker_image || matrix.platform }}:/root/.cache/ccache \
           -e CCACHE_DIR=/root/.cache/ccache \
+          -e HELIX_PATCHES_FROM_CLEAN \
           -w /src \
           helixscreen/toolchain-${{ matrix.docker_image || matrix.platform }} \
           make PLATFORM_TARGET=${{ matrix.build_target || matrix.platform }} HELIX_PACKAGING=1 SKIP_OPTIONAL_DEPS=1 -j$(nproc)
@@ -289,7 +299,7 @@ jobs:
           gradle-
 
     - name: Apply submodule patches
-      run: make apply-patches HELIX_PATCHES_FROM_CLEAN=1
+      run: make apply-patches
 
     - name: Materialize upload keystore
       id: keystore
