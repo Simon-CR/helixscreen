@@ -24,12 +24,36 @@ namespace helix {
  * require updating the spool record.
  */
 struct ChangeSet {
-    bool filament_level = false; ///< vendor, material, or color changed
-    bool spool_level = false;    ///< remaining weight changed
+    bool filament_level = false; ///< vendor, material, color or the catalog product changed
+    /// vendor, material or color changed: the three fields a Spoolman filament
+    /// is identified by. A catalog product is HelixScreen's own, so a pick
+    /// moves filament_level without needing anything from Spoolman, and only
+    /// these three decide whether a save has enough to write.
+    bool filament_identity = false;
+    bool spool_level = false; ///< remaining weight changed
 
     /// Check if any change was detected
     [[nodiscard]] bool any() const {
         return filament_level || spool_level;
+    }
+};
+
+/**
+ * @brief Which of the three fields a Spoolman filament is identified by this
+ *        slot does not carry.
+ *
+ * A save that has to find or create a filament needs a vendor, a material and a
+ * colour. The editor names the first one missing, so this is a set rather than
+ * a bool.
+ */
+struct MissingFilamentFields {
+    bool brand = false;
+    bool material = false;
+    bool color = false;
+
+    /// Whether any field a filament write needs is absent.
+    [[nodiscard]] bool any() const {
+        return brand || material || color;
     }
 };
 
@@ -42,6 +66,9 @@ struct ChangeSet {
  */
 struct SaveResult {
     bool success = false;
+    /// The fields a filament write needed and the slot did not carry. Set only
+    /// on a save that stopped for them, so it never accompanies success.
+    MissingFilamentFields missing;
     bool created_new_spool = false;  ///< set when a new spool was POSTed
     bool repointed_filament = false; ///< set when PATCH spool changed filament_id
     int new_spool_id = 0;            ///< spool_id assigned on create (0 if unchanged)
@@ -93,6 +120,14 @@ class SpoolmanSlotSaver {
      * (AMS_DEFAULT_SLOT_COLOR gray means "color not set").
      */
     static bool is_filament_complete(const SlotInfo& slot);
+
+    /**
+     * @brief The fields is_filament_complete() finds missing, named one by one.
+     *
+     * One rule for both questions: is_filament_complete() is this answer with
+     * the names dropped.
+     */
+    static MissingFilamentFields missing_filament_fields(const SlotInfo& slot);
 
     /**
      * @brief Split spool edits into the two Spoolman PATCH bodies.
