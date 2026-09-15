@@ -75,7 +75,7 @@ jobs:
           libpng-dev libjpeg-dev libnl-3-dev libnl-genl-3-dev
 
     - name: Apply submodule patches
-      run: make apply-patches
+      run: make apply-patches HELIX_PATCHES_FROM_CLEAN=1
 
     - name: Build instrumented test binary
       timeout-minutes: 120
@@ -119,7 +119,7 @@ jobs:
           libpng-dev libjpeg-dev libnl-3-dev libnl-genl-3-dev
 
     - name: Apply submodule patches
-      run: make apply-patches
+      run: make apply-patches HELIX_PATCHES_FROM_CLEAN=1
 
     - name: What would be mutated
       run: |

@@ -16,6 +16,12 @@ The enum has to be PATCHED as well, not merely present: `lvgl_display_sync_cb.pa
 inserts four values and renumbers everything after them, so the committed worker
 table only matches a patched checkout. Both steps are therefore required.
 
+Every `make apply-patches` step, in any job, must pass
+`HELIX_PATCHES_FROM_CLEAN=1`. A CI runner is always a fresh clone: nothing is
+applied when the recipe starts, so every patch must take its apply branch, and a
+patch that can neither apply nor reverse is dead, not shadowed. Without the flag
+that case only warns and the job builds on with the patch silently missing.
+
 Deliberately not solved by making the bats file skip on a missing header: that
 would turn "the committed table is up to date" green-by-skip, which is the
 failure this gate exists to prevent.
@@ -40,6 +46,7 @@ INVOCATIONS = (
 )
 
 APPLY_PATCHES_RE = re.compile(r"\bmake\b[^\n;|&]*\bapply-patches\b")
+FROM_CLEAN_RE = re.compile(r"HELIX_PATCHES_FROM_CLEAN=1")
 
 
 def steps_of(job):
@@ -63,6 +70,16 @@ def job_has_init(steps):
 
 def job_has_apply_patches(steps):
     return any(APPLY_PATCHES_RE.search(step.get("run") or "") for step in steps)
+
+
+def bare_apply_patches(steps):
+    """Return run strings invoking `make apply-patches` without the from-clean flag."""
+    return [
+        (step.get("run") or "").strip()
+        for step in steps
+        if APPLY_PATCHES_RE.search(step.get("run") or "")
+        and not FROM_CLEAN_RE.search(step.get("run") or "")
+    ]
 
 
 def main():
@@ -92,6 +109,16 @@ def main():
             if not isinstance(job, dict):
                 continue
             steps = steps_of(job)
+
+            for run in bare_apply_patches(steps):
+                errors.append(
+                    f"{wf.name}: job '{job_id}' runs `{run}` without "
+                    "HELIX_PATCHES_FROM_CLEAN=1"
+                    "\n    A CI runner is a fresh clone, so every patch must take its"
+                    " apply branch; without the flag a drifted patch only warns and"
+                    " the job builds on with the patch silently missing."
+                )
+
             invocation = job_runs_shell_suite(steps)
             if not invocation:
                 continue

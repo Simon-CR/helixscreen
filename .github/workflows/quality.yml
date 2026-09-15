@@ -48,7 +48,7 @@ jobs:
     # with a correct table on every run. qc_patch_drift also does a real
     # comparison here rather than reporting "patches not applied yet".
     - name: Apply submodule patches
-      run: make apply-patches
+      run: make apply-patches HELIX_PATCHES_FROM_CLEAN=1
 
     - name: Install pinned tooling (clang-format) into .venv
       uses: nick-fields/retry@v4

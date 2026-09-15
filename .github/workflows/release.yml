@@ -34,7 +34,7 @@ jobs:
       uses: ./.github/actions/init-submodules
 
     - name: Apply submodule patches
-      run: make apply-patches
+      run: make apply-patches HELIX_PATCHES_FROM_CLEAN=1
 
     - name: Install bats
       run: sudo npm install -g bats
@@ -289,7 +289,7 @@ jobs:
           gradle-
 
     - name: Apply submodule patches
-      run: make apply-patches
+      run: make apply-patches HELIX_PATCHES_FROM_CLEAN=1
 
     - name: Materialize upload keystore
       id: keystore

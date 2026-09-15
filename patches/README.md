@@ -156,4 +156,6 @@ cannot tell "already applied" from "drifted and will never apply" — both exit 
 file-dirty test breaks when a patch stops touching X or when another patch dirties it first.
 Patches that share a file can fail both checks on a correctly patched tree, so in-place runs
 warn and `make reapply-patches` is the run that judges: from clean, a patch that will not take
-its apply branch is fatal.
+its apply branch is fatal. CI runners are fresh clones, so every workflow's `make apply-patches`
+step passes `HELIX_PATCHES_FROM_CLEAN=1` — `scripts/check_workflow_submodules.py` fails a
+workflow whose apply step drops it.

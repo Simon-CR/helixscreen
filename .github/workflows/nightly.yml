@@ -407,7 +407,7 @@ jobs:
     # see the post-build state they expect. This also exercises mk/patches.mk's
     # apply logic in CI — the exact machinery that regressed in #700.
     - name: Apply submodule patches
-      run: make apply-patches
+      run: make apply-patches HELIX_PATCHES_FROM_CLEAN=1
 
     - name: Install bats
       run: |
@@ -494,7 +494,7 @@ jobs:
       run: make venv-setup
 
     - name: Apply submodule patches
-      run: make apply-patches
+      run: make apply-patches HELIX_PATCHES_FROM_CLEAN=1
 
     - name: Build with ASAN
       timeout-minutes: 300
@@ -592,7 +592,7 @@ jobs:
       run: make venv-setup
 
     - name: Apply submodule patches
-      run: make apply-patches
+      run: make apply-patches HELIX_PATCHES_FROM_CLEAN=1
 
     - name: Build with TSAN
       timeout-minutes: 300

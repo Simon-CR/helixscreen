@@ -27,7 +27,7 @@ jobs:
         with:
           submodules: recursive
       - name: Apply submodule patches
-        run: make apply-patches
+        run: make apply-patches HELIX_PATCHES_FROM_CLEAN=1
       - name: Build firmware
         # Pinned to a commit, not the rolling @v1 major tag: @v1 moves, and this
         # action's whole job is choosing and running a toolchain container, so a
