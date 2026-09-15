@@ -16,6 +16,7 @@
 #include "data_root_resolver.h"
 #include "display_manager.h"
 #include "runtime_config.h"
+#include "test_helpers/config_test_access.h"
 #include "test_helpers/display_manager_test_access.h"
 
 #include <filesystem>
@@ -502,6 +503,14 @@ class MockPointerBackend : public DisplayBackend {
         });
         return indev;
     }
+    lv_indev_t* create_input_keyboard() override {
+        lv_indev_t* indev = lv_indev_create();
+        lv_indev_set_type(indev, LV_INDEV_TYPE_KEYPAD);
+        lv_indev_set_read_cb(indev, [](lv_indev_t*, lv_indev_data_t* data) {
+            data->state = LV_INDEV_STATE_RELEASED;
+        });
+        return indev;
+    }
     DisplayBackendType type() const override {
         return DisplayBackendType::SDL;
     }
@@ -526,30 +535,70 @@ TEST_CASE_METHOD(ApplicationTestFixture,
     REQUIRE(pointer != nullptr);
 
     // lv_evdev deletes its own device when a read fails, as it does on unplug.
-    // DisplayManager's own m_pointer previously kept pointing at it until a
-    // later swap (a second, real lv_indev_delete on the same freed device) or
-    // a scroll/probe/debug-touch read reached it.
     lv_indev_delete(pointer);
 
     CHECK(mgr.pointer_input() == nullptr);
 }
 
 TEST_CASE_METHOD(ApplicationTestFixture,
+                 "DisplayManager clears its own keyboard when LVGL deletes the device",
+                 "[application][display][indev]") {
+    DisplayManager mgr;
+    DisplayManagerTestAccess::set_backend(mgr, std::make_unique<MockPointerBackend>());
+
+    // rebuild_input_after_backend_swap() calls watch_pointer()/watch_keyboard()
+    // right after creating each device - the same two calls init() makes in
+    // the same order, so this proves init()'s keyboard watch too.
+    DisplayManagerTestAccess::rebuild_input_after_backend_swap(mgr);
+    lv_indev_t* keyboard = mgr.keyboard_input();
+    REQUIRE(keyboard != nullptr);
+
+    lv_indev_delete(keyboard);
+
+    CHECK(mgr.keyboard_input() == nullptr);
+}
+
+namespace {
+
+/// A live pointer that always reports PRESSED at a fixed point.
+void live_pointer_a_read_cb(lv_indev_t*, lv_indev_data_t* data) {
+    data->point = {100, 100};
+    data->state = LV_INDEV_STATE_PRESSED;
+}
+
+/// A second, independent live pointer, PRESSED at a point far enough from
+/// pointer_a's that the debug-touch tick's <5px movement suppression cannot
+/// hide the difference between them.
+void live_pointer_b_read_cb(lv_indev_t*, lv_indev_data_t* data) {
+    data->point = {300, 300};
+    data->state = LV_INDEV_STATE_PRESSED;
+}
+
+} // namespace
+
+TEST_CASE_METHOD(ApplicationTestFixture,
                  "DisplayManager's debug-touch timer reads the current pointer, not a copy "
                  "captured at creation",
                  "[application][display][indev]") {
     DisplayManager mgr;
-    DisplayManagerTestAccess::set_backend(mgr, std::make_unique<MockPointerBackend>());
-    DisplayManagerTestAccess::rebuild_input_after_backend_swap(mgr);
-    lv_indev_t* pointer = mgr.pointer_input();
-    REQUIRE(pointer != nullptr);
+
+    lv_indev_t* pointer_a = lv_indev_create();
+    lv_indev_set_type(pointer_a, LV_INDEV_TYPE_POINTER);
+    lv_indev_set_read_cb(pointer_a, live_pointer_a_read_cb);
+
+    lv_indev_t* pointer_b = lv_indev_create();
+    lv_indev_set_type(pointer_b, LV_INDEV_TYPE_POINTER);
+    lv_indev_set_read_cb(pointer_b, live_pointer_b_read_cb);
+
+    DisplayManagerTestAccess::set_pointer(mgr, pointer_a);
 
     // DisplayManager::instance() is how the timer's plain-function-pointer
     // callback reaches this manager - lv_timer_create() cannot take a
-    // capturing lambda. Restore whatever the process had on the way out.
+    // capturing lambda.
     struct InstanceGuard {
+        DisplayManager* prev = DisplayManager::instance();
         ~InstanceGuard() {
-            DisplayManagerTestAccess::set_active_instance(nullptr);
+            DisplayManagerTestAccess::set_active_instance(prev);
         }
     } instance_guard;
     DisplayManagerTestAccess::set_active_instance(&mgr);
@@ -564,24 +613,152 @@ TEST_CASE_METHOD(ApplicationTestFixture,
 
     lv_timer_t* timer = DisplayManagerTestAccess::install_debug_touch_timer(mgr);
     REQUIRE(timer != nullptr);
-    const uint32_t children_before = lv_obj_get_child_count(lv_layer_top());
+    const uint32_t children_start = lv_obj_get_child_count(lv_layer_top());
 
-    // lv_evdev deletes its own device when a read fails, as it does on
-    // unplug. The watch DisplayManager installed on this device already
-    // clears m_pointer for it.
-    lv_indev_delete(pointer);
-    REQUIRE(mgr.pointer_input() == nullptr);
+    // debug_touch_tick() reads lv_indev_get_state()/get_point(), which return
+    // whatever LVGL's own processing last cached for the device - so each
+    // pointer needs one lv_indev_read() to load its read_cb's sample into
+    // that cache before the tick can see it.
 
-    // Call the tick directly rather than through lv_timer_handler(), which
-    // would also run every other timer live in the process and risk it
-    // reusing the just-freed indev's memory before this one reads it.
-    // Reading pointer_input() fresh sees null and returns before drawing
-    // anything; a tick that instead read a copy of the pointer captured at
-    // timer-creation time would call lv_indev_get_state() on the freed
-    // device.
+    // Positive control: a live PRESSED pointer draws a ripple.
+    lv_indev_read(pointer_a);
     DisplayManagerTestAccess::debug_touch_tick(timer);
+    const uint32_t children_after_a = lv_obj_get_child_count(lv_layer_top());
+    REQUIRE(children_after_a == children_start + 1);
 
-    CHECK(lv_obj_get_child_count(lv_layer_top()) == children_before);
+    // Move m_pointer to pointer_b without deleting pointer_a - it stays alive
+    // throughout, so nothing here depends on freed memory either way. A tick
+    // that reads pointer_input() fresh now sees pointer_b and draws a second
+    // ripple at its point; a tick that instead reads a copy of pointer_a
+    // captured when the timer was created keeps seeing the same point it
+    // already drew, and the <5px movement check suppresses a second ripple.
+    lv_indev_read(pointer_b);
+    DisplayManagerTestAccess::set_pointer(mgr, pointer_b);
+    DisplayManagerTestAccess::debug_touch_tick(timer);
+    const uint32_t children_after_b = lv_obj_get_child_count(lv_layer_top());
+    CHECK(children_after_b == children_after_a + 1);
+
+    // A null pointer_input(), as after an unplug, is read the same way: the
+    // tick returns before drawing anything.
+    DisplayManagerTestAccess::set_pointer(mgr, nullptr);
+    DisplayManagerTestAccess::debug_touch_tick(timer);
+    CHECK(lv_obj_get_child_count(lv_layer_top()) == children_after_b);
 
     lv_timer_delete(timer);
+    lv_indev_delete(pointer_a);
+    lv_indev_delete(pointer_b);
+}
+
+namespace {
+
+/// Drives run_rotation_probe() through its 0deg scan and confirm taps, then
+/// deletes the pointer asynchronously on the confirming tap - the same moment
+/// an unplug mid-probe would - so the probe's closing `if (m_pointer)` guard
+/// runs with m_pointer already null.
+///
+/// The probe reads this callback directly (poll_pointer()/drain_until_release()
+/// call lv_indev_get_read_cb() themselves, bypassing LVGL's own indev polling),
+/// so each call corresponds to one specific read inside wait_for_tap():
+/// 1: scan phase's leftover-contact check (RELEASED, nothing to drain)
+/// 2: scan phase's first poll - latches the tap
+/// 3: draining the scan tap's release
+/// 4: confirm phase's leftover-contact check (RELEASED, nothing to drain)
+/// 5: confirm phase's first poll - latches the tap, and schedules the
+///    pointer's deletion for the lv_timer_handler() call drain_until_release()
+///    is about to make
+int g_probe_read_calls = 0;
+
+void async_delete_indev(void* target) {
+    lv_indev_delete(static_cast<lv_indev_t*>(target));
+}
+
+void scripted_probe_read_cb(lv_indev_t* indev, lv_indev_data_t* data) {
+    ++g_probe_read_calls;
+    data->state = (g_probe_read_calls == 2 || g_probe_read_calls == 5) ? LV_INDEV_STATE_PRESSED
+                                                                       : LV_INDEV_STATE_RELEASED;
+    if (g_probe_read_calls == 5) {
+        lv_async_call(async_delete_indev, indev);
+    }
+}
+
+/// type() == SDL makes run_rotation_probe() skip every set_display_rotation()
+/// call and use press-only tap detection, so the pointer above is the whole
+/// input surface the probe reads.
+class MockRotationProbeBackend : public DisplayBackend {
+  public:
+    lv_display_t* create_display(int, int) override {
+        return nullptr;
+    }
+    lv_indev_t* create_input_pointer() override {
+        return nullptr;
+    }
+    DisplayBackendType type() const override {
+        return DisplayBackendType::SDL;
+    }
+    const char* name() const override {
+        return "MockRotationProbeBackend";
+    }
+    bool is_available() const override {
+        return true;
+    }
+};
+
+} // namespace
+
+TEST_CASE_METHOD(ApplicationTestFixture,
+                 "run_rotation_probe's closing guard survives the pointer vanishing on the "
+                 "confirming tap",
+                 "[application][display][indev][rotation]") {
+    g_probe_read_calls = 0;
+
+    DisplayManager mgr;
+    DisplayManagerTestAccess::set_backend(mgr, std::make_unique<MockRotationProbeBackend>());
+    DisplayManagerTestAccess::set_display(mgr, lv_display_get_default());
+
+    lv_indev_t* pointer = lv_indev_create();
+    lv_indev_set_type(pointer, LV_INDEV_TYPE_POINTER);
+    lv_indev_set_read_cb(pointer, scripted_probe_read_cb);
+    DisplayManagerTestAccess::set_pointer(mgr, pointer);
+    DisplayManagerTestAccess::watch_pointer(mgr);
+
+    // A sentinel disabled from the start: the only way its counter moves is
+    // lv_indev_enable(NULL, true) sweeping every indev, which is exactly what
+    // the guarded line exists to avoid once m_pointer is null.
+    int sentinel_reads = 0;
+    lv_indev_t* sentinel = lv_indev_create();
+    lv_indev_set_type(sentinel, LV_INDEV_TYPE_POINTER);
+    lv_indev_set_driver_data(sentinel, &sentinel_reads);
+    lv_indev_set_read_cb(sentinel, [](lv_indev_t* indev, lv_indev_data_t* data) {
+        *static_cast<int*>(lv_indev_get_driver_data(indev)) += 1;
+        data->state = LV_INDEV_STATE_RELEASED;
+    });
+    lv_indev_enable(sentinel, false);
+
+    // run_rotation_probe() calls Config::save() on the confirmed rotation;
+    // clearing the path first makes that call a no-op regardless of what
+    // another test left in the process-wide Config singleton.
+    std::string& cfg_path = helix::ConfigTestAccess::path(*helix::Config::get_instance());
+    struct ConfigPathGuard {
+        std::string& ref;
+        std::string prev = ref;
+        ~ConfigPathGuard() {
+            ref = prev;
+        }
+    } config_path_guard{cfg_path};
+    cfg_path.clear();
+
+    DisplayManagerTestAccess::run_rotation_probe(mgr);
+
+    REQUIRE(g_probe_read_calls == 5);
+    // The confirming tap's async delete ran inside the probe, through the
+    // same watch that clears m_pointer on a real unplug.
+    REQUIRE(mgr.pointer_input() == nullptr);
+
+    // The guarded lv_indev_enable(m_pointer, true) line was skipped rather
+    // than falling back to lv_indev_enable(NULL, true), so nothing besides
+    // the deleted device's own watch touched the sentinel.
+    lv_indev_read(sentinel);
+    CHECK(sentinel_reads == 0);
+
+    lv_indev_delete(sentinel);
 }
