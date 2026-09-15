@@ -422,3 +422,20 @@ setup_tmp_repo() {
     run python3 "$GATE_ABS" --staged-only
     [ "$status" -eq 0 ]
 }
+
+@test "--staged-only still catches a violation staged then deleted from disk" {
+    # `rm` without staging the deletion leaves the index (and so the commit)
+    # holding the violating content, with `git status` showing MD. A gate
+    # that drops staged paths on Path.is_file() sees no file at all and
+    # reports clean, even though `git show :path` proves the commit will
+    # carry exactly the content it should have flagged.
+    setup_tmp_repo
+    printf 'void f() { spdlog::info("ssid: {}", wifi_ssid); }\n' > src/network/foo.cpp
+    git add src/network/foo.cpp
+    rm src/network/foo.cpp
+    run git status --short
+    contains "MD src/network/foo.cpp" "$output"
+    run python3 "$GATE_ABS" --staged-only
+    [ "$status" -eq 1 ]
+    contains "SSID logged" "$output"
+}

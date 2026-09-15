@@ -1558,8 +1558,10 @@ echo ""
 qc_mem_safety() {
   local EXIT_CODE=0
 if [ "$STAGED_ONLY" = true ]; then
-  # Get all staged .cpp and .xml files for audit
-  AUDIT_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.(cpp|xml)$' || true)
+  # Get all staged .cpp and .xml files for audit. ACMRT admits a rename: a
+  # `git mv` plus an edit reports as R (destination path only), which plain
+  # ACM silently drops - the audit would then never see the edited content.
+  AUDIT_FILES=$(git diff --cached --name-only --diff-filter=ACMRT | grep -E '\.(cpp|xml)$' || true)
 
   if [ -n "$AUDIT_FILES" ]; then
     echo "🛡️  Running memory safety audit on staged files..."

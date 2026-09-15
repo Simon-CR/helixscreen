@@ -428,3 +428,27 @@ setup_tmp_repo() {
     run python3 "$GATE_ABS" --staged-only --max-allowed 0 --summary
     [ "$status" -eq 0 ]
 }
+
+@test "--staged-only catches a violation introduced by a rename plus an edit" {
+    # `git diff --cached --name-only --diff-filter=ACM` (no R) reports
+    # NOTHING for a rename that also carries an edit, since git classifies it
+    # as R rather than M. `--name-only` reports only the rename's
+    # DESTINATION path, which resolves in the index like any other entry
+    # once the filter admits it.
+    setup_tmp_repo
+    printf 'void f() {\n%s\n}\n' \
+        "$(for i in $(seq 1 10); do printf '    int v%d = %d;\n' "$i" "$i"; done)" \
+        > src/printer/old_name.cpp
+    git add src/printer/old_name.cpp
+    git commit -q -m base
+    git mv src/printer/old_name.cpp src/printer/new_name.cpp
+    printf 'void f() {\n%s\n    helix::ui::queue_update([this]() { this->run(); });\n}\n' \
+        "$(for i in $(seq 1 10); do printf '    int v%d = %d;\n' "$i" "$i"; done)" \
+        > src/printer/new_name.cpp
+    git add src/printer/new_name.cpp
+    run git diff --cached --name-status
+    contains "R" "$output"
+    run python3 "$GATE_ABS" --staged-only --max-allowed 0 --summary
+    [ "$status" -eq 1 ]
+    [[ "$output" == *'exceeds baseline'* ]]
+}

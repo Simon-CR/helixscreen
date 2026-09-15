@@ -342,12 +342,17 @@ def is_excluded(path: Path) -> bool:
     return "tests" in path.parts
 
 
-def iter_targets(explicit: Iterable[str]) -> Iterable[Path]:
+def iter_targets(explicit: Iterable[str], check_disk: bool = True) -> Iterable[Path]:
+    """`check_disk=False` for a staged path list: it already came from the
+    index (`git diff --cached`), so a `Path.is_file()` gate would drop a
+    violation that is staged and then deleted from the working tree without
+    being staged for deletion - exactly the content the commit will still
+    carry."""
     explicit = list(explicit)
     if explicit:
         for f in explicit:
             p = Path(f)
-            if p.suffix in SCAN_SUFFIXES and p.is_file() and not is_excluded(p):
+            if p.suffix in SCAN_SUFFIXES and not is_excluded(p) and (not check_disk or p.is_file()):
                 yield p
         return
     for d in SCAN_DIRS:
@@ -361,7 +366,7 @@ def iter_targets(explicit: Iterable[str]) -> Iterable[Path]:
 
 
 def staged_files() -> list[str]:
-    return staged_paths(suffixes=SCAN_SUFFIXES, diff_filter="ACMR")
+    return staged_paths(suffixes=SCAN_SUFFIXES)
 
 
 def main() -> int:
@@ -375,7 +380,7 @@ def main() -> int:
         return 0
 
     total = 0
-    paths = sorted(set(iter_targets(targets)))
+    paths = sorted(set(iter_targets(targets, check_disk=not args.staged_only)))
     if args.staged_only:
         # The set above is the staged diff; the CONTENT has to come from the
         # same place - the index, not whatever a re-read of the path finds on

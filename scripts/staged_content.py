@@ -30,9 +30,10 @@ A gate whose count is a WHOLE-TREE ratchet (check_hardcoded_pixels.py,
 check_panel_widget_scrollable.py) needs a different shape: every file in the
 tree the commit will produce, not just the changed ones, so an unrelated
 file's pre-existing violations still count toward the baseline. Those two
-build that tree with `git write-tree` + `ls-tree` + `cat-file --batch`
-directly; the technique is the same read primitive as this module but the
-file SET is a different question, so it is not duplicated here.
+build that tree with `git write-tree` + `ls-tree`, then read it through
+`catfile_batch()` below - the file SET is a different question from this
+module's `staged_paths()`, so it is not duplicated here, but the READ
+primitive is shared.
 """
 
 from __future__ import annotations
@@ -51,38 +52,59 @@ def repo_root() -> Path:
 
 
 def staged_paths(root: Path | None = None, suffixes: tuple[str, ...] | None = None,
-                  diff_filter: str = 'ACM') -> list[str]:
+                  diff_filter: str = 'ACMRT') -> list[str]:
     """Relative paths staged for commit, as `git diff --cached` reports them.
 
-    `diff_filter` defaults to Added/Copied/Modified - a path staged for
-    deletion has no index entry to read, so callers that want to see those
-    too (rename detection, say) pass a filter that includes it and are
-    expected to cope with `read_index_blobs` skipping a path that vanished.
+    `-z` NUL-separates the output and disables path C-quoting, so a staged
+    name holding a non-ASCII byte, a literal `"`, or a newline still comes
+    back as the real path instead of a quoted-and-escaped string that no
+    later `:path` lookup will resolve.
+
+    `diff_filter` defaults to Added/Copied/Modified/Renamed/Type-changed.
+    `git diff --cached --name-only` reports a rename's DESTINATION path only
+    (verified against `git diff --cached --name-status`), and that path
+    already resolves in the index like any other entry, so admitting R and T
+    costs nothing extra downstream - the alternative, the old ACM-only
+    default, silently skipped every renamed-with-an-edit file. A path staged
+    for deletion still has no index entry to read; callers that want to see
+    those too pass a filter that includes D and are expected to cope with
+    `read_index_blobs` skipping a path that vanished.
     """
     root = root or repo_root()
     out = subprocess.run(
-        ['git', '-C', str(root), 'diff', '--cached', '--name-only',
+        ['git', '-C', str(root), 'diff', '--cached', '--name-only', '-z',
          f'--diff-filter={diff_filter}'],
         capture_output=True, text=True, check=False,
     ).stdout
-    paths = [p for p in out.splitlines() if p]
+    paths = [p for p in out.split('\0') if p]
     if suffixes:
         paths = [p for p in paths if p.endswith(suffixes)]
     return paths
 
 
-def read_index_blobs(paths: Iterable[str], root: Path | None = None) -> Iterator[tuple[str, str]]:
-    """Yield (path, text) reading each path's STAGED content (index stage 0).
+def catfile_batch(items: Iterable[tuple[str, str]],
+                   root: Path | None = None) -> Iterator[tuple[str, str]]:
+    """Yield (label, text) for each (label, revision) pair, via ONE `git
+    cat-file --batch` process.
 
-    One `git cat-file --batch` process streams every blob, keyed by the `:path`
-    revision (index stage 0) - the pre-commit hook runs on every commit across
-    many sessions, so a process-per-file cost here is a process-per-file cost
-    on every one of them. A path with no index entry (staged for deletion, or
-    a caller-supplied path that was never staged) reports "missing" and is
-    skipped rather than yielded with stale disk content.
+    `revision` is any rev-spec `cat-file` accepts - `:path` for the index
+    (stage 0), `<tree>:path` for an arbitrary tree object built with
+    `git write-tree`. Every gate that needs to stream more than one blob out
+    of git shares this one process-management primitive, whatever file SET
+    it chose to read.
+
+    Requests are written one at a time, each followed by a `flush()` and an
+    immediate read of that request's response, before the next request is
+    written. Writing every request first and reading afterward deadlocks
+    once the path list is large enough: git's stdout fills the OS pipe
+    buffer (a few dozen KB) before this process finishes writing, git blocks
+    on that full pipe, and this process's own stdin write then blocks too -
+    neither side is reading the other free, forever. A label with no blob at
+    its revision (deleted, a gitlink/submodule, or a bad spec) reports
+    "missing" and is skipped, never yielded with stale content.
     """
-    paths = list(paths)
-    if not paths:
+    items = list(items)
+    if not items:
         return
     root = root or repo_root()
     proc = subprocess.Popen(
@@ -90,12 +112,10 @@ def read_index_blobs(paths: Iterable[str], root: Path | None = None) -> Iterator
         stdin=subprocess.PIPE, stdout=subprocess.PIPE,
     )
     try:
-        for p in paths:
-            assert proc.stdin is not None
-            proc.stdin.write(f':{p}\n'.encode())
-        proc.stdin.close()
-        assert proc.stdout is not None
-        for p in paths:
+        for label, revision in items:
+            assert proc.stdin is not None and proc.stdout is not None
+            proc.stdin.write(f'{revision}\n'.encode())
+            proc.stdin.flush()
             header = proc.stdout.readline().decode('utf-8', 'replace').split()
             # "<sha> blob <size>" - anything else (missing, a non-blob type)
             # has no bytes to read and nothing following it to skip.
@@ -104,15 +124,26 @@ def read_index_blobs(paths: Iterable[str], root: Path | None = None) -> Iterator
             size = int(header[2])
             content = proc.stdout.read(size)
             proc.stdout.read(1)  # trailing newline after each blob
-            yield (p, content.decode('utf-8', 'ignore'))
+            yield (label, content.decode('utf-8', 'ignore'))
     finally:
         if proc.stdin is not None and not proc.stdin.closed:
             proc.stdin.close()
         proc.wait()
 
 
+def read_index_blobs(paths: Iterable[str], root: Path | None = None) -> Iterator[tuple[str, str]]:
+    """Yield (path, text) reading each path's STAGED content (index stage 0).
+
+    The pre-commit hook runs on every commit across many sessions, so this
+    streams every blob through one `catfile_batch()` process rather than
+    spawning one per file.
+    """
+    root = root or repo_root()
+    yield from catfile_batch(((p, f':{p}') for p in paths), root)
+
+
 def staged_files(root: Path | None = None, suffixes: tuple[str, ...] | None = None,
-                  diff_filter: str = 'ACM') -> Iterator[tuple[str, str]]:
+                  diff_filter: str = 'ACMRT') -> Iterator[tuple[str, str]]:
     """Yield (path, text) for every staged file, content from the index.
 
     The set (`staged_paths`) and the content (`read_index_blobs`) a
