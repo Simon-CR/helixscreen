@@ -16,7 +16,7 @@
 #include "ams_types.h"
 #include "chamber_heater_backend.h"  // For chamber::match — heater candidate scoring
 #include "display_numbering.h"       // helix::ui::tool_label — T<n> gcode tool naming
-#include "klipper_extruder_naming.h" // is_extruder_name: one hot end per numbered extruder
+#include "klipper_extruder_naming.h" // count_extruder_names: one hot end per numbered extruder
 #include "macro_patterns.h"          // Shared macro-name tables (nozzle clean, ...)
 #include "printer_detector.h"        // For BuildVolume struct
 
@@ -647,13 +647,10 @@ class PrinterDiscovery {
         //
         // Never overwrites real tool objects - a klipper-toolchanger name is
         // arbitrary, and ASSIGN_TOOL can remap it.
-        const auto extruder_heater_count =
-            std::count_if(heaters_.begin(), heaters_.end(), [](const std::string& heater) {
-                return helix::is_extruder_name(heater);
-            });
+        const std::size_t extruder_heater_count = helix::count_extruder_names(heaters_);
         if (tool_names_.empty() && extruder_heater_count > 1) {
-            for (int i = 0; i < extruder_heater_count; ++i) {
-                tool_names_.push_back(helix::ui::tool_label(i));
+            for (std::size_t i = 0; i < extruder_heater_count; ++i) {
+                tool_names_.push_back(helix::ui::tool_label(static_cast<int>(i)));
             }
         }
 
