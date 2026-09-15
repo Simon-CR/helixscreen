@@ -131,6 +131,34 @@ EOF
     grep -qF 'status --porcelain -- $$files' mk/patches.mk
 }
 
+@test "a hostile git environment cannot bend the verdict" {
+    # A pre-commit hook exports GIT_DIR/GIT_WORK_TREE/GIT_INDEX_FILE for the
+    # superproject; if those leak into the helper's git calls, every question
+    # about the submodule is answered by the wrong repository. The decoy is
+    # kept dirty so the from-clean check would read "not pristine" from it
+    # and wrongly holster the fatal on a pristine submodule.
+    git init -q "$ROOT/decoy"
+    printf 'decoy\n' > "$ROOT/decoy/one.txt"
+    git -C "$ROOT/decoy" add one.txt
+    git -C "$ROOT/decoy" -c user.email=t@example.invalid -c user.name=Fixture commit -qm decoy
+    printf 'dirty\n' > "$ROOT/decoy/one.txt"
+
+    GIT_DIR="$ROOT/decoy/.git" GIT_WORK_TREE="$ROOT/decoy" \
+        GIT_INDEX_FILE="$ROOT/decoy/.git/index" HELIX_PATCHES_FROM_CLEAN=1 \
+        run "$HELPER" "$SUB" "$ROOT/patches/dead.patch" "fixture patch"
+    [ "$status" -eq 1 ]
+    grep -q 'does not apply to a clean checkout' <<<"$output"
+
+    GIT_DIR="$ROOT/decoy/.git" GIT_WORK_TREE="$ROOT/decoy" \
+        GIT_INDEX_FILE="$ROOT/decoy/.git/index" HELIX_PATCHES_FROM_CLEAN=1 \
+        run "$HELPER" "$SUB" "$ROOT/patches/good.patch" "fixture patch"
+    [ "$status" -eq 0 ]
+    grep -q 'fixture patch applied' <<<"$output"
+    # The patch landed in the submodule; the decoy's dirty file is untouched.
+    grep -q '^ALPHA$' "$SUB/one.txt"
+    [ "$(cat "$ROOT/decoy/one.txt")" = "dirty" ]
+}
+
 @test "redirected output carries no ANSI escapes" {
     run "$HELPER" "$SUB" "$ROOT/patches/good.patch" "fixture patch"
     [ "$status" -eq 0 ]

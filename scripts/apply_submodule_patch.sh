@@ -32,6 +32,16 @@ submodule=$1
 patch_file=$2
 label=$3
 
+# A pre-commit hook exports GIT_DIR, GIT_WORK_TREE and GIT_INDEX_FILE for the
+# superproject, and anything spawning git under it inherits them: `git -C
+# lib/lvgl ...` would then answer with the superproject's repository instead
+# of the submodule's. Scrub them so every question below is answered by the
+# submodule the -C path names (mirrors GIT_NOENV in mk/patches.mk).
+git_submodule() {
+  env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE -u GIT_OBJECT_DIRECTORY \
+    git -C "$submodule" "$@"
+}
+
 if [ -n "${NO_COLOR:-}" ] ||
    ! { [ -t 0 ] && [ -t 2 ] && [ -n "${TERM:-}" ] && [ "${TERM:-}" != "dumb" ]; }; then
   green='' yellow='' red='' reset=''
@@ -50,18 +60,18 @@ from_clean_verified() {
   fi
   # Standalone invocation with no recipe guard: judge the submodule directly.
   # A submodule whose state git cannot read is treated as not verifiable.
-  git -C "$submodule" status --porcelain >/dev/null 2>&1 || return 1
-  [ -z "$(git -C "$submodule" status --porcelain 2>/dev/null)" ]
+  git_submodule status --porcelain >/dev/null 2>&1 || return 1
+  [ -z "$(git_submodule status --porcelain 2>/dev/null)" ]
 }
 
-if git -C "$submodule" apply --check "$patch_file" 2>/dev/null; then
+if git_submodule apply --check "$patch_file" 2>/dev/null; then
   echo "${yellow}→ Applying ${label}...${reset}"
-  if ! git -C "$submodule" apply "$patch_file"; then
+  if ! git_submodule apply "$patch_file"; then
     echo "${red}✗ ${label}: git apply failed${reset}"
     exit 1
   fi
   echo "${green}✓ ${label} applied${reset}"
-elif git -C "$submodule" apply --check --reverse "$patch_file" 2>/dev/null; then
+elif git_submodule apply --check --reverse "$patch_file" 2>/dev/null; then
   echo "${green}✓ ${label} already applied${reset}"
 elif [ "${HELIX_PATCHES_FROM_CLEAN:-0}" = "1" ] && from_clean_verified; then
   echo "${red}✗ ${label} does not apply to a clean checkout — the patch and the submodule disagree." >&2
