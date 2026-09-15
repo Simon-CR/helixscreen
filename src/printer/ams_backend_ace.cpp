@@ -278,10 +278,23 @@ PathTopology AmsBackendAce::get_topology() const {
 PathSegment AmsBackendAce::get_filament_segment() const {
     std::lock_guard<std::mutex> lock(mutex_);
 
-    if (!system_info_.filament_loaded) {
-        return PathSegment::NONE;
+    // A seated tool is the whole answer, and outranks the sensors: both are
+    // still made with filament in the nozzle.
+    if (system_info_.filament_loaded) {
+        return PathSegment::NOZZLE;
     }
-    return PathSegment::NOZZLE;
+
+    // Nothing seated, so anything the sensors see is a strand in flight.
+    if (path_sensors_seen_) {
+        if (toolhead_sensor_) {
+            return PathSegment::TOOLHEAD;
+        }
+        if (rdm_sensor_) {
+            return PathSegment::OUTPUT;
+        }
+    }
+
+    return PathSegment::NONE;
 }
 
 PathSegment AmsBackendAce::get_slot_filament_segment(int slot_index) const {
@@ -773,6 +786,32 @@ void AmsBackendAce::apply_seated_slot_stamp_locked() {
     slot->status = SlotStatus::LOADED;
 }
 
+void AmsBackendAce::apply_path_sensors_locked(const json& data) {
+    // Caller holds mutex_.
+    bool stated = false;
+    if (data.contains("rdm_sensor") && data["rdm_sensor"].is_boolean()) {
+        rdm_sensor_ = data["rdm_sensor"].get<bool>();
+        stated = true;
+    }
+    if (data.contains("toolhead_sensor") && data["toolhead_sensor"].is_boolean()) {
+        toolhead_sensor_ = data["toolhead_sensor"].get<bool>();
+        stated = true;
+    }
+    if (!stated) {
+        return;
+    }
+    path_sensors_seen_ = true;
+
+    // Publish them on the unit so the path canvas knows the hardware is there
+    // and can draw the sensor nodes.
+    if (!system_info_.units.empty()) {
+        auto& unit = system_info_.units[0];
+        unit.has_hub_sensor = true;
+        unit.hub_sensor_triggered = rdm_sensor_;
+        unit.has_toolhead_sensor = true;
+    }
+}
+
 void AmsBackendAce::apply_dryer_state_locked(const json& data) {
     // Caller holds mutex_. One rule for both producers: the WebSocket object
     // path and the REST /status path parse the same hub, so a dryer spelling
@@ -1109,6 +1148,8 @@ void AmsBackendAce::parse_ace_object(const json& data) {
         manager_states_seat_ = true;
         seat_from_global_index_locked(data["current_index"].get<int>());
     }
+
+    apply_path_sensors_locked(data);
 
     // The master switch. Presence is the capability, so a rig without one is
     // left reporting no bypass rather than one that is permanently off.
@@ -1541,6 +1582,7 @@ bool AmsBackendAce::parse_status_response(const json& data) {
         data["ace_manager"].contains("current_index") &&
         data["ace_manager"]["current_index"].is_number_integer()) {
         manager_states_seat_ = true;
+        apply_path_sensors_locked(data["ace_manager"]);
         changed |= seat_from_global_index_locked(data["ace_manager"]["current_index"].get<int>());
     }
 

@@ -381,6 +381,13 @@ class AmsBackendAce : public AmsSubscriptionBackend {
     /// stated dryer current temp overrides. Caller holds mutex_.
     void apply_dryer_state_locked(const nlohmann::json& data);
 
+    /// Fold the manager's path sensors (`rdm_sensor` at the hub,
+    /// `toolhead_sensor` at the extruder) into the cached readings and onto the
+    /// unit. A frame stating neither leaves the last reading standing: notify
+    /// frames carry only changed fields, so silence is not a cleared sensor.
+    /// Caller holds mutex_.
+    void apply_path_sensors_locked(const nlohmann::json& data);
+
     /// Seat the loaded tool from the fork manager's `current_index` — the
     /// global tool index across every unit, -1 = nothing loaded. This backend
     /// displays one unit: below that unit's slot count the global index IS
@@ -516,6 +523,15 @@ class AmsBackendAce : public AmsSubscriptionBackend {
     /// Macros that turn the ACE path off (engaging bypass) and back on.
     std::string bypass_on_macro_;
     std::string bypass_off_macro_;
+
+    /// The two path sensors, when the driver publishes them. An unloaded strand
+    /// parks just short of the hub rather than back at the spool, so these are
+    /// what say where filament actually sits between slot and nozzle
+    /// (prestonbrown/helixscreen#1678). A hub reporting neither leaves the path
+    /// answering from the seat alone.
+    bool path_sensors_seen_ = false;
+    bool rdm_sensor_ = false;
+    bool toolhead_sensor_ = false;
 
     // Shared helper used by every override-clear path (hardware event and
     // explicit user request). Caller must hold mutex_. Erases

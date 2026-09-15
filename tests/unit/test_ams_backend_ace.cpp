@@ -768,6 +768,73 @@ TEST_CASE("ACE filament segment when loaded", "[ams][ace][segment]") {
     REQUIRE(helper.get_filament_segment() == PathSegment::NOZZLE);
 }
 
+// ============================================================================
+// The filament path from the driver's own sensors
+// (prestonbrown/helixscreen#1678)
+//
+// An unloaded strand on this driver is not at the spool: it is retracted to a
+// parking position just short of the hub. The manager publishes the two path
+// sensors, so the path can show where the filament actually is instead of
+// jumping from Spool to Nozzle.
+// ============================================================================
+
+TEST_CASE("ACE filament path follows the driver's sensors", "[ams][ace][segment][1678]") {
+    AmsBackendAceTestHelper helper;
+    helper.set_running(true);
+    AceTestAccess::parse_ace(helper, make_kobra_instance_object());
+
+    SECTION("nothing seated, neither sensor made: nothing on the path") {
+        json mgr = make_kobra_manager_object(-1);
+        mgr["rdm_sensor"] = false;
+        mgr["toolhead_sensor"] = false;
+        AceTestAccess::parse_ace(helper, mgr);
+
+        CHECK(helper.get_filament_segment() == PathSegment::NONE);
+    }
+
+    SECTION("hub sensor only: the strand is between hub and toolhead") {
+        json mgr = make_kobra_manager_object(-1);
+        mgr["rdm_sensor"] = true;
+        mgr["toolhead_sensor"] = false;
+        mgr["target_index"] = 2;
+        AceTestAccess::parse_ace(helper, mgr);
+
+        CHECK(helper.get_filament_segment() == PathSegment::OUTPUT);
+    }
+
+    SECTION("toolhead sensor made but nothing seated yet: it has reached the toolhead") {
+        json mgr = make_kobra_manager_object(-1);
+        mgr["rdm_sensor"] = true;
+        mgr["toolhead_sensor"] = true;
+        mgr["target_index"] = 2;
+        AceTestAccess::parse_ace(helper, mgr);
+
+        CHECK(helper.get_filament_segment() == PathSegment::TOOLHEAD);
+    }
+
+    SECTION("a seated tool outranks the sensors") {
+        json mgr = make_kobra_manager_object(2);
+        mgr["rdm_sensor"] = true;
+        mgr["toolhead_sensor"] = true;
+        AceTestAccess::parse_ace(helper, mgr);
+
+        CHECK(helper.get_filament_segment() == PathSegment::NOZZLE);
+    }
+
+    SECTION("the sensors the driver publishes reach the unit, for the path to draw") {
+        json mgr = make_kobra_manager_object(-1);
+        mgr["rdm_sensor"] = true;
+        mgr["toolhead_sensor"] = false;
+        AceTestAccess::parse_ace(helper, mgr);
+
+        const auto info = helper.get_test_system_info();
+        REQUIRE_FALSE(info.units.empty());
+        CHECK(info.units[0].has_hub_sensor);
+        CHECK(info.units[0].hub_sensor_triggered);
+        CHECK(info.units[0].has_toolhead_sensor);
+    }
+}
+
 TEST_CASE("ACE error segment inference", "[ams][ace][segment]") {
     AmsBackendAceTestHelper helper;
 
