@@ -31,6 +31,10 @@ setup() {
     # otherwise leak into these fixture verdicts. A test that exercises the
     # sentinel sets its own explicitly.
     unset HELIX_FROM_CLEAN_SENTINEL
+    # CI exports the from-clean flag at the workflow level, reaching bats the
+    # same way: without this unset, every warn-branch test below would take the
+    # fatal branch there. Tests that want the flag set pass it per run.
+    unset HELIX_PATCHES_FROM_CLEAN
 
     ROOT="${BATS_TEST_TMPDIR:-$(mktemp -d)}/repo"
     SUB="$ROOT/lib/fake"

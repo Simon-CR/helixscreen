@@ -27,7 +27,8 @@ setup() {
 
     # make exports this into its recipe shells, and bats runs inside one; a
     # leaked real-tree sentinel would change which verdict the helper prints.
-    unset HELIX_FROM_CLEAN_SENTINEL
+    # The from-clean flag leaks the same way from CI's workflow env.
+    unset HELIX_FROM_CLEAN_SENTINEL HELIX_PATCHES_FROM_CLEAN
 
     ROOT="${BATS_TEST_TMPDIR:-$(mktemp -d)}/pm"
     LV="$ROOT/sub_lvgl"
