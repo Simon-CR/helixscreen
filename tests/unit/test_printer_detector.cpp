@@ -4714,10 +4714,11 @@ TEST_CASE_METHOD(PrinterDetectorFixture,
             result.runner_up_confidence, result.margin(), result.tied_count);
 
     // Three extruders must not satisfy tool_count_4 through a loose-prefix
-    // heater name.
-    if (result.detected()) {
-        REQUIRE(result.type_name != "FlashForge Adventurer 5X");
-    }
+    // heater name. The detection itself must hold too: a database edit that
+    // made this hardware match nothing would otherwise turn this into a
+    // vacuous pass.
+    REQUIRE(result.detected());
+    REQUIRE(result.type_name != "FlashForge Adventurer 5X");
 }
 
 // ============================================================================
