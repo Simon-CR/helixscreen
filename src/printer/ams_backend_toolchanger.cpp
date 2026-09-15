@@ -98,7 +98,7 @@ void AmsBackendToolChanger::on_started() {
         // set_discovered_tools() built the slots before start() ran, so they
         // predate everything just loaded. Layer it on now rather than leaving
         // the panel grey until the first status frame arrives.
-        if (!overrides_.empty() && !system_info_.units.empty()) {
+        if (!system_info_.units.empty()) {
             auto& slots = system_info_.units[0].slots;
             for (size_t i = 0; i < slots.size(); ++i) {
                 apply_resolved_lane(slots[i], static_cast<int>(i));
@@ -142,6 +142,10 @@ SlotInfo AmsBackendToolChanger::get_slot_info(int slot_index) const {
     SlotInfo empty;
     empty.slot_index = -1;
     return empty;
+}
+
+SlotInfo* AmsBackendToolChanger::cached_slot_locked(int slot_index) {
+    return system_info_.get_slot_global(slot_index);
 }
 
 // get_current_action(), get_current_tool(), get_current_slot(), is_filament_loaded()
@@ -510,8 +514,10 @@ void AmsBackendToolChanger::handle_status_update(const nlohmann::json& notificat
             }
         }
 
-        // Re-layer the user's spool metadata last, so nothing above can undo it.
-        if (state_changed && !overrides_.empty() && !system_info_.units.empty()) {
+        // Re-layer what the lane resolves last, so nothing above can undo it. A
+        // lane whose only identity is its Spoolman record has no stored
+        // override, so this paints whether or not overrides_ holds one.
+        if (state_changed && !system_info_.units.empty()) {
             auto& slots = system_info_.units[0].slots;
             for (size_t i = 0; i < slots.size(); ++i) {
                 apply_resolved_lane(slots[i], static_cast<int>(i));
@@ -901,12 +907,12 @@ void AmsBackendToolChanger::initialize_tools() {
     refresh_slot_statuses_locked();
 
     // initialize_tools() has just reset every slot to default grey with the tool
-    // name as a placeholder. That reset IS the wipe: on a backend where the
-    // store is the only source of filament identity, a rediscovery would
-    // otherwise throw away the user's colour and material. Re-layer here rather
-    // than waiting for the next status frame, so get_slot_info() is never
-    // briefly wrong.
-    if (!overrides_.empty() && !system_info_.units.empty()) {
+    // name as a placeholder. That reset IS the wipe: klipper-toolchanger reports
+    // no filament identity, so everything a slot shows comes from its lane, and
+    // a rediscovery would otherwise throw it away. Re-layer here rather than
+    // waiting for the next status frame, so get_slot_info() is never briefly
+    // wrong.
+    if (!system_info_.units.empty()) {
         auto& slots = system_info_.units[0].slots;
         for (size_t i = 0; i < slots.size(); ++i) {
             apply_resolved_lane(slots[i], static_cast<int>(i));
@@ -1207,8 +1213,30 @@ AmsError AmsBackendToolChanger::cancel() {
 // Configuration Operations
 // ============================================================================
 
-AmsError AmsBackendToolChanger::set_slot_info(int slot_index, const SlotInfo& info, bool persist) {
-    int old_mapped_tool = -1;
+namespace {
+
+/// Put @p info's filament fields on @p slot, so get_slot_info returns them at
+/// once.
+void write_filament_fields(SlotInfo& slot, const SlotInfo& info) {
+    slot.color_rgb = info.color_rgb;
+    slot.color_name = info.color_name;
+    slot.material = info.material;
+    slot.brand = info.brand;
+    // Carry the catalog product identity through a sync too: one that dropped
+    // it would make the editor snap back to a different variant on the next
+    // get_slot_info().
+    slot.catalog_id = info.catalog_id;
+    slot.product_name = info.product_name;
+    slot.spoolman_id = info.spoolman_id;
+    slot.spool_name = info.spool_name;
+    slot.remaining_weight_g = info.remaining_weight_g;
+    slot.total_weight_g = info.total_weight_g;
+}
+
+} // namespace
+
+AmsError AmsBackendToolChanger::apply_user_edit(int slot_index, const SlotInfo& info,
+                                                const helix::ams::Observation& declared) {
     std::string physical_tool_name;
     {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -1222,24 +1250,8 @@ AmsError AmsBackendToolChanger::set_slot_info(int slot_index, const SlotInfo& in
         if (!system_info_.units.empty() &&
             slot_index < static_cast<int>(system_info_.units[0].slots.size())) {
             auto& slot = system_info_.units[0].slots[slot_index];
-            // The lane as it stood before this edit. stage_user_override needs it
-            // to tell what the user moved from what the editor merely carried
-            // back, so it has to be taken before the writes below.
-            const SlotInfo prior_slot = slot;
-            old_mapped_tool = slot.mapped_tool;
-            slot.color_rgb = info.color_rgb;
-            slot.color_name = info.color_name;
-            slot.material = info.material;
-            slot.brand = info.brand;
-            // No override store on this backend, so this in-memory copy is the
-            // only thing keeping the editor's catalog pick visible until the
-            // next parse.
-            slot.catalog_id = info.catalog_id;
-            slot.product_name = info.product_name;
-            slot.spoolman_id = info.spoolman_id;
-            slot.spool_name = info.spool_name;
-            slot.remaining_weight_g = info.remaining_weight_g;
-            slot.total_weight_g = info.total_weight_g;
+            const int old_mapped_tool = slot.mapped_tool;
+            write_filament_fields(slot, info);
 
             // Tool mapping change: persist via ASSIGN_TOOL outside the lock.
             // slot.mapped_tool stores "which G-code tool number activates this physical
@@ -1259,15 +1271,13 @@ AmsError AmsBackendToolChanger::set_slot_info(int slot_index, const SlotInfo& in
             // Stage the user's edit. Every field is override-exclusive here:
             // klipper-toolchanger supplies no material, colour, brand or weight,
             // so there is nothing underneath for these to fall through to.
-            if (persist) {
-                helix::ams::stage_user_override(overrides_, slot_index, prior_slot, info);
-            }
+            helix::ams::stage_user_override(overrides_, slot_index, info, declared);
         }
     }
 
     // Persist BEFORE the remap's early return, or a slot edit that also moved a
     // tool number would send ASSIGN_TOOL and silently drop the metadata.
-    if (persist && override_store_) {
+    if (override_store_) {
         helix::ams::FilamentSlotOverride ovr_to_save;
         {
             std::lock_guard<std::mutex> lock(mutex_);
@@ -1296,6 +1306,31 @@ AmsError AmsBackendToolChanger::set_slot_info(int slot_index, const SlotInfo& in
     }
 
     return AmsErrorHelper::success();
+}
+
+AmsError AmsBackendToolChanger::sync_external_identity(int slot_index, const SlotInfo& info) {
+    std::lock_guard<std::mutex> lock(mutex_);
+
+    AmsError slot_valid = validate_slot_index(slot_index);
+    if (!slot_valid) {
+        return slot_valid;
+    }
+
+    // The slot keeps the tool number it answers to: only a person's edit moves
+    // the tool map, and moving it sends ASSIGN_TOOL.
+    if (!system_info_.units.empty() &&
+        slot_index < static_cast<int>(system_info_.units[0].slots.size())) {
+        write_filament_fields(system_info_.units[0].slots[slot_index], info);
+    }
+    return AmsErrorHelper::success();
+}
+
+void AmsBackendToolChanger::persist_slot_weight(int slot_index, float remaining_weight_g,
+                                                float total_weight_g) {
+    const std::string tag = backend_log_tag();
+    std::lock_guard<std::mutex> lock(mutex_);
+    helix::ams::persist_override_weight(override_store_.get(), overrides_, slot_index,
+                                        remaining_weight_g, total_weight_g, tag);
 }
 
 AmsError AmsBackendToolChanger::set_tool_mapping_impl(int tool_number, int slot_index) {

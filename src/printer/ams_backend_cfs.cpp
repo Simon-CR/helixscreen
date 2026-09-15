@@ -1802,6 +1802,10 @@ SlotInfo AmsBackendCfs::get_slot_info(int slot_index) const {
     return SlotInfo{};
 }
 
+SlotInfo* AmsBackendCfs::cached_slot_locked(int slot_index) {
+    return system_info_.get_slot_global(slot_index);
+}
+
 // --- Path segments ---
 
 PathSegment AmsBackendCfs::get_filament_segment() const {
@@ -2034,24 +2038,49 @@ AmsError AmsBackendCfs::cancel() {
     return execute_gcode("CANCEL_PRINT");
 }
 
-// --- set_slot_info ---
+// --- apply_user_edit / sync_external_identity ---
 
-AmsError AmsBackendCfs::set_slot_info(int slot_index, const SlotInfo& info, bool persist) {
+namespace {
+
+/// Put @p info's filament fields on @p bay, covering every SlotInfo field the
+/// caller may have set, so get_slot_info returns them at once.
+void write_filament_fields(SlotInfo& bay, const SlotInfo& info) {
+    bay.color_rgb = info.color_rgb;
+    bay.color_name = info.color_name;
+    bay.material = info.material;
+    bay.brand = info.brand;
+    // Carry the catalog product identity through a sync too: one that dropped
+    // it would make the editor snap back to a different variant on the next
+    // get_slot_info().
+    bay.catalog_id = info.catalog_id;
+    bay.product_name = info.product_name;
+    bay.spool_name = info.spool_name;
+    bay.spoolman_id = info.spoolman_id;
+    bay.spoolman_vendor_id = info.spoolman_vendor_id;
+    bay.remaining_weight_g = info.remaining_weight_g;
+    bay.total_weight_g = info.total_weight_g;
+}
+
+} // namespace
+
+SlotInfo* AmsBackendCfs::bay_locked(int slot_index) {
+    // Find the unit and local slot for this global index
+    for (auto& unit : system_info_.units) {
+        int first = unit.first_slot_global_index;
+        int last = first + static_cast<int>(unit.slots.size()) - 1;
+        if (slot_index >= first && slot_index <= last) {
+            return &unit.slots[slot_index - first];
+        }
+    }
+    return nullptr;
+}
+
+AmsError AmsBackendCfs::apply_user_edit(int slot_index, const SlotInfo& info,
+                                        const helix::ams::Observation& declared) {
     {
         std::lock_guard<std::mutex> lock(mutex_);
 
-        // Find the unit and local slot for this global index
-        SlotInfo* target = nullptr;
-        for (auto& unit : system_info_.units) {
-            int first = unit.first_slot_global_index;
-            int last = first + static_cast<int>(unit.slots.size()) - 1;
-            if (slot_index >= first && slot_index <= last) {
-                int local = slot_index - first;
-                target = &unit.slots[local];
-                break;
-            }
-        }
-
+        SlotInfo* target = bay_locked(slot_index);
         if (!target) {
             return AmsErrorHelper::invalid_slot(lane_noun(), slot_index,
                                                 system_info_.total_slots - 1);
@@ -2063,41 +2092,16 @@ AmsError AmsBackendCfs::set_slot_info(int slot_index, const SlotInfo& info, bool
         // in-flight frames will keep reporting until that echo lands.
         const int previous_firmware_id = target->spoolman_id;
 
-        // The bay as it stood before this edit. stage_user_override needs it to
-        // tell what the user moved from what the editor merely carried back, so
-        // it has to be taken before the writes below.
-        const SlotInfo prior_slot = *target;
+        write_filament_fields(*target, info);
 
-        // Update in-memory slot state so get_slot_info returns the edit
-        // immediately — covers every SlotInfo field the caller may have set,
-        // including persist=false previews that must survive until the next
-        // firmware parse.
-        target->color_rgb = info.color_rgb;
-        target->color_name = info.color_name;
-        target->material = info.material;
-        target->brand = info.brand;
-        // Carry the catalog product identity through preview writes too — a
-        // persist=false preview that dropped it would make the editor snap
-        // back to a different variant on the next get_slot_info().
-        target->catalog_id = info.catalog_id;
-        target->product_name = info.product_name;
-        target->spool_name = info.spool_name;
-        target->spoolman_id = info.spoolman_id;
-        target->spoolman_vendor_id = info.spoolman_vendor_id;
-        target->remaining_weight_g = info.remaining_weight_g;
-        target->total_weight_g = info.total_weight_g;
-
-        // For persist=true, stage the override into overrides_ so the edit
-        // survives a restart; the lane's own declaration, filed when the edit
-        // is committed, is what apply_resolved_lane paints on every subsequent
-        // parse. For persist=false we explicitly do NOT touch overrides_ — preview
-        // edits are in-memory only and will be overwritten by the next
-        // firmware parse (expected preview contract).
+        // Stage the override into overrides_ so the edit survives a restart;
+        // the lane's own declaration, filed when the edit is committed, is what
+        // apply_resolved_lane paints on every subsequent parse.
         //
         // NOTE on self-wipe: CFS's hardware-event check is RFID-fingerprint-
         // based (material_type + color_value from firmware), and BOTH halves
         // of that fingerprint are user-writable — push_slot_identity_to_
-        // firmware (below, persist path only) rewrites color_value always and
+        // firmware (below) rewrites color_value always and
         // material_type when a firmware-observed code exists, via
         // BOX_MODIFY_TN_DATA. Firmware echoes those writes back on a later
         // poll, where they are indistinguishable from a physical spool swap
@@ -2106,26 +2110,24 @@ AmsError AmsBackendCfs::set_slot_info(int slot_index, const SlotInfo& info, bool
         // The self-wipe guard lives in push_slot_identity_to_firmware, which
         // registers the expected post-write fingerprints with rfid_tracker_
         // before dispatching the gcode.
-        if (persist) {
-            helix::ams::stage_user_override(overrides_, slot_index, prior_slot, info);
-        }
+        helix::ams::stage_user_override(overrides_, slot_index, info, declared);
 
         // Record our own SPOOLMAN_ID write for the fork dialect (the only
         // CFS whose _BOX_SLOT_SET carries it — stock CFS never writes ids
         // and never reports positive ones, so the record would be inert
         // there). Gate matches the write's reachability exactly:
-        // push_slot_identity_to_firmware's Fork branch runs only for
-        // persist && override_store_. Rule 1 must not read the in-flight
+        // push_slot_identity_to_firmware's Fork branch runs only with
+        // override_store_. Rule 1 must not read the in-flight
         // stale ids as an external re-bind (#1281 on flat-schema CFS).
-        if (persist && override_store_ && macro_variant_ == CfsMacroVariant::Fork) {
+        if (override_store_ && macro_variant_ == CfsMacroVariant::Fork) {
             record_own_spool_write(slot_index, info.spoolman_id, previous_firmware_id);
         }
     }
 
-    spdlog::info("[AMS CFS] Updated slot {} info (persist={}): {} {}", slot_index, persist,
-                 info.material, info.color_name);
+    spdlog::info("[AMS CFS] Updated slot {} info: {} {}", slot_index, info.material,
+                 info.color_name);
 
-    if (persist && override_store_) {
+    if (override_store_) {
         // Re-read from overrides_ under the lock to pick up the staged copy.
         helix::ams::FilamentSlotOverride ovr_to_save;
         {
@@ -2161,6 +2163,34 @@ AmsError AmsBackendCfs::set_slot_info(int slot_index, const SlotInfo& info, bool
     return AmsErrorHelper::success();
 }
 
+AmsError AmsBackendCfs::sync_external_identity(int slot_index, const SlotInfo& info) {
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+
+        SlotInfo* target = bay_locked(slot_index);
+        if (!target) {
+            return AmsErrorHelper::invalid_slot(lane_noun(), slot_index,
+                                                system_info_.total_slots - 1);
+        }
+        // overrides_ is left alone: a synced value lives in memory only, and
+        // the next firmware parse overwrites it.
+        write_filament_fields(*target, info);
+    }
+
+    spdlog::info("[AMS CFS] Synced slot {} info: {} {}", slot_index, info.material,
+                 info.color_name);
+    emit_event(EVENT_SLOT_CHANGED, std::to_string(slot_index));
+    return AmsErrorHelper::success();
+}
+
+void AmsBackendCfs::persist_slot_weight(int slot_index, float remaining_weight_g,
+                                        float total_weight_g) {
+    const std::string tag = backend_log_tag();
+    std::lock_guard<std::mutex> lock(mutex_);
+    helix::ams::persist_override_weight(override_store_.get(), overrides_, slot_index,
+                                        remaining_weight_g, total_weight_g, tag);
+}
+
 void AmsBackendCfs::push_slot_identity_to_firmware(int global_index, const std::string& material,
                                                    const std::string& brand,
                                                    const std::string& catalog_id,
@@ -2171,7 +2201,7 @@ void AmsBackendCfs::push_slot_identity_to_firmware(int global_index, const std::
     //
     // No color-value validation here on purpose: pure black (0x000000) is a
     // legitimate user choice and we don't want to silently drop it. The
-    // caller (set_slot_info, which sets color_set=true on the override) is
+    // caller (apply_user_edit, which sets color_set=true on the override) is
     // responsible for only invoking this when a real color was chosen.
     constexpr int CFS_MAX_SLOTS = 16; // 4 units × 4 slots
     if (global_index < 0 || global_index >= CFS_MAX_SLOTS) {

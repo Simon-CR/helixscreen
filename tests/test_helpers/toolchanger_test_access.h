@@ -86,6 +86,12 @@ class ToolChangerTestAccess {
         helix::test::file_override_as_lane_records(b, slot_index, ovr);
     }
 
+    /// True once any slot holds a stored override.
+    static bool has_overrides(const AmsBackendToolChanger& b) {
+        std::lock_guard<std::mutex> lock(b.mutex_);
+        return !b.overrides_.empty();
+    }
+
     /// Name of the Moonraker DB namespace the store was pointed at, so a test
     /// can assert it is the SHARED "lane_data" and not a private one. Empty
     /// when no store was built (null API).

@@ -199,7 +199,11 @@ class AmsBackendCfs : public AmsSubscriptionBackend {
     }
 
     // Slot management (user overrides persisted via shared FilamentSlotOverrideStore)
-    AmsError set_slot_info(int slot_index, const SlotInfo& info, bool persist = true) override;
+    AmsError apply_user_edit(int slot_index, const SlotInfo& info,
+                             const helix::ams::Observation& declared) override;
+    AmsError sync_external_identity(int slot_index, const SlotInfo& info) override;
+    void persist_slot_weight(int slot_index, float remaining_weight_g,
+                             float total_weight_g) override;
     AmsError set_tool_mapping_impl(int tool_number, int slot_index) override;
 
     // Explicit user-initiated override clear (e.g. "Clear slot metadata" button
@@ -495,6 +499,7 @@ class AmsBackendCfs : public AmsSubscriptionBackend {
         return "[AMS CFS]";
     }
     void on_started() override;
+    SlotInfo* cached_slot_locked(int slot_index) override;
 
     /// Push the user's chosen slot identity back to firmware via the
     /// `BOX_MODIFY_TN_DATA` gcode (registered by the box_wrapper C extension,
@@ -590,6 +595,10 @@ class AmsBackendCfs : public AmsSubscriptionBackend {
     /// (that firmware reports the external slot itself) as is any non-IDLE
     /// action (a mid-load sensor rise is the bay feed, not a bypass engage).
     void derive_stock_bypass_locked();
+
+    /// The bay @p slot_index names, or nullptr when it names none. Caller
+    /// holds mutex_.
+    SlotInfo* bay_locked(int slot_index);
 
     // Callback lifetime management
     helix::AsyncLifetimeGuard lifetime_;
@@ -764,7 +773,7 @@ class AmsBackendCfs : public AmsSubscriptionBackend {
     int runout_lane_ = -1;
 
     // Persistent per-slot overrides. Writers (on_started bulk load,
-    // set_slot_info persist path, check_hardware_event_clear) all hold
+    // apply_user_edit, check_hardware_event_clear) all hold
     // mutex_. Reads happen inside the parse path's lane_data mirror and the
     // clear helpers, which are also called under mutex_.
     std::unique_ptr<helix::ams::FilamentSlotOverrideStore> override_store_;

@@ -36,10 +36,10 @@ struct LaneSources {
     }
 
     /// Drop one source's record entirely. This covers a clear that discards
-    /// what that source knew; it does not cover `src/ui/ui_ams_edit_overlay.cpp`'s
-    /// unlink, which keeps identity across the clear and needs a record demoted
-    /// to a weaker source rather than dropped. No promotion/demotion operation
-    /// exists for that case.
+    /// what that source knew. It is not by itself the editor's unlink that
+    /// keeps the slot's identity: AmsBackend::commit_user_edit() (ams_backend.h)
+    /// drops the declaring records and then files what the slot kept at the
+    /// rungs its stored record reloads it on.
     void drop(ObservationSource s) {
         record_for(*this, s).reset();
     }

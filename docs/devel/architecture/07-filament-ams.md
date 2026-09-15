@@ -297,8 +297,9 @@ Spoolman on any of them.
 ([`include/lane_source_store.h#ingest`](../../../include/lane_source_store.h)) is the one way a
 machine reading reaches the store; `commit_slot_edit()`
 (`include/lane_source_store.h#commit_slot_edit`) is the one way a human edit does, called from
-`AmsState::commit_slot_edit` (`src/printer/ams_state.cpp#commit_slot_edit`) once the backend has
-accepted the edit, so a slot the backend refused gets no declaration. Each refuses the other's
+`AmsBackend::commit_user_edit` (`src/printer/ams_backend.cpp#AmsBackend::commit_user_edit`), which
+`AmsState::commit_slot_edit` (`src/printer/ams_state.cpp#commit_slot_edit`) runs, once the backend
+has accepted the edit, so a slot the backend refused gets no declaration. Each refuses the other's
 source. They also differ in what a write *means*: `ingest()` replaces that source's record
 whole, so a field the source did not observe this time stops contributing - which is what stops
 a stale frame re-asserting a value its author no longer stands behind, and why a guard that
@@ -428,9 +429,10 @@ Spoolman integration is deliberately *not* a backend. `SpoolmanManager` ([`inclu
 - periodic weight polling via `lv_timer`, with refcounted start/stop;
 - a circuit breaker that suppresses error toasts while Spoolman is unreachable;
 - a Spoolman availability observer that auto-stops polling when the service disappears;
-- a transient identity cache (with negative caching for deleted spools) feeding the filament display-name resolver.
+- a transient identity cache (with negative caching for deleted spools) feeding the filament display-name resolver;
+- each fetched spool record, filed as its lane's `Spoolman` record through `ingest()` (`SpoolmanManager::file_spool_on_lane`), so an edit made on the Spoolman server reaches the lane. A "not found" answer drops that record; an unreachable server leaves it standing.
 
-Its weight refresh writes back into the primary backend's slots with `set_slot_info(..., persist=false)` ([`src/printer/spoolman_manager.cpp#refresh_spoolman_weights`](../../../src/printer/spoolman_manager.cpp#L426)-434) — `persist=true` would emit G-code, the firmware would report the new weight, and the poll would loop forever. All Spoolman RPC goes through `server.spoolman.proxy` via the `MoonrakerSpoolmanAPI` sub-API (chapter 04); the spool browser/wizard UI ([`src/ui/ui_panel_spoolman.cpp`](../../../src/ui/ui_panel_spoolman.cpp), [`src/ui/ui_spool_wizard.cpp`](../../../src/ui/ui_spool_wizard.cpp)) talks to that API, not to `AmsState`.
+Its weight refresh writes back into the primary backend's slots with `update_slot_weight(..., /*persist=*/false)` ([`src/printer/spoolman_manager.cpp#refresh_spoolman_weights`](../../../src/printer/spoolman_manager.cpp)), which puts the weight on the live slot and nothing else. A whole-slot write would restate identity to firmware, the firmware would report it back, and the poll would loop. All Spoolman RPC goes through `server.spoolman.proxy` via the `MoonrakerSpoolmanAPI` sub-API (chapter 04); the spool browser/wizard UI ([`src/ui/ui_panel_spoolman.cpp`](../../../src/ui/ui_panel_spoolman.cpp), [`src/ui/ui_spool_wizard.cpp`](../../../src/ui/ui_spool_wizard.cpp)) talks to that API, not to `AmsState`.
 
 One trap the interface answers: pushing "active spool" to Spoolman is gated on `manages_active_spool()` ([`src/printer/ams_state.cpp#"if (api_ && slot_info.spoolman_id > 0 &&"`](../../../src/printer/ams_state.cpp#L3245)-3253). AFC, for instance, updates Spoolman itself when HelixScreen sends its native spool command — calling Spoolman directly would update the widget while bypassing the firmware's own state (#644).
 

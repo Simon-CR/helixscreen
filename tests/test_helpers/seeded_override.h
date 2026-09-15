@@ -11,6 +11,8 @@
 #include "lane_legacy_migration.h"
 #include "lane_source_store.h"
 #include "lane_translation.h"
+#include "spoolman_manager.h"
+#include "spoolman_types.h"
 
 #include "hv/json.hpp"
 
@@ -57,55 +59,32 @@ inline void file_override_as_lane_records(const AmsBackend& backend, int slot_in
 
 /// Edit a slot the way the application does.
 ///
-/// AmsState::commit_slot_edit writes the backend and THEN records the user's
-/// statement in the lane model, using the same before/after pair the editor
-/// had. A fixture that calls set_slot_info alone performs only the first half,
-/// so the lane keeps whatever it held and the edit has nothing standing behind
-/// it.
+/// AmsState::commit_slot_edit hands the backend write and the lane record to
+/// AmsBackend::commit_user_edit(), and this calls that same method, so a
+/// fixture's edit passes the declaration to apply_user_edit, drops what a
+/// binding change leaves stale, files the declaration and repaints exactly as
+/// production does. A fixture that calls apply_user_edit alone performs only the
+/// backend write, so the lane keeps whatever it held and the edit has nothing
+/// standing behind it.
 ///
-/// Deliberately reuses user_edit_observation rather than filing every field:
-/// that function decides what a person actually claimed, and a fixture that
-/// claimed more than production does would pass on a stronger declaration than
-/// the application ever files.
+/// The editor's before-state is the slot as it stands, which is what the
+/// editor opens on.
 inline void edit_slot_as_user(AmsBackend& backend, int slot_index, const helix::SlotInfo& info) {
-    const helix::SlotInfo original = backend.get_slot_info(slot_index);
-    backend.set_slot_info(slot_index, info, /*persist=*/true);
-    helix::ams::commit_slot_edit(backend.lane_id(slot_index),
-                                 helix::ams::user_edit_observation(original, info));
+    (void)backend.commit_user_edit(slot_index, backend.get_slot_info(slot_index), info);
 }
 
-/// The identity a linked spool carries, as Spoolman states it.
+/// File what Spoolman says a linked spool is, the way the application does.
 ///
 /// Linking is a statement about the binding, so user_edit_observation files the
 /// id alone; the brand, colour and material that rode in with it are the
-/// server's word, and in the application SpoolmanManager files them. A fixture
-/// that links a spool without this has a lane naming an id nothing describes.
-inline void spool_states(const AmsBackend& backend, int slot_index, const helix::SlotInfo& info) {
-    helix::ams::Observation server(helix::ams::ObservationSource::Spoolman);
-    if (info.spoolman_id > 0) {
-        server.spoolman_id = info.spoolman_id;
-    }
-    if (!info.brand.empty()) {
-        server.brand = info.brand;
-    }
-    if (!info.spool_name.empty()) {
-        server.spool_name = info.spool_name;
-    }
-    if (!info.material.empty()) {
-        server.material = info.material;
-    }
-    if (helix::ams::is_declarable_color(info.color_rgb)) {
-        server.color_rgb = info.color_rgb;
-    }
-    // Spoolman owns a linked spool's consumption, so the weights are its word
-    // too and Moonraker decrements them there.
-    if (info.remaining_weight_g >= 0.0F) {
-        server.remaining_weight_g = info.remaining_weight_g;
-    }
-    if (info.total_weight_g >= 0.0F) {
-        server.total_weight_g = info.total_weight_g;
-    }
-    helix::ams::ingest(backend.lane_id(slot_index), server);
+/// server's word, and SpoolmanManager files them on every fetch of the spool.
+/// This goes through that same SpoolmanManager::file_spool_on_lane(), for a
+/// backend test with no manager and no server behind it, so a fixture files
+/// exactly the fields production does. A fixture that links a spool without
+/// this has a lane naming an id nothing describes.
+inline void spool_states(const AmsBackend& backend, int slot_index, const SpoolInfo& spool) {
+    SpoolmanManager::file_spool_on_lane(backend.lane_id(slot_index), spool,
+                                        backend.tracks_weight_locally());
 }
 
 } // namespace helix::test

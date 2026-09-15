@@ -6,6 +6,7 @@
 #include "ui_observer_guard.h"
 
 #include "filament_display_name.h"
+#include "lane_source_store.h"
 #include "lvgl/lvgl.h"
 #include "spoolman_types.h"
 
@@ -31,6 +32,8 @@ class IMoonrakerAPI;
  * - Print state observer to auto-refresh weights on print start/end/pause
  * - Spoolman availability observer to auto-stop polling when Spoolman disappears
  * - The transient Spoolman **identity** cache (see below)
+ * - Each fetched spool record, filed as its lane's Spoolman record
+ *   (`file_spool_on_lane()`)
  *
  * @note The charter used to be "polling + circuit breaker, holds no spool data".
  *       It is deliberately wider now: this class also owns a per-`spool_id`
@@ -124,6 +127,29 @@ class SpoolmanManager {
      *         refresh_spoolman_weights(), which this deliberately runs before.
      */
     static bool cache_identity(const SpoolInfo& spool);
+
+    /**
+     * @brief File a fetched spool record as a lane's Spoolman record
+     *
+     * Replaces that record whole, so a field the newest record leaves unstated
+     * stops outranking the lane's other sources, and refiling an unchanged
+     * record changes nothing.
+     *
+     * Identity comes from helix::ams::spool_identity_observation(). The weights are filed
+     * only when Spoolman holds an initial weight, and the remaining weight only
+     * for a backend that does not track it locally: that backend's own number
+     * is the fresher one, the same rule the weight poll applies to the slot.
+     *
+     * Touches no manager state, so it needs no instance and no lock.
+     *
+     * @param lane The lane the spool is linked on
+     * @param spool The record Spoolman returned
+     * @param backend_tracks_weight_locally The owning backend's tracks_weight_locally()
+     * @return true when the lane's Spoolman record differs from the one it held
+     *         before, which is what makes the lane's slots worth repainting
+     */
+    static bool file_spool_on_lane(helix::ams::LaneId lane, const SpoolInfo& spool,
+                                   bool backend_tracks_weight_locally);
 
     /// Mark a spool id as unresolvable (Spoolman answered "no such spool").
     static void note_identity_unresolvable(int spool_id);

@@ -4,6 +4,7 @@
 #include "ui_ams_context_menu.h"
 
 #include "../lvgl_ui_test_fixture.h"
+#include "../test_helpers/backend_user_edit.h"
 #include "../test_helpers/print_state_test_drivers.h"
 #include "../ui_test_utils.h"
 #include "ams_backend_mock.h"
@@ -735,7 +736,7 @@ TEST_CASE("The option list is built from the live backend virtual, not a local r
         SlotInfo info = backend.get_slot_info(slot);
         info.material = material;
         info.status = SlotStatus::AVAILABLE;
-        REQUIRE(backend.set_slot_info(slot, info));
+        REQUIRE(helix::test::apply_edit(backend, slot, info));
     };
     set_material(0, "PLA");
     set_material(1, "PLA");

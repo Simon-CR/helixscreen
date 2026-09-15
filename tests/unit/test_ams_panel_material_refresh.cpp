@@ -30,6 +30,7 @@
 #include "ui_spool_canvas.h"
 
 #include "../test_fixtures.h"
+#include "../test_helpers/backend_user_edit.h"
 #include "ams_backend_mock.h"
 #include "ams_state.h"
 #include "ams_types.h"
@@ -87,7 +88,7 @@ TEST_CASE_METHOD(XMLTestFixture, "AmsPanel slot material stays correct across na
     {
         SlotInfo info = mock->get_slot_info(0);
         info.material = "PLA";
-        REQUIRE(mock->set_slot_info(0, info).success());
+        REQUIRE(helix::test::apply_edit(*mock, 0, info).success());
     }
 
     auto* backend = mock.get();
@@ -125,7 +126,7 @@ TEST_CASE_METHOD(XMLTestFixture, "AmsPanel slot material stays correct across na
     {
         SlotInfo info = backend->get_slot_info(0);
         info.material = "PETG"; // color_rgb left untouched — the #981 case
-        REQUIRE(backend->set_slot_info(0, info).success());
+        REQUIRE(helix::test::apply_edit(*backend, 0, info).success());
     }
     AmsState::instance().sync_from_backend();
     process_lvgl(20);
@@ -162,7 +163,7 @@ TEST_CASE_METHOD(XMLTestFixture,
     {
         SlotInfo info = mock->get_slot_info(0);
         info.material = "PLA";
-        REQUIRE(mock->set_slot_info(0, info).success());
+        REQUIRE(helix::test::apply_edit(*mock, 0, info).success());
     }
 
     auto* backend = mock.get();
@@ -192,7 +193,7 @@ TEST_CASE_METHOD(XMLTestFixture,
     {
         SlotInfo info = backend->get_slot_info(0);
         info.material = "PETG"; // color_rgb left untouched
-        REQUIRE(backend->set_slot_info(0, info).success());
+        REQUIRE(helix::test::apply_edit(*backend, 0, info).success());
     }
     AmsState::instance().sync_from_backend();
     process_lvgl(20);

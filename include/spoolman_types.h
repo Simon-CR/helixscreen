@@ -6,6 +6,7 @@
 #include "ams_types.h"
 #include "color_utils.h"
 #include "filament_display_name.h"
+#include "lane_observation.h"
 
 #include <cstdint>
 #include <functional>
@@ -260,6 +261,60 @@ void sort_spools_by_recency(std::vector<SpoolInfo>& spools);
 // SpoolInfo → SlotInfo Conversion
 // ============================================================================
 
+namespace helix::ams {
+
+/**
+ * @brief What a Spoolman spool record states about a filament's identity
+ *
+ * The one mapping from a spool record's fields onto the identity fields a slot
+ * and a lane carry. apply_spool_to_slot() writes it onto a slot, and
+ * SpoolmanManager::file_spool_on_lane() files it as a lane's Spoolman record,
+ * so the two cannot disagree about which spool field means what.
+ *
+ * A field the record leaves empty or zero is not observed. A spool with no
+ * vendor says nothing about a lane's brand, which is a different statement
+ * from the brand being blank, so a weaker source's brand is left to stand. The
+ * colour is observed only when the hex parses.
+ *
+ * Identity only: an unknown weight needs a different answer on a slot, which
+ * has no "not observed", than on a lane, which does.
+ */
+inline helix::ams::Observation spool_identity_observation(const SpoolInfo& spool) {
+    helix::ams::Observation stated(helix::ams::ObservationSource::Spoolman);
+    if (spool.id > 0) {
+        stated.spoolman_id = spool.id;
+    }
+    if (spool.vendor_id > 0) {
+        stated.spoolman_vendor_id = spool.vendor_id;
+    }
+    if (!spool.vendor.empty()) {
+        stated.brand = spool.vendor;
+    }
+    if (!spool.material.empty()) {
+        stated.material = spool.material;
+    }
+    // Spoolman's filament name goes to spool_name, never to color_name.
+    // spool_name means "a filament name" on every other writer (AFC's
+    // filament_name, CFS's `name`, Snapmaker's RFID SUB_TYPE), and
+    // docs/specs/filament_slots.md pins the lane_data field OrcaSlicer and
+    // Happy Hare read as "distinct from vendor + material". A synthesized
+    // "vendor material" would not survive the card either:
+    // compose_filament_label() dedups the brand and the material back out,
+    // leaving nothing behind.
+    if (!spool.filament_name.empty()) {
+        stated.spool_name = spool.filament_name;
+    }
+    if (!spool.color_hex.empty()) {
+        uint32_t rgb = 0;
+        if (helix::parse_hex_color(spool.color_hex.c_str(), rgb)) {
+            stated.color_rgb = rgb;
+        }
+    }
+    return stated;
+}
+
+} // namespace helix::ams
+
 /**
  * @brief Apply SpoolInfo fields onto a SlotInfo
  *
@@ -276,20 +331,15 @@ void sort_spools_by_recency(std::vector<SpoolInfo>& spools);
  * @param spool Source SpoolInfo from Spoolman
  */
 inline void apply_spool_to_slot(helix::SlotInfo& info, const SpoolInfo& spool) {
-    info.spoolman_id = spool.id;
+    // A link replaces the slot's identity whole, so a field the spool does not
+    // state lands blank rather than leaving the previous spool's value behind.
+    const helix::ams::Observation stated = helix::ams::spool_identity_observation(spool);
+    info.spoolman_id = stated.spoolman_id.value_or(0);
     info.spoolman_filament_id = spool.filament_id;
-    info.spoolman_vendor_id = spool.vendor_id;
-    info.material = spool.material;
-    info.brand = spool.vendor;
-    // Spoolman's filament name goes to spool_name, never to color_name.
-    // spool_name means "a filament name" on every other writer (AFC's
-    // filament_name, CFS's `name`, Snapmaker's RFID SUB_TYPE), and
-    // docs/specs/filament_slots.md pins the lane_data field OrcaSlicer and
-    // Happy Hare read as "distinct from vendor + material". Synthesizing
-    // "vendor material" here also destroyed the name outright at the card:
-    // compose_filament_label() dedups the brand and the material back out,
-    // leaving nothing behind.
-    info.spool_name = spool.filament_name;
+    info.spoolman_vendor_id = stated.spoolman_vendor_id.value_or(0);
+    info.material = stated.material.value_or(std::string{});
+    info.brand = stated.brand.value_or(std::string{});
+    info.spool_name = stated.spool_name.value_or(std::string{});
     info.multi_color_hexes = spool.multi_color_hexes;
     info.remaining_weight_g = static_cast<float>(spool.remaining_weight_g);
     info.total_weight_g = static_cast<float>(spool.initial_weight_g);
@@ -310,12 +360,9 @@ inline void apply_spool_to_slot(helix::SlotInfo& info, const SpoolInfo& spool) {
     // the colour: an existing user-entered colour label describes the colour it
     // was entered against, so it survives a link that carries no colour and is
     // dropped by one that does.
-    if (!spool.color_hex.empty()) {
-        uint32_t rgb = 0;
-        if (helix::parse_hex_color(spool.color_hex.c_str(), rgb)) {
-            info.color_rgb = rgb;
-            info.color_name.clear();
-        }
+    if (stated.color_rgb.has_value()) {
+        info.color_rgb = *stated.color_rgb;
+        info.color_name.clear();
     }
 }
 

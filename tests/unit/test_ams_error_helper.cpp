@@ -154,7 +154,7 @@ TEST_CASE("Happy Hare reports an out-of-range gate as a gate", "[ams][numbering]
     helix::AmsBackendHappyHare backend(nullptr, nullptr);
     REQUIRE(backend.lane_noun() == ui::LaneNoun::Gate);
 
-    const auto err = backend.set_slot_info(2, helix::SlotInfo{}, /*persist=*/false);
+    const auto err = backend.sync_external_identity(2, helix::SlotInfo{});
     CHECK(err.result == AmsResult::INVALID_SLOT);
     CHECK(err.user_msg == "Gate: Invalid number");
 }
@@ -166,7 +166,7 @@ TEST_CASE("the mock backend reports a bad index without deadlocking", "[ams][num
     // assertion.
     AmsBackendMock mock(4);
     REQUIRE(mock.get_type() == AmsType::HAPPY_HARE); // the mock's default persona
-    const auto err = mock.set_slot_info(9, helix::SlotInfo{}, /*persist=*/false);
+    const auto err = mock.sync_external_identity(9, helix::SlotInfo{});
     CHECK(err.result == AmsResult::INVALID_SLOT);
     CHECK(err.user_msg == "Gate: Invalid number");
 }

@@ -22,6 +22,7 @@
 #include "ui_update_queue.h"
 
 #include "../lvgl_test_fixture.h"
+#include "../test_helpers/backend_user_edit.h"
 #include "ams_backend_mock.h"
 #include "ams_state.h"
 #include "ams_types.h"
@@ -376,7 +377,7 @@ TEST_CASE_METHOD(
     before.spoolman_id = 1; // mock spool 1: Polymaker / "Jet Black" / PLA
     before.remaining_weight_g = 111.0f;
     before.total_weight_g = 111.0f;
-    h.backend->set_slot_info(0, before);
+    helix::test::apply_edit(*h.backend, 0, before);
     before = h.backend->get_slot_info(0);
 
     REQUIRE_FALSE(SpoolmanManager::find_identity(1).has_value());
@@ -415,7 +416,7 @@ TEST_CASE_METHOD(IdentityCacheFixture,
     SlotInfo slot = h.backend->get_slot_info(0);
     slot.spoolman_id = 1;
     slot.remaining_weight_g = 111.0f;
-    h.backend->set_slot_info(0, slot);
+    helix::test::apply_edit(*h.backend, 0, slot);
 
     h.poll();
     REQUIRE(SpoolmanManager::find_identity(1).has_value());
@@ -447,7 +448,7 @@ TEST_CASE_METHOD(IdentityCacheFixture,
     slot.spoolman_id = 900; // no such spool in the mock inventory
     slot.remaining_weight_g = 111.0f;
     slot.total_weight_g = 111.0f;
-    h.backend->set_slot_info(0, slot);
+    helix::test::apply_edit(*h.backend, 0, slot);
 
     h.poll();
 
@@ -489,7 +490,7 @@ void make_afc_slot(AmsBackendMock* backend, int spoolman_id) {
     slot.brand.clear();
     slot.material = "PLA";
     slot.color_rgb = 0xFFB6C1; // the hex whose algorithmic name is the bug
-    backend->set_slot_info(0, slot);
+    helix::test::apply_edit(*backend, 0, slot);
 }
 
 } // namespace
@@ -548,7 +549,7 @@ TEST_CASE_METHOD(IdentityCacheFixture,
     SECTION("no spool id — unchanged from firmware-only behaviour") {
         SlotInfo slot = backend->get_slot_info(0);
         slot.spoolman_id = 0;
-        backend->set_slot_info(0, slot);
+        helix::test::apply_edit(*backend, 0, slot);
 
         // A cached identity for the id the slot no longer carries must not leak in.
         SpoolmanManager::cache_identity(make_spool(77, "Polymaker", "Ambrosia Pink", "PLA"));
@@ -562,7 +563,7 @@ TEST_CASE_METHOD(IdentityCacheFixture,
         slot.spool_name.clear();
         slot.color_name.clear();
         slot.brand.clear();
-        backend->set_slot_info(0, slot);
+        helix::test::apply_edit(*backend, 0, slot);
 
         ams.sync_current_loaded_from_backend();
 
@@ -576,7 +577,7 @@ TEST_CASE_METHOD(IdentityCacheFixture,
         slot.brand.clear();
         slot.material.clear();
         slot.color_rgb = 0;
-        backend->set_slot_info(0, slot);
+        helix::test::apply_edit(*backend, 0, slot);
 
         ams.sync_current_loaded_from_backend();
 
@@ -589,7 +590,7 @@ TEST_CASE_METHOD(IdentityCacheFixture,
         SlotInfo slot = backend->get_slot_info(0);
         slot.spool_name = "Shop Reload";
         slot.brand = "House Brand";
-        backend->set_slot_info(0, slot);
+        helix::test::apply_edit(*backend, 0, slot);
 
         SpoolmanManager::cache_identity(make_spool(77, "Polymaker", "Ambrosia Pink", "PLA"));
         ams.sync_current_loaded_from_backend();
@@ -679,7 +680,7 @@ TEST_CASE_METHOD(IdentityCacheFixture,
     SlotInfo slot = h.backend->get_slot_info(0);
     slot.spoolman_id = 1;
     slot.remaining_weight_g = 111.0f;
-    h.backend->set_slot_info(0, slot);
+    helix::test::apply_edit(*h.backend, 0, slot);
 
     SpoolmanManager::instance().start_spoolman_polling();
     drain();
@@ -712,7 +713,7 @@ TEST_CASE_METHOD(IdentityCacheFixture,
     // Exactly what mock spool 1 reports, so the early return fires.
     slot.remaining_weight_g = 850.0f;
     slot.total_weight_g = 1000.0f;
-    h.backend->set_slot_info(0, slot);
+    helix::test::apply_edit(*h.backend, 0, slot);
 
     const int before = lv_subject_get_int(AmsState::instance().get_slots_version_subject());
     // Precondition WITHOUT find_identity(): that call is lookup-OR-FETCH, and
@@ -740,7 +741,7 @@ TEST_CASE_METHOD(IdentityCacheFixture,
     slot.spoolman_id = 1;
     slot.remaining_weight_g = 850.0f;
     slot.total_weight_g = 1000.0f;
-    h.backend->set_slot_info(0, slot);
+    helix::test::apply_edit(*h.backend, 0, slot);
 
     h.poll();
     REQUIRE(SpoolmanManager::find_identity(1).has_value());

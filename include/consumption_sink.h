@@ -97,7 +97,7 @@ class ExternalSpoolSink : public IConsumptionSink {
 
 /// Sink for a single AMS slot. Reads current SlotInfo via
 /// AmsBackend::get_slot_info() and writes updates via
-/// AmsBackend::set_slot_info(), which routes persistence through the backend's
+/// AmsBackend::update_slot_weight(), which routes persistence through the backend's
 /// override store (Moonraker `lane_data/<backend>/lane<N>`).
 ///
 /// Gating (per spec 4): a slot sink is trackable only when all of:

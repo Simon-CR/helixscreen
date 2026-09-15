@@ -479,14 +479,14 @@ TEST_CASE_METHOD(LVGLUITestFixture,
     const std::vector<std::string> colors{"#FF0000"};
     const std::vector<std::string> materials{"PLA"};
 
-    // set_slot_info deliberately drops SlotStatus (no real backend accepts a
+    // sync_external_identity deliberately drops SlotStatus (no real backend accepts a
     // user-written status), so the empty case has to go through
     // force_slot_status - see ams_backend_mock.cpp:999.
     auto load_lane = [&ams](uint32_t rgb, const char* material, helix::SlotStatus status) {
         auto slot = ams.backend->get_slot_info(0);
         slot.color_rgb = rgb;
         slot.material = material;
-        ams.backend->set_slot_info(0, slot, /*persist=*/false);
+        ams.backend->sync_external_identity(0, slot);
         ams.backend->force_slot_status(0, status);
     };
 

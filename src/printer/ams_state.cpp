@@ -30,6 +30,7 @@
 #include "filament_sensor_manager.h"
 #include "helix_psram_attr.h"
 #include "i_moonraker_api.h"
+#include "lane_binding.h"
 #include "lane_source_store.h"
 #include "lane_translation.h"
 #include "lvgl/src/others/translation/lv_translation.h"
@@ -2165,7 +2166,7 @@ void AmsState::sync_from_backend() {
                     updated.spool_name = tools[ti].spool_name;
                     updated.remaining_weight_g = tools[ti].remaining_weight_g;
                     updated.total_weight_g = tools[ti].total_weight_g;
-                    backend->set_slot_info(i, updated, false);
+                    backend->sync_external_identity(i, updated);
                 }
             }
         }
@@ -3582,19 +3583,15 @@ AmsError AmsState::commit_slot_edit(int slot_index, const SlotInfo& original,
         SpoolmanManager::invalidate_identity(original.spoolman_id);
     }
 
-    // S3 — backend slot info + firmware gcode
-    AmsError err = backend->set_slot_info(slot_index, info);
-    if (!err.success()) {
+    // S3 and the lane model: the backend slot write, with firmware gcode riding
+    // inside it, and the user's declaration on the lane, through the same
+    // method a test's edit runs.
+    AmsError err = backend->commit_user_edit(slot_index, original, info);
+    // A partly applied edit still changed what it applied, so it syncs; the
+    // error still returns below, so the caller's toast still shows.
+    if (!err.success() && !err.partially_applied) {
         return err;
     }
-
-    // Record the user's statement in the lane model, once the backend has
-    // accepted it. The lane is the one this edit was written through, so the
-    // declaration cannot land on a backend the edit never reached, and a slot
-    // the backend refused gets no declaration at all. The stores around this
-    // are the live read path and are untouched; nothing reads this record yet.
-    helix::ams::commit_slot_edit(backend->lane_id(slot_index),
-                                 helix::ams::user_edit_observation(original, info));
 
     // S4 + S7
     sync_from_backend();

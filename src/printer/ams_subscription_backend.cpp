@@ -154,6 +154,13 @@ void AmsSubscriptionBackend::request_resync() {
         });
 }
 
+void AmsSubscriptionBackend::repaint_slot_from_lane(int slot_index) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (SlotInfo* slot = cached_slot_locked(slot_index)) {
+        apply_resolved_lane(*slot, slot_index);
+    }
+}
+
 void AmsSubscriptionBackend::set_event_callback(EventCallback callback) {
     std::lock_guard<std::mutex> lock(mutex_);
     event_callback_ = std::move(callback);

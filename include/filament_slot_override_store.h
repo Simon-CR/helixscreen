@@ -298,13 +298,13 @@ struct LoadedOverrideStore {
 // Why a policy enum: backends differ in whether user UI edits propagate back
 // to firmware:
 //
-//   - IFS: set_slot_info writes to Adventurer5M.json — firmware re-reads it
+//   - IFS: apply_user_edit writes to Adventurer5M.json — firmware re-reads it
 //     and reports the user's chosen color on the next status poll. The mirror
 //     can safely overwrite the override with firmware values (except fields
 //     the user explicitly locked, per #965 — see MirrorPolicy::OverwriteAlways
 //     below) because firmware-truth and user-truth converge.
 //
-//   - CFS: set_slot_info does NOT touch the firmware-side material_type /
+//   - CFS: apply_user_edit does NOT touch the firmware-side material_type /
 //     RFID values. If the mirror unconditionally overwrote ovr.color_rgb with
 //     firmware-truth, every status poll would erase the user's color
 //     override. So this backend uses FillUnsetOnly: only fill fields the
@@ -315,11 +315,25 @@ enum class MirrorPolicy {
     /// fields the user explicitly locked (user_locked_color /
     /// user_locked_material — see #965). Use when user edits propagate back to
     /// firmware so the two views stay in sync (AD5X IFS, Snapmaker paxx12).
+    /// A field the caller reports as declared on the lane is left alone the
+    /// same way; see DeclaredOnLane.
     OverwriteAlways,
     /// Only fill ovr.color_rgb / ovr.material when they're currently UNSET
     /// (color_rgb == 0, empty material). Use when user edits don't reach
     /// firmware (CFS).
     FillUnsetOnly,
+};
+
+/// Which of colour and material a declaring lane source holds: the lane's
+/// Spoolman record, or its LocalUser record, carrying a value for the field.
+///
+/// Neither reaches firmware, so firmware's reading does not stand for such a
+/// field, and every mirror policy leaves it in the override exactly as it
+/// leaves a user-locked one. The default names nothing, so a caller that does
+/// not read the lane gets the lock flags alone.
+struct DeclaredOnLane {
+    bool color = false;
+    bool material = false;
 };
 
 /// Mirror firmware-detected color/material into `overrides[slot_index]` and
@@ -343,13 +357,16 @@ enum class MirrorPolicy {
 /// `log_tag` is included in the warn log on save failure so multi-backend
 /// logs stay attributable.
 ///
+/// `declared` names the fields a declaring lane source holds; see DeclaredOnLane.
+///
 /// Returns true iff `overrides[slot_index]` was actually mutated. Callers
 /// (e.g. IFS) use this to drive secondary side-effects like _IFS_VARS sync.
 bool mirror_firmware_to_lane_data(FilamentSlotOverrideStore* store,
                                   std::unordered_map<int, FilamentSlotOverride>& overrides,
                                   int slot_index, uint32_t firmware_color,
                                   const std::string& firmware_material, bool slot_has_filament,
-                                  MirrorPolicy policy, const std::string& log_tag);
+                                  MirrorPolicy policy, const std::string& log_tag,
+                                  DeclaredOnLane declared = {});
 
 /// Discard a slot's stored override, in memory and on the printer.
 ///
@@ -370,6 +387,19 @@ bool mirror_firmware_to_lane_data(FilamentSlotOverrideStore* store,
 bool clear_persisted_override(FilamentSlotOverrideStore* store,
                               std::unordered_map<int, FilamentSlotOverride>& overrides,
                               int slot_index, const std::string& log_tag);
+
+/// Put a metered weight on a slot's stored override, in memory and on the
+/// printer.
+///
+/// The record half of a weight persist: stage_weight_override() moves the
+/// weights and nothing else, and the result is saved. Caller MUST hold the
+/// backend's mutex protecting `overrides`; `store` may be null (a test fixture
+/// with no Moonraker API), leaving the in-memory record alone to move.
+/// `log_tag` attributes the warn on a failed persist.
+void persist_override_weight(FilamentSlotOverrideStore* store,
+                             std::unordered_map<int, FilamentSlotOverride>& overrides,
+                             int slot_index, float remaining_weight_g, float total_weight_g,
+                             const std::string& log_tag);
 
 /// Publish (or clear) the external / bypass spool as an extra lane one past
 /// the last physical slot, so slicers (OrcaSlicer's MoonrakerPrinterAgent)

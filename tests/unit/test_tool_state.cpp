@@ -7,6 +7,7 @@
  */
 
 #include "../helix_test_fixture.h"
+#include "../test_helpers/backend_user_edit.h"
 #include "../test_helpers/tool_state_test_access.h"
 #include "../test_helpers/update_queue_test_access.h"
 #include "../ui_test_utils.h"
@@ -1166,7 +1167,7 @@ TEST_CASE_METHOD(ToolStateFixture,
         SlotInfo s = raw->get_slot_info(0);
         s.spoolman_id = 137;
         s.spool_name = "Elegoo Black ASA";
-        REQUIRE(raw->set_slot_info(0, s).success());
+        REQUIRE(helix::test::apply_edit(*raw, 0, s).success());
     }
     AmsState::instance().sync_from_backend();
     REQUIRE(raw->get_slot_info(0).mapped_tool == 0);
@@ -1178,7 +1179,7 @@ TEST_CASE_METHOD(ToolStateFixture,
         SlotInfo s = raw->get_slot_info(0);
         s.clear_spoolman_link();
         s.spool_name.clear();
-        REQUIRE(raw->set_slot_info(0, s).success());
+        REQUIRE(helix::test::apply_edit(*raw, 0, s).success());
     }
     REQUIRE(raw->get_slot_info(0).spoolman_id == 0);
 
@@ -1517,7 +1518,7 @@ TEST_CASE_METHOD(ToolStateFixture,
         SlotInfo empty_slot = mock_ptr->get_slot_info(i);
         empty_slot.spoolman_id = 0;
         empty_slot.spool_name.clear();
-        mock_ptr->set_slot_info(i, empty_slot, false);
+        mock_ptr->sync_external_identity(i, empty_slot);
     }
 
     auto& ams = AmsState::instance();
@@ -1580,7 +1581,7 @@ TEST_CASE_METHOD(ToolStateFixture,
         SlotInfo empty_slot = mock_ptr->get_slot_info(i);
         empty_slot.spoolman_id = 0;
         empty_slot.spool_name.clear();
-        mock_ptr->set_slot_info(i, empty_slot, false);
+        mock_ptr->sync_external_identity(i, empty_slot);
     }
 
     auto& ams = AmsState::instance();

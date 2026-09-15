@@ -6,6 +6,7 @@
  * @brief Tests for has_firmware_spool_persistence() across AMS backends
  */
 
+#include "../test_helpers/backend_user_edit.h"
 #include "ams_backend_ad5x_ifs.h"
 #include "ams_backend_afc.h"
 #include "ams_backend_happy_hare.h"
@@ -65,15 +66,15 @@ TEST_CASE("printer_reports_spool_ids capability", "[ams][capabilities]") {
 }
 
 // =============================================================================
-// set_slot_info() mapped_tool propagation
+// apply_user_edit() mapped_tool propagation
 //
-// Cross-backend regression tests: the slot edit modal calls set_slot_info() with
+// Cross-backend regression tests: the slot edit modal calls apply_user_edit() with
 // the new mapped_tool. Each backend must handle that consistently — either by
 // updating registry/local state and emitting the right G-code (where supported),
 // or by leaving live state untouched when the caller passes the default -1.
 // =============================================================================
 
-TEST_CASE("AmsBackendMock: set_slot_info propagates mapped_tool change",
+TEST_CASE("AmsBackendMock: apply_user_edit propagates mapped_tool change",
           "[ams][backend][slot-edit-remap]") {
     auto mock = helix::AmsBackendMock::create_mock();
 
@@ -84,12 +85,12 @@ TEST_CASE("AmsBackendMock: set_slot_info propagates mapped_tool change",
     // Remap slot 0 → T2 through the slot edit path.
     helix::SlotInfo info = initial;
     info.mapped_tool = 2;
-    REQUIRE(mock->set_slot_info(0, info, /*persist=*/true).result == helix::AmsResult::SUCCESS);
+    REQUIRE(helix::test::apply_edit(*mock, 0, info).result == helix::AmsResult::SUCCESS);
 
     REQUIRE(mock->get_slot_info(0).mapped_tool == 2);
 }
 
-TEST_CASE("AmsBackendMock: set_slot_info ignores default mapped_tool (-1)",
+TEST_CASE("AmsBackendMock: sync_external_identity ignores default mapped_tool (-1)",
           "[ams][backend][slot-edit-remap]") {
     auto mock = helix::AmsBackendMock::create_mock();
 
@@ -97,7 +98,7 @@ TEST_CASE("AmsBackendMock: set_slot_info ignores default mapped_tool (-1)",
     helix::SlotInfo info; // mapped_tool defaults to -1
     info.material = "PLA";
 
-    REQUIRE(mock->set_slot_info(2, info, /*persist=*/false).result == helix::AmsResult::SUCCESS);
+    REQUIRE(mock->sync_external_identity(2, info).result == helix::AmsResult::SUCCESS);
     REQUIRE(mock->get_slot_info(2).mapped_tool == 2);
 }
 
@@ -114,17 +115,17 @@ class ToolChangerGcodeCapture : public helix::AmsBackendToolChanger {
 };
 } // namespace
 
-TEST_CASE("AmsBackendToolChanger: set_slot_info emits ASSIGN_TOOL on mapped_tool change",
+TEST_CASE("AmsBackendToolChanger: apply_user_edit emits ASSIGN_TOOL on mapped_tool change",
           "[ams][backend][slot-edit-remap]") {
     ToolChangerGcodeCapture backend;
     // set_discovered_tools() calls initialize_tools() which seeds slots — sufficient
-    // for set_slot_info, no live MoonrakerClient (and therefore no start()) needed.
+    // for apply_user_edit, no live MoonrakerClient (and therefore no start()) needed.
     backend.set_discovered_tools({"tool0", "tool1", "tool2", "tool3"});
 
     // Backend seeds slot 0 → T0. Remap slot 0 to respond to G-code T2.
     helix::SlotInfo info = backend.get_slot_info(0);
     info.mapped_tool = 2;
-    REQUIRE(backend.set_slot_info(0, info, /*persist=*/true).result == helix::AmsResult::SUCCESS);
+    REQUIRE(helix::test::apply_edit(backend, 0, info).result == helix::AmsResult::SUCCESS);
 
     bool emitted = false;
     for (const auto& g : backend.captured) {
@@ -137,7 +138,7 @@ TEST_CASE("AmsBackendToolChanger: set_slot_info emits ASSIGN_TOOL on mapped_tool
     REQUIRE(backend.get_slot_info(0).mapped_tool == 2);
 }
 
-TEST_CASE("AmsBackendToolChanger: set_slot_info ignores default mapped_tool (-1)",
+TEST_CASE("AmsBackendToolChanger: apply_user_edit ignores default mapped_tool (-1)",
           "[ams][backend][slot-edit-remap]") {
     ToolChangerGcodeCapture backend;
     backend.set_discovered_tools({"tool0", "tool1", "tool2", "tool3"});
@@ -145,7 +146,7 @@ TEST_CASE("AmsBackendToolChanger: set_slot_info ignores default mapped_tool (-1)
     helix::SlotInfo info; // mapped_tool defaults to -1
     info.material = "PLA";
 
-    REQUIRE(backend.set_slot_info(1, info, /*persist=*/true).result == helix::AmsResult::SUCCESS);
+    REQUIRE(helix::test::apply_edit(backend, 1, info).result == helix::AmsResult::SUCCESS);
 
     for (const auto& g : backend.captured) {
         REQUIRE(g.rfind("ASSIGN_TOOL ", 0) != 0);

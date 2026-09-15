@@ -29,9 +29,13 @@
 #endif
 #include "ams_backend_toolchanger.h"
 #include "filament_database.h"
+#include "filament_slot_override.h"
+#include "filament_slot_override_store.h"
 #include "filament_variants.h"
 #include "i_moonraker_api.h"
 #include "lane_apply.h"
+#include "lane_legacy_migration.h"
+#include "lane_translation.h"
 #include "printer_discovery.h"
 #include "runtime_config.h"
 
@@ -359,6 +363,83 @@ void AmsBackend::update_slot_weight(int slot_index, float remaining_weight_g, fl
 
 void AmsBackend::apply_resolved_lane(SlotInfo& slot, int slot_index) {
     helix::ams::apply_resolved(slot, helix::ams::resolved_lane(lane_id(slot_index)));
+}
+
+AmsError AmsBackend::commit_user_edit(int slot_index, const SlotInfo& original,
+                                      const SlotInfo& info) {
+    // The user's statement, answered once from the editor's own before and
+    // after. apply_user_edit() records the stored authorship from this same
+    // answer rather than diffing its own read of the slot, which a frame
+    // landing while the editor was open has already moved.
+    const helix::ams::Observation declaration = helix::ams::user_edit_observation(original, info);
+    const bool binding_changed = original.spoolman_id != info.spoolman_id;
+
+    // A catalog pick names the product of the spool that was bound, so binding
+    // a different spool takes it off the slot and out of the stored record,
+    // as the drop below takes the colour picked for that spool. An unlink
+    // keeps it: the slot still describes what is loaded.
+    SlotInfo applied = info;
+    if (binding_changed && info.spoolman_id > 0) {
+        applied.catalog_id.clear();
+        applied.product_name.clear();
+    }
+
+    AmsError err = apply_user_edit(slot_index, applied, declaration);
+    // A partly applied edit still changed what it applied: a binding that
+    // reached firmware is bound whatever the call says about the rest.
+    if (!err.success() && !err.partially_applied) {
+        return err;
+    }
+
+    const helix::ams::LaneId lane = lane_id(slot_index);
+
+    // A changed binding leaves every record that described the old spool
+    // describing one that is no longer on the lane, the user's own included.
+    // The Spoolman record outranks the user's, so standing it would keep naming
+    // the old spool over an unlink and make a relink's own echo read as someone
+    // else's rebind, which erases the stored record the user just saved; a
+    // colour the user picked for the old spool would paint over the new one.
+    // The id alone decides, so a return to an id the lane held before drops
+    // too: telling the same spool back from another carrying that id would take
+    // asking Spoolman.
+    //
+    // Only once the backend applied it: a refused edit leaves the old binding
+    // in place, which the records still describe truly. And before the filing
+    // below, which amends: dropping first files the new binding on a fresh
+    // record, where dropping after would erase it.
+    if (binding_changed) {
+        helix::ams::drop_previous_spool_declarations(lane);
+    }
+
+    // Record the user's statement in the lane model, once the backend has
+    // applied it. The lane is the one this edit was written through, so the
+    // declaration cannot land on a backend the edit never reached, and a slot
+    // the backend refused gets no declaration at all. Every backend paints its
+    // slots from this record through apply_resolved_lane(), so it is what the
+    // lane shows for each field the user declared.
+    helix::ams::commit_slot_edit(lane, declaration);
+
+    // An unlink that kept the slot's identity stops tracking the spool, not
+    // what is loaded, so what the slot kept goes back on the lane at the rungs
+    // its stored record reloads it on. That record names no spool and, the
+    // binding having changed, declares nothing, so the record translation
+    // itself files the identity as Remembered and the catalog pick as the
+    // user's. An unlink that cleared the slot has nothing to file. Weights are
+    // not identity, and the drop leaves the meter's own record standing.
+    if (binding_changed && info.spoolman_id <= 0) {
+        const helix::ams::FilamentSlotOverride kept = helix::ams::user_override_from_slot_info(
+            declaration, applied, applied.material, nullptr);
+        helix::ams::LaneSources reloads =
+            helix::ams::sources_from_record(kept, helix::ams::to_lane_data_record(slot_index, kept),
+                                            helix::ams::LegacyLockKeys::LaneData);
+        reloads.metered.reset();
+        helix::ams::file_lane_sources(lane, reloads);
+    }
+
+    // A backend that paints from the lane while it applies an edit painted the
+    // lane before the drop and the filings above.
+    repaint_slot_from_lane(slot_index);
+    return err;
 }
 
 std::string AmsBackend::normalize_material(const std::string& material) const {

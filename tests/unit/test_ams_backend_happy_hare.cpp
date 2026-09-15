@@ -9,6 +9,7 @@
 #include "ams_types.h"
 #include "hh_defaults.h"
 #include "moonraker_api.h"
+#include "test_helpers/backend_user_edit.h"
 #include "test_helpers/happy_hare_test_access.h"
 #include "test_helpers/registered_backend.h"
 #include "test_helpers/seeded_override.h"
@@ -345,18 +346,14 @@ class AmsBackendHappyHareTestHelper : public AmsBackendHappyHare {
 using helix::AmsBackendHappyHareTestHelper;
 
 // ============================================================================
-// set_slot_info() Persistence Tests - Happy Hare MMU_GATE_MAP
+// apply_user_edit() Persistence Tests - Happy Hare MMU_GATE_MAP
 // ============================================================================
 //
-// These tests verify that set_slot_info() sends the appropriate MMU_GATE_MAP
+// These tests verify that apply_user_edit() sends the appropriate MMU_GATE_MAP
 // G-code commands to persist filament properties in Happy Hare.
 //
 // Command format:
 // - MMU_GATE_MAP GATE={n} COLOR={RRGGBB} MATERIAL={type} SPOOLID={id}
-//
-// NOTE: These tests are designed to FAIL initially (test-first approach).
-// The set_slot_info() method currently only updates local state and does NOT
-// send G-code commands. Implementation must be added to make these tests pass.
 // ============================================================================
 
 TEST_CASE("Happy Hare persistence: MMU_GATE_MAP basic format", "[ams][happy_hare][persistence]") {
@@ -367,10 +364,9 @@ TEST_CASE("Happy Hare persistence: MMU_GATE_MAP basic format", "[ams][happy_hare
     SlotInfo info;
     info.color_rgb = 0xFF0000; // Red - need something to trigger command
 
-    helper.set_slot_info(0, info);
+    helix::test::apply_edit(helper, 0, info);
 
     // Should send MMU_GATE_MAP with GATE=0
-    // FAILS: set_slot_info doesn't call execute_gcode yet
     REQUIRE(helper.has_gcode_starting_with("MMU_GATE_MAP GATE=0"));
 }
 
@@ -382,11 +378,10 @@ TEST_CASE("Happy Hare persistence: MMU_GATE_MAP with color", "[ams][happy_hare][
     SlotInfo info;
     info.color_rgb = 0xFF0000; // Red
 
-    helper.set_slot_info(0, info);
+    helix::test::apply_edit(helper, 0, info);
 
     // Should send: MMU_GATE_MAP GATE=0 COLOR=FF0000
     // Color: uppercase hex, no # prefix
-    // FAILS: set_slot_info doesn't call execute_gcode yet
     REQUIRE(helper.has_gcode("MMU_GATE_MAP GATE=0 COLOR=FF0000"));
 }
 
@@ -399,10 +394,9 @@ TEST_CASE("Happy Hare persistence: MMU_GATE_MAP color uppercase no prefix",
     SlotInfo info;
     info.color_rgb = 0x00FF00; // Green
 
-    helper.set_slot_info(1, info);
+    helix::test::apply_edit(helper, 1, info);
 
     // Should send: MMU_GATE_MAP GATE=1 COLOR=00FF00 (uppercase, no #)
-    // FAILS: set_slot_info doesn't call execute_gcode yet
     REQUIRE(helper.has_gcode("MMU_GATE_MAP GATE=1 COLOR=00FF00"));
 }
 
@@ -414,10 +408,9 @@ TEST_CASE("Happy Hare persistence: MMU_GATE_MAP with material", "[ams][happy_har
     SlotInfo info;
     info.material = "PLA";
 
-    helper.set_slot_info(1, info);
+    helix::test::apply_edit(helper, 1, info);
 
     // Should send: MMU_GATE_MAP GATE=1 MATERIAL=PLA
-    // FAILS: set_slot_info doesn't call execute_gcode yet
     REQUIRE(helper.has_gcode("MMU_GATE_MAP GATE=1 MATERIAL=PLA"));
 }
 
@@ -430,10 +423,9 @@ TEST_CASE("Happy Hare persistence: MMU_GATE_MAP with Spoolman ID",
     SlotInfo info;
     info.spoolman_id = 42;
 
-    helper.set_slot_info(2, info);
+    helix::test::apply_edit(helper, 2, info);
 
     // Should contain: SPOOLID=42
-    // FAILS: set_slot_info doesn't call execute_gcode yet
     REQUIRE(helper.has_gcode_containing("SPOOLID=42"));
 }
 
@@ -452,10 +444,9 @@ TEST_CASE("Happy Hare persistence: MMU_GATE_MAP clear Spoolman with -1",
     SlotInfo new_info;
     new_info.spoolman_id = 0;
 
-    helper.set_slot_info(0, new_info);
+    helix::test::apply_edit(helper, 0, new_info);
 
     // Should send: SPOOLID=-1 to clear
-    // FAILS: set_slot_info doesn't call execute_gcode yet
     REQUIRE(helper.has_gcode_containing("SPOOLID=-1"));
 }
 
@@ -470,10 +461,9 @@ TEST_CASE("Happy Hare persistence: full slot info generates complete command",
     info.material = "PETG";
     info.spoolman_id = 99;
 
-    helper.set_slot_info(0, info);
+    helix::test::apply_edit(helper, 0, info);
 
     // Should send: MMU_GATE_MAP GATE=0 COLOR=0000FF MATERIAL=PETG SPOOLID=99
-    // FAILS: set_slot_info doesn't call execute_gcode yet
     REQUIRE(helper.has_gcode("MMU_GATE_MAP GATE=0 COLOR=0000FF MATERIAL=PETG SPOOLID=99"));
 }
 
@@ -487,7 +477,7 @@ TEST_CASE("Happy Hare persistence: skips COLOR for default grey",
     info.color_rgb = 0x808080; // Default grey - should NOT include COLOR
     info.material = "PLA";     // But material should still be sent
 
-    helper.set_slot_info(0, info);
+    helix::test::apply_edit(helper, 0, info);
 
     // Should NOT include COLOR parameter for grey default
     // But should still send the command if other values are present
@@ -506,7 +496,7 @@ TEST_CASE("Happy Hare persistence: dispatches COLOR for pure black",
     info.color_rgb = 0x000000; // Pure black
     info.material = "ABS";
 
-    helper.set_slot_info(0, info);
+    helix::test::apply_edit(helper, 0, info);
 
     REQUIRE(helper.has_gcode("MMU_GATE_MAP GATE=0 COLOR=000000 MATERIAL=ABS"));
 }
@@ -521,7 +511,7 @@ TEST_CASE("Happy Hare persistence: skips MATERIAL for empty string",
     info.material = "";        // Empty - should NOT include MATERIAL
     info.color_rgb = 0xFF0000; // But color should still be sent
 
-    helper.set_slot_info(0, info);
+    helix::test::apply_edit(helper, 0, info);
 
     // Should NOT include MATERIAL parameter for empty
     if (!helper.captured_gcodes.empty()) {
@@ -540,7 +530,7 @@ TEST_CASE("Happy Hare persistence: skips SPOOLID when both old and new are zero/
     info.spoolman_id = 0;
     info.color_rgb = 0xFF0000; // Need something to potentially trigger command
 
-    helper.set_slot_info(0, info);
+    helix::test::apply_edit(helper, 0, info);
 
     // Should NOT include SPOOLID parameter when both old and new are 0
     if (!helper.captured_gcodes.empty()) {
@@ -560,14 +550,14 @@ TEST_CASE("Happy Hare persistence: skips command when all values are default/emp
     info.material = "";        // Empty
     info.spoolman_id = 0;      // Zero (and no existing to clear)
 
-    helper.set_slot_info(0, info);
+    helix::test::apply_edit(helper, 0, info);
 
     // Should NOT send any G-code when all values are default/empty
     // PASSES: no G-code sent at all currently
     REQUIRE(helper.captured_gcodes.empty());
 }
 
-TEST_CASE("Happy Hare persistence: MMU_TTG_MAP fires when mapped_tool changes via set_slot_info",
+TEST_CASE("Happy Hare persistence: MMU_TTG_MAP fires when an edit changes mapped_tool",
           "[ams][happy_hare][persistence]") {
     helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
     AmsBackendHappyHareTestHelper& helper = *helper_reg;
@@ -577,7 +567,7 @@ TEST_CASE("Happy Hare persistence: MMU_TTG_MAP fires when mapped_tool changes vi
     SlotInfo info;
     info.mapped_tool = 2;
 
-    helper.set_slot_info(0, info);
+    helix::test::apply_edit(helper, 0, info);
 
     REQUIRE(helper.has_gcode("MMU_TTG_MAP TOOL=2 GATE=0"));
 }
@@ -594,7 +584,7 @@ TEST_CASE("Happy Hare persistence: MMU_TTG_MAP not fired when mapped_tool unchan
     info.mapped_tool = 0;
     info.material = "PLA";
 
-    helper.set_slot_info(0, info);
+    helix::test::apply_edit(helper, 0, info);
 
     for (const auto& gcode : helper.captured_gcodes) {
         REQUIRE(gcode.rfind("MMU_TTG_MAP ", 0) != 0);
@@ -613,7 +603,7 @@ TEST_CASE("Happy Hare persistence: MMU_TTG_MAP not fired when caller leaves mapp
     SlotInfo info; // mapped_tool defaults to -1
     info.material = "PLA";
 
-    helper.set_slot_info(2, info);
+    helix::test::apply_edit(helper, 2, info);
 
     for (const auto& gcode : helper.captured_gcodes) {
         REQUIRE(gcode.rfind("MMU_TTG_MAP ", 0) != 0);
@@ -631,24 +621,21 @@ TEST_CASE("Happy Hare persistence: different gate indices", "[ams][happy_hare][p
     SECTION("Gate 0") {
         SlotInfo info;
         info.color_rgb = 0xFF0000;
-        helper.set_slot_info(0, info);
-        // FAILS: set_slot_info doesn't call execute_gcode yet
+        helix::test::apply_edit(helper, 0, info);
         REQUIRE(helper.has_gcode_starting_with("MMU_GATE_MAP GATE=0"));
     }
 
     SECTION("Gate 3") {
         SlotInfo info;
         info.color_rgb = 0xFF0000;
-        helper.set_slot_info(3, info);
-        // FAILS: set_slot_info doesn't call execute_gcode yet
+        helix::test::apply_edit(helper, 3, info);
         REQUIRE(helper.has_gcode_starting_with("MMU_GATE_MAP GATE=3"));
     }
 
     SECTION("Gate 7") {
         SlotInfo info;
         info.color_rgb = 0xFF0000;
-        helper.set_slot_info(7, info);
-        // FAILS: set_slot_info doesn't call execute_gcode yet
+        helix::test::apply_edit(helper, 7, info);
         REQUIRE(helper.has_gcode_starting_with("MMU_GATE_MAP GATE=7"));
     }
 }
@@ -3988,7 +3975,7 @@ TEST_CASE("HappyHare clear_slot_override drops the retained identity",
     SlotInfo info;
     info.brand = "Polymaker";
     info.spoolman_id = 42;
-    helper.set_slot_info(0, info);
+    helix::test::apply_edit(helper, 0, info);
 
     helper.clear_slot_override(0);
 
@@ -4006,7 +3993,7 @@ TEST_CASE("HappyHare persist_override records a deliberate pure black",
     SlotInfo info;
     info.material = "PLA";
     info.color_rgb = 0x000000;
-    helper.set_slot_info(0, info);
+    helix::test::apply_edit(helper, 0, info);
 
     REQUIRE(helper.has_gate_override(0));
     const auto& ovr = helix::HappyHareTestAccess::overrides(helper).at(0);
@@ -4024,7 +4011,7 @@ TEST_CASE("HappyHare persist_override does not record the no-color sentinel",
     SlotInfo info;
     info.material = "PLA";
     info.color_rgb = helix::AMS_DEFAULT_SLOT_COLOR;
-    helper.set_slot_info(0, info);
+    helix::test::apply_edit(helper, 0, info);
 
     REQUIRE(helper.has_gate_override(0));
     const auto& ovr = helix::HappyHareTestAccess::overrides(helper).at(0);
@@ -4043,7 +4030,7 @@ TEST_CASE("HappyHare persist_override wires nozzle/bed temps into the override",
     info.bed_temp = 80;
     info.nozzle_temp_min = 230;
     info.nozzle_temp_max = 250;
-    helper.set_slot_info(0, info);
+    helix::test::apply_edit(helper, 0, info);
 
     REQUIRE(helper.has_gate_override(0));
     const auto& ovr = helix::HappyHareTestAccess::overrides(helper).at(0);
@@ -4401,7 +4388,7 @@ TEST_CASE("Happy Hare marks a persisted edit as the user's own",
     info.material = "PETG";
     info.color_rgb = 0x1188FF;
     info.color_name = "Blue";
-    helper.set_slot_info(0, info, /*persist=*/true);
+    helix::test::apply_edit(helper, 0, info);
 
     auto& overrides = helix::HappyHareTestAccess::overrides(helper);
     REQUIRE(overrides.count(0) == 1);

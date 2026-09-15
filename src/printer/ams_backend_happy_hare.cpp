@@ -330,6 +330,15 @@ SlotInfo AmsBackendHappyHare::get_slot_info(int slot_index) const {
     return empty;
 }
 
+SlotInfo* AmsBackendHappyHare::cached_slot_locked(int slot_index) {
+    // A repaint needs no refresh_gate_statuses_locked() after it. The lane's
+    // presence is the sensed record this backend files from gate_status_raw_,
+    // the same array that refresh reads, so the status a repaint narrows is
+    // already the one the refresh derived.
+    auto* entry = slots_.get_mut(slot_index);
+    return entry ? &entry->info : nullptr;
+}
+
 // get_current_action(), get_current_tool(), get_current_slot(), is_filament_loaded()
 // provided by AmsSubscriptionBackend
 
@@ -2627,13 +2636,11 @@ AmsError AmsBackendHappyHare::cancel() {
 // Configuration Operations
 // ============================================================================
 
-void AmsBackendHappyHare::persist_override(int slot_index, const SlotInfo& original,
-                                           const SlotInfo& info) {
-    // Callers hold mutex_, and @p original is the gate as it stood before this
-    // edit: stage_user_override tells what the user moved from what the editor
-    // merely carried back, so it needs both snapshots.
+void AmsBackendHappyHare::persist_override(int slot_index, const SlotInfo& info,
+                                           const helix::ams::Observation& declared) {
+    // Callers hold mutex_.
     const helix::ams::FilamentSlotOverride o =
-        helix::ams::stage_user_override(overrides_, slot_index, original, info);
+        helix::ams::stage_user_override(overrides_, slot_index, info, declared);
 
     if (override_store_) {
         override_store_->save_async(slot_index, o, [slot_index](bool ok, std::string err) {
@@ -2706,7 +2713,50 @@ void AmsBackendHappyHare::publish_external_spool_lane(const SlotInfo* spool) {
                                       backend_log_tag());
 }
 
-AmsError AmsBackendHappyHare::set_slot_info(int slot_index, const SlotInfo& info, bool persist) {
+void AmsBackendHappyHare::write_gate_locked(int slot_index, SlotInfo& slot, const SlotInfo& info) {
+    const int old_mapped_tool = slot.mapped_tool;
+
+    // Detect whether anything actually changed
+    bool changed = slot.color_name != info.color_name || slot.color_rgb != info.color_rgb ||
+                   slot.material != info.material || slot.brand != info.brand ||
+                   slot.catalog_id != info.catalog_id || slot.product_name != info.product_name ||
+                   slot.spoolman_id != info.spoolman_id || slot.spool_name != info.spool_name ||
+                   slot.remaining_weight_g != info.remaining_weight_g ||
+                   slot.total_weight_g != info.total_weight_g ||
+                   slot.nozzle_temp_min != info.nozzle_temp_min ||
+                   slot.nozzle_temp_max != info.nozzle_temp_max || slot.bed_temp != info.bed_temp ||
+                   slot.mapped_tool != info.mapped_tool;
+
+    // Update local state
+    slot.color_name = info.color_name;
+    slot.color_rgb = info.color_rgb;
+    slot.material = info.material;
+    slot.brand = info.brand;
+    // Carry the catalog product identity through a sync too: one that
+    // dropped it would make the editor snap back to a different variant on
+    // the next get_slot_info().
+    slot.catalog_id = info.catalog_id;
+    slot.product_name = info.product_name;
+    slot.spoolman_id = info.spoolman_id;
+    slot.spool_name = info.spool_name;
+    slot.remaining_weight_g = info.remaining_weight_g;
+    slot.total_weight_g = info.total_weight_g;
+    slot.nozzle_temp_min = info.nozzle_temp_min;
+    slot.nozzle_temp_max = info.nozzle_temp_max;
+    slot.bed_temp = info.bed_temp;
+    // Tool mapping change goes through registry so reverse maps stay consistent.
+    if (info.mapped_tool != old_mapped_tool && info.mapped_tool >= 0) {
+        slots_.set_tool_mapping(slot_index, info.mapped_tool);
+    }
+
+    if (changed) {
+        spdlog::info("[AMS HappyHare] Updated slot {} info: {} {}", slot_index, info.material,
+                     info.color_name);
+    }
+}
+
+AmsError AmsBackendHappyHare::apply_user_edit(int slot_index, const SlotInfo& info,
+                                              const helix::ams::Observation& declared) {
     int old_spoolman_id = 0;
     int old_mapped_tool = -1;
     {
@@ -2721,142 +2771,122 @@ AmsError AmsBackendHappyHare::set_slot_info(int slot_index, const SlotInfo& info
             return AmsErrorHelper::invalid_slot(lane_noun(), slot_index, slots_.slot_count() - 1);
         }
 
-        auto& slot = entry->info;
-        // Snapshotted before the writes below, for persist_override.
-        const SlotInfo prior_slot = slot;
-
         // Capture old values BEFORE updating (needed to detect clears / remaps)
-        old_spoolman_id = slot.spoolman_id;
-        old_mapped_tool = slot.mapped_tool;
-
-        // Detect whether anything actually changed
-        bool changed = slot.color_name != info.color_name || slot.color_rgb != info.color_rgb ||
-                       slot.material != info.material || slot.brand != info.brand ||
-                       slot.catalog_id != info.catalog_id ||
-                       slot.product_name != info.product_name ||
-                       slot.spoolman_id != info.spoolman_id || slot.spool_name != info.spool_name ||
-                       slot.remaining_weight_g != info.remaining_weight_g ||
-                       slot.total_weight_g != info.total_weight_g ||
-                       slot.nozzle_temp_min != info.nozzle_temp_min ||
-                       slot.nozzle_temp_max != info.nozzle_temp_max ||
-                       slot.bed_temp != info.bed_temp || slot.mapped_tool != info.mapped_tool;
-
-        // Update local state
-        slot.color_name = info.color_name;
-        slot.color_rgb = info.color_rgb;
-        slot.material = info.material;
-        slot.brand = info.brand;
-        // Carry the catalog product identity through preview writes too — a
-        // persist=false preview that dropped it would make the editor snap
-        // back to a different variant on the next get_slot_info().
-        slot.catalog_id = info.catalog_id;
-        slot.product_name = info.product_name;
-        slot.spoolman_id = info.spoolman_id;
-        slot.spool_name = info.spool_name;
-        slot.remaining_weight_g = info.remaining_weight_g;
-        slot.total_weight_g = info.total_weight_g;
-        slot.nozzle_temp_min = info.nozzle_temp_min;
-        slot.nozzle_temp_max = info.nozzle_temp_max;
-        slot.bed_temp = info.bed_temp;
-        // Tool mapping change goes through registry so reverse maps stay consistent.
-        if (info.mapped_tool != old_mapped_tool && info.mapped_tool >= 0) {
-            slots_.set_tool_mapping(slot_index, info.mapped_tool);
-        }
-
-        if (changed) {
-            spdlog::info("[AMS HappyHare] Updated slot {} info: {} {}", slot_index, info.material,
-                         info.color_name);
-        }
+        old_spoolman_id = entry->info.spoolman_id;
+        old_mapped_tool = entry->info.mapped_tool;
+        write_gate_locked(slot_index, entry->info, info);
 
         // Record the user's identity in the override store: the gate map cannot
         // hold brand / spool_name / total weight / colour name at all.
-        if (persist) {
-            persist_override(slot_index, prior_slot, info);
-        }
+        persist_override(slot_index, info, declared);
     }
 
-    // Persist via MMU_GATE_MAP command (Happy Hare stores in mmu_vars.cfg automatically).
-    // Skip persistence when persist=false — used by Spoolman weight polling to update
-    // in-memory state without sending G-code back to firmware. Without this guard,
-    // weight updates would trigger MMU_GATE_MAP → firmware status_update WebSocket
-    // event → sync_from_backend → refresh_spoolman_weights → set_slot_info again,
-    // creating an infinite feedback loop.
     // Set when the material could not be expressed as a G-code parameter. Reported
     // after every other write has gone out, so a name the gate map cannot store costs
     // the user only the material rather than the whole save — but is never silent.
     std::string rejected_material;
 
-    if (persist) {
-        bool has_changes = false;
-        std::string cmd = fmt::format("MMU_GATE_MAP GATE={}", slot_index);
+    // Persist via MMU_GATE_MAP command (Happy Hare stores in mmu_vars.cfg automatically).
+    bool has_changes = false;
+    std::string cmd = fmt::format("MMU_GATE_MAP GATE={}", slot_index);
 
-        // Color (hex format, no # prefix). A deliberate pure black (#000000)
-        // reaches the gate map; the "no color reading" sentinel does not.
-        if (ams::is_declarable_color(info.color_rgb)) {
-            cmd += fmt::format(" COLOR={:06X}", info.color_rgb & 0xFFFFFF);
-            has_changes = true;
-        }
+    // Color (hex format, no # prefix). A deliberate pure black (#000000)
+    // reaches the gate map; the "no color reading" sentinel does not.
+    if (ams::is_declarable_color(info.color_rgb)) {
+        cmd += fmt::format(" COLOR={:06X}", info.color_rgb & 0xFFFFFF);
+        has_changes = true;
+    }
 
-        // Material (validate to prevent command injection). The material charset is
-        // deliberately wider than an identifier's: `PLA+`, `PA6-CF` and `Silk PLA` are
-        // all in our own filament database, and gating this on is_safe_gcode_param()
-        // dropped every one of them.
-        if (!info.material.empty() && IMoonrakerAPI::is_safe_material_param(info.material)) {
-            cmd += fmt::format(" MATERIAL={}", IMoonrakerAPI::gcode_param_value(info.material));
-            has_changes = true;
-        } else if (!info.material.empty()) {
-            spdlog::warn("[AMS HappyHare] Skipping MATERIAL - unsafe characters in: {}",
-                         info.material);
-            rejected_material = info.material;
-        }
+    // Material (validate to prevent command injection). The material charset is
+    // deliberately wider than an identifier's: `PLA+`, `PA6-CF` and `Silk PLA` are
+    // all in our own filament database, and gating this on is_safe_gcode_param()
+    // dropped every one of them.
+    if (!info.material.empty() && IMoonrakerAPI::is_safe_material_param(info.material)) {
+        cmd += fmt::format(" MATERIAL={}", IMoonrakerAPI::gcode_param_value(info.material));
+        has_changes = true;
+    } else if (!info.material.empty()) {
+        spdlog::warn("[AMS HappyHare] Skipping MATERIAL - unsafe characters in: {}", info.material);
+        rejected_material = info.material;
+    }
 
-        // Spoolman ID (-1 to clear)
-        if (info.spoolman_id > 0) {
-            cmd += fmt::format(" SPOOLID={}", info.spoolman_id);
-            has_changes = true;
-        } else if (info.spoolman_id == 0 && old_spoolman_id > 0) {
-            cmd += " SPOOLID=-1"; // Clear existing link
-            has_changes = true;
-        }
+    // Spoolman ID (-1 to clear)
+    if (info.spoolman_id > 0) {
+        cmd += fmt::format(" SPOOLID={}", info.spoolman_id);
+        has_changes = true;
+    } else if (info.spoolman_id == 0 && old_spoolman_id > 0) {
+        cmd += " SPOOLID=-1"; // Clear existing link
+        has_changes = true;
+    }
 
-        // Record our own id write so Rule 1 does not read the in-flight
-        // frames (still reporting old_spoolman_id until the echo lands) as
-        // an external re-bind. An unlink (SPOOLID=-1) erases the pending
-        // expectation instead. The gcode block above runs OUTSIDE mutex_ —
-        // take the lock just for the record, matching every other writer.
-        {
-            std::lock_guard<std::mutex> lock(mutex_);
-            record_own_spool_write(slot_index, info.spoolman_id, old_spoolman_id);
-        }
+    // Record our own id write so Rule 1 does not read the in-flight
+    // frames (still reporting old_spoolman_id until the echo lands) as
+    // an external re-bind. An unlink (SPOOLID=-1) erases the pending
+    // expectation instead. The gcode block above runs OUTSIDE mutex_ —
+    // take the lock just for the record, matching every other writer.
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        record_own_spool_write(slot_index, info.spoolman_id, old_spoolman_id);
+    }
 
-        // Only send command if there are actual changes to persist
-        if (has_changes) {
-            execute_gcode(cmd);
-            spdlog::debug("[AMS HappyHare] Sent: {}", cmd);
-        }
+    // Only send command if there are actual changes to persist
+    if (has_changes) {
+        execute_gcode(cmd);
+        spdlog::debug("[AMS HappyHare] Sent: {}", cmd);
+    }
 
-        // Tool-to-gate mapping is a separate Happy Hare concern from MMU_GATE_MAP
-        // (which is filament metadata). Emit MMU_TTG_MAP whenever the slot edit
-        // path changes mapped_tool — mirrors set_tool_mapping() for the modal flow.
-        if (info.mapped_tool != old_mapped_tool && info.mapped_tool >= 0) {
-            execute_gcode(fmt::format("MMU_TTG_MAP TOOL={} GATE={}", info.mapped_tool, slot_index));
-        }
+    // Tool-to-gate mapping is a separate Happy Hare concern from MMU_GATE_MAP
+    // (which is filament metadata). Emit MMU_TTG_MAP whenever the slot edit
+    // path changes mapped_tool — mirrors set_tool_mapping() for the modal flow.
+    if (info.mapped_tool != old_mapped_tool && info.mapped_tool >= 0) {
+        execute_gcode(fmt::format("MMU_TTG_MAP TOOL={} GATE={}", info.mapped_tool, slot_index));
     }
 
     // Emit OUTSIDE the lock to avoid deadlock with callbacks
     emit_event(EVENT_SLOT_CHANGED, std::to_string(slot_index));
 
     if (!rejected_material.empty()) {
-        return AmsError(AmsResult::COMMAND_FAILED,
-                        "Material '" + rejected_material +
-                            "' contains characters that cannot be "
-                            "sent as a G-code parameter",
-                        lv_tr("Couldn't save the material name"),
-                        lv_tr("Everything else was saved. Rename the material using letters, "
-                              "digits, spaces, and + - _ . ( ) /"));
+        AmsError partial(AmsResult::COMMAND_FAILED,
+                         "Material '" + rejected_material +
+                             "' contains characters that cannot be "
+                             "sent as a G-code parameter",
+                         lv_tr("Couldn't save the material name"),
+                         lv_tr("Everything else was saved. Rename the material using letters, "
+                               "digits, spaces, and + - _ . ( ) /"));
+        // Every other write above has already gone out, the spool id included.
+        partial.partially_applied = true;
+        return partial;
     }
 
     return AmsErrorHelper::success();
+}
+
+AmsError AmsBackendHappyHare::sync_external_identity(int slot_index, const SlotInfo& info) {
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+
+        if (!slots_.is_valid_index(slot_index)) {
+            return AmsErrorHelper::invalid_slot(lane_noun(), slot_index, slots_.slot_count() - 1);
+        }
+
+        auto* entry = slots_.get_mut(slot_index);
+        if (!entry) {
+            return AmsErrorHelper::invalid_slot(lane_noun(), slot_index, slots_.slot_count() - 1);
+        }
+
+        write_gate_locked(slot_index, entry->info, info);
+    }
+
+    // Emit OUTSIDE the lock to avoid deadlock with callbacks
+    emit_event(EVENT_SLOT_CHANGED, std::to_string(slot_index));
+    return AmsErrorHelper::success();
+}
+
+void AmsBackendHappyHare::persist_slot_weight(int slot_index, float remaining_weight_g,
+                                              float total_weight_g) {
+    // The gate map holds no weight, so the stored record is its only durable home.
+    std::lock_guard<std::mutex> lock(mutex_);
+    helix::ams::persist_override_weight(override_store_.get(), overrides_, slot_index,
+                                        remaining_weight_g, total_weight_g, "[AMS HappyHare]");
 }
 
 uint64_t AmsBackendHappyHare::firmware_tool_mapping_generation() const {

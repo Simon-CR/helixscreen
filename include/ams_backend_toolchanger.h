@@ -269,7 +269,11 @@ class AmsBackendToolChanger : public AmsSubscriptionBackend {
     AmsError cancel() override;
 
     // Configuration
-    AmsError set_slot_info(int slot_index, const SlotInfo& info, bool persist = true) override;
+    AmsError apply_user_edit(int slot_index, const SlotInfo& info,
+                             const helix::ams::Observation& declared) override;
+    AmsError sync_external_identity(int slot_index, const SlotInfo& info) override;
+    void persist_slot_weight(int slot_index, float remaining_weight_g,
+                             float total_weight_g) override;
     AmsError set_tool_mapping_impl(int tool_number, int slot_index) override;
 
     // Tool mapping via klipper-toolchanger ASSIGN_TOOL command
@@ -325,6 +329,7 @@ class AmsBackendToolChanger : public AmsSubscriptionBackend {
     const char* backend_log_tag() const override {
         return "[AMS ToolChanger]";
     }
+    SlotInfo* cached_slot_locked(int slot_index) override;
 
     /// dispatch_operation() sets the optimistic action (begin_dispatch_locked)
     /// BEFORE calling ensure_homed_then() -- on decline, the base class's

@@ -338,7 +338,7 @@ class Ad5xIfsTestAccess {
             return std::nullopt;
         return it->second;
     }
-    // Inject an override store so persist=true set_slot_info has somewhere to
+    // Inject an override store so apply_user_edit has somewhere to
     // write. Production creates the store inside on_started(); tests that
     // build the backend with a concrete MoonrakerAPIMock but never call
     // on_started() need this shim to populate override_store_.
@@ -435,7 +435,7 @@ class Ad5xIfsTestAccess {
         return b.local_adventurer_json_path_;
     }
     // Drive the local read-modify-write path directly so tests can assert
-    // file content without going through the full set_slot_info pipeline.
+    // file content without going through the full apply_user_edit pipeline.
     static AmsError write_adventurer_json_local(AmsBackendAd5xIfs& b, int slot_index) {
         return b.write_adventurer_json_local(slot_index);
     }

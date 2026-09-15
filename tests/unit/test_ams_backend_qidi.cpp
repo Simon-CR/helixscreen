@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "../lvgl_test_fixture.h"
+#include "../test_helpers/backend_user_edit.h"
 #include "../test_helpers/print_state_test_drivers.h"
 #include "ams_backend_qidi.h"
 #include "ams_error.h"
@@ -1462,7 +1463,7 @@ TEST_CASE("QIDI Box read-path resolution survives before filas list loads", "[am
 }
 
 // =====================================================================
-// Reverse lookups (pure) for set_slot_info()
+// Reverse lookups (pure) for apply_user_edit()
 // =====================================================================
 
 TEST_CASE("QIDI Box resolve_fila_id matches name then falls back to type", "[ams][qidi_box]") {
@@ -1511,10 +1512,10 @@ TEST_CASE("QIDI Box resolve_vendor_id matches name, falls back to Generic", "[am
 }
 
 // =====================================================================
-// set_slot_info: write reverse-mapped ids back to save_variables
+// apply_user_edit: write reverse-mapped ids back to save_variables
 // =====================================================================
 
-TEST_CASE("QIDI Box set_slot_info emits SAVE_VARIABLE for all three ids",
+TEST_CASE("QIDI Box apply_user_edit emits SAVE_VARIABLE for all three ids",
           "[ams][qidi_box][write_path]") {
     RecordingQidiBackend backend;
     QidiBoxTestAccess::apply_filas_list(backend, STOCK_FILAS_EXCERPT);
@@ -1524,7 +1525,7 @@ TEST_CASE("QIDI Box set_slot_info emits SAVE_VARIABLE for all three ids",
     info.brand = "eSUN";
     info.color_rgb = 0xFF362D;
 
-    auto err = backend.set_slot_info(0, info, /*persist=*/true);
+    auto err = helix::test::apply_edit(backend, 0, info);
     REQUIRE(err.success());
 
     // Three writes: filament_slot0 / color_slot0 / vendor_slot0 — integers
@@ -1545,7 +1546,39 @@ TEST_CASE("QIDI Box set_slot_info emits SAVE_VARIABLE for all three ids",
     REQUIRE(saw_vendor);
 }
 
-TEST_CASE("QIDI Box set_slot_info skips fields with no mapping", "[ams][qidi_box][write_path]") {
+TEST_CASE("QIDI Box weight update writes none of the box's identity variables",
+          "[ams][qidi_box][write_path][1652]") {
+    RecordingQidiBackend backend;
+    QidiBoxTestAccess::apply_filas_list(backend, STOCK_FILAS_EXCERPT);
+    // A loaded vendor table makes apply_user_edit write vendor_slot for any slot,
+    // so a weight that reached it would show up in what was sent.
+    REQUIRE(QidiBoxTestAccess::vendor_count(backend) > 0);
+
+    // What the consumption meter's pause and completion flushes do.
+    backend.update_slot_weight(0, 500.0f, -1.0f, /*persist=*/true);
+
+    CHECK(backend.sent.empty());
+}
+
+TEST_CASE("QIDI Box identity sync writes none of the box's identity variables",
+          "[ams][qidi_box][write_path][1652]") {
+    RecordingQidiBackend backend;
+    QidiBoxTestAccess::apply_filas_list(backend, STOCK_FILAS_EXCERPT);
+    // Values that resolve to all three ids, so a sync that reached the write
+    // path would show up in what was sent.
+    REQUIRE(QidiBoxTestAccess::vendor_count(backend) > 0);
+
+    SlotInfo info;
+    info.material = "ABS";
+    info.brand = "eSUN";
+    info.color_rgb = 0xFF362D;
+
+    REQUIRE(backend.sync_external_identity(0, info).success());
+
+    CHECK(backend.sent.empty());
+}
+
+TEST_CASE("QIDI Box apply_user_edit skips fields with no mapping", "[ams][qidi_box][write_path]") {
     RecordingQidiBackend backend;
     QidiBoxTestAccess::apply_filas_list(backend, STOCK_FILAS_EXCERPT);
 
@@ -1555,7 +1588,7 @@ TEST_CASE("QIDI Box set_slot_info skips fields with no mapping", "[ams][qidi_box
     info.brand = "QIDI";
     info.color_rgb = 0xFAFAFA;
 
-    auto err = backend.set_slot_info(1, info, /*persist=*/true);
+    auto err = helix::test::apply_edit(backend, 1, info);
     REQUIRE(err.success());
     // No filament_slot write (unmapped), but color + vendor present.
     for (const auto& g : backend.sent) {
@@ -1572,18 +1605,19 @@ TEST_CASE("QIDI Box set_slot_info skips fields with no mapping", "[ams][qidi_box
     REQUIRE(saw_vendor);
 }
 
-TEST_CASE("QIDI Box set_slot_info rejects out-of-range slot index", "[ams][qidi_box][write_path]") {
+TEST_CASE("QIDI Box apply_user_edit rejects out-of-range slot index",
+          "[ams][qidi_box][write_path]") {
     RecordingQidiBackend backend;
     QidiBoxTestAccess::apply_filas_list(backend, STOCK_FILAS_EXCERPT);
 
     SlotInfo info;
     info.material = "PLA";
-    REQUIRE_FALSE(backend.set_slot_info(-1, info, true).success());
-    REQUIRE_FALSE(backend.set_slot_info(99, info, true).success());
+    REQUIRE_FALSE(helix::test::apply_edit(backend, -1, info).success());
+    REQUIRE_FALSE(helix::test::apply_edit(backend, 99, info).success());
     REQUIRE(backend.sent.empty());
 }
 
-TEST_CASE("QIDI Box set_slot_info accepts global slots from later boxes",
+TEST_CASE("QIDI Box apply_user_edit accepts global slots from later boxes",
           "[ams][qidi_box][write_path]") {
     RecordingQidiBackend backend;
     QidiBoxTestAccess::parse_vars(backend, json{{"box_count", 2}});
@@ -1594,7 +1628,7 @@ TEST_CASE("QIDI Box set_slot_info accepts global slots from later boxes",
     info.brand = "eSUN";
     info.color_rgb = 0xFF362D;
 
-    auto err = backend.set_slot_info(5, info, true);
+    auto err = helix::test::apply_edit(backend, 5, info);
     REQUIRE(err.success());
 
     bool saw_fila = false;
@@ -1604,7 +1638,7 @@ TEST_CASE("QIDI Box set_slot_info accepts global slots from later boxes",
     REQUIRE(saw_fila);
 }
 
-TEST_CASE("QIDI Box set_slot_info with no palette/vendor data still writes fila",
+TEST_CASE("QIDI Box apply_user_edit with no palette/vendor data still writes fila",
           "[ams][qidi_box][write_path]") {
     RecordingQidiBackend backend;
     // Only fila profiles loaded — no colordict / vendor_list.
@@ -1615,7 +1649,7 @@ TEST_CASE("QIDI Box set_slot_info with no palette/vendor data still writes fila"
     info.brand = "eSUN";
     info.color_rgb = 0x123456;
 
-    auto err = backend.set_slot_info(0, info, true);
+    auto err = helix::test::apply_edit(backend, 0, info);
     REQUIRE(err.success());
     // Only the filament_slot write — empty palette/vendor skip cleanly.
     REQUIRE(backend.sent.size() == 1);

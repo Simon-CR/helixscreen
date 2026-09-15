@@ -17,6 +17,7 @@
  */
 
 #include "../lvgl_test_fixture.h"
+#include "../test_helpers/backend_user_edit.h"
 #include "../test_helpers/update_queue_test_access.h"
 #include "ams_backend_mock.h"
 #include "ams_backend_snapmaker.h"
@@ -378,7 +379,7 @@ TEST_CASE_METHOD(LVGLTestFixture, "AmsState publishes per-slot fill subject on s
     s0.color_rgb = 0x00FF00;
     s0.remaining_weight_g = 500.0f;
     s0.total_weight_g = 1000.0f;
-    mock_ptr->set_slot_info(0, s0);
+    helix::test::apply_edit(*mock_ptr, 0, s0);
 
     // slot 1: empty lane with NO recorded weight → 0. The weights are cleared
     // explicitly: a real weight now outranks the empty status (an absent tool on
@@ -386,7 +387,7 @@ TEST_CASE_METHOD(LVGLTestFixture, "AmsState publishes per-slot fill subject on s
     // weights here would be testing the other branch by accident.
     SlotInfo s1;
     s1.slot_index = 1; // remaining/total stay -1 (unknown)
-    mock_ptr->set_slot_info(1, s1);
+    helix::test::apply_edit(*mock_ptr, 1, s1);
     mock_ptr->force_slot_status(1, SlotStatus::EMPTY);
 
     // slot 2: present, metadata only (no usable weights) → full fallback.
@@ -395,13 +396,13 @@ TEST_CASE_METHOD(LVGLTestFixture, "AmsState publishes per-slot fill subject on s
     s2.slot_index = 2;
     s2.material = "PETG";
     s2.color_rgb = 0x0000FF;
-    mock_ptr->set_slot_info(2, s2); // remaining/total stay -1 (unknown)
+    helix::test::apply_edit(*mock_ptr, 2, s2); // remaining/total stay -1 (unknown)
 
     // slot 3: present but zero metadata AND no weights → no data (-1).
     mock_ptr->force_slot_status(3, SlotStatus::AVAILABLE);
     SlotInfo s3;
     s3.slot_index = 3; // material empty, default color, weights -1
-    mock_ptr->set_slot_info(3, s3);
+    helix::test::apply_edit(*mock_ptr, 3, s3);
 
     ams.set_backend(std::move(mock));
     ams.sync_from_backend();
@@ -479,7 +480,7 @@ TEST_CASE_METHOD(LVGLTestFixture, "AmsState remaining subject falls back to weig
     auto* mock_ptr = static_cast<AmsBackendMock*>(mock.get());
 
     // slot 0: real measured length. The length is firmware-derived state, so
-    // it is staged through force_slot_remaining - set_slot_info does not copy
+    // it is staged through force_slot_remaining - apply_user_edit does not copy
     // it (same discipline as status).
     mock_ptr->force_slot_status(0, SlotStatus::AVAILABLE);
     mock_ptr->force_slot_remaining(0, 42.0f);
@@ -487,7 +488,7 @@ TEST_CASE_METHOD(LVGLTestFixture, "AmsState remaining subject falls back to weig
     s0.slot_index = 0;
     s0.material = "PLA";
     s0.color_rgb = 0x00FF00;
-    mock_ptr->set_slot_info(0, s0);
+    helix::test::apply_edit(*mock_ptr, 0, s0);
 
     // slot 1: the failed-probe sentinel is not a measurement, so the weight
     // carries the display instead.
@@ -498,7 +499,7 @@ TEST_CASE_METHOD(LVGLTestFixture, "AmsState remaining subject falls back to weig
     s1.material = "PLA";
     s1.color_rgb = 0xFF0000;
     s1.remaining_weight_g = 250.0f;
-    mock_ptr->set_slot_info(1, s1);
+    helix::test::apply_edit(*mock_ptr, 1, s1);
 
     ams.set_backend(std::move(mock));
     ams.sync_from_backend();
@@ -532,7 +533,7 @@ TEST_CASE_METHOD(LVGLTestFixture, "AMS op-card color matches the loaded slot's c
     for (int i = 0; i < 4; ++i) {
         auto slot = mock_ptr->get_slot_info(i);
         slot.color_rgb = colors[i];
-        mock_ptr->set_slot_info(i, slot);
+        helix::test::apply_edit(*mock_ptr, i, slot);
     }
 
     // Load slot 1 (a non-zero, non-first slot to expose +1 indexing). The mock
@@ -658,8 +659,8 @@ TEST_CASE_METHOD(LVGLTestFixture, "AmsState publishes per-slot error state and s
     }
 
     SECTION("a BLOCKED lane without an error object still publishes has_error=1") {
-        // force_slot_status, not set_slot_info: status is firmware-derived and
-        // set_slot_info deliberately ignores it, like every real backend.
+        // force_slot_status, not apply_user_edit: status is firmware-derived and
+        // apply_user_edit deliberately ignores it, like every real backend.
         backend_ptr->force_slot_status(0, SlotStatus::BLOCKED);
         backend_ptr->set_slot_error(0, std::nullopt);
         ams.sync_from_backend();

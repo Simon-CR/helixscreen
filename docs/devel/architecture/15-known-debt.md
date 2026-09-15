@@ -184,7 +184,7 @@ into, filing them as a `VendorCache` reading. What the lane then holds as "what 
 says" is the user's own edit, returned. Snapmaker is the only one that suppresses it, by
 withholding from its record the fields that echo a write it issued, with the RFID tag uid as
 the boundary that ends the suppression. AD5X IFS carries a second and sharper form of the same
-confusion: `set_slot_info()` writes the edited colour and material straight into the arrays
+confusion: `write_port_locked()`, which `apply_user_edit()` and `sync_external_identity()` both run, writes the edited colour and material straight into the arrays
 `update_slot_from_state()` derives its firmware-truth record from, so the edit lands in that
 record before any gcode leaves the process, with no printer involved at all (#1631).
 

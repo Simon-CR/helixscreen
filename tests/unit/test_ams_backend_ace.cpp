@@ -15,6 +15,7 @@
 #include "moonraker_types.h"
 #include "printer_state.h"
 #include "test_helpers/ace_test_access.h"
+#include "test_helpers/backend_user_edit.h"
 #include "test_helpers/registered_backend.h"
 
 #include <algorithm>
@@ -697,7 +698,7 @@ TEST_CASE("ACE operations require API", "[ams][ace][preconditions]") {
 //   1. An override loaded at init is applied over firmware data on parse.
 //   2. Migration from helix-screen:ace_slot_overrides to lane_data happens
 //      automatically on the first load_blocking() call (Task 8 logic).
-//   3. set_slot_info(persist=true) writes through to the store.
+//   3. apply_user_edit() writes through to the store.
 //   4. Slot status transition empty/unknown -> present clears the override
 //      (ACE's analogue to RFID UID change on Snapmaker).
 //   5. Slot status transition loaded -> empty does NOT clear the override.
@@ -793,7 +794,7 @@ TEST_CASE("ACE migrates from helix-screen:ace_slot_overrides on first startup",
     CHECK(api.mock_get_db_value("helix-screen", "ace_slot_overrides").is_null());
 }
 
-TEST_CASE("ACE set_slot_info(persist=true) writes to store", "[ams][ace][filament_slot_override]") {
+TEST_CASE("ACE apply_user_edit writes to store", "[ams][ace][filament_slot_override]") {
     AceTmpCacheDir tmp("task13_persist_true");
     MoonrakerClientMock client(MoonrakerClientMock::PrinterType::VORON_24);
     helix::PrinterState state;
@@ -806,7 +807,7 @@ TEST_CASE("ACE set_slot_info(persist=true) writes to store", "[ams][ace][filamen
     FilamentSlotOverrideStoreTestAccess::set_cache_directory(*store, tmp.path);
     AceTestAccess::inject_override_store(backend, std::move(store));
 
-    // Prime the backend with 4 slots so set_slot_info's index check passes.
+    // Prime the backend with 4 slots so apply_user_edit's index check passes.
     AceTestAccess::parse_ace(backend, json{{"model", "ACE Pro"},
                                            {"slots", json::array({
                                                          json{{"status", "empty"}},
@@ -823,7 +824,7 @@ TEST_CASE("ACE set_slot_info(persist=true) writes to store", "[ams][ace][filamen
     edit.material = "PLA";
     edit.color_rgb = 0xFF5500;
 
-    auto err = backend.set_slot_info(0, edit, /*persist=*/true);
+    auto err = helix::test::apply_edit(backend, 0, edit);
     REQUIRE(err.success());
 
     // In-memory map carries the override.
@@ -846,7 +847,7 @@ TEST_CASE("ACE set_slot_info(persist=true) writes to store", "[ams][ace][filamen
     CHECK(api.mock_get_db_value("helix-screen", "ace_slot_overrides").is_null());
 }
 
-TEST_CASE("ACE set_slot_info(persist=false) does NOT write to store",
+TEST_CASE("ACE sync_external_identity does NOT write to store",
           "[ams][ace][filament_slot_override]") {
     AceTmpCacheDir tmp("task13_persist_false");
     MoonrakerClientMock client(MoonrakerClientMock::PrinterType::VORON_24);
@@ -873,7 +874,7 @@ TEST_CASE("ACE set_slot_info(persist=false) does NOT write to store",
     edit.material = "PLA";
     edit.color_rgb = 0x123456;
 
-    auto err = backend.set_slot_info(0, edit, /*persist=*/false);
+    auto err = backend.sync_external_identity(0, edit);
     REQUIRE(err.success());
 
     // No override staged, no DB write.
@@ -918,7 +919,7 @@ TEST_CASE_METHOD(HelixTestFixture, "ACE weight persist leaves the lane's declara
     edit.brand = "Polymaker";
     edit.material = "PETG";
     edit.color_rgb = 0x1E5AA8;
-    REQUIRE(backend.set_slot_info(0, edit, /*persist=*/true).success());
+    REQUIRE(helix::test::apply_edit(backend, 0, edit).success());
 
     const auto declared = AceTestAccess::get_override(backend, 0);
     REQUIRE(declared.has_value());
@@ -2022,7 +2023,7 @@ TEST_CASE("ACE publishes a persisted edit to lane_data as the user's own",
     edit.material = "PETG";
     edit.color_rgb = 0x1188FF;
     edit.color_name = "Blue";
-    REQUIRE(backend.set_slot_info(0, edit, /*persist=*/true).success());
+    REQUIRE(helix::test::apply_edit(backend, 0, edit).success());
 
     auto staged = AceTestAccess::get_override(backend, 0);
     REQUIRE(staged.has_value());

@@ -345,7 +345,11 @@ class AmsBackendAfc : public AmsSubscriptionBackend {
     AmsError cancel() override;
 
     // Configuration
-    AmsError set_slot_info(int slot_index, const SlotInfo& info, bool persist = true) override;
+    AmsError apply_user_edit(int slot_index, const SlotInfo& info,
+                             const helix::ams::Observation& declared) override;
+    AmsError sync_external_identity(int slot_index, const SlotInfo& info) override;
+    void persist_slot_weight(int slot_index, float remaining_weight_g,
+                             float total_weight_g) override;
     AmsError set_tool_mapping_impl(int tool_number, int slot_index) override;
 
     // Bypass mode
@@ -530,6 +534,7 @@ class AmsBackendAfc : public AmsSubscriptionBackend {
     const char* backend_log_tag() const override {
         return "[AMS AFC]";
     }
+    SlotInfo* cached_slot_locked(int slot_index) override;
 
     /// dispatch_operation() sets the optimistic action (begin_dispatch_locked)
     /// BEFORE calling ensure_homed_then() -- on decline, the base class's
@@ -563,10 +568,13 @@ class AmsBackendAfc : public AmsSubscriptionBackend {
     std::unique_ptr<helix::ams::FilamentSlotOverrideStore> lane_publish_store_;
     std::unordered_map<int, helix::ams::FilamentSlotOverride> overrides_;
     /// Layer the user override over firmware values. Callers hold mutex_.
-    /// Build + persist an override from a user edit. Callers hold mutex_ and
-    /// pass the lane as it stood before the edit, which is what says which
-    /// fields the user actually moved.
-    void persist_override(int slot_index, const SlotInfo& original, const SlotInfo& info);
+    /// Build + persist an override from a user edit, recording what @p declared
+    /// says the user moved. Callers hold mutex_.
+    void persist_override(int slot_index, const SlotInfo& info,
+                          const helix::ams::Observation& declared);
+    /// Put @p info's filament fields and tool mapping on @p slot, the half an
+    /// edit and a sync share. Callers hold mutex_.
+    void write_lane_locked(int slot_index, SlotInfo& slot, const SlotInfo& info);
 
     /// Async callback safety guard. Tokens shared with AfcConfigManager instances.
     helix::AsyncLifetimeGuard lifetime_;

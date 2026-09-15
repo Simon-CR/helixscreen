@@ -166,7 +166,7 @@ struct OverlayCommitFixture : LVGLTestFixture {
 
         SlotInfo slot = backend->get_slot_info(0);
         slot.spoolman_id = slot0_spoolman_id;
-        backend->set_slot_info(0, slot, /*persist=*/false);
+        backend->sync_external_identity(0, slot);
     }
 };
 

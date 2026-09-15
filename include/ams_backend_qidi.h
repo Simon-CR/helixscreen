@@ -164,7 +164,11 @@ class AmsBackendQidi : public AmsSubscriptionBackend {
         return box_uses_multi_color_ || fw_force_move_enabled_;
     }
 
-    AmsError set_slot_info(int slot_index, const SlotInfo& info, bool persist = true) override;
+    AmsError apply_user_edit(int slot_index, const SlotInfo& info,
+                             const helix::ams::Observation& declared) override;
+    AmsError sync_external_identity(int slot_index, const SlotInfo& info) override;
+    void update_slot_weight_impl(int slot_index, float remaining_weight_g, float total_weight_g,
+                                 bool persist) override;
     AmsError set_tool_mapping_impl(int tool_number, int slot_index) override;
     void clear_slot_override(int slot_index) override;
 
@@ -297,7 +301,7 @@ class AmsBackendQidi : public AmsSubscriptionBackend {
     /// vendor_list id → vendor name, populated by apply_filas_list().
     std::map<int, std::string> vendor_names_;
 
-    // --- Reverse lookups for set_slot_info() (pure, no member access) ---
+    // --- Reverse lookups for apply_user_edit() (pure, no member access) ---
     //
     // Map a SlotInfo back onto the three stock RFID indices written to
     // save_variables. Static + parameterised by the parsed maps so they

@@ -163,6 +163,10 @@ class AmsSubscriptionBackend : public AmsBackend {
         home_preconfirmed_ = false;
     }
 
+    /// Repaints the SlotInfo cached_slot_locked() names from its lane, under
+    /// mutex_. Call without holding mutex_.
+    void repaint_slot_from_lane(int slot_index) override;
+
   protected:
     // --- Hooks for derived classes ---
 
@@ -173,6 +177,19 @@ class AmsSubscriptionBackend : public AmsBackend {
     /// Called before stop() releases the subscription.
     /// Lock IS held.
     virtual void on_stopping() {}
+
+    /// The SlotInfo get_slot_info() serves for @p slot_index, or nullptr when
+    /// there is none to repaint. Lock IS held.
+    ///
+    /// A backend that paints a stored SlotInfo from the lane only while it
+    /// parses a frame names it here, so a lane written from outside the backend
+    /// (a person's edit, a Spoolman fetch) shows before the next frame, which an
+    /// idle machine may not send for a long time. A backend that re-reads its
+    /// slots on a short poll keeps the default.
+    virtual SlotInfo* cached_slot_locked(int slot_index) {
+        (void)slot_index;
+        return nullptr;
+    }
 
     /// Called when the user declines the pre-operation home prompt raised by
     /// ensure_homed_then(). Default resets system_info_.action to IDLE (under

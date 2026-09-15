@@ -30,6 +30,7 @@
 #include "test_helpers/ace_test_access.h"
 #include "test_helpers/ad5x_ifs_test_access.h"
 #include "test_helpers/afc_test_access.h"
+#include "test_helpers/backend_user_edit.h"
 #include "test_helpers/cfs_test_access.h"
 #include "test_helpers/happy_hare_test_access.h"
 #include "test_helpers/qidi_box_test_access.h"
@@ -40,10 +41,12 @@
 #include "test_helpers/toolchanger_test_access.h"
 #include "toolchanger_addon.h"
 
+#include <filesystem>
 #include <map>
 #include <mutex>
 #include <optional>
 #include <string>
+#include <unistd.h>
 #include <vector>
 
 #include "../catch_amalgamated.hpp"
@@ -404,8 +407,17 @@ TEST_CASE_METHOD(LVGLTestFixture, "AD5X reads its stored colour with the shared 
 
 TEST_CASE_METHOD(LVGLTestFixture, "an override never reaches AD5X's vendor-cache record",
                  "[lane][ingest][ad5x]") {
+    struct RemoveOnExit {
+        std::filesystem::path path;
+        ~RemoveOnExit() {
+            std::error_code ec;
+            std::filesystem::remove(path, ec);
+        }
+    } adventurer_json{std::filesystem::temp_directory_path() /
+                      ("helix_lane_obs_ad5x_" + std::to_string(::getpid()) + ".json")};
     Ad5xHarness harness(nullptr, nullptr);
     Ad5xIfsTestAccess::set_ifs_status_ports_seen(*harness, true);
+    Ad5xIfsTestAccess::set_local_adventurer_json_path(*harness, adventurer_json.path.string());
 
     // A user colour that disagrees with what the vendor file goes on to say.
     // SlotInfo is persistent across frames and the lane re-layer rewrites it in
@@ -2291,7 +2303,7 @@ TEST_CASE_METHOD(LVGLTestFixture, "Snapmaker's own write-back does not return as
     edit.material = "PETG";
     edit.spool_name = "Matte";
     edit.color_rgb = 0x00FF00u;
-    REQUIRE(harness->set_slot_info(0, edit, /*persist=*/true).success());
+    REQUIRE(helix::test::apply_edit(*harness, 0, edit).success());
     REQUIRE(api.rest_mock().mock_get_post_history().size() == 1);
     REQUIRE(api.rest_mock().mock_get_post_history()[0].endpoint == "/printer/filament_detect/set");
 
@@ -2405,7 +2417,7 @@ TEST_CASE_METHOD(LVGLTestFixture, "a Snapmaker write firmware refused withholds 
     edit.material = "PETG";
     edit.spool_name = "Matte";
     edit.color_rgb = 0x00FF00u;
-    REQUIRE(harness->set_slot_info(0, edit, /*persist=*/true).success());
+    REQUIRE(helix::test::apply_edit(*harness, 0, edit).success());
     REQUIRE(api.rest_mock().mock_get_post_history().size() == 1);
 
     // The refusal reaches the guard through the response callback, which
@@ -2470,9 +2482,9 @@ TEST_CASE_METHOD(LVGLTestFixture,
     REQUIRE(edit.material == "PLA");
     REQUIRE(edit.spool_name == "Silk");
     edit.color_rgb = 0x00FF00u;
-    REQUIRE(harness->set_slot_info(0, edit, /*persist=*/true).success());
+    REQUIRE(helix::test::apply_edit(*harness, 0, edit).success());
 
-    // set_slot_info POSTs the whole merged struct, so VENDOR / MAIN_TYPE /
+    // apply_user_edit POSTs the whole merged struct, so VENDOR / MAIN_TYPE /
     // SUB_TYPE went out carrying the tag's own strings.
     const auto history = api.rest_mock().mock_get_post_history();
     REQUIRE(history.size() == 1);
@@ -2533,7 +2545,7 @@ TEST_CASE_METHOD(LVGLTestFixture, "a Spoolman link declares the binding, not the
     edit.brand = "Polymaker";
     edit.material = "PETG";
     edit.color_rgb = 0x00FF00u;
-    REQUIRE(harness->set_slot_info(0, edit, /*persist=*/true).success());
+    REQUIRE(helix::test::apply_edit(*harness, 0, edit).success());
 
     // The user's own record, filed the way AmsState::commit_slot_edit files it.
     helix::ams::commit_slot_edit(harness.lane(0),
@@ -2752,7 +2764,7 @@ TEST_CASE_METHOD(LVGLTestFixture, "what the colordict admits decides the write-b
 
     // A row in one of the newly-admitted spellings. It is a palette MEMBER, so
     // it is also a nearest-match target: resolve_color_id scans the whole map,
-    // and set_slot_info writes back the id it picks.
+    // and apply_user_edit writes back the id it picks.
     AmsBackendQidi widened(nullptr, nullptr);
     QidiBoxTestAccess::apply_filas_list(widened, stock + "3 = F11\n");
     REQUIRE(QidiBoxTestAccess::color_count(widened) == 3);
@@ -2816,7 +2828,7 @@ TEST_CASE_METHOD(LVGLTestFixture, "the mock's simulated population becomes lane 
     CHECK_FALSE(lane.vendor_cache->remaining_weight_g.has_value());
 }
 
-TEST_CASE_METHOD(LVGLTestFixture, "neither arm of the mock's set_slot_info is a reading",
+TEST_CASE_METHOD(LVGLTestFixture, "neither the mock's edit nor its sync is a reading",
                  "[lane][ingest][mock]") {
     MockHarness harness(4);
     REQUIRE(harness->start().success());
@@ -2829,12 +2841,12 @@ TEST_CASE_METHOD(LVGLTestFixture, "neither arm of the mock's set_slot_info is a 
     edited.material = "Declared-PC";
     edited.color_rgb = 0x00FF00u;
     edited.brand = "Polymaker";
-    REQUIRE(harness->set_slot_info(0, edited, /*persist=*/true).success());
+    REQUIRE(helix::test::apply_edit(*harness, 0, edited).success());
 
     auto pushed = harness->get_slot_info(1);
     pushed.material = "Pushed-ASA";
     pushed.color_rgb = 0x0000FFu;
-    REQUIRE(harness->set_slot_info(1, pushed, /*persist=*/false).success());
+    REQUIRE(harness->sync_external_identity(1, pushed).success());
 
     // Preconditions: both writes landed on the slots, so an unchanged record
     // below is a decision and not a call that did nothing.
@@ -2858,17 +2870,17 @@ TEST_CASE_METHOD(LVGLTestFixture, "the mock's colour sentinel is not a grey anyb
                  "[lane][ingest][mock]") {
     MockHarness harness(4);
 
-    // set_slot_info writes the slot even though it files no reading, which is
+    // sync_external_identity writes the slot even though it files no reading, which is
     // how a lane gets staged before the population is published.
     auto black = harness->get_slot_info(0);
     black.color_rgb = 0x000000u;
     black.material = "Black-PLA";
-    REQUIRE(harness->set_slot_info(0, black, /*persist=*/false).success());
+    REQUIRE(harness->sync_external_identity(0, black).success());
 
     auto colourless = harness->get_slot_info(1);
     colourless.color_rgb = helix::AMS_DEFAULT_SLOT_COLOR;
     colourless.material = "Grey-PLA";
-    REQUIRE(harness->set_slot_info(1, colourless, /*persist=*/false).success());
+    REQUIRE(harness->sync_external_identity(1, colourless).success());
 
     REQUIRE(harness->start().success());
 
@@ -3175,4 +3187,134 @@ TEST_CASE_METHOD(LVGLTestFixture, "a resync with no store is a no-op, not a cras
     helix::ui::UpdateQueue::instance().drain();
 
     CHECK(helix::ams::known_lanes().empty());
+}
+
+// ============================================================================
+// A lane written from outside a backend reaches its cached slot on request
+// (prestonbrown/helixscreen#1653)
+// ============================================================================
+
+namespace {
+
+constexpr uint32_t kFiledColor = 0x1A1A2E;
+
+/// Files a Spoolman colour on slot 0's lane with no frame after it. The slot
+/// the backend serves keeps what its last frame painted until the backend is
+/// asked to repaint, and then shows the filing.
+void expect_repaint_shows_filing(helix::AmsBackend& backend, helix::ams::LaneId lane,
+                                 uint32_t frame_color) {
+    const helix::SlotInfo painted = backend.get_slot_info(0);
+    REQUIRE(painted.color_rgb == frame_color);
+
+    helix::ams::Observation filed(helix::ams::ObservationSource::Spoolman);
+    filed.color_rgb = kFiledColor;
+    helix::ams::ingest(lane, filed);
+    REQUIRE(backend.get_slot_info(0).color_rgb == frame_color);
+
+    backend.repaint_slot_from_lane(0);
+
+    CHECK(backend.get_slot_info(0).color_rgb == kFiledColor);
+    // A filing states no presence, so the status the frame derived stands.
+    CHECK(backend.get_slot_info(0).status == painted.status);
+}
+
+struct CachedSlotBackend {
+    const char* name;
+    void (*run)();
+};
+
+/// Every backend that paints a stored SlotInfo from the lane only while it
+/// parses a frame. ACE is not here: it re-reads its slots on a short poll.
+const CachedSlotBackend kCachedSlotBackends[] = {
+    {"AD5X IFS",
+     [] {
+         Ad5xHarness harness(nullptr, nullptr);
+         Ad5xIfsTestAccess::set_port_presence(*harness, 0, true);
+         Ad5xIfsTestAccess::set_color(*harness, 0, "ED2C2C");
+         expect_repaint_shows_filing(*harness, harness.lane(0), 0xED2C2C);
+     }},
+    {"AFC",
+     [] {
+         AfcHarness harness(nullptr, nullptr);
+         init_afc_lanes(*harness);
+         feed_afc_lane(*harness, "lane1",
+                       {{"prep", true},
+                        {"load", true},
+                        {"status", "Loaded"},
+                        {"color", "#ED2C2C"},
+                        {"material", "PETG"}});
+         expect_repaint_shows_filing(*harness, harness.lane(0), 0xED2C2C);
+     }},
+    {"CFS",
+     [] {
+         CfsHarness harness(nullptr, nullptr);
+         feed_cfs_box(*harness,
+                      flat_box(nlohmann::json::array({nlohmann::json{{"index", 0},
+                                                                     {"material", "PLA"},
+                                                                     {"color", "#ED2C2C"},
+                                                                     {"present", true},
+                                                                     {"loaded", false}}})));
+         expect_repaint_shows_filing(*harness, harness.lane(0), 0xED2C2C);
+     }},
+    {"Happy Hare",
+     [] {
+         HappyHareHarness harness(nullptr, nullptr);
+         feed_mmu(*harness, {{"gate_status", nlohmann::json::array({1})},
+                             {"gate_color", nlohmann::json::array({"ed2c2c"})},
+                             {"gate_material", nlohmann::json::array({"PETG"})}});
+         expect_repaint_shows_filing(*harness, harness.lane(0), 0xED2C2C);
+     }},
+    {"Snapmaker",
+     [] {
+         SnapmakerHarness harness(nullptr, nullptr);
+         feed_filament_detect(
+             *harness, nlohmann::json{
+                           {"state", nlohmann::json::array({1, 0, 0, 0})},
+                           {"info", nlohmann::json::array({nlohmann::json{
+                                        {"MAIN_TYPE", "PLA"},
+                                        {"ARGB_COLOR", 0xFFED2C2C},
+                                        {"CARD_UID", nlohmann::json::array({144, 32, 196, 2})},
+                                    }})},
+                       });
+         expect_repaint_shows_filing(*harness, harness.lane(0), 0xED2C2C);
+     }},
+    {"ToolChanger",
+     [] {
+         ToolChangerHarness harness(nullptr, nullptr);
+         harness->set_discovered_tools({"T0", "T1"});
+         feed_toolchanger(
+             *harness, nlohmann::json{{"toolchanger", {{"status", "ready"}, {"tool_number", 0}}}});
+         expect_repaint_shows_filing(*harness, harness.lane(0), helix::AMS_DEFAULT_SLOT_COLOR);
+     }},
+};
+
+} // namespace
+
+TEST_CASE_METHOD(LVGLTestFixture,
+                 "a backend serving its slots from a cache repaints one from its lane on request",
+                 "[lane][1653]") {
+    for (const auto& backend : kCachedSlotBackends) {
+        DYNAMIC_SECTION(backend.name) {
+            backend.run();
+        }
+    }
+}
+
+TEST_CASE_METHOD(LVGLTestFixture,
+                 "a tool changer frame paints a lane whose only identity is its Spoolman record",
+                 "[lane][toolchanger][1653]") {
+    ToolChangerHarness harness(nullptr, nullptr);
+    harness->set_discovered_tools({"T0", "T1"});
+    REQUIRE_FALSE(ToolChangerTestAccess::has_overrides(*harness));
+
+    helix::ams::Observation filed(helix::ams::ObservationSource::Spoolman);
+    filed.spoolman_id = 7;
+    filed.color_rgb = kFiledColor;
+    helix::ams::ingest(harness.lane(0), filed);
+    REQUIRE(harness->get_slot_info(0).color_rgb == helix::AMS_DEFAULT_SLOT_COLOR);
+
+    feed_toolchanger(*harness,
+                     nlohmann::json{{"toolchanger", {{"status", "ready"}, {"tool_number", 0}}}});
+
+    CHECK(harness->get_slot_info(0).color_rgb == kFiledColor);
 }

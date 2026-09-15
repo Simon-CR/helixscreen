@@ -104,9 +104,9 @@ constexpr auto FIELD_ROSTER = std::make_tuple(
     // auto-highlights a product and Save copies whatever is highlighted, so
     // both arrive on commits no person touched them in.
     //
-    // Neither needs an authorship bit: firmware has no concept of a catalog
-    // product, so a value in either can only be a user pick and the record
-    // path files it as one outright.
+    // Neither needs an authorship bit: neither firmware nor Spoolman has the
+    // concept of a catalog product, so a value in either can only be a user
+    // pick and the record path files it as one outright, linked or not.
     field<FieldKind::Text>("catalog_id", nullptr, &FilamentSlotOverride::catalog_id,
                            &Observation::catalog_id),
     field<FieldKind::Text>("product_name", nullptr, &FilamentSlotOverride::product_name,
@@ -223,6 +223,20 @@ bool locked(const nlohmann::json& wire, const char* key) {
 /// the key carries the helix_ prefix there and the bare name in our own cache.
 constexpr const char* declared_key_name(LegacyLockKeys keys) {
     return keys == LegacyLockKeys::LocalCache ? "declared" : "helix_declared";
+}
+
+/// File a stored record's catalog pick on @p user, answering whether the
+/// record held one. Neither firmware nor Spoolman has the concept of a catalog
+/// product, so a value in either field is a person's pick whatever the lock
+/// keys or the binding say, and the editor reopens on the exact product from it.
+bool file_catalog_pick(const FilamentSlotOverride& record, Observation& user) {
+    if (!record.catalog_id.empty()) {
+        user.catalog_id = record.catalog_id;
+    }
+    if (!record.product_name.empty()) {
+        user.product_name = record.product_name;
+    }
+    return !record.catalog_id.empty() || !record.product_name.empty();
 }
 
 /// The merge rule, for one field, and the only place it is spelled out.
@@ -348,16 +362,24 @@ LaneSources sources_from_record(const FilamentSlotOverride& record, const nlohma
     }
 
     if (record.spoolman_id > 0) {
-        // The rest of a linked lane's identity is wholly the server's; its
-        // lock flags record that a colour rode in on the binding, not that a
-        // person chose it, so they are not consulted here either. The weight
-        // fields are stripped back off: they were already filed above, and
-        // declared_from_record's uniform per-field walk would otherwise
-        // refile them under Spoolman too.
+        // A linked lane's identity is the server's; its lock flags record that
+        // a colour rode in on the binding, not that a person chose it, so they
+        // are not consulted here either. declared_from_record walks every
+        // field, so two kinds are stripped back off the server's record: the
+        // weights, already filed above, and the catalog pick, which a spool
+        // record cannot state. A fetch replaces the server's record whole, so
+        // the pick is filed as the user's or it would not survive the first.
         Observation server = declared_from_record(record, wire, keys);
         server.remaining_weight_g.reset();
         server.total_weight_g.reset();
+        server.catalog_id.reset();
+        server.product_name.reset();
         sources.apply(server);
+
+        Observation user(ObservationSource::LocalUser);
+        if (file_catalog_pick(record, user)) {
+            sources.apply(user);
+        }
         return sources;
     }
 
@@ -445,15 +467,7 @@ LaneSources sources_from_record(const FilamentSlotOverride& record, const nlohma
         }
     });
 
-    // Firmware has no concept of a catalog product, so a value here is always
-    // a user pick regardless of what the lock keys say.
-    if (!record.catalog_id.empty() || !record.product_name.empty()) {
-        if (!record.catalog_id.empty()) {
-            user.catalog_id = record.catalog_id;
-        }
-        if (!record.product_name.empty()) {
-            user.product_name = record.product_name;
-        }
+    if (file_catalog_pick(record, user)) {
         have_user = true;
     }
 
@@ -470,6 +484,16 @@ RecordAuthorship amend_authorship(const Observation& observed, const FilamentSlo
                                   const FilamentSlotOverride& amended) {
     RecordAuthorship authorship;
 
+    // A changed binding says another spool is on the lane, so nothing the
+    // record declared describes what is loaded now, whichever values came
+    // through unchanged: this edit's own statement is all that stands.
+    // user_edit_observation() engages spoolman_id exactly when the binding
+    // moved. The prior record's id cannot answer the same question, because
+    // firmware can bind a spool without the record being rewritten.
+    const FilamentSlotOverride nothing_declared;
+    const FilamentSlotOverride& standing =
+        observed.spoolman_id.has_value() ? nothing_declared : prior;
+
     // A lock stands over a value, so the amended record has to carry one for
     // either half of the rule to reach the flag: every mirror policy reads a
     // lock and its value together, and a lock over nothing would stop firmware
@@ -480,12 +504,12 @@ RecordAuthorship amend_authorship(const Observation& observed, const FilamentSlo
     const bool colour_carried = amended.color_set && is_declarable_color(amended.color_rgb);
     authorship.user_locked_color =
         colour_carried &&
-        amended_declaration(observed.color_rgb.has_value(), prior.user_locked_color,
-                            prior.color_set && prior.color_rgb == amended.color_rgb);
+        amended_declaration(observed.color_rgb.has_value(), standing.user_locked_color,
+                            standing.color_set && standing.color_rgb == amended.color_rgb);
     authorship.user_locked_material =
         !amended.material.empty() &&
-        amended_declaration(observed.material.has_value(), prior.user_locked_material,
-                            prior.material == amended.material);
+        amended_declaration(observed.material.has_value(), standing.user_locked_material,
+                            standing.material == amended.material);
 
     // The same rule for the roster rows that keep their authorship in the
     // declared set. No per-kind rule for what this edit declares: the
@@ -496,8 +520,8 @@ RecordAuthorship amend_authorship(const Observation& observed, const FilamentSlo
     for_each_field_indexed([&](const auto& f, size_t index) {
         using Row = std::decay_t<decltype(f)>;
         if constexpr (Row::authorship == Authorship::DeclaredSet) {
-            if (amended_declaration((observed.*(f.obs)).has_value(), prior.declared.test(index),
-                                    prior.*(f.record) == amended.*(f.record))) {
+            if (amended_declaration((observed.*(f.obs)).has_value(), standing.declared.test(index),
+                                    standing.*(f.record) == amended.*(f.record))) {
                 authorship.declared.set(index);
             }
         }

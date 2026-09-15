@@ -145,9 +145,9 @@ void drop_lane_source(LaneId lane, ObservationSource source);
 /// while its records stand in the other means resolve() keeps returning the
 /// identity the user just cleared, and the clear does not stick.
 ///
-/// Not the same operation as reconcile_binding()'s drop, which takes only the
-/// two DECLARING sources: a broken binding says nothing about a weight, where a
-/// cleared record takes the weight with it exactly as it takes the brand.
+/// Not the same operation as drop_previous_spool_declarations() (lane_binding.h),
+/// which leaves Metered standing: a changed binding says nothing about a weight,
+/// where a cleared record takes the weight with it exactly as it takes the brand.
 ///
 /// A lane that is not a lane is dropped, silently, like drop_lane_source().
 void reset_lane_to_machine_readings(LaneId lane);

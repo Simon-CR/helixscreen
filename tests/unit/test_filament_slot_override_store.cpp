@@ -1972,7 +1972,7 @@ TEST_CASE("mirror_firmware_to_lane_data FillUnsetOnly: user color preserved agai
     FilamentSlotOverrideStore store(&api, "cfs");
     FilamentSlotOverrideStoreTestAccess::set_cache_directory(store, tmp.path);
 
-    // Simulate a user who already set blue + brand "Bambu" via set_slot_info.
+    // Simulate a user who already set blue + brand "Bambu" via apply_user_edit.
     // color_set is the explicit "user set this" signal — pure black is a
     // legitimate user choice, so we cannot rely on color_rgb != 0.
     std::unordered_map<int, FilamentSlotOverride> overrides;
@@ -2242,6 +2242,53 @@ TEST_CASE(
     CHECK(changed);
     CHECK(overrides[0].color_rgb == 0xABCDEFu); // locked — untouched
     CHECK(overrides[0].material == "PLA");      // unlocked — bootstrap filled
+}
+
+TEST_CASE(
+    "mirror_firmware_to_lane_data: a field declared on the lane is left alone by both policies",
+    "[mirror_firmware][1654]") {
+    // A Spoolman record or a user's unlocked value never reaches firmware, so a
+    // field the caller reports as declared on the lane stays in the override
+    // exactly as a locked one does, whichever policy runs.
+    std::unordered_map<int, FilamentSlotOverride> overrides;
+    helix::ams::DeclaredOnLane color_declared;
+    color_declared.color = true;
+    helix::ams::DeclaredOnLane both_declared;
+    both_declared.color = true;
+    both_declared.material = true;
+
+    SECTION("OverwriteAlways") {
+        auto& ovr = overrides[0];
+        ovr.color_rgb = 0xFF5500;
+        ovr.color_set = true;
+        ovr.material = "PLA";
+
+        CHECK(helix::ams::mirror_firmware_to_lane_data(
+            /*store=*/nullptr, overrides, 0, 0x112233, "PETG", true,
+            helix::ams::MirrorPolicy::OverwriteAlways, "[test]", color_declared));
+        CHECK(overrides[0].color_rgb == 0xFF5500u);
+        CHECK(overrides[0].material == "PETG");
+
+        CHECK_FALSE(helix::ams::mirror_firmware_to_lane_data(
+            /*store=*/nullptr, overrides, 0, 0x445566, "ABS", true,
+            helix::ams::MirrorPolicy::OverwriteAlways, "[test]", both_declared));
+        CHECK(overrides[0].color_rgb == 0xFF5500u);
+        CHECK(overrides[0].material == "PETG");
+    }
+
+    SECTION("FillUnsetOnly") {
+        CHECK(helix::ams::mirror_firmware_to_lane_data(
+            /*store=*/nullptr, overrides, 0, 0x112233, "PETG", true,
+            helix::ams::MirrorPolicy::FillUnsetOnly, "[test]", color_declared));
+        CHECK_FALSE(overrides[0].color_set);
+        CHECK(overrides[0].material == "PETG");
+
+        CHECK_FALSE(helix::ams::mirror_firmware_to_lane_data(
+            /*store=*/nullptr, overrides, 1, 0x112233, "PETG", true,
+            helix::ams::MirrorPolicy::FillUnsetOnly, "[test]", both_declared));
+        CHECK_FALSE(overrides[1].color_set);
+        CHECK(overrides[1].material.empty());
+    }
 }
 
 TEST_CASE("mirror_firmware_to_lane_data OverwriteAlways: auto-mirrored entry still tracks firmware",

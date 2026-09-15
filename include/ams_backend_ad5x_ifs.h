@@ -341,7 +341,7 @@ class AmsBackendAd5xIfs : public AmsSubscriptionBackend {
     [[nodiscard]] std::optional<bool> toolhead_filament_unaccounted() const override;
 
     /// Which auto-switchover plugin the live printer has, from the same two
-    /// signals set_slot_info()/parse_save_variables() already trust: the
+    /// signals apply_user_edit()/parse_save_variables() already trust: the
     /// detected variable prefix and the `gcode_macro _ifs_vars` existence latch.
     /// Returns IfsPlugin::None whenever has_ifs_vars_ is false - stale
     /// `less_waste_*` rows left behind by an uninstalled plugin must not read as
@@ -438,10 +438,12 @@ class AmsBackendAd5xIfs : public AmsSubscriptionBackend {
     // from screen-activation hooks.
     void request_resync() override;
 
-    AmsError set_slot_info(int slot_index, const SlotInfo& info, bool persist = true) override;
+    AmsError apply_user_edit(int slot_index, const SlotInfo& info,
+                             const helix::ams::Observation& declared) override;
+    AmsError sync_external_identity(int slot_index, const SlotInfo& info) override;
     // Weight-only persist: updates remaining/total weight in the override store
     // and NEVER rewrites Adventurer5M.json / _IFS_VARS or re-locks material —
-    // the firmware-facing writers in set_slot_info() are what reverted the
+    // the firmware-facing writers in apply_user_edit() are what reverted the
     // user's material on every 60 s consumption persist (#981).
     void update_slot_weight_impl(int slot_index, float remaining_weight_g, float total_weight_g,
                                  bool persist) override;
@@ -593,6 +595,8 @@ class AmsBackendAd5xIfs : public AmsSubscriptionBackend {
     /// very next extruder-temp frame re-arms HEATING. Unwind the tracker too.
     void on_home_confirmation_declined() override;
 
+    SlotInfo* cached_slot_locked(int slot_index) override;
+
   private:
     friend class Ad5xIfsTestAccess;
     friend class Ad5xPerSlotLoadedHelper;
@@ -695,6 +699,15 @@ class AmsBackendAd5xIfs : public AmsSubscriptionBackend {
     // Tolerant of malformed JSON (logs + leaves cache untouched).
     void parse_filament_json(const std::string& content);
     void update_slot_from_state(int slot_index);
+
+    /// Put @p info on port @p slot_index's caches and on @p slot, the half an
+    /// edit and a sync share, and return the firmware-valid material spelling
+    /// written. Caller holds mutex_.
+    std::string write_port_locked(int slot_index, SlotInfo& slot, const SlotInfo& info);
+
+    /// Take @p color_rgb and @p material as the port's firmware baseline, then
+    /// rebuild its status and paint. Caller holds mutex_.
+    void settle_port_locked(int slot_index, uint32_t color_rgb, const std::string& material);
     // Layer any configured FilamentSlotOverride for `slot_index` over `slot`,
     // mutating `slot` in place. Override wins for every non-default field;
     // default values (empty string, 0, -1.0 weights) fall through to the parsed
@@ -1153,7 +1166,7 @@ class AmsBackendAd5xIfs : public AmsSubscriptionBackend {
     //     own mechanism); fetched once via fetch_user_cfg_materials() at
     //     backend start.
     // Guarded by its own mutex (NOT mutex_) so get_supported_materials() —
-    // called from normalize_material() inside set_slot_info(), which already
+    // called from normalize_material() inside write_port_locked(), which
     // holds mutex_ — doesn't deadlock. Both writers (parse_save_variables
     // and fetch_user_cfg_materials) currently take mutex_ AND
     // custom_types_mutex_; lock order is mutex_ → custom_types_mutex_.
@@ -1488,13 +1501,14 @@ class AmsBackendAd5xIfs : public AmsSubscriptionBackend {
     //   - on_started(): initial bulk load from Moonraker DB lane_data.
     //     Swap happens under mutex_ so a concurrent status notification can
     //     never see a torn map.
-    //   - set_slot_info(persist=true): user edit staged into overrides_
-    //     BEFORE update_slot_from_state() is called, so apply_overrides on
-    //     the very same call applies the new values rather than the old
-    //     pre-edit override.
+    //   - apply_user_edit(): the user's edit is staged here and
+    //     persisted. What the slot shows comes from the lane, not from this
+    //     map: AmsBackend::commit_user_edit() files the declaration once
+    //     apply_user_edit() returns, then repaint_slot_from_lane() repaints.
     //
-    // Read: in apply_overrides() during the parse path, which always runs
-    // under mutex_ (via update_slot_from_state).
+    // Read under mutex_ by the persist, firmware-mirror and lock-release
+    // paths. The paint path (apply_resolved_lane) reads the lane source store
+    // and never this map.
     std::unique_ptr<helix::ams::FilamentSlotOverrideStore> override_store_;
     std::unordered_map<int, helix::ams::FilamentSlotOverride> overrides_;
 
@@ -1515,12 +1529,12 @@ class AmsBackendAd5xIfs : public AmsSubscriptionBackend {
     // Startup safety: on_started() loads overrides_ from Moonraker DB BEFORE
     // any firmware parse runs, and last_firmware_color_ stays empty until the
     // first parse — so the startup window can't flag the initial observation
-    // as an external edit. set_slot_info() also pre-updates this map with the
+    // as an external edit. settle_port_locked() also pre-updates this map with the
     // user's chosen color before calling update_slot_from_state() so a Helix-
     // initiated color edit isn't misread as a foreign one on the same call.
     //
     // Access is always under mutex_ (written/read from update_slot_from_state
-    // -> check_external_color_change and from set_slot_info's pre-update, all
+    // -> check_external_color_change and from settle_port_locked's pre-update, all
     // of which run under the lock).
     std::unordered_map<int, uint32_t> last_firmware_color_;
     // Per-slot previous firmware MATERIAL, mirroring last_firmware_color_.

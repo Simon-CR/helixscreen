@@ -29,6 +29,7 @@
 #include "ams_backend_toolchanger.h"
 #include "ams_types.h"
 #include "filament_slot_override_store.h"
+#include "lane_source_store.h"
 #include "moonraker_api_mock.h"
 #include "moonraker_client_mock.h"
 #include "printer_state.h"
@@ -140,13 +141,26 @@ helix::SlotInfo blue_petg() {
     return info;
 }
 
+/// What Spoolman says spool 42, the one blue_petg() links, is.
+SpoolInfo blue_petg_spool() {
+    SpoolInfo spool;
+    spool.id = 42;
+    spool.vendor = "Polymaker";
+    spool.filament_name = "Blue PETG 1kg";
+    spool.material = "PETG";
+    spool.color_hex = "1E5AA8";
+    spool.remaining_weight_g = 730;
+    spool.initial_weight_g = 1000;
+    return spool;
+}
+
 } // namespace
 
 TEST_CASE("A tool's spool metadata survives rediscovery", "[ams][toolchanger][slot_memory]") {
     helix::test::RegisteredBackend<SlotMemoryHelper> h_reg(4);
     SlotMemoryHelper& h = *h_reg;
     helix::test::edit_slot_as_user(h, 1, blue_petg());
-    helix::test::spool_states(h, 1, blue_petg());
+    helix::test::spool_states(h, 1, blue_petg_spool());
 
     // The reconnect path: AmsState calls set_discovered_tools() again, which
     // re-runs initialize_tools() and resets every slot to default grey.
@@ -166,7 +180,7 @@ TEST_CASE("Rediscovery does not leak one tool's spool onto another",
     helix::test::RegisteredBackend<SlotMemoryHelper> h_reg(4);
     SlotMemoryHelper& h = *h_reg;
     helix::test::edit_slot_as_user(h, 1, blue_petg());
-    helix::test::spool_states(h, 1, blue_petg());
+    helix::test::spool_states(h, 1, blue_petg_spool());
     h.set_tools(4);
 
     // Slot 0 was never edited: it must still read the untouched default, not
@@ -180,7 +194,7 @@ TEST_CASE("A status frame does not undo the user's edit", "[ams][toolchanger][sl
     helix::test::RegisteredBackend<SlotMemoryHelper> h_reg(4);
     SlotMemoryHelper& h = *h_reg;
     helix::test::edit_slot_as_user(h, 2, blue_petg());
-    helix::test::spool_states(h, 2, blue_petg());
+    helix::test::spool_states(h, 2, blue_petg_spool());
 
     // refresh_slot_statuses_locked() runs inside the parse and rewrites slot
     // status; the override has to be re-layered after it, not before.
@@ -195,9 +209,9 @@ TEST_CASE("persist=false is a preview, not a memory", "[ams][toolchanger][slot_m
     helix::test::RegisteredBackend<SlotMemoryHelper> h_reg(4);
     SlotMemoryHelper& h = *h_reg;
     helix::SlotInfo info = blue_petg();
-    REQUIRE(h.set_slot_info(1, info, /*persist=*/false).success());
+    REQUIRE(h.sync_external_identity(1, info).success());
 
-    // Visible immediately, because set_slot_info still writes the live SlotInfo.
+    // Visible immediately, because the sync still writes the live SlotInfo.
     CHECK(h.get_slot_info(1).color_rgb == 0x1E5AA8);
 
     // But nothing was staged, so the wipe takes it.
@@ -205,8 +219,25 @@ TEST_CASE("persist=false is a preview, not a memory", "[ams][toolchanger][slot_m
     CHECK(h.get_slot_info(1).color_rgb == helix::AMS_DEFAULT_SLOT_COLOR);
 }
 
+TEST_CASE("An identity sync never remaps a tool", "[ams][toolchanger][slot_memory][1652]") {
+    helix::test::RegisteredBackend<SlotMemoryHelper> h_reg(4);
+    SlotMemoryHelper& h = *h_reg;
+
+    helix::SlotInfo info = h.get_slot_info(1);
+    const int mapped_before = info.mapped_tool;
+    REQUIRE(mapped_before != 3);
+    // Only a person's edit moves the tool map, so a synced value naming another
+    // tool number leaves the lane answering to the one it had.
+    info.mapped_tool = 3;
+
+    REQUIRE(h.sync_external_identity(1, info).success());
+
+    CHECK(h.sent().empty());
+    CHECK(h.get_slot_info(1).mapped_tool == mapped_before);
+}
+
 TEST_CASE("An edit that also remaps a tool keeps both", "[ams][toolchanger][slot_memory]") {
-    // set_slot_info() does double duty: metadata AND an ASSIGN_TOOL remap when
+    // apply_user_edit() does double duty: metadata AND an ASSIGN_TOOL remap when
     // mapped_tool changed. The remap path returns early, so a persist placed
     // after it would silently drop the metadata on exactly this call.
     helix::test::RegisteredBackend<SlotMemoryHelper> h_reg(4);
@@ -216,7 +247,7 @@ TEST_CASE("An edit that also remaps a tool keeps both", "[ams][toolchanger][slot
     info.mapped_tool = 3; // slot 1 should answer to T3
 
     helix::test::edit_slot_as_user(h, 1, info);
-    helix::test::spool_states(h, 1, info);
+    helix::test::spool_states(h, 1, blue_petg_spool());
 
     REQUIRE(h.sent().size() == 1);
     CHECK(h.sent()[0] == "ASSIGN_TOOL TOOL=T1 N=3");
@@ -288,7 +319,7 @@ TEST_CASE("Tool-changer slot metadata round-trips through Moonraker",
         CHECK(helix::ToolChangerTestAccess::store_namespace(h) == "lane_data");
 
         helix::test::edit_slot_as_user(h, 1, blue_petg());
-        helix::test::spool_states(h, 1, blue_petg());
+        helix::test::spool_states(h, 1, blue_petg_spool());
     }
 
     // --- what actually landed in the DB -------------------------------------
@@ -362,4 +393,68 @@ TEST_CASE("Starting with a live API does not deadlock",
 
     backend.stop();
     helix::ui::UpdateQueue::instance().drain();
+}
+
+// ============================================================================
+// A lane whose only identity is its Spoolman record
+// ============================================================================
+//
+// No stored override describes such a lane, so every place the backend lays its
+// lanes onto freshly built slots has to paint it whether or not overrides_
+// holds anything.
+
+namespace {
+
+constexpr uint32_t kSpoolmanOnlyColor = 0x2E7D32;
+
+/// Files a Spoolman record naming a colour, and nothing else, on @p lane.
+void file_spoolman_colour(helix::ams::LaneId lane) {
+    helix::ams::Observation filed(helix::ams::ObservationSource::Spoolman);
+    filed.spoolman_id = 42;
+    filed.color_rgb = kSpoolmanOnlyColor;
+    helix::ams::ingest(lane, filed);
+}
+
+} // namespace
+
+TEST_CASE("a tool changer rediscovery keeps a lane whose only identity is its Spoolman record",
+          "[lane][toolchanger][1653]") {
+    helix::test::RegisteredBackend<SlotMemoryHelper> h_reg(4);
+    SlotMemoryHelper& h = *h_reg;
+    file_spoolman_colour(h_reg.lane(1));
+
+    // A preview write puts a name on the live slot that nothing but the
+    // rediscovery's reset takes off again, and stages no override.
+    helix::SlotInfo preview = h.get_slot_info(1);
+    preview.spool_name = "Preview name";
+    REQUIRE(h.sync_external_identity(1, preview).success());
+    REQUIRE(h.get_slot_info(1).spool_name == "Preview name");
+    REQUIRE_FALSE(helix::ToolChangerTestAccess::has_overrides(h));
+
+    h.set_tools(4);
+
+    // The reset ran: the slot is back on its tool-name placeholder.
+    REQUIRE(h.get_slot_info(1).spool_name == "T1");
+    CHECK(h.get_slot_info(1).color_rgb == kSpoolmanOnlyColor);
+}
+
+TEST_CASE("a tool changer start paints a lane whose only identity is its Spoolman record",
+          "[lane][toolchanger][1653][slow]") {
+    ScopedCacheDir tmp("spoolman_only_start");
+    MoonrakerClientMock client(MoonrakerClientMock::PrinterType::VORON_24);
+    helix::PrinterState state;
+    state.init_subjects(false);
+    MoonrakerAPIMock api(client, state);
+
+    helix::test::RegisteredBackend<StoreBackedHelper> h_reg(&api, 4);
+    StoreBackedHelper& h = *h_reg;
+    file_spoolman_colour(h_reg.lane(1));
+    REQUIRE(h.get_slot_info(1).color_rgb == helix::AMS_DEFAULT_SLOT_COLOR);
+
+    helix::ToolChangerTestAccess::call_on_started(h);
+
+    // The load ran, against a store holding nothing for any tool.
+    REQUIRE(helix::ToolChangerTestAccess::store_namespace(h) == "lane_data");
+    REQUIRE_FALSE(helix::ToolChangerTestAccess::has_overrides(h));
+    CHECK(h.get_slot_info(1).color_rgb == kSpoolmanOnlyColor);
 }

@@ -29,6 +29,7 @@
 #include "ui_spool_canvas.h"
 
 #include "../test_fixtures.h"
+#include "../test_helpers/backend_user_edit.h"
 #include "ams_backend_mock.h"
 #include "ams_state.h"
 #include "ams_types.h"
@@ -83,8 +84,8 @@ bool placeholder_visible(lv_obj_t* slot) {
 
 /// Strip every identity handle off a lane so it reads as "never assigned".
 ///
-/// Status goes through force_slot_status(), not set_slot_info(): status is
-/// firmware-derived, so no backend's set_slot_info() accepts it (the mock now
+/// Status goes through force_slot_status(), not apply_user_edit(): status is
+/// firmware-derived, so no backend's apply_user_edit() accepts it (the mock now
 /// warns when a caller tries).
 void make_unassigned_empty(AmsBackendMock& mock, int slot_index) {
     SlotInfo info = mock.get_slot_info(slot_index);
@@ -93,7 +94,7 @@ void make_unassigned_empty(AmsBackendMock& mock, int slot_index) {
     info.spool_name.clear();
     info.color_name.clear();
     info.spoolman_id = 0;
-    REQUIRE(mock.set_slot_info(slot_index, info).success());
+    REQUIRE(helix::test::apply_edit(mock, slot_index, info).success());
     mock.force_slot_status(slot_index, SlotStatus::EMPTY);
 }
 
@@ -102,7 +103,7 @@ void make_unassigned_empty(AmsBackendMock& mock, int slot_index) {
 void make_assigned_ejected(AmsBackendMock& mock, int slot_index, const std::string& material) {
     SlotInfo info = mock.get_slot_info(slot_index);
     info.material = material;
-    REQUIRE(mock.set_slot_info(slot_index, info).success());
+    REQUIRE(helix::test::apply_edit(mock, slot_index, info).success());
     mock.force_slot_status(slot_index, SlotStatus::EMPTY);
 }
 
@@ -190,7 +191,7 @@ TEST_CASE_METHOD(XMLTestFixture, "ams_slot: present lane shows its material at f
     {
         SlotInfo info = backend.mock->get_slot_info(0);
         info.material = "PLA";
-        REQUIRE(backend.mock->set_slot_info(0, info).success());
+        REQUIRE(helix::test::apply_edit(*backend.mock, 0, info).success());
         backend.mock->force_slot_status(0, SlotStatus::AVAILABLE);
     }
 

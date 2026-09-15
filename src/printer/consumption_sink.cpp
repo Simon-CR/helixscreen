@@ -273,8 +273,8 @@ void AmsSlotSink::apply_delta(float filament_used_mm) {
     info.remaining_weight_g = new_remaining_g;
     const bool persist_now = lv_tick_elaps(last_persist_tick_ms_) >= persist_interval_ms();
     // Weight-only update: must NOT re-emit material/color or re-lock identity.
-    // set_slot_info() here re-wrote the firmware store every persist and reverted
-    // externally-set materials (#981).
+    // apply_user_edit() here would rewrite the firmware store on every persist and
+    // revert externally-set materials (#981).
     backend->update_slot_weight(slot_index_, info.remaining_weight_g, info.total_weight_g,
                                 /*persist=*/persist_now);
     if (persist_now) {

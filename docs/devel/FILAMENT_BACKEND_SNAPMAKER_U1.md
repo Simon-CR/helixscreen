@@ -120,7 +120,7 @@ The RFID tag exposes no color *name* — `color_name` stays firmware-unset and i
 user-editable only. `SUB_TYPE` is recognized as a product line only when it matches one
 of eight known literals ("Basic", "Matte", "SnapSpeed", "Silk", "Support", "HF", "95A",
 "95A HF"); a free-form user `spool_name` is never round-tripped to firmware as a
-SUB_TYPE (`src/printer/ams_backend_snapmaker.cpp`, `src/printer/ams_backend_snapmaker.cpp#set_slot_info`).
+SUB_TYPE (`src/printer/ams_backend_snapmaker.cpp`, `src/printer/ams_backend_snapmaker.cpp#apply_user_edit`).
 
 Every row above is code-verified against `parse_rfid_info()` and the apply loop
 (`src/printer/ams_backend_snapmaker.cpp#parse_rfid_info`, `1171-1204`): tag identity rides
@@ -285,7 +285,7 @@ User edits round-trip to firmware through `POST /printer/filament_detect/set`
 (`channel` + `info` with `VENDOR`/`MAIN_TYPE`/`SUB_TYPE`/`RGB_1`/`ALPHA`/temps) — an
 Extended Firmware endpoint that 404s on stock firmware; the override still persists to
 `lane_data`, so HelixScreen's UI is correct either way
-(`src/printer/ams_backend_snapmaker.cpp#set_slot_info`).
+(`src/printer/ams_backend_snapmaker.cpp#apply_user_edit`).
 
 ### Capabilities
 
