@@ -633,6 +633,7 @@ TEST_CASE("StandardMacros - init fills the shipped tier from the printer databas
         CHECK(info.shipped_macro.find("{profile_arg}") != std::string::npos);
         CHECK(info.get_source() == MacroSource::SHIPPED);
         CHECK(info.get_macro() == info.shipped_macro);
+        CHECK(info.shipped_self_prepares);
     }
 
     macros.reset();
@@ -653,12 +654,33 @@ TEST_CASE("resolve_macro_script - substitution and self-preparation",
         CHECK_FALSE(r.takes_profile_arg);
     }
 
-    SECTION("a shipped sequence keeps its own preparation") {
+    SECTION("a shipped sequence its entry marks self-preparing keeps its own preparation") {
         info.detected_macro = "BED_MESH_CALIBRATE";
         info.shipped_macro = "LOAD_CELL_TARE\nBED_MESH_CALIBRATE";
+        info.shipped_self_prepares = true;
         const auto r = resolve_macro_script(info, {});
         CHECK(r.script == "LOAD_CELL_TARE\nBED_MESH_CALIBRATE");
         CHECK(r.self_prepares);
+        CHECK(r.shipped);
+    }
+
+    SECTION("a shipped sequence without the flag gets the caller's preparation") {
+        info.detected_macro = "BED_MESH_CALIBRATE";
+        info.shipped_macro = "BED_MESH_CALIBRATE BED_TEMP={bed_temp}";
+        const auto r = resolve_macro_script(info, {.bed_temp_c = 60});
+        CHECK(r.script == "BED_MESH_CALIBRATE BED_TEMP=60");
+        CHECK_FALSE(r.self_prepares);
+        // Still the shipped tier, so a command it names that does not exist fails.
+        CHECK(r.shipped);
+    }
+
+    SECTION("the flag means nothing unless the shipped tier wins") {
+        info.detected_macro = "BED_MESH_CALIBRATE";
+        info.shipped_self_prepares = true;
+        const auto r = resolve_macro_script(info, {});
+        CHECK(r.script == "BED_MESH_CALIBRATE");
+        CHECK_FALSE(r.shipped);
+        CHECK_FALSE(r.self_prepares);
     }
 
     SECTION("{profile_arg} is substituted everywhere it appears") {
@@ -714,6 +736,7 @@ TEST_CASE("resolve_macro_script - substitution and self-preparation",
         // The user picked a bare macro name; assuming it tares would skip the
         // preparation their machine still needs.
         info.shipped_macro = "LOAD_CELL_TARE\nBED_MESH_CALIBRATE";
+        info.shipped_self_prepares = true;
         info.configured_macro = "MY_MESH";
         const auto r = resolve_macro_script(info, {});
         CHECK(r.script == "MY_MESH");
@@ -747,6 +770,7 @@ TEST_CASE("resolve_macro_script - a conditional fallback is refused when the op 
               "BED_MESH_CALIBRATE");
 
         info.shipped_macro = "LOAD_CELL_SAVE_TARE\nBED_MESH_CALIBRATE_WITH_WIPE";
+        info.shipped_self_prepares = true;
         const auto r = resolve_macro_script(info, {}, /*accept_fallback=*/false);
         CHECK(r.script == "LOAD_CELL_SAVE_TARE\nBED_MESH_CALIBRATE_WITH_WIPE");
         CHECK(r.self_prepares);

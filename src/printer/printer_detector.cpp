@@ -1916,6 +1916,17 @@ const json* find_printer_entry(const std::string& printer_name) {
 }
 } // namespace
 
+bool PrinterDetector::get_bed_mesh_self_prepares(const std::string& printer_name) {
+    const json* printer = find_printer_entry(printer_name);
+    if (printer == nullptr || !printer->contains("calibration") ||
+        !printer->at("calibration").is_object()) {
+        return false;
+    }
+    const auto& cal = printer->at("calibration");
+    const auto flag = cal.find("bed_mesh_self_prepares");
+    return flag != cal.end() && flag->is_boolean() && flag->get<bool>();
+}
+
 std::string PrinterDetector::get_print_start_profile(const std::string& printer_name) {
     const json* printer = find_printer_entry(printer_name);
     const std::string profile =

@@ -419,6 +419,17 @@ class PrinterDetector {
     static std::string get_bed_mesh_calibrate_gcode(const std::string& printer_name);
 
     /**
+     * @brief Whether the printer's shipped bed-mesh sequence prepares the machine itself
+     *
+     * `calibration.bed_mesh_self_prepares` in the database entry. True means the
+     * sequence heats, homes and does its own probe preparation, so nothing is sent
+     * ahead of it. A shipped sequence without the flag gets the app's preparation.
+     *
+     * @return false when the entry, its calibration object or the flag is absent.
+     */
+    static bool get_bed_mesh_self_prepares(const std::string& printer_name);
+
+    /**
      * @brief Belt-span offset in mm for a printer model, or a negative value
      *
      * Free belt span at gantry position Y is about `Y + offset`. Geometry, so

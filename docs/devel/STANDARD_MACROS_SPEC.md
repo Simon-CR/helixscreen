@@ -120,6 +120,7 @@ struct StandardMacroInfo {
     std::string display_name;     // "Load Filament"
     std::string configured_macro; // User override (or empty)
     std::string shipped_macro;    // Sequence the printer database ships (or empty)
+    bool shipped_self_prepares;   // That sequence heats, homes and prepares itself
     std::string detected_macro;   // Auto-detected (or empty)
     std::string fallback_macro;   // HELIX_* fallback (or empty)
 
@@ -135,7 +136,8 @@ turns a slot into something runnable: it substitutes `{profile_arg}` (the bed me
 profile argument with its leading space, empty for the firmware's `default` profile)
 and `{bed_temp}` (the whole-degree bed temperature to probe at), reports whether the
 script marks a place for the profile argument, whether the winner is the shipped tier
-(which brings its own preparation, and whose commands are all meant to exist), and
+(whose commands are all meant to exist), whether it brings its own preparation (only
+a shipped sequence whose entry sets `calibration.bed_mesh_self_prepares`), and
 can be told to refuse the `HELIX_*` fallback — those are "if needed" macros that
 return without acting, which is wrong for a button that means "do it now".
 

@@ -152,18 +152,25 @@ StandardMacros::StandardMacros() {
 
 namespace {
 
-/// The sequence the printer database ships for @p slot on @p printer, or empty.
+/// A sequence the printer database ships, and whether it prepares the machine itself.
+struct ShippedSequence {
+    std::string script;
+    bool self_prepares = false;
+};
+
+/// The sequence the printer database ships for @p slot on @p printer, or an empty one.
 ///
 /// One row per slot a printer may override. Adding a row is the entire cost of
 /// letting printers ship their own sequence for that operation: the priority
 /// rule, the Settings UI and every dispatch site already handle the tier.
-std::string shipped_sequence_for(const std::string& printer, StandardMacroSlot slot) {
+ShippedSequence shipped_sequence_for(const std::string& printer, StandardMacroSlot slot) {
     if (printer.empty()) {
         return {};
     }
     switch (slot) {
     case StandardMacroSlot::BedMesh:
-        return PrinterDetector::get_bed_mesh_calibrate_gcode(printer);
+        return {PrinterDetector::get_bed_mesh_calibrate_gcode(printer),
+                PrinterDetector::get_bed_mesh_self_prepares(printer)};
     default:
         return {};
     }
@@ -192,7 +199,7 @@ ResolvedMacroScript resolve_macro_script(const StandardMacroInfo& info,
     }
     out.script = info.get_macro();
     out.shipped = source == MacroSource::SHIPPED;
-    out.self_prepares = out.shipped;
+    out.self_prepares = out.shipped && info.shipped_self_prepares;
 
     out.takes_profile_arg = out.script.find("{profile_arg}") != std::string::npos;
 
@@ -418,7 +425,9 @@ void StandardMacros::init(const helix::PrinterDiscovery& hardware,
     // Reset detected macros and restore fallbacks from static table
     for (auto& slot : slots_) {
         slot.detected_macro.clear();
-        slot.shipped_macro = shipped_sequence_for(printer_type, slot.slot);
+        ShippedSequence shipped = shipped_sequence_for(printer_type, slot.slot);
+        slot.shipped_macro = std::move(shipped.script);
+        slot.shipped_self_prepares = shipped.self_prepares;
 
         // Restore fallback from static definition
         auto fallback_it = FALLBACK_MACROS.find(slot.slot);
