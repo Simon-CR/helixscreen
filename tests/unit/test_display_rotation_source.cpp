@@ -159,9 +159,16 @@ TEST_CASE_METHOD(LVGLTestFixture, "a backend with no rotation override still rot
 
 TEST_CASE_METHOD(LVGLTestFixture, "rotating through a null display does not crash",
                  "[display][rotation]") {
+    ScopedRotation restore;
+    lv_display_t* disp = lv_display_get_default();
+    REQUIRE(disp != nullptr);
+    lv_display_set_rotation(disp, LV_DISPLAY_ROTATION_0);
+
     FakePlainBackend backend;
     backend.set_display_rotation(nullptr, LV_DISPLAY_ROTATION_180, 800, 480);
-    SUCCEED();
+
+    // A null target is dropped, not redirected onto whatever display is current.
+    CHECK(lv_display_get_rotation(disp) == LV_DISPLAY_ROTATION_0);
 }
 
 // The plane transform has to be the one LVGL would have applied, or touch lands
