@@ -21,7 +21,10 @@
 #include "display_numbering.h"
 #include "filament_database.h"
 #include "filament_variants.h"
+#include "gcode_ops_detector.h"
 #include "lvgl/src/others/translation/lv_translation.h"
+#include "macro_param_cache.h"
+#include "operation_patterns.h"
 
 #include <spdlog/fmt/fmt.h>
 #include <spdlog/spdlog.h>
@@ -142,26 +145,6 @@ std::string build_empty_lane_message(const std::vector<std::pair<int, int>>& emp
 }
 
 // ---- gate evaluate-functions (dialog-bearing halves of the rules above) ----
-
-CheckResult gate_printer_stopping_command(const PrintStartContext& ctx) {
-    const PrinterStopCheck& stop = ctx.printer_stop;
-    if (stop.state != PrinterStopCheck::State::Stops) {
-        return pass_result();
-    }
-    CheckResult r;
-    r.verdict = CheckResult::Verdict::Block;
-    r.severity = GateSeverity::Error;
-    r.title = lv_tr("File Will Stop the Printer");
-    r.body = fmt::format(fmt::runtime(lv_tr("Line {} calls {}, which this printer treats as an "
-                                            "emergency stop. Re-slice the file with a profile "
-                                            "made for this printer.")),
-                         stop.line_number, stop.command);
-    if (!stop.stop_message.empty()) {
-        r.body += "\n\n";
-        r.body += fmt::format(fmt::runtime(lv_tr("Printer message: {}")), stop.stop_message);
-    }
-    return r;
-}
 
 CheckResult gate_insufficient_spool_weight(const PrintStartContext& ctx) {
     auto weights = insufficient_spool_weight_in(ctx);
@@ -476,6 +459,65 @@ MaterialMismatchDetail external_spool_mismatch(const SlotInfo& spool, int tool_i
 }
 
 } // namespace
+
+CheckResult gate_printer_stopping_command(const PrintStartContext& ctx) {
+    const PrinterStopCheck& stop = ctx.printer_stop;
+    if (stop.state != PrinterStopCheck::State::Stops) {
+        return pass_result();
+    }
+    CheckResult r;
+    r.verdict = CheckResult::Verdict::Block;
+    r.severity = GateSeverity::Error;
+    r.title = lv_tr("File Will Stop the Printer");
+    r.body = fmt::format(fmt::runtime(lv_tr("Line {} calls {}, which this printer treats as an "
+                                            "emergency stop. Re-slice the file with a profile "
+                                            "made for this printer.")),
+                         stop.line_number, stop.command);
+    if (!stop.stop_message.empty()) {
+        r.body += "\n\n";
+        r.body += fmt::format(fmt::runtime(lv_tr("Printer message: {}")), stop.stop_message);
+    }
+    return r;
+}
+
+PrinterStopCheck printer_stop_check_in(const std::string& content, size_t limit) {
+    PrinterStopCheck check;
+    auto& macros = MacroParamCache::instance();
+    // Read first, so a populate landing mid-scan can only stamp the answer older
+    // than the data it describes. That direction costs a rescan; the reverse
+    // would let a stale answer pass for a current one.
+    check.macro_generation = macros.generation();
+    if (!macros.is_populated()) {
+        check.not_run_reason = "the printer's macros have not been read";
+        return check;
+    }
+    const std::map<std::string, std::string> commands = macros.printer_stop_commands();
+    std::set<std::string> names;
+    for (const auto& [name, message] : commands) {
+        names.insert(name);
+    }
+    std::string_view scanned(content);
+    if (content.size() >= limit) {
+        const size_t last_newline = scanned.rfind('\n');
+        scanned = last_newline == std::string_view::npos ? std::string_view{}
+                                                         : scanned.substr(0, last_newline);
+    }
+    check.state = PrinterStopCheck::State::Clean;
+    if (auto hit = gcode::GCodeOpsDetector::find_first_command(scanned, names)) {
+        check.state = PrinterStopCheck::State::Stops;
+        check.command = hit->command;
+        check.line_number = hit->line_number;
+        check.stop_message = commands.at(to_upper(hit->command));
+    }
+    return check;
+}
+
+PrinterStopCheck printer_stop_not_run(std::string reason) {
+    PrinterStopCheck check;
+    check.not_run_reason = std::move(reason);
+    check.macro_generation = MacroParamCache::instance().generation();
+    return check;
+}
 
 size_t print_lane_requirement(const std::set<int>& tools_used, size_t filament_color_count) {
     if (!tools_used.empty()) {
