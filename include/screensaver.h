@@ -79,8 +79,12 @@ class ScreensaverManager {
     /**
      * @brief Start the specified screensaver type
      *
-     * Stops any currently active screensaver first.
-     * Does nothing if type is OFF.
+     * Stops any currently active screensaver first. Does nothing if type is OFF.
+     *
+     * While a saver runs, the active screen is hidden beneath its overlay
+     * (helix::ScreenHideHold), and it stays hidden across a switch between types.
+     * A saver that fails to start leaves the manager inactive and the screen as it
+     * was before any saver ran.
      */
     void start(ScreensaverType type);
 
@@ -100,8 +104,15 @@ class ScreensaverManager {
     /** @brief Find screensaver instance by type, or nullptr */
     Screensaver* find(ScreensaverType type) const;
 
+    /** @brief Take the active-screen hide hold, once however many savers run in turn */
+    void hold_screen();
+
+    /** @brief Give back the hold taken by hold_screen(), if one is out */
+    void release_screen();
+
     std::vector<std::unique_ptr<Screensaver>> screensavers_;
     Screensaver* active_ = nullptr;
+    bool holds_screen_ = false;
 };
 
 #endif // HELIX_ENABLE_SCREENSAVER

@@ -290,4 +290,8 @@ TEST_CASE_METHOD(LVGLTestFixture, "a failed power_off() still falls back to the 
     REQUIRE(DisplayManagerTestAccess::last_sleep_mechanism(mgr) == SleepMechanism::SoftwareOverlay);
     REQUIRE(DisplayManagerTestAccess::sleep_overlay(mgr) != nullptr);
     REQUIRE_FALSE(DisplayManagerTestAccess::is_flush_suppressed(mgr));
+
+    // The overlay and the screen hold it takes outlive this never-init()'d manager,
+    // whose destructor skips shutdown().
+    DisplayManagerTestAccess::restore_display_output(mgr);
 }

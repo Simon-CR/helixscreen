@@ -56,6 +56,7 @@ LVGL_PATCHED_FILES := \
 	src/core/lv_obj_pos.c \
 	src/core/lv_obj_tree.c \
 	src/core/lv_obj.c \
+	src/core/lv_obj.h \
 	src/core/lv_obj_style.c \
 	src/draw/sw/lv_draw_sw.c \
 	src/layouts/flex/lv_flex.c \
@@ -923,6 +924,13 @@ $(PATCHES_STAMP): $(PATCH_FILES) $(LVGL_HEAD) $(LIBHV_HEAD) $(APPLIED_STAMP_ID)
 		echo "$(GREEN)✓ Style NULL guards patch applied$(RESET)"; \
 	else \
 		echo "$(GREEN)✓ LVGL style NULL guards patch already applied$(RESET)"; \
+	fi
+	$(Q)if git -C $(LVGL_DIR) apply --check $(PATCH_DIR)/lvgl_obj_flag_screen_parent_null_guard.patch 2>/dev/null; then \
+		echo "$(YELLOW)→ Applying LVGL obj flag screen-parent NULL guard (hide/unhide a screen)...$(RESET)"; \
+		git -C $(LVGL_DIR) apply $(PATCH_DIR)/lvgl_obj_flag_screen_parent_null_guard.patch && \
+		echo "$(GREEN)✓ Obj flag screen-parent NULL guard patch applied$(RESET)"; \
+	else \
+		echo "$(GREEN)✓ LVGL obj flag screen-parent NULL guard patch already applied$(RESET)"; \
 	fi
 	$(Q)if git -C $(LVGL_DIR) diff --quiet src/layouts/flex/lv_flex.c 2>/dev/null; then \
 		echo "$(YELLOW)→ Applying LVGL flex hidden+grow gap fix (upstream #9897 backport)...$(RESET)"; \

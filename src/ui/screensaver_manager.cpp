@@ -5,6 +5,7 @@
 #include "ui_screensaver.h"
 
 #include "display_settings_manager.h"
+#include "screen_hide_hold.h"
 #include "screensaver.h"
 #include "screensaver_pipes.h"
 #include "screensaver_starfield.h"
@@ -29,7 +30,9 @@ void ScreensaverManager::start(ScreensaverType type) {
         return;
     }
 
-    // Stop current screensaver if different type is requested
+    // Stop current screensaver if different type is requested. The screen hold stays
+    // out until the new saver has started or failed, so the panel is never uncovered
+    // between the two.
     if (active_ && active_->type() != type) {
         active_->stop();
         active_ = nullptr;
@@ -44,11 +47,21 @@ void ScreensaverManager::start(ScreensaverType type) {
     if (!ss) {
         spdlog::warn("[ScreensaverManager] No screensaver registered for type {}",
                      static_cast<int>(type));
+        release_screen();
         return;
     }
 
     ss->start();
+    if (!ss->is_active()) {
+        spdlog::warn("[ScreensaverManager] Screensaver type {} did not start",
+                     static_cast<int>(type));
+        active_ = nullptr;
+        release_screen();
+        return;
+    }
+
     active_ = ss;
+    hold_screen();
     spdlog::info("[ScreensaverManager] Started screensaver type {}", static_cast<int>(type));
 }
 
@@ -58,6 +71,21 @@ void ScreensaverManager::stop() {
         spdlog::info("[ScreensaverManager] Stopped screensaver type {}",
                      static_cast<int>(active_->type()));
         active_ = nullptr;
+    }
+    release_screen();
+}
+
+void ScreensaverManager::hold_screen() {
+    if (!holds_screen_) {
+        helix::active_screen_hide_hold().acquire(lv_screen_active());
+        holds_screen_ = true;
+    }
+}
+
+void ScreensaverManager::release_screen() {
+    if (holds_screen_) {
+        holds_screen_ = false;
+        helix::active_screen_hide_hold().release();
     }
 }
 

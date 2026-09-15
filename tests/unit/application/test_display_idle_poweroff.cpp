@@ -32,6 +32,7 @@
 #include "display_manager.h"
 #include "display_settings_manager.h"
 #include "lvgl_test_fixture.h"
+#include "screen_hide_hold.h"
 #include "test_helpers/display_manager_test_access.h"
 
 #include "../../catch_amalgamated.hpp"
@@ -569,4 +570,44 @@ TEST_CASE_METHOD(LVGLTestFixture, "hardware-blank path keeps the flush live (AD5
 
     DisplayManagerTestAccess::restore_display_output(mgr);
     DisplayManagerTestAccess::set_display(mgr, nullptr);
+}
+
+// ============================================================================
+// The software sleep overlay hides the screen beneath it
+// ============================================================================
+
+TEST_CASE_METHOD(LVGLTestFixture, "software sleep overlay hides the screen until it is removed",
+                 "[application][display][sleep][screen_hide]") {
+    REQUIRE_FALSE(helix::active_screen_hide_hold().is_held());
+    DisplayManager mgr;
+    DisplayManagerTestAccess::set_backend(
+        mgr, std::make_unique<FakePowerOffBackend>(/*supports_power_off=*/false));
+    DisplayManagerTestAccess::set_use_hardware_blank(mgr, false);
+    DisplayManagerTestAccess::set_use_power_off(mgr, false);
+    lv_obj_t* screen = lv_screen_active();
+    REQUIRE_FALSE(lv_obj_has_flag(screen, LV_OBJ_FLAG_HIDDEN));
+
+    DisplayManagerTestAccess::enter_sleep(mgr, 60);
+    REQUIRE(DisplayManagerTestAccess::last_sleep_mechanism(mgr) ==
+            DisplayManager::SleepMechanism::SoftwareOverlay);
+    REQUIRE(DisplayManagerTestAccess::sleep_overlay(mgr) != nullptr);
+    CHECK(lv_obj_has_flag(screen, LV_OBJ_FLAG_HIDDEN));
+
+    SECTION("the wake-side restore shows the screen again") {
+        DisplayManagerTestAccess::restore_display_output(mgr);
+        CHECK(DisplayManagerTestAccess::sleep_overlay(mgr) == nullptr);
+        CHECK_FALSE(lv_obj_has_flag(screen, LV_OBJ_FLAG_HIDDEN));
+    }
+
+    SECTION("a repeated create or destroy keeps the hold balanced") {
+        DisplayManagerTestAccess::create_sleep_overlay(mgr);
+        DisplayManagerTestAccess::destroy_sleep_overlay(mgr);
+        CHECK(DisplayManagerTestAccess::sleep_overlay(mgr) == nullptr);
+        CHECK_FALSE(lv_obj_has_flag(screen, LV_OBJ_FLAG_HIDDEN));
+
+        DisplayManagerTestAccess::destroy_sleep_overlay(mgr);
+        CHECK_FALSE(lv_obj_has_flag(screen, LV_OBJ_FLAG_HIDDEN));
+    }
+
+    CHECK_FALSE(helix::active_screen_hide_hold().is_held());
 }

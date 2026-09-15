@@ -1371,9 +1371,12 @@ static void gcode_viewer_watchdog_cb(lv_timer_t* timer) {
     // avoids the ghost-build false-positive: ghost thread running with solid
     // cache complete is a healthy waiting state, not a stall. See
     // gcode_viewer_watchdog.h; logic is unit-tested in test_gcode_viewer_watchdog.
-    const helix::gcode_viewer::WatchdogObservation obs{
-        cached, target, st->watchdog_last_cached_layer_, st->watchdog_last_target_layer_,
-        st->watchdog_stall_streak_};
+    const helix::gcode_viewer::WatchdogObservation obs{cached,
+                                                       target,
+                                                       st->watchdog_last_cached_layer_,
+                                                       st->watchdog_last_target_layer_,
+                                                       st->watchdog_stall_streak_,
+                                                       lv_obj_is_visible(obj)};
     const auto decision =
         helix::gcode_viewer::watchdog_evaluate(obs, gcode_viewer_state_t::WATCHDOG_MAX_STALL_KICKS);
     st->watchdog_stall_streak_ = decision.stall_streak;

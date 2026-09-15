@@ -155,4 +155,14 @@ class DisplayManagerTestAccess {
         dm.m_display_sleeping = false;
         dm.restore_display_output();
     }
+
+    // The software sleep overlay pair on its own, so a repeated create or destroy
+    // can be checked against the screen hold the overlay takes.
+    static void create_sleep_overlay(DisplayManager& dm) {
+        dm.create_sleep_overlay();
+    }
+
+    static void destroy_sleep_overlay(DisplayManager& dm) {
+        dm.destroy_sleep_overlay();
+    }
 };

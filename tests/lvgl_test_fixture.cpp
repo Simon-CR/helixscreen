@@ -5,6 +5,8 @@
 
 #include "ui_test_utils.h"
 
+#include "screen_hide_hold.h"
+#include "test_helpers/screen_hide_hold_test_access.h"
 #include "test_helpers/update_queue_test_access.h"
 
 #include <spdlog/spdlog.h>
@@ -66,6 +68,11 @@ LVGLTestFixture::~LVGLTestFixture() {
     // Safe at teardown — the only callback lv_anim_delete_all() invokes is
     // deleted_cb, never exec_cb or ready_cb, so it cannot itself touch a dead var.
     lv_anim_delete_all();
+
+    // The shared screen hold is process-wide. A test that fails between acquire and
+    // release would leave it held, so the next test's first acquire would not hide
+    // its screen. Reset it while the screen it may have hidden still exists.
+    helix::ScreenHideHoldTestAccess::reset(helix::active_screen_hide_hold());
 
     // Clean up the test screen
     if (m_test_screen != nullptr) {
