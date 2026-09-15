@@ -141,6 +141,7 @@ src/printer/lane_translation.cpp
 src/printer/lane_legacy_migration.cpp
 src/printer/lane_binding.cpp
 src/printer/bed_dimensions.cpp
+src/printer/chamber_heater_assignment.cpp
 src/printer/chamber_heater_backend_dragonbreath.cpp
 src/printer/chamber_heater_backend_generic.cpp
 src/printer/chamber_heater_backend_panda_breath.cpp
@@ -525,6 +526,9 @@ src/xml_registration.cpp
 # ===== override->real swaps + Moonraker command surface + generated =====
 src/ui/theme_manager.cpp
 src/ui/grid_edit_mode.cpp
+src/ui/grid_edit_cross_page.cpp
+src/ui/grid_edit_drop.cpp
+src/ui/grid_edit_page_set.cpp
 src/ui/ui_hsv_picker.cpp
 src/ui/ui_progress_bar.cpp
 src/ui/ui_ams_detail.cpp

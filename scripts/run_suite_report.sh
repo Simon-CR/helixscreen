@@ -28,7 +28,7 @@
 #   2  no usable report was produced
 #
 # A non-zero exit from the suite itself is NOT an error here. A red suite is
-# `make test-run`'s finding to report, and the gates still have something to say
+# `make full-test-run`'s finding to report, and the gates still have something to say
 # about the report a failing run produced.
 
 set -uo pipefail

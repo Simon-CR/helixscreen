@@ -53,6 +53,17 @@ using AppConstants::Update::legacy_config_backup_primary;
 
 Config* Config::instance{NULL};
 
+namespace helix {
+
+const char* const kDefaultCooldownGcode = "SET_HEATER_TEMPERATURE HEATER=extruder TARGET=0\n"
+                                          "SET_HEATER_TEMPERATURE HEATER=heater_bed TARGET=0";
+
+bool is_default_cooldown_gcode(const std::string& gcode) {
+    return gcode == kDefaultCooldownGcode;
+}
+
+} // namespace helix
+
 namespace {
 
 /// Default macro configuration - shared between init() and reset_to_defaults()
@@ -61,8 +72,22 @@ json get_default_macros() {
             {"unload_filament", {{"label", "Unload"}, {"gcode", "UNLOAD_FILAMENT"}}},
             {"macro_1", {{"label", "Clean Nozzle"}, {"gcode", "HELIX_CLEAN_NOZZLE"}}},
             {"macro_2", {{"label", "Bed Level"}, {"gcode", "HELIX_BED_MESH_IF_NEEDED"}}},
-            {"cooldown", "SET_HEATER_TEMPERATURE HEATER=extruder TARGET=0\nSET_HEATER_TEMPERATURE "
-                         "HEATER=heater_bed TARGET=0"}};
+            {"cooldown", kDefaultCooldownGcode}};
+}
+
+/// default_macros text a shipped preset used to persist in an earlier
+/// release, keyed by preset name then macro key. apply_preset_file()'s
+/// post-wizard migration replaces a stored macro with the preset's CURRENT
+/// text only when it byte-matches an entry here, so a user's own edit is
+/// never touched and an already-migrated printer is a no-op.
+const std::map<std::string, std::map<std::string, std::string>>& stale_default_macro_text() {
+    static const std::map<std::string, std::map<std::string, std::string>> table = {
+        {"k2",
+         {{"cooldown", "SET_HEATER_TEMPERATURE HEATER=extruder TARGET=0\n"
+                       "SET_HEATER_TEMPERATURE HEATER=heater_bed TARGET=0\n"
+                       "SET_HEATER_TEMPERATURE HEATER=chamber_heater TARGET=0"}}},
+    };
+    return table;
 }
 
 /// Default printer configuration - shared between init() and reset_to_defaults()
@@ -2753,23 +2778,12 @@ bool preset_targets_this_device(const std::string& moonraker_host) {
 
 bool Config::apply_preset_file(const std::string& preset_name) {
     // Guard: only full-apply if wizard hasn't been completed for this printer.
-    // Post-wizard, still allow a narrow migration for filament_sensors so that
-    // a printer detected with an empty filament_sensors block (preset never
-    // populated it at first-install, or preset was extended later) gets the
-    // current preset's runout/toolhead role assignments. Without this, fixing
-    // a preset only helps fresh installs — existing users stay broken even
-    // after an update.
+    // Post-wizard, still allow two narrow migrations for an already-provisioned
+    // printer: filament_sensors (below) and default_macros (further down).
+    // Without this, fixing a preset only helps fresh installs: existing users
+    // stay broken even after an update.
     const bool wizard_done = get<bool>(df() + "wizard_completed", false);
     if (wizard_done) {
-        // Post-wizard migration window. Two cases:
-        //  A) filament_sensors.sensors is empty/missing → seed from preset
-        //     (original installs whose old preset didn't write the block).
-        //  B) Block exists but the preset has been updated to assign RUNOUT
-        //     to sensors that the user's stored copy still has at "none" —
-        //     stale role=none from a prior preset version. Upgrade those
-        //     specific sensors. User-edited role=runout entries are never
-        //     downgraded; role=none entries the preset also wants at none
-        //     are left alone.
         if (active_printer_id_.empty()) {
             spdlog::info("[Config] Wizard completed, skipping preset '{}' merge", preset_name);
             return false;
@@ -2787,76 +2801,112 @@ bool Config::apply_preset_file(const std::string& preset_name) {
             spdlog::info("[Config] Wizard completed, skipping preset '{}' merge", preset_name);
             return false;
         }
-        if (!preset_json.contains("printer") || !preset_json["printer"].is_object() ||
-            !preset_json["printer"].contains("filament_sensors")) {
+        if (!preset_json.contains("printer") || !preset_json["printer"].is_object()) {
             spdlog::info("[Config] Wizard completed, skipping preset '{}' merge", preset_name);
             return false;
         }
-        const auto& preset_fs = preset_json["printer"]["filament_sensors"];
+        const auto& preset_printer = preset_json["printer"];
+        bool changed = false;
 
-        json::json_pointer fs_ptr(df() + "filament_sensors");
-        json::json_pointer sensors_ptr(df() + "filament_sensors/sensors");
+        // Migration 1: filament_sensors. Two cases:
+        //  A) filament_sensors.sensors is empty/missing → seed from preset
+        //     (original installs whose old preset didn't write the block).
+        //  B) Block exists but the preset has been updated to assign RUNOUT
+        //     to sensors that the user's stored copy still has at "none" —
+        //     stale role=none from a prior preset version. Upgrade those
+        //     specific sensors. User-edited role=runout entries are never
+        //     downgraded; role=none entries the preset also wants at none
+        //     are left alone.
+        if (preset_printer.contains("filament_sensors")) {
+            const auto& preset_fs = preset_printer["filament_sensors"];
+            json::json_pointer sensors_ptr(df() + "filament_sensors/sensors");
 
-        // Case A: empty/missing block — full seed.
-        if (!data.contains(sensors_ptr) ||
-            (data.at(sensors_ptr).is_array() && data.at(sensors_ptr).empty())) {
-            auto& printer_node = data["printers"][active_printer_id_];
-            if (!printer_node.is_object()) {
-                printer_node = json::object();
-            }
-            printer_node["filament_sensors"] = preset_fs;
-            spdlog::info("[Config] Migrated filament_sensors from preset '{}' "
-                         "(existing block was empty)",
-                         preset_name);
-            save();
-            return true;
-        }
-
-        // Case B: per-sensor role-upgrade from "none" → preset's role.
-        if (!preset_fs.contains("sensors") || !preset_fs["sensors"].is_array()) {
-            spdlog::info("[Config] Wizard completed, skipping preset '{}' merge", preset_name);
-            return false;
-        }
-        if (!data.at(sensors_ptr).is_array()) {
-            spdlog::info("[Config] Wizard completed, skipping preset '{}' merge", preset_name);
-            return false;
-        }
-        int upgraded = 0;
-        auto& user_sensors = data.at(sensors_ptr);
-        for (const auto& preset_sensor : preset_fs["sensors"]) {
-            if (!preset_sensor.is_object())
-                continue;
-            std::string preset_klipper = preset_sensor.value("klipper_name", "");
-            std::string preset_role = preset_sensor.value("role", "none");
-            if (preset_klipper.empty() || preset_role == "none")
-                continue;
-            bool found = false;
-            for (auto& user_sensor : user_sensors) {
-                if (!user_sensor.is_object())
-                    continue;
-                if (user_sensor.value("klipper_name", "") != preset_klipper)
-                    continue;
-                found = true;
-                std::string user_role = user_sensor.value("role", "none");
-                // Only upgrade when user has role=none — never overwrite an
-                // explicit user assignment (runout/toolhead/entry/z_probe).
-                if (user_role == "none") {
-                    user_sensor["role"] = preset_role;
-                    ++upgraded;
-                    spdlog::info("[Config] Upgraded sensor '{}' role: none -> {} (preset '{}')",
-                                 preset_klipper, preset_role, preset_name);
+            if (!data.contains(sensors_ptr) ||
+                (data.at(sensors_ptr).is_array() && data.at(sensors_ptr).empty())) {
+                auto& printer_node = data["printers"][active_printer_id_];
+                if (!printer_node.is_object()) {
+                    printer_node = json::object();
                 }
-                break;
-            }
-            // Sensor in preset but missing entirely from user settings → append.
-            if (!found) {
-                user_sensors.push_back(preset_sensor);
-                ++upgraded;
-                spdlog::info("[Config] Added missing sensor '{}' from preset '{}'", preset_klipper,
+                printer_node["filament_sensors"] = preset_fs;
+                spdlog::info("[Config] Migrated filament_sensors from preset '{}' "
+                             "(existing block was empty)",
                              preset_name);
+                changed = true;
+            } else if (preset_fs.contains("sensors") && preset_fs["sensors"].is_array() &&
+                       data.at(sensors_ptr).is_array()) {
+                auto& user_sensors = data.at(sensors_ptr);
+                for (const auto& preset_sensor : preset_fs["sensors"]) {
+                    if (!preset_sensor.is_object())
+                        continue;
+                    std::string preset_klipper = preset_sensor.value("klipper_name", "");
+                    std::string preset_role = preset_sensor.value("role", "none");
+                    if (preset_klipper.empty() || preset_role == "none")
+                        continue;
+                    bool found = false;
+                    for (auto& user_sensor : user_sensors) {
+                        if (!user_sensor.is_object())
+                            continue;
+                        if (user_sensor.value("klipper_name", "") != preset_klipper)
+                            continue;
+                        found = true;
+                        std::string user_role = user_sensor.value("role", "none");
+                        // Only upgrade when user has role=none — never overwrite an
+                        // explicit user assignment (runout/toolhead/entry/z_probe).
+                        if (user_role == "none") {
+                            user_sensor["role"] = preset_role;
+                            changed = true;
+                            spdlog::info(
+                                "[Config] Upgraded sensor '{}' role: none -> {} (preset '{}')",
+                                preset_klipper, preset_role, preset_name);
+                        }
+                        break;
+                    }
+                    // Sensor in preset but missing entirely from user settings → append.
+                    if (!found) {
+                        user_sensors.push_back(preset_sensor);
+                        changed = true;
+                        spdlog::info("[Config] Added missing sensor '{}' from preset '{}'",
+                                     preset_klipper, preset_name);
+                    }
+                }
             }
         }
-        if (upgraded > 0) {
+
+        // Migration 2: default_macros. A stored macro is replaced with the
+        // preset's CURRENT text only when it byte-matches an EARLIER release's
+        // text for that (preset, key) pair (stale_default_macro_text()): a
+        // user's own edit, or an already-migrated macro, never matches and is
+        // left untouched. Idempotent: once migrated the stored text equals the
+        // current text, not the stale one, so a second run finds nothing to do.
+        if (preset_printer.contains("default_macros") &&
+            preset_printer["default_macros"].is_object()) {
+            auto stale_it = stale_default_macro_text().find(preset_name);
+            json::json_pointer macros_ptr(df() + "default_macros");
+            if (stale_it != stale_default_macro_text().end() && data.contains(macros_ptr) &&
+                data.at(macros_ptr).is_object()) {
+                auto& user_macros = data.at(macros_ptr);
+                const auto& preset_macros = preset_printer["default_macros"];
+                for (const auto& [macro_key, stale_text] : stale_it->second) {
+                    if (!user_macros.contains(macro_key) || !user_macros[macro_key].is_string()) {
+                        continue;
+                    }
+                    if (user_macros[macro_key].get<std::string>() != stale_text) {
+                        continue;
+                    }
+                    if (!preset_macros.contains(macro_key) ||
+                        !preset_macros[macro_key].is_string()) {
+                        continue;
+                    }
+                    user_macros[macro_key] = preset_macros[macro_key].get<std::string>();
+                    changed = true;
+                    spdlog::info(
+                        "[Config] Migrated default_macros.{} from preset '{}' (stale text)",
+                        macro_key, preset_name);
+                }
+            }
+        }
+
+        if (changed) {
             save();
             return true;
         }

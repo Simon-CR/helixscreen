@@ -142,11 +142,10 @@ class ToastManager {
     void force_remove(ToastList::iterator it); // no animation
     void finalize_remove(lv_obj_t* widget);    // called from exit-anim completion
 
-    // Detach a toast that is being torn down from any input device that has it
-    // (or a child) as a cached press/scroll target, and make its action button
-    // unclickable. Prevents a stale release/click from dispatching to the
-    // soon-to-be-freed widget — SIGBUS in event_send_core (#850; bundle
-    // A5V73UV4).
+    // Take a toast that is being torn down away from any pointer pressing or
+    // scrolling inside it, and make its action button unclickable, so no press
+    // on the button completes into a dismissed toast (#850; bundle A5V73UV4).
+    // A press anywhere else keeps its gesture.
     static void detach_from_input(lv_obj_t* widget);
     void update_notification_bell();
     size_t visible_count() const; // active_ minus those already exiting

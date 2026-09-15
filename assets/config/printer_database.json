@@ -21,13 +21,14 @@
     "fan_exclude": "As led_exclude, over fan object names",
     "object_exclude": "As led_exclude, over the full Klipper object list",
     "mcu_match": "Match against MCU chip type or serial pattern",
-    "build_volume_range": "Match against the X/Y stepper travel Klipper resolves from the configfile (position_max minus position_min per axis), not the bed mesh or the advertised print area. Travel is the print area plus whatever overtravel the config allows (the four entries authored from a real config show +10 to +58 mm), so a window drawn tightly around the marketing size misses the machine it describes; author min/max from a real configfile",
+    "build_volume_range": "Match against the X/Y stepper travel Klipper resolves from the configfile (position_max minus position_min per axis), not the bed mesh or the advertised print area. Travel is the print area plus whatever overtravel the config allows (the four entries authored from a real config show +10 to +58 mm), so a window drawn tightly around the marketing size misses the machine it describes; author min/max from a real configfile. A heuristic setting \"measure\": \"declared_bed\" matches the bed size the firmware config declares instead of travel",
     "macro_match": "Match against G-code macro names (gcode_macro objects)",
     "macro_exclude": "Exclude this printer if a G-code macro is present",
     "tool_count": "Count of extruder tools (tool_count_1, tool_count_2, tool_count_4)",
     "cpu_arch_match": "Match against host CPU architecture string",
     "_modifier_corroborating": "Set true on a heuristic whose evidence names a CLASS of printer rather than a model: a chamber thermistor (every enclosed machine has one) or an MCU claimed by more than one model. The flag is per-entry authoring - vendor hostnames stay identifying where an entry authors them as model signals and corroborate where it does not. It can never be the base score and adds nothing to the match bonus, so it cannot identify a printer or separate look-alikes on its own; it supports through match_count and the separator opt-in.",
     "_modifier_identifying": "Set true on a build_volume_range whose window is distinctive enough to lead. Volumes are corroborating by default because models overlap in the common bands; this opts an unusual size back in. It still needs the entry's kinematics to match, so a size alone never names a printer.",
+    "_modifier_measure": "Set to \"declared_bed\" on a build_volume_range to match its window against the bed size the firmware's own config declares (Creality: gcode_macro product_param variable_bed_size_x and variable_bed_size_y) instead of stepper travel. Travel also covers overtravel to a purge or nozzle-clean position, so a declared bed suits a window that has to tell apart models whose travel overshoots their beds (K2 Plus against K2 Pro). A firmware that declares no bed size never matches such a window; nothing falls back to travel. Any other value matches nothing.",
     "_modifier_separator": "Set true on a corroborating heuristic whose evidence names the model within a family the entry's other heuristics identify: a bed size (K2 Plus against K2 Pro) or an MCU part number separating vendors whose class evidence ties. A match adds its weight to the uncapped score - the margin between look-alikes - once the entry's non-separator base clears the autosave bar; it never raises the published confidence and never becomes the base, so a rig reporting only that one fact still earns nothing."
   },
   "console_filter_sets": {
@@ -1063,6 +1064,8 @@
       "image": "creality-k1.png",
       "probe_type": "prtouch_v2",
       "preset": "k1",
+      "preset_default": true,
+      "_preset_default_comment": "The k1 family's default: a K1 preset install whose detection names no K1 machine persists this entry, the base model, rather than database order",
       "print_start_profile": "creality_k1",
       "pre_print_options": {
         "macro_name": "START_PRINT",
@@ -1666,12 +1669,13 @@
         {
           "type": "build_volume_range",
           "field": "bed_mesh",
+          "measure": "declared_bed",
           "min_x": 340,
           "max_x": 360,
           "min_y": 340,
           "max_y": 360,
           "confidence": 55,
-          "reason": "Build volume ~350mm (K2 Plus size); separates Plus from Pro once the K2 platform is identified",
+          "reason": "Declared bed ~350mm (K2 Plus); separates Plus from Pro once the K2 platform is identified. Measures the bed size Creality's product_param macro declares (350x350 on a real K2 Plus) because stepper travel overshoots the bed: that K2 Plus travels -10 to 352.5 in X and -6.2 to 400 in Y",
           "separator": true
         }
       ],
@@ -1810,12 +1814,13 @@
         {
           "type": "build_volume_range",
           "field": "bed_mesh",
+          "measure": "declared_bed",
           "min_x": 340,
           "max_x": 360,
           "min_y": 340,
           "max_y": 360,
           "confidence": 55,
-          "reason": "Build volume ~350mm (K2 Plus size); separates Plus from Pro once the K2 platform is identified",
+          "reason": "Declared bed ~350mm (K2 Plus); separates Plus from Pro once the K2 platform is identified. Measures the bed size Creality's product_param macro declares (350x350 on a real K2 Plus) because stepper travel overshoots the bed: that K2 Plus travels -10 to 352.5 in X and -6.2 to 400 in Y",
           "separator": true
         }
       ]
@@ -1949,12 +1954,149 @@
         {
           "type": "build_volume_range",
           "field": "bed_mesh",
+          "measure": "declared_bed",
           "min_x": 290,
           "max_x": 310,
           "min_y": 290,
           "max_y": 310,
           "confidence": 55,
-          "reason": "Build volume ~300mm (K2 Pro size); separates Pro from Plus once the K2 platform is identified",
+          "reason": "Declared bed ~300mm (K2 Pro); separates Pro from Plus once the K2 platform is identified. Measures the bed size Creality's product_param macro declares; 300 is Creality's spec for the Pro, not a captured value. Stepper travel overshoots the bed: a reported K2 Pro has position_max 302 in X and 332 in Y",
+          "separator": true
+        }
+      ],
+      "_print_start_default_phases_comment": "Measured on a K2 Plus 2026-08-18 (three captured prints): three homing rail rounds ~15s; nozzle wipe plus both BOX_NOZZLE_CLEAN passes ~60s; the bed-mesh toggle is optional (emit_when_disabled: false) and its check-passed validation runs ~6s - a failed check re-meshes (67-pt adaptive) and the prediction history learns that after the first such print. Heating is omitted - the thermal model owns those.",
+      "print_start_default_phases": {
+        "HOMING": 15,
+        "CLEANING": 60,
+        "BED_MESH": 10
+      }
+    },
+    {
+      "id": "creality_k2",
+      "name": "Creality K2",
+      "manufacturer": "Creality",
+      "toolhead_style": "creality_k2",
+      "image": "creality-k2.png",
+      "_image_comment": "creality-k2.png is a byte copy of creality-k2-plus.png until a photo of the base K2 exists. It keeps its own filename because detection tells machines apart by image: a shared file would make the base K2 and the K2 Plus one machine to the tie rules",
+      "probe_type": "prtouch_v3",
+      "preset": "k2",
+      "preset_default": true,
+      "_preset_default_comment": "The k2 family's default: a K2 preset install whose detection names no K2 machine persists this entry, by this marker rather than database order",
+      "print_start_profile": "creality_k2",
+      "console_filters": [
+        "creality_rs485",
+        "creality_k2_modules"
+      ],
+      "pre_print_options": {
+        "macro_name": "START_PRINT",
+        "setup_gcode": "PRINT_PREPARED",
+        "options": [
+          {
+            "id": "bed_mesh",
+            "category": "mechanical",
+            "order": 10,
+            "default_enabled": true,
+            "strategy": "pre_start_gcode",
+            "gcode_template": "BED_MESH_CALIBRATE_START_PRINT GCODE_FILE='{file}' BED_TEMP={bed_temp} EXTRUDER_TEMP={extruder_temp}",
+            "emit_when_disabled": false
+          },
+          {
+            "id": "ai_detect",
+            "category": "monitoring",
+            "order": 10,
+            "default_enabled": false,
+            "label_key": "AI detection",
+            "description_key": "Monitor for print abnormalities (camera-based)",
+            "strategy": "pre_start_gcode",
+            "gcode_template": "LOAD_AI_RUN SWITCH={value}",
+            "requires_macro": "LOAD_AI_RUN"
+          }
+        ]
+      },
+      "_heuristics_comment": "The K2 platform heuristics minus the active chamber heater: the base K2 has no chamber heater (docs/devel/printers/CREALITY_K2_SUPPORT.md model table). Nothing documents it without motor_control, fan_feedback, load_ai, filament_rack, a chamber thermistor or the optional CFS box, so those stay",
+      "heuristics": [
+        {
+          "type": "macro_exclude",
+          "field": "macros",
+          "pattern": "_START_PRINT_VARS",
+          "confidence": 0,
+          "reason": "Exclude the k2-improvements mod (separate entry) - it replaces START_PRINT wholesale"
+        },
+        {
+          "type": "kinematics_match",
+          "field": "kinematics",
+          "pattern": "corexy",
+          "confidence": 40,
+          "reason": "CoreXY kinematics"
+        },
+        {
+          "type": "sensor_match",
+          "field": "sensors",
+          "pattern": "chamber_temp",
+          "confidence": 70,
+          "reason": "Chamber temperature sensor",
+          "corroborating": true
+        },
+        {
+          "type": "object_exists",
+          "field": "printer_objects",
+          "pattern": "^box$",
+          "confidence": 45,
+          "reason": "CFS box object. Every CFS-equipped Creality carries it, so it narrows a machine to the range and never to a model; the model is the hostname's and bed size's to name",
+          "corroborating": true
+        },
+        {
+          "type": "object_exists",
+          "field": "printer_objects",
+          "pattern": "motor_control",
+          "confidence": 75,
+          "reason": "K2-specific motor control module"
+        },
+        {
+          "type": "object_exists",
+          "field": "printer_objects",
+          "pattern": "fan_feedback",
+          "confidence": 65,
+          "reason": "Creality fan-tachometer module. A captured real K1C reports it too, so it evidences Creality's range and not this model; the model is the hostname's and bed size's to name. Weight left as-is deliberately: re-scoring or dropping it wants a real K2 discovery snapshot, and no fixture has one"
+        },
+        {
+          "type": "hostname_match",
+          "field": "hostname",
+          "pattern": "creality",
+          "confidence": 60,
+          "reason": "Hostname contains 'creality'"
+        },
+        {
+          "type": "hostname_match",
+          "field": "hostname",
+          "pattern": "k2",
+          "confidence": 85,
+          "reason": "Hostname contains 'k2'"
+        },
+        {
+          "type": "object_exists",
+          "field": "printer_objects",
+          "pattern": "load_ai",
+          "confidence": 60,
+          "reason": "K2 AI print monitoring"
+        },
+        {
+          "type": "object_exists",
+          "field": "printer_objects",
+          "pattern": "filament_rack",
+          "confidence": 65,
+          "reason": "K2 filament rack module"
+        },
+        {
+          "type": "build_volume_range",
+          "field": "bed_mesh",
+          "measure": "declared_bed",
+          "min_x": 250,
+          "max_x": 270,
+          "min_y": 250,
+          "max_y": 270,
+          "confidence": 55,
+          "reason": "Declared bed ~260mm (base K2); separates the base K2 from the K2 Pro and K2 Plus once the K2 platform is identified. Measures the bed size Creality's product_param macro declares; 260 is Creality's spec for the base K2, not a captured value. The window is +/-10mm, symmetric like the Pro's 290-310 and the Plus's 340-360",
           "separator": true
         }
       ],
@@ -1973,6 +2115,8 @@
       "image": "creality-k1c.png",
       "probe_type": "prtouch_v2",
       "preset": "k1c",
+      "preset_default": true,
+      "_preset_default_comment": "The k1c family's default: a K1C preset install whose detection names no K1C machine persists this entry, the base model without CFS, rather than database order",
       "print_start_profile": "creality_k1",
       "_print_start_default_phases_comment": "Measured on a K1C 2026-08-19 (flowrate print, full prep chain): homing via CX_ROUGH_G28 ran 60s vs the 30s generic default; the nozzle wipe (CLEAR_NOZZLE_QUICK rounds) ran ~85s; a check-passed mesh (4-corner validation + 25-point sweep at 5.5s/point) ran 123s. Heating phases are omitted - the thermal model owns those.",
       "print_start_default_phases": {
@@ -5156,6 +5300,8 @@
       "manufacturer": "Anycubic",
       "image": "anycubic-kobra-3.png",
       "preset": "anycubic_kobra_3",
+      "preset_default": true,
+      "_preset_default_comment": "The anycubic_kobra_3 family's default: a preset install whose detection names no Kobra 3 machine persists this entry, the base model rather than the V2, rather than database order",
       "print_start_profile": "anycubic_kobra",
       "heuristics": [
         {

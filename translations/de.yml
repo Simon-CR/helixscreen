@@ -6,15 +6,10 @@ translations:
   '"%s" failed to load': '"%s" konnte nicht geladen werden'
   '%.0f Hz difference': '%.0f Hz Unterschied'
   '%d additional fan%s': '%d zusätzliche%s Lüfter'
-  '%d disabled': '%d deaktiviert'
-  '%d failed to load - see details below': '%d konnten nicht geladen werden – Details
-    siehe unten'
   '%d feeders': '%d Zuführungen'
   '%d gates': '%d Gates'
   '%d lanes': '%d Spuren'
   '%d more sensors': '%d weitere Sensoren'
-  '%d of %d plugins loaded': '%d von %d Plugins geladen'
-  '%d plugins loaded': '%d Plugins geladen'
   '%d slots': '%d Slots'
   '%d toolheads': '%d Werkzeugköpfe'
   '%d tools': '%d Werkzeuge'
@@ -64,7 +59,6 @@ translations:
   1 min ago: vor 1 Min.
   1 minute: 1 Minute
   1 more tap to {} beta features: 1 weiteres Mal tippen, um Beta-Funktionen zu {}
-  1 plugin loaded: 1 Plugin geladen
   1. Printer homes and probes the bed: 1. Drucker referenziert und prüft das Bett
   1. Printer will home and probe each screw: 1. Drucker referenziert und prüft jede
     Schraube
@@ -186,7 +180,6 @@ translations:
   All Devices: Alle Geräte
   All axes homed: Alle Achsen referenziert
   All fields are required: Alle Felder sind erforderlich
-  All plugins loaded successfully: Alle Plugins erfolgreich geladen
   Allow: 'Zulassen'
   Allow Home Screen Editing: 'Bearbeiten des Startbildschirms zulassen'
   Allow cold load/unload: Kaltes Laden/Entladen erlauben
@@ -436,14 +429,9 @@ translations:
     – Ziele präziser berühren.
   Calibration kept timing out. Your previous settings were kept.: Bei der Kalibrierung kam es wiederholt zu einer Zeitüberschreitung. Ihre vorherigen Einstellungen wurden beibehalten.
   Calibration may still be running — printer connection was interrupted: 'Kalibrierung läuft möglicherweise noch — Druckerverbindung wurde unterbrochen'
-  Calibration may still be running — response timed out: Kalibrierung läuft möglicherweise
-    noch — Zeitüberschreitung
   Calibration move may still be running — printer connection was interrupted: 'Kalibrierungsbewegung läuft möglicherweise noch — Druckerverbindung wurde unterbrochen'
-  Calibration move may still be running — response timed out: Kalibrierungsbewegung
-    läuft möglicherweise noch — Zeitüberschreitung
   Calibration saved but cannot apply on SDL display: Kalibrierung gespeichert, kann
     aber auf SDL-Display nicht angewendet werden
-  Calibration started: Kalibrierung gestartet
   Calibration succeeded, but the frequency chart data couldn't be read.: Kalibrierung
     erfolgreich, aber die Frequenzdiagramm-Daten konnten nicht gelesen werden.
   Calibration succeeded. The frequency chart is only available when HelixScreen runs on the printer.: Kalibrierung
@@ -757,7 +745,6 @@ translations:
   Create New Vendor: Neuen Hersteller erstellen
   Create Spool: Spule erstellen
   Create a 4-6 digit security PIN: Erstellen Sie eine 4-6-stellige Sicherheits-PIN
-  Create backup of %s before applying: Sicherungskopie von %s vor dem Anwenden erstellen
   Create video when print completes: Video erstellen wenn Druck abgeschlossen
   Creating bed mesh...: Bettnetz erstellen...
   Creating spool...: Spule wird erstellt...
@@ -805,7 +792,7 @@ translations:
   Default: 'Standard'
   Default border thickness: Standard-Rahmendicke
   'Default: %d-%d°C nozzle, %d°C bed': 'Standard: %d-%d°C Düse, %d°C Bett'
-  'Default: %d-%d°C nozzle, %d°C bed, %d°C chamber': ''
+  'Default: %d-%d°C nozzle, %d°C bed, %d°C chamber': 'Standard: %d-%d°C Düse, %d°C Bett, %d°C Kammer'
   Defaults restored: Standardeinstellungen wiederhergestellt
   Define macros in your printer.cfg: Makros in Ihrer printer.cfg definieren
   Delete: Löschen
@@ -1143,7 +1130,6 @@ translations:
   'Failed to set temperature: {}': 'Temperatur setzen fehlgeschlagen: {}'
   'Failed to set {} temp: {}': '{}-Temperatur setzen fehlgeschlagen: {}'
   Failed to show confirmation dialog: Bestätigungsdialog konnte nicht angezeigt werden
-  Failed to start calibration: Kalibrierung starten fehlgeschlagen
   'Failed to start installer: ': 'Installationsprogramm konnte nicht gestartet werden: '
   'Failed to start print: {}': 'Druck starten fehlgeschlagen: {}'
   'Failed to start uninstaller: ': 'Deinstallationsprogramm konnte nicht gestartet
@@ -1186,7 +1172,6 @@ translations:
   Filament: Filament
   Filament Control: Filamentsteuerung
   Filament Detected: Filament erkannt
-  Filament Environment: Filamentumgebung
   Filament Grade Mismatch: Filamentklassenabweichung
   Filament Humidity: Filamentfeuchtigkeit
   Filament In The Toolhead: Filament im Werkzeugkopf
@@ -1222,7 +1207,6 @@ translations:
   Filament is still present after the cut — the blade may be dull or misaligned: Nach dem Schnitt ist noch Filament vorhanden. Die Klinge ist möglicherweise stumpf oder falsch ausgerichtet
   Filament jam detected: Filamentstau erkannt
   Filament jammed at the extruder gear: Filament am Extruderrad verklemmt
-  'Filament load failed: {}': 'Filament laden fehlgeschlagen: {}'
   Filament never reached the CFS hub sensor: Filament hat den CFS-Hub-Sensor nie erreicht
   Filament operation failed: Filament-Vorgang fehlgeschlagen
   Filament operation timed out: Filament-Vorgang Zeitüberschreitung
@@ -1246,7 +1230,6 @@ translations:
   Filament tension is balanced: Filamentspannung ist ausgeglichen
   Filament tracking & label printing: Filamentverfolgung & Etikettendruck
   Filament tracking and inventory: Filamentverfolgung und Inventar
-  'Filament unload failed: {}': 'Filament entladen fehlgeschlagen: {}'
   FilamentSensor: Filamentsensor
   File: Datei
   File Size: Dateigröße
@@ -1546,7 +1529,7 @@ translations:
   Join the HelixScreen community on Discord for discussion, tips, troubleshooting help, and feature requests.: Tritt
     der HelixScreen-Community auf Discord bei für Diskussionen, Tipps, Hilfe zur Fehlerbehebung
     und Funktionswünsche.
-  Joining Wi-Fi disconnects the wired network.: ''
+  Joining Wi-Fi disconnects the wired network.: Mit WiFi verbinden trennt das kabelgebundene Netzwerk.
   Just now: Gerade eben
   Just queued: 'Gerade eingereiht'
   KEYBOARD LAYOUT: TASTATURLAYOUT
@@ -1644,8 +1627,6 @@ translations:
   Load failed: Laden fehlgeschlagen
   Load filament: 'Filament laden'
   Load filament first: Laden Sie zuerst Filament
-  Load may still be running — response timed out: Laden läuft möglicherweise noch
-    — Zeitüberschreitung
   Load or unload filament.: Filament laden oder entladen.
   Load the required filaments or start anyway?: Benötigte Filamente laden oder trotzdem
     starten?
@@ -1756,6 +1737,7 @@ translations:
   Match: Übereinstimmung
   Match to belt A: An Riemen A angleichen
   Match your typical print fan speed: Typische Drucklüftergeschwindigkeit einstellen
+  Matching printers: Passende Drucker
   Material: Material
   'Material Comfort:': 'Materialkomfort:'
   Material Mismatch: Materialabweichung
@@ -1931,9 +1913,6 @@ translations:
   No networks found: Keine Netzwerke gefunden
   No notifications: Keine Benachrichtigungen
   No objects defined for this print: Keine Objekte für diesen Druck definiert
-  No plugins: Keine Plugins
-  No plugins discovered: Keine Plugins gefunden
-  No plugins found: Keine Plugins gefunden
   No presets configured: Keine Voreinstellungen konfiguriert
   No preview: Keine Vorschau
   No print history found: Kein Druckverlauf gefunden
@@ -2128,9 +2107,6 @@ translations:
   'Place image files (PNG, JPEG, BMP, GIF) in config/custom_images/. Max size: 2048×2048 pixels.': 'Bilddateien
     (PNG, JPEG, BMP, GIF) in config/custom_images/ ablegen. Max. Größe: 2048×2048
     Pixel.'
-  Place plugins in the plugins directory: Plugins im Plugin-Verzeichnis ablegen
-  Place plugins in the plugins directory to extend HelixScreen: Platzieren Sie Plugins
-    im Plugin-Verzeichnis, um HelixScreen zu erweitern
   Placed: Platziert
   Platform: Plattform
   'Platform: ': 'Plattform: '
@@ -2154,10 +2130,8 @@ translations:
     Moonraker wird neu gestartet...
   ? "Plugin not responding after restart.\nIt may need more time to load."
   : "Plugin antwortet nicht nach Neustart.\nBenötigt möglicherweise mehr Ladezeit."
+  Plugin removed. A config file needs attention - check the HelixScreen log for details.: Plugin entfernt. Eine Konfigurationsdatei erfordert Aufmerksamkeit – Details im HelixScreen-Protokoll.
   Plugin uninstalled successfully.: Plugin erfolgreich deinstalliert.
-  Plugins: Plugins
-  Plugins are discovered on application startup: Plugins werden beim Anwendungsstart
-    erkannt
   Point camera at QR code on spool: Kamera auf QR-Code an Spule richten
   Polymaker: Polymaker
   Poor Accuracy: Schlechte Genauigkeit
@@ -2738,6 +2712,7 @@ translations:
   Setup: 'Einrichtung'
   Setup Complete!: Einrichtung abgeschlossen!
   Setup Timelapse: Zeitraffer einrichten
+  Several printers match - choose yours: Mehrere Drucker passen - Drucker auswählen
   Shadow Intensity: Schattenintensität
   Share Usage Data: Nutzungsdaten teilen
   Share anonymous usage statistics to help us make HelixScreen better. No personal data is ever collected.: Teilen
@@ -2952,7 +2927,6 @@ translations:
   Temp: Temp.
   Temp Compensation: Temp.-Kompensation
   Temp °C: Temp °C
-  Temp °C (%d–%d): Temp °C (%d–%d)
   Temperature: Temperatur
   Temperature Graph: 'Temperaturdiagramm'
   Temperature Graph Config: Temperaturdiagramm-Konfiguration
@@ -3101,7 +3075,8 @@ translations:
     starten?
   ? This printer looks like a {} ({}% confidence), but it is set up as a {}. A wrong type applies incorrect pre-print options and presets.
   : Dieser Drucker sieht aus wie ein {} ({}% Konfidenz), ist aber als {} eingerichtet. Ein falscher Typ wendet falsche Optionen und Voreinstellungen für die Druckvorbereitung an.
-  This removes the plugin's macros and its Moonraker component from the printer and restarts Klipper.: Entfernt die Makros des Plugins und seine Moonraker-Komponente vom Drucker und startet Klipper neu.
+  ? This removes the plugin's Moonraker component and restarts Moonraker. The printer will briefly disconnect. If old phase-tracking lines are still in PRINT_START, they are removed too, with backups kept. A Klipper restart applies that.
+  : Dies entfernt die Moonraker-Komponente des Plugins und startet Moonraker neu. Der Drucker wird kurz getrennt. Falls in PRINT_START noch alte Zeilen zur Phasenverfolgung vorhanden sind, werden sie ebenfalls entfernt, wobei Backups aufbewahrt werden. Ein Klipper-Neustart wendet das an.
   This replaces the printer's helper macros with the current version and restarts Klipper.: 'Dies ersetzt die Hilfsmakros des Druckers durch die aktuelle Version und startet Klipper neu.'
   ? This replaces the printer's helper macros with the current version. A print is running, so Klipper restarts after it finishes.
   : 'Dies ersetzt die Hilfsmakros des Druckers durch die aktuelle Version. Ein Druck läuft, daher wird Klipper nach dessen Abschluss neu gestartet.'
@@ -3246,7 +3221,6 @@ translations:
   Uninstall HelixPrint Plugin: HelixPrint-Plugin deinstallieren
   Uninstall HelixPrint Plugin?: HelixPrint-Plugin deinstallieren?
   Uninstall script not found.: Deinstallationsskript nicht gefunden.
-  'Uninstall: Coming soon': 'Deinstallieren: Demnächst verfügbar'
   Uninstallation failed. Check logs for details.: Deinstallation fehlgeschlagen. Details
     in den Protokollen.
   'Uninstallation failed: ': 'Deinstallation fehlgeschlagen: '
@@ -3254,7 +3228,7 @@ translations:
     Das Skript hängt möglicherweise.
   Unit: Einheit
   'Unit ': 'Einheit '
-  'Units: %d   Boxes: %d   Dryers: %d': ''
+  'Units: %d   Boxes: %d   Dryers: %d': 'Einheiten: %d   Boxen: %d   Trockner: %d'
   Unknown: Unbekannt
   Unknown Error: 'Unbekannter Fehler'
   Unknown Event: Unbekanntes Ereignis
@@ -3269,8 +3243,6 @@ translations:
   Unload filament: 'Filament entladen'
   Unload from toolhead first: 'Entladen Sie zuerst aus dem Werkzeugkopf'
   Unload macro not configured: Entlade-Makro nicht konfiguriert
-  Unload may still be running — response timed out: Entladen läuft möglicherweise
-    noch — Zeitüberschreitung
   Unload the CFS filament before enabling bypass: 'Entladen Sie das CFS-Filament, bevor Sie den Bypass aktivieren'
   Unloading: Entladen
   Unloading Start Speed: 'Startgeschwindigkeit beim Entladen'
@@ -3338,9 +3310,8 @@ translations:
   View Full History: Vollständigen Verlauf anzeigen
   View Telemetry Data: Telemetriedaten anzeigen
   View Timelapse: Zeitraffer ansehen
-  View all boxes: ''
+  View all boxes: Alle Boxen anzeigen
   View and rename fans: Lüfter anzeigen und umbenennen
-  View installed plugins and status: Installierte Plugins und Status anzeigen
   View live camera feed: Live-Kamerabild anzeigen
   View print statistics and job history: Druckstatistiken und Auftragsverlauf anzeigen
   'Visits: ': 'Aufrufe: '
@@ -3358,8 +3329,8 @@ translations:
   Wait for the current operation to complete or cancel it first: Warten Sie, bis der aktuelle Vorgang abgeschlossen ist, oder brechen Sie ihn zuvor ab
   Wait until the print finishes: Warten Sie, bis der Druck abgeschlossen ist
   Waiting for Moonraker...: Warte auf Moonraker...
-  'Waiting for %s to finish. One heater at a time.': ''
-  Waiting for another box to finish.: ''
+  Waiting for %s to finish. One heater at a time.: Warte, bis %s fertig ist. Nur eine Heizung gleichzeitig.
+  Waiting for another box to finish.: Warte, bis eine andere Box fertig ist.
   Waiting for bed to reach temperature for accurate calibration.: Warte auf Bett-Temperatur
     für genaue Kalibrierung.
   Waiting for the filament system to report its state: Warte auf Statusmeldung des Filamentsystems
@@ -3519,9 +3490,10 @@ translations:
   AFC's remember_spool is retaining spool info in firmware; that takes precedence over this toggle: AFCs remember_spool behält Spuleninfos in der Firmware; das hat Vorrang vor diesem Schalter
   AI detection: AI-Erkennung
   Monitor for print abnormalities (K2 Plus camera-based): Überwacht auf Druckanomalien (K2 Plus kamerabasiert)
+  Monitor for print abnormalities (camera-based): 'Überwacht auf Druckanomalien (kamerabasiert)'
   on unit {}: 'an Einheit {}'
   or type a macro name: oder Makronamen eingeben
-  passive: ''
+  passive: passiv
   printer default: Druckerstandard
   prints: Drucke
   remaining: verbleibend

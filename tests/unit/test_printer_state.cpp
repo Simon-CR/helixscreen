@@ -233,7 +233,7 @@ TEST_CASE("PrinterState: Initialization sets default values", "[state][init]") {
 // ============================================================================
 // Note: Subjects store temperatures in decidegrees (temp * 10) for 0.1°C resolution.
 // Tests use update_from_status() directly since update_from_notification() uses
-// lv_async_call() which requires pumping the LVGL timer.
+// queue_update() via async_lifetime_.defer, which requires draining the UpdateQueue.
 
 TEST_CASE("PrinterState: Update extruder temperature from status", "[state][temp]") {
     lv_init_safe();
@@ -1562,6 +1562,174 @@ TEST_CASE("PrinterState::set_hardware respects 'none' override for chamber",
 
     settings.set_chamber_sensor_assignment("auto");
     settings.set_chamber_heater_assignment("auto");
+}
+
+// ============================================================================
+// set_hardware(): a chamber heater assignment counts only while Klipper reports it
+// ============================================================================
+
+namespace {
+
+/// Puts both chamber assignments back to "auto" however the case exits: the
+/// SettingsManager singleton outlives every test in the shard.
+struct ChamberAssignmentsRestore {
+    ~ChamberAssignmentsRestore() {
+        auto& settings = helix::SettingsManager::instance();
+        settings.set_chamber_heater_assignment("auto");
+        settings.set_chamber_sensor_assignment("auto");
+    }
+};
+
+/// The name a model preset seeds for its family's chamber heater before the
+/// wizard runs, and so before anything has checked the printer has one.
+constexpr const char* PRESET_CHAMBER_HEATER = "heater_generic chamber_heater";
+
+PrinterDiscovery discovered_objects(std::initializer_list<const char*> objects) {
+    PrinterDiscovery hw;
+    nlohmann::json list = nlohmann::json::array();
+    for (const char* object : objects) {
+        list.push_back(object);
+    }
+    hw.parse_objects(list);
+    return hw;
+}
+
+/// The PrinterState singleton as a fresh session finds it: the assignment is
+/// loaded and no discovery has landed yet.
+PrinterState& state_before_discovery(const char* heater_assignment) {
+    lv_init_safe();
+    PrinterState& state = get_printer_state();
+    PrinterStateTestAccess::reset(state);
+    state.init_subjects(false);
+
+    auto& settings = helix::SettingsManager::instance();
+    settings.init_subjects();
+    settings.set_chamber_sensor_assignment("auto");
+    settings.set_chamber_heater_assignment(heater_assignment);
+    return state;
+}
+
+int has_chamber_heater(PrinterState& state) {
+    return lv_subject_get_int(state.get_printer_has_chamber_heater_subject());
+}
+
+} // namespace
+
+TEST_CASE(
+    "PrinterState::set_hardware: a preset chamber heater the printer lacks yields discovery's",
+    "[state][hardware][chamber]") {
+    ChamberAssignmentsRestore restore;
+    PrinterState& state = state_before_discovery(PRESET_CHAMBER_HEATER);
+
+    SECTION("a chamber-named temperature_fan drives the chamber") {
+        state.set_hardware(
+            discovered_objects({"temperature_fan chamber_fan", "temperature_sensor chamber_temp",
+                                "extruder", "heater_bed"}));
+
+        // The chamber did resolve: the sensor this printer does have is live.
+        REQUIRE(state.temperature_state().chamber_sensor_name() ==
+                "temperature_sensor chamber_temp");
+        CHECK(state.temperature_state().chamber_heater_name() == "temperature_fan chamber_fan");
+        CHECK(has_chamber_heater(state) == 1);
+    }
+    SECTION("neither a heater nor a chamber fan leaves no chamber heater") {
+        state.set_hardware(
+            discovered_objects({"temperature_sensor chamber_temp", "extruder", "heater_bed"}));
+
+        REQUIRE(state.temperature_state().chamber_sensor_name() ==
+                "temperature_sensor chamber_temp");
+        CHECK(state.temperature_state().chamber_heater_name().empty());
+        CHECK(has_chamber_heater(state) == 0);
+    }
+}
+
+TEST_CASE("PrinterState::set_hardware: a named chamber heater the printer reports is its heater",
+          "[state][hardware][chamber]") {
+    ChamberAssignmentsRestore restore;
+
+    SECTION("the preset's heater on a printer that has it") {
+        PrinterState& state = state_before_discovery(PRESET_CHAMBER_HEATER);
+        state.set_hardware(discovered_objects(
+            {PRESET_CHAMBER_HEATER, "temperature_fan chamber_fan", "extruder", "heater_bed"}));
+
+        CHECK(state.temperature_state().chamber_heater_name() == PRESET_CHAMBER_HEATER);
+        CHECK(has_chamber_heater(state) == 1);
+    }
+    SECTION("a heater no chamber keyword names") {
+        PrinterState& state = state_before_discovery("heater_generic ptc_heater");
+        auto hw = discovered_objects({"heater_generic ptc_heater", "extruder", "heater_bed"});
+        REQUIRE_FALSE(hw.has_chamber_heater());
+        state.set_hardware(std::move(hw));
+
+        CHECK(state.temperature_state().chamber_heater_name() == "heater_generic ptc_heater");
+        CHECK(has_chamber_heater(state) == 1);
+    }
+}
+
+TEST_CASE("PrinterState::set_hardware: an unreported chamber heater name falls back to discovery",
+          "[state][hardware][chamber]") {
+    ChamberAssignmentsRestore restore;
+    PrinterState& state = state_before_discovery(PRESET_CHAMBER_HEATER);
+
+    state.set_hardware(discovered_objects({"heater_generic chamber", "extruder", "heater_bed"}));
+
+    CHECK(state.temperature_state().chamber_heater_name() == "heater_generic chamber");
+    CHECK(has_chamber_heater(state) == 1);
+}
+
+TEST_CASE("PrinterState: chamber heater presence follows each discovery, never the assignment",
+          "[state][hardware][chamber]") {
+    ChamberAssignmentsRestore restore;
+    PrinterState& state = state_before_discovery(PRESET_CHAMBER_HEATER);
+    lv_subject_t* presence = state.get_printer_has_chamber_heater_subject();
+
+    // Every value the capability takes from here on, including ones set and
+    // replaced inside a single call.
+    std::vector<int> seen;
+    lv_observer_t* observer = lv_subject_add_observer(
+        presence,
+        [](lv_observer_t* obs, lv_subject_t* subject) {
+            static_cast<std::vector<int>*>(lv_observer_get_user_data(obs))
+                ->push_back(lv_subject_get_int(subject));
+        },
+        &seen);
+    struct ObserverRemove {
+        lv_observer_t* observer;
+        ~ObserverRemove() {
+            lv_observer_remove(observer);
+        }
+    } remove_observer{observer};
+
+    // The assignment is loaded and discovery has not landed: no chamber heater.
+    CHECK(state.temperature_state().chamber_heater_name().empty());
+    CHECK(lv_subject_get_int(presence) == 0);
+
+    // Discovery lands on a printer with neither the heater nor a chamber fan, and
+    // the capability never shows.
+    state.set_hardware(
+        discovered_objects({"temperature_sensor chamber_temp", "extruder", "heater_bed"}));
+    CHECK(lv_subject_get_int(presence) == 0);
+    // The observer fired, so an absent 1 means one was never set.
+    REQUIRE_FALSE(seen.empty());
+    CHECK(std::find(seen.begin(), seen.end(), 1) == seen.end());
+
+    // A later discovery reporting only a chamber-named temperature_fan: the fan
+    // drives the chamber.
+    state.set_hardware(
+        discovered_objects({"temperature_fan chamber_fan", "extruder", "heater_bed"}));
+    CHECK(state.temperature_state().chamber_heater_name() == "temperature_fan chamber_fan");
+    CHECK(lv_subject_get_int(presence) == 1);
+
+    // A later discovery that reports the heater makes it the chamber heater.
+    state.set_hardware(discovered_objects({PRESET_CHAMBER_HEATER, "extruder", "heater_bed"}));
+    CHECK(state.temperature_state().chamber_heater_name() == PRESET_CHAMBER_HEATER);
+    CHECK(lv_subject_get_int(presence) == 1);
+
+    // One that stops reporting it takes it away again.
+    state.set_hardware(
+        discovered_objects({"temperature_sensor chamber_temp", "extruder", "heater_bed"}));
+    CHECK(state.temperature_state().chamber_heater_name().empty());
+    CHECK(lv_subject_get_int(presence) == 0);
 }
 
 // ============================================================================

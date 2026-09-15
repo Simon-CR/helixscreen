@@ -114,7 +114,7 @@ EOF
     contains "2 cases" "$output"
 }
 
-# A red suite is `make test-run`'s finding. The gates still have something to
+# A red suite is `make full-test-run`'s finding. The gates still have something to
 # say about the report a failing run left behind, so this must not be an error.
 @test "a failing suite still yields a usable report" {
     fake_suite <<'EOF'

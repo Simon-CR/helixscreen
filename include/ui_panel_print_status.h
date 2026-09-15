@@ -595,6 +595,12 @@ class PrintStatusPanel : public OverlayBase {
 
     void update_all_displays();
     void show_gcode_viewer(bool show);
+    /// True when @p print_filename still names the print PrinterState reports as
+    /// effective. A gcode fetch crosses a metadata lookup, a download and the
+    /// viewer's own async build, and the print can change at any point along
+    /// that chain; every stage that is about to act on @p print_filename checks
+    /// this first and drops the load instead of applying it to the wrong print.
+    bool is_load_for_effective_print(const std::string& print_filename) const;
     /// Load @p file_path into the viewer as the gcode of print @p print_filename.
     void load_gcode_file(const char* file_path, const std::string& print_filename);
 #if defined(HELIX_PLATFORM_ESP32)

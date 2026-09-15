@@ -56,6 +56,7 @@ FBDEV_DISPLAY_CXXFLAGS := $(filter-out -DHELIX_DISPLAY_DRM -DHELIX_ENABLE_OPENGL
 FBDEV_DISPLAY_API_SRCS := \
     src/api/display_backend.cpp \
     src/api/display_backend_fbdev.cpp \
+    src/api/drm_rotation_strategy.cpp \
     src/api/touch_calibration_wrapper.cpp \
     src/api/input_device_scanner.cpp
 

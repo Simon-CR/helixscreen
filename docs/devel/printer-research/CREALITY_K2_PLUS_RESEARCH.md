@@ -438,10 +438,21 @@ CFS attached and the `box` object our database entry expects is present.
 | kinematics, `max_velocity`, `probe_count`, `nozzle_diameter` | corexy, 800, 9x9, 0.4 | same |
 | Stock includes | `sensorless`, `gcode_macro`, `printer_params`, `box`, `motor_control` | same |
 
-Both `build_volume_range` heuristics in the database are therefore confirmed against real
-hardware: the Plus's 340-360 band contains 345, the Pro's 290-310 contains 295. The heuristic
-reads `bed_mesh`, so `mesh_max` is the field that decides it, not the stepper limits - and on
-both machines the Y stepper travels well past the bed to reach the nozzle-clean position.
+The windows sit around each model's bed: the Plus's 340-360 band contains its 345 `mesh_max`,
+the Pro's 290-310 contains its 295. The K2 `build_volume_range` heuristics set
+`"measure": "declared_bed"`, so what decides them is the bed size Creality's
+`gcode_macro product_param` declares (`variable_bed_size_x`/`_y`: 350 on our K2 Plus; this
+report does not record the Pro's, and 300 is Creality's spec), not the stepper limits. A
+`build_volume_range` without that opt-in measures stepper travel, and on both machines travel
+misses the window: the Y stepper travels well past the bed to reach the nozzle-clean position,
+and the Plus's X travel runs from -10 to 352.5.
+
+The base K2 (`creality_k2`, 260 cubed, no chamber heater) has its own entry with a 250-270
+declared-bed window. Its 260 is Creality's spec, since no base K2 has been captured, and it carries
+no chamber-heater heuristic. It is the `k2` preset's `preset_default`, so a K2 preset install
+whose detection names no K2 machine persists "Creality K2". Its image, `creality-k2.png`, is a
+byte copy of the K2 Plus photo until a photo of the base model exists. The copy keeps its own
+filename because detection tells machines apart by image.
 
 `START_PRINT`, `PRINT_PREPARED` and `PRINT_PREPARE_CLEAR` are all present on the Pro, which is
 what the entry's `pre_print_options` drive.

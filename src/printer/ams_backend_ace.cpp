@@ -520,9 +520,10 @@ AmsError AmsBackendAce::set_slot_info(int slot_index, const SlotInfo& info, bool
         slot.remaining_weight_g = info.remaining_weight_g;
         slot.total_weight_g = info.total_weight_g;
 
-        // For persist=true, stage the override into overrides_ so
-        // apply_overrides re-applies the new values on every subsequent parse.
-        // For persist=false we explicitly do NOT touch overrides_ — preview
+        // For persist=true, stage the override into overrides_ so the edit
+        // survives a restart; the lane's own declaration, filed when the edit
+        // is committed, is what apply_resolved_lane paints on every subsequent
+        // parse. For persist=false we explicitly do NOT touch overrides_ — preview
         // edits are in-memory only and will be overwritten by the next
         // firmware parse (expected preview contract).
         if (persist) {
@@ -934,10 +935,10 @@ void AmsBackendAce::parse_ace_object(const json& data) {
 
                 // Hardware-event override clear. ACE has no RFID UID to track;
                 // "user swapped the spool" is inferred from a status transition
-                // EMPTY -> present. Must run BEFORE apply_overrides so the
-                // clear sees firmware-truth (not the override-masked view) and
-                // the reset of override-exclusive fields is visible in the
-                // SlotInfo apply_overrides returns unchanged for cleared slots.
+                // EMPTY -> present. Must run BEFORE apply_resolved_lane so the
+                // clear sees firmware-truth (not the resolved view); once the
+                // clear has run, the lane declares nothing for those fields and
+                // apply_resolved_lane leaves them as firmware set them.
                 //
                 // First observation (no prev_slot_status_ entry) is a
                 // BASELINE and must never fire a clear — matches IFS/Snapmaker
@@ -1610,7 +1611,7 @@ bool AmsBackendAce::parse_slots_response(const json& data) {
         // same account on the same lanes. Its values come from this response's
         // own keys rather than from `slot`, which a previous poll's diff has
         // already written - and which, on a rig that once ran the object path,
-        // apply_overrides has merged a user's edit into.
+        // apply_resolved_lane has laid a user's declaration onto.
         const int idx = static_cast<int>(i);
         if (states_status) {
             helix::ams::Observation sensed(helix::ams::ObservationSource::Sensed);

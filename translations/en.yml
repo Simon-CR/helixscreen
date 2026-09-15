@@ -6,14 +6,10 @@ translations:
   '"%s" failed to load': '"%s" failed to load'
   '%.0f Hz difference': '%.0f Hz difference'
   '%d additional fan%s': '%d additional fan%s'
-  '%d disabled': '%d disabled'
-  '%d failed to load - see details below': '%d failed to load - see details below'
   '%d feeders': '%d feeders'
   '%d gates': '%d gates'
   '%d lanes': '%d lanes'
   '%d more sensors': '%d more sensors'
-  '%d of %d plugins loaded': '%d of %d plugins loaded'
-  '%d plugins loaded': '%d plugins loaded'
   '%d slots': '%d slots'
   '%d toolheads': '%d toolheads'
   '%d tools': '%d tools'
@@ -61,7 +57,6 @@ translations:
   1 min ago: 1 min ago
   1 minute: 1 minute
   1 more tap to {} beta features: 1 more tap to {} beta features
-  1 plugin loaded: 1 plugin loaded
   1. Printer homes and probes the bed: 1. Printer homes and probes the bed
   1. Printer will home and probe each screw: 1. Printer will home and probe each screw
   10 minutes: 10 minutes
@@ -179,7 +174,6 @@ translations:
   All Devices: All Devices
   All axes homed: All axes homed
   All fields are required: All fields are required
-  All plugins loaded successfully: All plugins loaded successfully
   Allow: Allow
   Allow Home Screen Editing: Allow Home Screen Editing
   Allow cold load/unload: Allow cold load/unload
@@ -420,14 +414,9 @@ translations:
     more precisely.
   Calibration kept timing out. Your previous settings were kept.: Calibration kept timing out. Your previous settings were kept.
   Calibration may still be running — printer connection was interrupted: Calibration may still be running — printer connection was interrupted
-  Calibration may still be running — response timed out: Calibration may still be
-    running — response timed out
   Calibration move may still be running — printer connection was interrupted: Calibration move may still be running — printer connection was interrupted
-  Calibration move may still be running — response timed out: Calibration move may
-    still be running — response timed out
   Calibration saved but cannot apply on SDL display: Calibration saved but cannot
     apply on SDL display
-  Calibration started: Calibration started
   Calibration succeeded, but the frequency chart data couldn't be read.: Calibration succeeded, but the frequency chart data couldn't be read.
   Calibration succeeded. The frequency chart is only available when HelixScreen runs on the printer.: Calibration succeeded. The frequency chart is only available when HelixScreen runs on the printer.
   Calibration timed out. Please try again.: Calibration timed out. Please try again.
@@ -727,7 +716,6 @@ translations:
   Create New Vendor: Create New Vendor
   Create Spool: Create Spool
   Create a 4-6 digit security PIN: Create a 4-6 digit security PIN
-  Create backup of %s before applying: Create backup of %s before applying
   Create video when print completes: Create video when print completes
   'Creating bed mesh...': 'Creating bed mesh...'
   Creating spool...: Creating spool...
@@ -1102,7 +1090,6 @@ translations:
   'Failed to set temperature: {}': 'Failed to set temperature: {}'
   'Failed to set {} temp: {}': 'Failed to set {} temp: {}'
   Failed to show confirmation dialog: Failed to show confirmation dialog
-  Failed to start calibration: Failed to start calibration
   'Failed to start installer: ': 'Failed to start installer: '
   'Failed to start print: {}': 'Failed to start print: {}'
   'Failed to start uninstaller: ': 'Failed to start uninstaller: '
@@ -1142,7 +1129,6 @@ translations:
   Filament: Filament
   Filament Control: Filament Control
   Filament Detected: Filament Detected
-  Filament Environment: Filament Environment
   Filament Grade Mismatch: Filament Grade Mismatch
   Filament Humidity: Filament Humidity
   Filament In The Toolhead: Filament In The Toolhead
@@ -1178,7 +1164,6 @@ translations:
   Filament is still present after the cut — the blade may be dull or misaligned: Filament is still present after the cut — the blade may be dull or misaligned
   Filament jam detected: Filament jam detected
   Filament jammed at the extruder gear: Filament jammed at the extruder gear
-  'Filament load failed: {}': 'Filament load failed: {}'
   Filament never reached the CFS hub sensor: Filament never reached the CFS hub sensor
   Filament operation failed: Filament operation failed
   Filament operation timed out: Filament operation timed out
@@ -1203,7 +1188,6 @@ translations:
   Filament tension is balanced: Filament tension is balanced
   Filament tracking & label printing: Filament tracking & label printing
   Filament tracking and inventory: Filament tracking and inventory
-  'Filament unload failed: {}': 'Filament unload failed: {}'
   FilamentSensor: FilamentSensor
   File: File
   File Size: File Size
@@ -1595,8 +1579,6 @@ translations:
   Load failed: Load failed
   Load filament: Load filament
   Load filament first: Load filament first
-  Load may still be running — response timed out: Load may still be running — response
-    timed out
   Load or unload filament.: Load or unload filament.
   Load the required filaments or start anyway?: Load the required filaments or start
     anyway?
@@ -1705,6 +1687,7 @@ translations:
   Match: Match
   Match to belt A: Match to belt A
   Match your typical print fan speed: Match your typical print fan speed
+  Matching printers: Matching printers
   Material: Material
   'Material Comfort:': 'Material Comfort:'
   Material Mismatch: Material Mismatch
@@ -1742,6 +1725,7 @@ translations:
   Mode: Mode
   Modified: Modified
   Monitor for print abnormalities (K2 Plus camera-based): Monitor for print abnormalities (K2 Plus camera-based)
+  Monitor for print abnormalities (camera-based): 'Monitor for print abnormalities (camera-based)'
   'Monitor prints in progress — time remaining, current layer, and progress. Tap to pause, resume, or cancel the active job.': 'Monitor prints in progress — time remaining, current layer, and progress. Tap to pause, resume, or cancel the active job.'
   Monitoring: Monitoring
   Month: Month
@@ -1879,9 +1863,6 @@ translations:
   No networks found: No networks found
   No notifications: No notifications
   No objects defined for this print: No objects defined for this print
-  No plugins: No plugins
-  No plugins discovered: No plugins discovered
-  No plugins found: No plugins found
   No presets configured: No presets configured
   No preview: No preview
   No print history found: No print history found
@@ -2075,9 +2056,6 @@ translations:
   'Place image files (PNG, JPEG, BMP, GIF) in config/custom_images/. Max size: 2048×2048 pixels.': 'Place
     image files (PNG, JPEG, BMP, GIF) in config/custom_images/. Max size: 2048×2048
     pixels.'
-  Place plugins in the plugins directory: Place plugins in the plugins directory
-  Place plugins in the plugins directory to extend HelixScreen: Place plugins in the
-    plugins directory to extend HelixScreen
   Placed: Placed
   Platform: Platform
   'Platform: ': 'Platform: '
@@ -2100,10 +2078,8 @@ translations:
     Moonraker is restarting...
   ? "Plugin not responding after restart.\nIt may need more time to load."
   : "Plugin not responding after restart.\nIt may need more time to load."
+  Plugin removed. A config file needs attention - check the HelixScreen log for details.: Plugin removed. A config file needs attention - check the HelixScreen log for details.
   Plugin uninstalled successfully.: Plugin uninstalled successfully.
-  Plugins: Plugins
-  Plugins are discovered on application startup: Plugins are discovered on application
-    startup
   Point camera at QR code on spool: Point camera at QR code on spool
   Polymaker: Polymaker
   Poor Accuracy: Poor Accuracy
@@ -2672,6 +2648,7 @@ translations:
   Setup: Setup
   Setup Complete!: Setup Complete!
   Setup Timelapse: Setup Timelapse
+  Several printers match - choose yours: Several printers match - choose yours
   Shadow Intensity: Shadow Intensity
   Share Usage Data: Share Usage Data
   Share anonymous usage statistics to help us make HelixScreen better. No personal data is ever collected.: Share
@@ -2885,7 +2862,6 @@ translations:
   Temp: Temp
   Temp Compensation: Temp Compensation
   Temp °C: Temp °C
-  Temp °C (%d–%d): Temp °C (%d–%d)
   Temperature: Temperature
   Temperature Graph: Temperature Graph
   Temperature Graph Config: Temperature Graph Config
@@ -3024,7 +3000,8 @@ translations:
     print needs about %.0fg but the spool has about %.0fg remaining. Start anyway?
   ? This printer looks like a {} ({}% confidence), but it is set up as a {}. A wrong type applies incorrect pre-print options and presets.
   : This printer looks like a {} ({}% confidence), but it is set up as a {}. A wrong type applies incorrect pre-print options and presets.
-  This removes the plugin's macros and its Moonraker component from the printer and restarts Klipper.: This removes the plugin's macros and its Moonraker component from the printer and restarts Klipper.
+  ? This removes the plugin's Moonraker component and restarts Moonraker. The printer will briefly disconnect. If old phase-tracking lines are still in PRINT_START, they are removed too, with backups kept. A Klipper restart applies that.
+  : This removes the plugin's Moonraker component and restarts Moonraker. The printer will briefly disconnect. If old phase-tracking lines are still in PRINT_START, they are removed too, with backups kept. A Klipper restart applies that.
   This replaces the printer's helper macros with the current version and restarts Klipper.: This replaces the printer's helper macros with the current version and restarts Klipper.
   ? This replaces the printer's helper macros with the current version. A print is running, so Klipper restarts after it finishes.
   : This replaces the printer's helper macros with the current version. A print is running, so Klipper restarts after it finishes.
@@ -3167,7 +3144,6 @@ translations:
   Uninstall HelixPrint Plugin: Uninstall HelixPrint Plugin
   Uninstall HelixPrint Plugin?: Uninstall HelixPrint Plugin?
   Uninstall script not found.: Uninstall script not found.
-  'Uninstall: Coming soon': 'Uninstall: Coming soon'
   Uninstallation failed. Check logs for details.: Uninstallation failed. Check logs
     for details.
   'Uninstallation failed: ': 'Uninstallation failed: '
@@ -3190,8 +3166,6 @@ translations:
   Unload filament: Unload filament
   Unload from toolhead first: Unload from toolhead first
   Unload macro not configured: Unload macro not configured
-  Unload may still be running — response timed out: Unload may still be running —
-    response timed out
   Unload the CFS filament before enabling bypass: Unload the CFS filament before enabling bypass
   Unloading: Unloading
   Unloading Start Speed: Unloading Start Speed
@@ -3260,7 +3234,6 @@ translations:
   View Timelapse: View Timelapse
   View all boxes: View all boxes
   View and rename fans: View and rename fans
-  View installed plugins and status: View installed plugins and status
   View live camera feed: View live camera feed
   View print statistics and job history: View print statistics and job history
   'Visits: ': 'Visits: '

@@ -483,7 +483,7 @@ PanelWidgetManager::populate_widgets(const std::string& panel_id, lv_obj_t* cont
         // outrank a user-anchored widget whose saved rectangle overlaps it.
         // Every GridEditMode occupancy loop filters on enabled for the same
         // reason.
-        if (entry_it != entries.end() && entry_it->enabled && entry_it->has_grid_position()) {
+        if (entry_it != entries.end() && entry_it->is_placed()) {
             // Clamp the SPAN to the grid before clamping the position. A span
             // saved on a 6-column landscape grid cannot exist on a 2-column
             // portrait one; leaving it unclamped made can_place() fail, dropped
@@ -901,7 +901,7 @@ PanelWidgetManager::populate_widgets(const std::string& panel_id, lv_obj_t* cont
         }
 
         for (const auto& entry : widget_config.page_entries(page_index)) {
-            if (!entry.enabled || !entry.has_grid_position()) {
+            if (!entry.is_placed()) {
                 continue;
             }
             // Prefer where the widget actually landed; fall back to the authored

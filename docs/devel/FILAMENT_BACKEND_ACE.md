@@ -3,7 +3,7 @@
 The Anycubic ACE Pro is a 4-slot dryer-equipped multi-material hub (8 slots in Rinkhals
 "Combo" setups), surfaced through four different software stacks: native Anycubic
 GoKlipper via Rinkhals (primary), community ValgACE/BunnyACE REST, the unverified
-Kobra-S1 fork, and multiACE on the Snapmaker U1 (misdetected today). Topology is
+Kobra-S1 fork, and multiACE on the Snapmaker U1 (detected, deliberately declined). Topology is
 `PathTopology::HUB`; WebSocket on the native path, REST fallback.
 
 ## ACE (Anycubic ACE Pro)
@@ -18,7 +18,7 @@ whichever of these the printer is running:
 | 1 | **Native Anycubic GoKlipper (via Rinkhals)** | `filament_hub` printer object (config `[ace]`) | WebSocket query/subscribe | **Primary real user base** — stock Kobra 3 / 3 V2 / 3 Max / S1 / S1 Max (Combo) flashed with [Rinkhals](https://github.com/jbatonnet/Rinkhals) | ✅ Handled (parses `filament_hub`) |
 | 2 | **Community ValgACE / BunnyACE / DuckACE** | `ace` printer object + `ace_status.py` | `/server/ace/*` REST bridge | ACE Pro bolted onto a **non-Anycubic DIY printer** (niche; DuckACE abandoned) | ✅ Handled (REST fallback) |
 | 3 | **Mainline-Python Kobra-S1 fork** (`github.com/Kobra-S1/klipper-kobra-s1`) | manager `ace` object + per-unit `ace_instance_N` objects + `ace_status` Moonraker component | WebSocket query/subscribe + `/server/ace/*` REST | KS1 users replacing KobraOS with mainline Klipper (often on an external Pi) | ✅ Handled (object path: instance slots + manager `current_index`; REST: `/status` `ace_manager`) |
-| 4 | **multiACE / SnapAce** ([`decay71/multiACE`](https://github.com/decay71/multiACE)) | `ace` printer object, but a **multi-unit** `aces[]` status shape | WebSocket only (no REST bridge) | **Snapmaker U1** with 1-4 ACE Pro / ACE Pro 2 units bolted on | ⚠️ **Misdetects** — steals the U1 backend, then parses nothing |
+| 4 | **multiACE / SnapAce** ([`decay71/multiACE`](https://github.com/decay71/multiACE)) | `ace` printer object, but a **multi-unit** `aces[]` status shape | WebSocket only (no REST bridge) | **Snapmaker U1** with 1-4 ACE Pro / ACE Pro 2 units bolted on | ⚠️ **Declined** - recognised at detection, and the Snapmaker U1 backend keeps the printer. The `aces[]` shape is unread |
 
 **How to think about the four:**
 
@@ -36,18 +36,19 @@ whichever of these the printer is running:
   `ACE_ENABLE/DISABLE_FEED_ASSIST`) matches what the backend already sends. Full teardown:
   [`printer-research/ANYCUBIC_ACE_KOBRA_S1_LOG_ANALYSIS.md`](printer-research/ANYCUBIC_ACE_KOBRA_S1_LOG_ANALYSIS.md).
 - **Path 4 (multiACE)** is ACE Pro hardware on a **Snapmaker U1**, and it is the one path
-  that actively *breaks* an otherwise-working printer for us — see the section below.
+  the ACE backend is deliberately kept away from - see the section below.
 
 > The sections below (`filament_hub` schema, REST endpoints, etc.) document Paths 1-3,
-> which the backend handles today. Path 4 is documented in its own section; it needs a
-> detection fix before any of the schema work matters.
+> which the backend handles today. Path 4 is documented in its own section; detection
+> recognises it and hands the printer back to the U1 backend, so the schema work below
+> does not apply to it.
 
 ### Path 4: multiACE (Snapmaker U1 + ACE Pro)
 
-> **Not handled. Actively harmful today** — a U1 that gains multiACE *loses* its working
-> Snapmaker backend and gets an ACE backend that parses nothing
-> (prestonbrown/helixscreen#1426). No hardware seen; this is a source read of the upstream
-> repo (2026-09-01, v0.99.8b).
+> **Recognised, not driven.** A U1 that gains multiACE keeps its Snapmaker backend and its
+> four-toolhead UI; what it loses is the ACE-specific affordances, because the `aces[]` slot
+> shape is not modelled (prestonbrown/helixscreen#1426). No hardware seen; this is a source
+> read of the upstream repo (2026-09-01, v0.99.8b).
 
 [multiACE](https://github.com/decay71/multiACE) hangs **1-4 Anycubic ACE Pro / ACE Pro 2
 units off a Snapmaker U1** — the U1's four toolheads each get fed from an ACE slot through
@@ -71,33 +72,50 @@ Config is `[ace]` (from `config/extended/ace.cfg`). The web UI at
 component — so there is no `/server/ace/*` REST bridge on this path.
 
 **The detection collision — this is the part that matters to us.** A U1 running multiACE
-reports *both* marker objects, and our chain resolves them the wrong way round:
+reports *both* marker objects. Left to the general precedence rule, they would resolve the
+wrong way round:
 
 1. `filament_detect` (stock U1) sets `has_snapmaker_` (`include/printer_discovery.h#parse_objects`).
 2. `ace` (multiACE) sets `has_mmu_` + `mmu_type_ = ACE` (`include/printer_discovery.h#parse_objects`).
-3. `has_mmu_` is checked **first**, so `has_snapmaker_` never runs
-   (`include/printer_discovery.h#parse_objects`) — by design, since a real aftermarket MMU should beat
-   the U1 fallback. Here that design fires on a stack we cannot actually read.
-4. `AmsBackendAce` then requires a **top-level non-empty `slots` array** to accept the
+3. The registration chain tests `has_mmu_` **first**, which would leave `has_snapmaker_`
+   unreached (`include/printer_discovery.h#parse_objects`) — by design, since a real aftermarket MMU should beat
+   the U1 fallback. Here that design would fire on a stack we cannot actually read.
+4. `AmsBackendAce` requires a **top-level non-empty `slots` array** to accept the
    object (`src/printer/ams_backend_ace.cpp#select_ace_object`). multiACE has none — its slots are nested
-   one level down, per unit, under `aces[]`. So `select_ace_object()` returns null,
-   the backend logs "no status data — trying REST bridge fallback"
+   one level down, per unit, under `aces[]`. So `select_ace_object()` would return null,
+   the backend would log "no status data — trying REST bridge fallback"
    (`src/printer/ams_backend_ace.cpp#on_started`), and the REST bridge does not exist on a U1.
 
-Net result: the ACE backend attaches and stays empty, and the Snapmaker U1 backend — which
-would have worked for the four toolheads — is suppressed.
+**What detection does about it.** `parse_objects()` resolves the collision before it
+registers a backend: ACE plus `filament_detect` on one printer is multiACE, so it clears
+`has_mmu_` and the chain falls through to the Snapmaker U1 backend
+(`include/printer_discovery.h#parse_objects`). The ACE object names stay recorded - the
+hardware really does carry them, and they reach the hardware fingerprint - but nothing
+subscribes them once the type is no longer `ACE`.
+
+The discriminator is co-presence rather than multiACE's own `aces[]`/`device_count` markers,
+because `printer.objects.list` carries object names without status: the backend decision is
+made at discovery step 3, and status content does not arrive until the subscribe at step 7
+(the timeline in `include/moonraker_discovery_sequence.h`). Co-presence is sound for the
+same reason it is cheap: `filament_detect` is published by U1 firmware alone, and no ACE
+stack this chain matches runs on an unmodded U1. The yield is scoped to `AmsType::ACE`, so
+a U1 carrying a filament system we *can* read - Happy Hare, AFC - still hands that system
+the printer.
+
+Net result: a multiACE U1 keeps the four-toolhead Snapmaker UI, and loses only the
+ACE-specific affordances.
 
 > **Do not confuse multiACE with the other U1 + ACE Pro mod.**
 > [DnG-Crafts/U1-Ace](https://github.com/DnG-Crafts/U1-Ace) registers `ace_device`, which
 > matches none of our ACE patterns — so `has_mmu_` stays false and the Snapmaker backend
 > correctly keeps that printer (its bug was the unload path, #974, fixed in 0.99.72; see
 > `src/printer/ams_backend_snapmaker.cpp#do_unload_filament`). multiACE registers plain `ace`, which is exactly what
-> we match. Same hardware category, opposite outcome — worth checking which mod a U1
-> reporter actually has.
+> we match, and reaches the same Snapmaker backend only because detection then declines it.
+> Same hardware category, same outcome by two different routes - worth checking which mod a
+> U1 reporter actually has, because their ACE-side symptoms differ.
 
-**The fix is detection-side, not schema-side:** an `ace` object carrying `aces[]`/`device_count` on a printer that also
-reports `filament_detect` is multiACE, and until the shape is supported it should leave the
-U1 backend in place rather than claim the printer.
+**Supporting it is schema work, and it is not started.** Detection only declines the
+printer; reading multiACE would mean modelling the shape below.
 
 **What its `ace.get_status()` actually publishes** (ace.py, `get_status()` — multi-unit,
 head-centric, nothing like Path 1's flat single hub):

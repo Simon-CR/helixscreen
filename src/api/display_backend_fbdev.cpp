@@ -63,7 +63,10 @@ DisplayBackendFbdev::~DisplayBackendFbdev() {
     // Tear down the calibration read callback before calibration_context_ is
     // destroyed. If LVGL's indev timer fires between our destruction and
     // lv_deinit(), calibrated_read_cb would reach freed memory (use-after-free /
-    // SIGSEGV).
+    // SIGSEGV). The pointer frame hook comes off first: where it fronts the
+    // calibration wrapper that hands the wrapper back, and uninstall only
+    // silences a device whose read callback is the wrapper itself.
+    pointer_frames_.restore_all();
     helix::uninstall_calibration_wrapper(touch_, calibration_context_);
 
     restore_console();
@@ -565,10 +568,12 @@ lv_indev_t* DisplayBackendFbdev::create_input_pointer() {
     spdlog::info("[Fbdev Backend] Evdev touch input created on {}", touch_path);
 
     // Detect USB HID mouse (in addition to touchscreen)
+    std::string mouse_path;
     const char* mouse_env = std::getenv("HELIX_MOUSE_DEVICE");
     if (mouse_env && mouse_env[0] != '\0') {
         mouse_ = lv_evdev_create(LV_INDEV_TYPE_POINTER, mouse_env);
         if (mouse_) {
+            mouse_path = mouse_env;
             spdlog::info("[Fbdev Backend] Mouse created on {} (env override)", mouse_env);
         }
     }
@@ -578,6 +583,7 @@ lv_indev_t* DisplayBackendFbdev::create_input_pointer() {
         if (mouse_dev) {
             mouse_ = lv_evdev_create(LV_INDEV_TYPE_POINTER, mouse_dev->path.c_str());
             if (mouse_) {
+                mouse_path = mouse_dev->path;
                 spdlog::info("[Fbdev Backend] Mouse created on {} ({})", mouse_dev->path,
                              mouse_dev->name);
             }
@@ -595,6 +601,20 @@ lv_indev_t* DisplayBackendFbdev::create_input_pointer() {
         lv_obj_clear_flag(cursor_obj, LV_OBJ_FLAG_CLICKABLE);
         lv_indev_set_cursor(mouse_, cursor_obj);
         spdlog::info("[Fbdev Backend] Mouse cursor enabled");
+    }
+
+    // LVGL turns every pointer sample by the display's rotation. That is what a
+    // touch panel's samples need, but a relative pointer's position is already
+    // on the picture. The hook fronts both and takes each kind from the device.
+    if (const auto kind = pointer_frames_.install(touch_, touch_path, true)) {
+        spdlog::info("[Fbdev Backend] Pointer frame hook installed on {} ({} device)", touch_path,
+                     helix::input::pointer_kind_name(*kind));
+    }
+    if (mouse_ != nullptr) {
+        if (const auto kind = pointer_frames_.install(mouse_, mouse_path, true)) {
+            spdlog::info("[Fbdev Backend] Mouse frame hook installed on {} ({} device)", mouse_path,
+                         helix::input::pointer_kind_name(*kind));
+        }
     }
 
     return touch_;

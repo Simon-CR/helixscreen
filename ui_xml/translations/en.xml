@@ -6,14 +6,10 @@
   <translation tag="&quot;%s&quot; failed to load" en="&quot;%s&quot; failed to load"/>
   <translation tag="%.0f Hz difference" en="%.0f Hz difference"/>
   <translation tag="%d additional fan%s" en="%d additional fan%s"/>
-  <translation tag="%d disabled" en="%d disabled"/>
-  <translation tag="%d failed to load - see details below" en="%d failed to load - see details below"/>
   <translation tag="%d feeders" en="%d feeders"/>
   <translation tag="%d gates" en="%d gates"/>
   <translation tag="%d lanes" en="%d lanes"/>
   <translation tag="%d more sensors" en="%d more sensors"/>
-  <translation tag="%d of %d plugins loaded" en="%d of %d plugins loaded"/>
-  <translation tag="%d plugins loaded" en="%d plugins loaded"/>
   <translation tag="%d slots" en="%d slots"/>
   <translation tag="%d toolheads" en="%d toolheads"/>
   <translation tag="%d tools" en="%d tools"/>
@@ -61,7 +57,6 @@
   <translation tag="1 min ago" en="1 min ago"/>
   <translation tag="1 minute" en="1 minute"/>
   <translation tag="1 more tap to {} beta features" en="1 more tap to {} beta features"/>
-  <translation tag="1 plugin loaded" en="1 plugin loaded"/>
   <translation tag="1. Printer homes and probes the bed" en="1. Printer homes and probes the bed"/>
   <translation tag="1. Printer will home and probe each screw" en="1. Printer will home and probe each screw"/>
   <translation tag="10 minutes" en="10 minutes"/>
@@ -173,7 +168,6 @@
   <translation tag="All Devices" en="All Devices"/>
   <translation tag="All axes homed" en="All axes homed"/>
   <translation tag="All fields are required" en="All fields are required"/>
-  <translation tag="All plugins loaded successfully" en="All plugins loaded successfully"/>
   <translation tag="Allow" en="Allow"/>
   <translation tag="Allow Home Screen Editing" en="Allow Home Screen Editing"/>
   <translation tag="Allow cold load/unload" en="Allow cold load/unload"/>
@@ -393,11 +387,8 @@
   <translation tag="Calibration failed - touch targets more precisely." en="Calibration failed - touch targets more precisely."/>
   <translation tag="Calibration kept timing out. Your previous settings were kept." en="Calibration kept timing out. Your previous settings were kept."/>
   <translation tag="Calibration may still be running — printer connection was interrupted" en="Calibration may still be running — printer connection was interrupted"/>
-  <translation tag="Calibration may still be running — response timed out" en="Calibration may still be running — response timed out"/>
   <translation tag="Calibration move may still be running — printer connection was interrupted" en="Calibration move may still be running — printer connection was interrupted"/>
-  <translation tag="Calibration move may still be running — response timed out" en="Calibration move may still be running — response timed out"/>
   <translation tag="Calibration saved but cannot apply on SDL display" en="Calibration saved but cannot apply on SDL display"/>
-  <translation tag="Calibration started" en="Calibration started"/>
   <translation tag="Calibration succeeded, but the frequency chart data couldn&apos;t be read." en="Calibration succeeded, but the frequency chart data couldn&apos;t be read."/>
   <translation tag="Calibration succeeded. The frequency chart is only available when HelixScreen runs on the printer." en="Calibration succeeded. The frequency chart is only available when HelixScreen runs on the printer."/>
   <translation tag="Calibration timed out. Please try again." en="Calibration timed out. Please try again."/>
@@ -665,7 +656,6 @@
   <translation tag="Create New Vendor" en="Create New Vendor"/>
   <translation tag="Create Spool" en="Create Spool"/>
   <translation tag="Create a 4-6 digit security PIN" en="Create a 4-6 digit security PIN"/>
-  <translation tag="Create backup of %s before applying" en="Create backup of %s before applying"/>
   <translation tag="Create video when print completes" en="Create video when print completes"/>
   <translation tag="Creating bed mesh..." en="Creating bed mesh..."/>
   <translation tag="Creating spool..." en="Creating spool..."/>
@@ -1023,7 +1013,6 @@
   <translation tag="Failed to set temperature: {}" en="Failed to set temperature: {}"/>
   <translation tag="Failed to set {} temp: {}" en="Failed to set {} temp: {}"/>
   <translation tag="Failed to show confirmation dialog" en="Failed to show confirmation dialog"/>
-  <translation tag="Failed to start calibration" en="Failed to start calibration"/>
   <translation tag="Failed to start installer: " en="Failed to start installer: "/>
   <translation tag="Failed to start print: {}" en="Failed to start print: {}"/>
   <translation tag="Failed to start uninstaller: " en="Failed to start uninstaller: "/>
@@ -1061,7 +1050,6 @@
   <translation tag="Filament" en="Filament"/>
   <translation tag="Filament Control" en="Filament Control"/>
   <translation tag="Filament Detected" en="Filament Detected"/>
-  <translation tag="Filament Environment" en="Filament Environment"/>
   <translation tag="Filament Grade Mismatch" en="Filament Grade Mismatch"/>
   <translation tag="Filament Humidity" en="Filament Humidity"/>
   <translation tag="Filament In The Toolhead" en="Filament In The Toolhead"/>
@@ -1094,7 +1082,6 @@
   <translation tag="Filament is still present after the cut — the blade may be dull or misaligned" en="Filament is still present after the cut — the blade may be dull or misaligned"/>
   <translation tag="Filament jam detected" en="Filament jam detected"/>
   <translation tag="Filament jammed at the extruder gear" en="Filament jammed at the extruder gear"/>
-  <translation tag="Filament load failed: {}" en="Filament load failed: {}"/>
   <translation tag="Filament never reached the CFS hub sensor" en="Filament never reached the CFS hub sensor"/>
   <translation tag="Filament operation failed" en="Filament operation failed"/>
   <translation tag="Filament operation timed out" en="Filament operation timed out"/>
@@ -1116,7 +1103,6 @@
   <translation tag="Filament tension is balanced" en="Filament tension is balanced"/>
   <translation tag="Filament tracking &amp; label printing" en="Filament tracking &amp; label printing"/>
   <translation tag="Filament tracking and inventory" en="Filament tracking and inventory"/>
-  <translation tag="Filament unload failed: {}" en="Filament unload failed: {}"/>
   <translation tag="FilamentSensor" en="FilamentSensor"/>
   <translation tag="File" en="File"/>
   <translation tag="File Size" en="File Size"/>
@@ -1463,7 +1449,6 @@
   <translation tag="Load failed" en="Load failed"/>
   <translation tag="Load filament" en="Load filament"/>
   <translation tag="Load filament first" en="Load filament first"/>
-  <translation tag="Load may still be running — response timed out" en="Load may still be running — response timed out"/>
   <translation tag="Load or unload filament." en="Load or unload filament."/>
   <translation tag="Load the required filaments or start anyway?" en="Load the required filaments or start anyway?"/>
   <translation tag="Load, unload, and swap spools. View your multi-filament system at a glance, map colors to slots, and monitor runout sensors." en="Load, unload, and swap spools. View your multi-filament system at a glance, map colors to slots, and monitor runout sensors."/>
@@ -1568,6 +1553,7 @@
   <translation tag="Match" en="Match"/>
   <translation tag="Match to belt A" en="Match to belt A"/>
   <translation tag="Match your typical print fan speed" en="Match your typical print fan speed"/>
+  <translation tag="Matching printers" en="Matching printers"/>
   <translation tag="Material" en="Material"/>
   <translation tag="Material Comfort:" en="Material Comfort:"/>
   <translation tag="Material Mismatch" en="Material Mismatch"/>
@@ -1605,6 +1591,7 @@
   <translation tag="Mode" en="Mode"/>
   <translation tag="Modified" en="Modified"/>
   <translation tag="Monitor for print abnormalities (K2 Plus camera-based)" en="Monitor for print abnormalities (K2 Plus camera-based)"/>
+  <translation tag="Monitor for print abnormalities (camera-based)" en="Monitor for print abnormalities (camera-based)"/>
   <translation tag="Monitor prints in progress — time remaining, current layer, and progress. Tap to pause, resume, or cancel the active job." en="Monitor prints in progress — time remaining, current layer, and progress. Tap to pause, resume, or cancel the active job."/>
   <translation tag="Monitoring" en="Monitoring"/>
   <translation tag="Month" en="Month"/>
@@ -1728,9 +1715,6 @@
   <translation tag="No networks found" en="No networks found"/>
   <translation tag="No notifications" en="No notifications"/>
   <translation tag="No objects defined for this print" en="No objects defined for this print"/>
-  <translation tag="No plugins" en="No plugins"/>
-  <translation tag="No plugins discovered" en="No plugins discovered"/>
-  <translation tag="No plugins found" en="No plugins found"/>
   <translation tag="No presets configured" en="No presets configured"/>
   <translation tag="No preview" en="No preview"/>
   <translation tag="No print history found" en="No print history found"/>
@@ -1913,8 +1897,6 @@
   <translation tag="Pill" en="Pill"/>
   <translation tag="Pixels before a press becomes a scroll (lower = scrolls engage sooner)" en="Pixels before a press becomes a scroll (lower = scrolls engage sooner)"/>
   <translation tag="Place image files (PNG, JPEG, BMP, GIF) in config/custom_images/. Max size: 2048×2048 pixels." en="Place image files (PNG, JPEG, BMP, GIF) in config/custom_images/. Max size: 2048×2048 pixels."/>
-  <translation tag="Place plugins in the plugins directory" en="Place plugins in the plugins directory"/>
-  <translation tag="Place plugins in the plugins directory to extend HelixScreen" en="Place plugins in the plugins directory to extend HelixScreen"/>
   <translation tag="Placed" en="Placed"/>
   <translation tag="Platform" en="Platform"/>
   <translation tag="Platform: " en="Platform: "/>
@@ -1933,9 +1915,8 @@
   <translation tag="Plugin installed successfully." en="Plugin installed successfully."/>
   <translation tag="Plugin installed successfully. Moonraker is restarting..." en="Plugin installed successfully. Moonraker is restarting..."/>
   <translation tag="Plugin not responding after restart.&#10;It may need more time to load." en="Plugin not responding after restart.&#10;It may need more time to load."/>
+  <translation tag="Plugin removed. A config file needs attention - check the HelixScreen log for details." en="Plugin removed. A config file needs attention - check the HelixScreen log for details."/>
   <translation tag="Plugin uninstalled successfully." en="Plugin uninstalled successfully."/>
-  <translation tag="Plugins" en="Plugins"/>
-  <translation tag="Plugins are discovered on application startup" en="Plugins are discovered on application startup"/>
   <translation tag="Point camera at QR code on spool" en="Point camera at QR code on spool"/>
   <translation tag="Polymaker" en="Polymaker"/>
   <translation tag="Poor Accuracy" en="Poor Accuracy"/>
@@ -2458,6 +2439,7 @@
   <translation tag="Setup" en="Setup"/>
   <translation tag="Setup Complete!" en="Setup Complete!"/>
   <translation tag="Setup Timelapse" en="Setup Timelapse"/>
+  <translation tag="Several printers match - choose yours" en="Several printers match - choose yours"/>
   <translation tag="Shadow Intensity" en="Shadow Intensity"/>
   <translation tag="Share Usage Data" en="Share Usage Data"/>
   <translation tag="Share anonymous usage statistics to help us make HelixScreen better. No personal data is ever collected." en="Share anonymous usage statistics to help us make HelixScreen better. No personal data is ever collected."/>
@@ -2650,7 +2632,6 @@
   <translation tag="Temp" en="Temp"/>
   <translation tag="Temp Compensation" en="Temp Compensation"/>
   <translation tag="Temp °C" en="Temp °C"/>
-  <translation tag="Temp °C (%d–%d)" en="Temp °C (%d–%d)"/>
   <translation tag="Temperature" en="Temperature"/>
   <translation tag="Temperature Graph" en="Temperature Graph"/>
   <translation tag="Temperature Graph Config" en="Temperature Graph Config"/>
@@ -2755,7 +2736,7 @@
   <translation tag="This plugin lets HelixScreen control print start options like bed mesh and QGL. Once installed, use Configure PRINT_START below to enable optional steps." en="This plugin lets HelixScreen control print start options like bed mesh and QGL. Once installed, use Configure PRINT_START below to enable optional steps."/>
   <translation tag="This print needs about %.0fg but the spool has about %.0fg remaining. Start anyway?" en="This print needs about %.0fg but the spool has about %.0fg remaining. Start anyway?"/>
   <translation tag="This printer looks like a {} ({}% confidence), but it is set up as a {}. A wrong type applies incorrect pre-print options and presets." en="This printer looks like a {} ({}% confidence), but it is set up as a {}. A wrong type applies incorrect pre-print options and presets."/>
-  <translation tag="This removes the plugin&apos;s macros and its Moonraker component from the printer and restarts Klipper." en="This removes the plugin&apos;s macros and its Moonraker component from the printer and restarts Klipper."/>
+  <translation tag="This removes the plugin&apos;s Moonraker component and restarts Moonraker. The printer will briefly disconnect. If old phase-tracking lines are still in PRINT_START, they are removed too, with backups kept. A Klipper restart applies that." en="This removes the plugin&apos;s Moonraker component and restarts Moonraker. The printer will briefly disconnect. If old phase-tracking lines are still in PRINT_START, they are removed too, with backups kept. A Klipper restart applies that."/>
   <translation tag="This replaces the printer&apos;s helper macros with the current version and restarts Klipper." en="This replaces the printer&apos;s helper macros with the current version and restarts Klipper."/>
   <translation tag="This replaces the printer&apos;s helper macros with the current version. A print is running, so Klipper restarts after it finishes." en="This replaces the printer&apos;s helper macros with the current version. A print is running, so Klipper restarts after it finishes."/>
   <translation tag="This system does not support bypass mode" en="This system does not support bypass mode"/>
@@ -2875,7 +2856,6 @@
   <translation tag="Uninstall HelixPrint Plugin" en="Uninstall HelixPrint Plugin"/>
   <translation tag="Uninstall HelixPrint Plugin?" en="Uninstall HelixPrint Plugin?"/>
   <translation tag="Uninstall script not found." en="Uninstall script not found."/>
-  <translation tag="Uninstall: Coming soon" en="Uninstall: Coming soon"/>
   <translation tag="Uninstallation failed. Check logs for details." en="Uninstallation failed. Check logs for details."/>
   <translation tag="Uninstallation failed: " en="Uninstallation failed: "/>
   <translation tag="Uninstallation timed out. The script may be stuck." en="Uninstallation timed out. The script may be stuck."/>
@@ -2896,7 +2876,6 @@
   <translation tag="Unload filament" en="Unload filament"/>
   <translation tag="Unload from toolhead first" en="Unload from toolhead first"/>
   <translation tag="Unload macro not configured" en="Unload macro not configured"/>
-  <translation tag="Unload may still be running — response timed out" en="Unload may still be running — response timed out"/>
   <translation tag="Unload the CFS filament before enabling bypass" en="Unload the CFS filament before enabling bypass"/>
   <translation tag="Unloading" en="Unloading"/>
   <translation tag="Unloading Start Speed" en="Unloading Start Speed"/>
@@ -2964,7 +2943,6 @@
   <translation tag="View Timelapse" en="View Timelapse"/>
   <translation tag="View all boxes" en="View all boxes"/>
   <translation tag="View and rename fans" en="View and rename fans"/>
-  <translation tag="View installed plugins and status" en="View installed plugins and status"/>
   <translation tag="View live camera feed" en="View live camera feed"/>
   <translation tag="View print statistics and job history" en="View print statistics and job history"/>
   <translation tag="Visits: " en="Visits: "/>

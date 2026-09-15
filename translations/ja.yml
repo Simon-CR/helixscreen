@@ -6,14 +6,10 @@ translations:
   '"%s" failed to load': '"%s" の読み込みに失敗しました'
   '%.0f Hz difference': '%.0f Hz の差'
   '%d additional fan%s': 追加ファン %d 個%s
-  '%d disabled': '%d 個無効'
-  '%d failed to load - see details below': '%d 個の読み込みに失敗 - 詳細は下記'
   '%d feeders': '%d フィーダー'
   '%d gates': '%d ゲート'
   '%d lanes': '%d レーン'
   '%d more sensors': 他%d個のセンサー
-  '%d of %d plugins loaded': '%d / %d 個のプラグインを読み込み'
-  '%d plugins loaded': '%d 個のプラグインを読み込み'
   '%d slots': '%d スロット'
   '%d toolheads': '%d ツールヘッド'
   '%d tools': '%d ツール'
@@ -62,7 +58,6 @@ translations:
   1 min ago: 1分前
   1 minute: 1分
   1 more tap to {} beta features: あと1回タップでベータ機能を{}
-  1 plugin loaded: 1 個のプラグインを読み込み
   1. Printer homes and probes the bed: 1. プリンターがホーミングしてベッドをプローブします
   1. Printer will home and probe each screw: 1. プリンターがホーミングして各ネジをプローブします
   10 minutes: 10分
@@ -172,7 +167,6 @@ translations:
   All Devices: すべてのデバイス
   All axes homed: すべての軸がホーミング済み
   All fields are required: すべての項目が必須です
-  All plugins loaded successfully: すべてのプラグインを正常に読み込みました
   Allow: '許可'
   Allow Home Screen Editing: 'ホーム画面の編集を許可'
   Allow cold load/unload: コールド時の装填/取り出しを許可
@@ -397,13 +391,8 @@ translations:
   Calibration failed - touch targets more precisely.: キャリブレーション失敗 – ターゲットをより正確にタッチしてください。
   Calibration kept timing out. Your previous settings were kept.: キャリブレーションが繰り返しタイムアウトしました。以前の設定を維持しました。
   Calibration may still be running — printer connection was interrupted: 'キャリブレーションがまだ実行中の可能性があります — プリンター接続が中断されました'
-  Calibration may still be running — response timed out: キャリブレーションがまだ実行中の可能性があります
-    — 応答タイムアウト
   Calibration move may still be running — printer connection was interrupted: 'キャリブレーション移動がまだ実行中の可能性があります — プリンター接続が中断されました'
-  Calibration move may still be running — response timed out: キャリブレーション移動がまだ実行中の可能性があります
-    — 応答タイムアウト
   Calibration saved but cannot apply on SDL display: キャリブレーションは保存されましたが SDL ディスプレイには適用できません
-  Calibration started: キャリブレーションを開始しました
   Calibration succeeded, but the frequency chart data couldn't be read.: キャリブレーションは成功しましたが、周波数グラフのデータを読み取れませんでした。
   Calibration succeeded. The frequency chart is only available when HelixScreen runs on the printer.: キャリブレーションは成功しました。周波数グラフは HelixScreen がプリンター上で動作している場合のみ利用できます。
   Calibration timed out. Please try again.: タイムアウトしました。もう一度お試しください。
@@ -679,7 +668,6 @@ translations:
   Create New Vendor: 新しいベンダーを作成
   Create Spool: スプールを作成
   Create a 4-6 digit security PIN: 4〜6桁のセキュリティ PIN を作成
-  Create backup of %s before applying: 適用前に %s のバックアップを作成
   Create video when print completes: 印刷完了時に動画を作成
   Creating bed mesh...: ベッドメッシュを作成中...
   Creating spool...: スプールを作成中...
@@ -727,7 +715,7 @@ translations:
   Default: 'デフォルト'
   Default border thickness: デフォルトの境界線の太さ
   'Default: %d-%d°C nozzle, %d°C bed': 'デフォルト: ノズル %d〜%d°C、ベッド %d°C'
-  'Default: %d-%d°C nozzle, %d°C bed, %d°C chamber': ''
+  'Default: %d-%d°C nozzle, %d°C bed, %d°C chamber': 'デフォルト: ノズル %d〜%d°C、ベッド %d°C、チャンバー %d°C'
   Defaults restored: デフォルトを復元しました
   Define macros in your printer.cfg: printer.cfg でマクロを定義してください
   Delete: 削除
@@ -1043,7 +1031,6 @@ translations:
   'Failed to set temperature: {}': '温度の設定に失敗しました: {}'
   'Failed to set {} temp: {}': '{} 温度の設定に失敗しました: {}'
   Failed to show confirmation dialog: 確認ダイアログの表示に失敗しました
-  Failed to start calibration: キャリブレーションの開始に失敗しました
   'Failed to start installer: ': 'インストーラーの起動に失敗しました: '
   'Failed to start print: {}': '印刷の開始に失敗しました: {}'
   'Failed to start uninstaller: ': 'アンインストーラーの起動に失敗しました: '
@@ -1083,7 +1070,6 @@ translations:
   Filament: フィラメント
   Filament Control: フィラメント制御
   Filament Detected: フィラメント検出
-  Filament Environment: フィラメント環境
   Filament Grade Mismatch: フィラメントグレード不一致
   Filament Humidity: フィラメント湿度
   Filament In The Toolhead: ツールヘッドにフィラメントがあります
@@ -1118,7 +1104,6 @@ translations:
   Filament is still present after the cut — the blade may be dull or misaligned: 切断後もフィラメントが残っています。刃が摩耗しているか、位置がずれている可能性があります
   Filament jam detected: フィラメントの詰まりを検出しました
   Filament jammed at the extruder gear: エクストルーダーギアでフィラメントが詰まりました
-  'Filament load failed: {}': 'フィラメントの装填に失敗しました: {}'
   Filament never reached the CFS hub sensor: フィラメントが CFS ハブセンサーに到達しませんでした
   Filament operation failed: フィラメント操作に失敗しました
   Filament operation timed out: フィラメント操作がタイムアウトしました
@@ -1141,7 +1126,6 @@ translations:
   Filament tension is balanced: フィラメントの張力が均衡しています
   Filament tracking & label printing: フィラメント追跡とラベル印刷
   Filament tracking and inventory: フィラメント追跡と在庫管理
-  'Filament unload failed: {}': 'フィラメントの取出しに失敗しました: {}'
   FilamentSensor: フィラメントセンサー
   File: ファイル
   File Size: ファイルサイズ
@@ -1417,7 +1401,7 @@ translations:
   'Jog failed: {}': 'ジョグに失敗しました: {}'
   Join the HelixScreen community on Discord for discussion, tips, troubleshooting help, and feature requests.: Discord
     で HelixScreen コミュニティに参加して、ディスカッション、ヒント、トラブルシューティング支援、機能リクエストを共有しましょう。
-  Joining Wi-Fi disconnects the wired network.: ''
+  Joining Wi-Fi disconnects the wired network.: WiFi に接続すると、有線ネットワークが切断されます。
   Just now: たった今
   Just queued: 'たった今キューへ追加'
   KEYBOARD LAYOUT: キーボードレイアウト
@@ -1506,7 +1490,6 @@ translations:
   Load failed: 装填に失敗しました
   Load filament: 'フィラメントをロード'
   Load filament first: 先にフィラメントを装填してください
-  Load may still be running — response timed out: 装填がまだ実行中の可能性があります — 応答タイムアウト
   Load or unload filament.: フィラメントを装填または排出します。
   Load the required filaments or start anyway?: 必要なフィラメントを装填しますか？それともこのまま開始しますか？
   'Load, unload, and swap spools. View your multi-filament system at a glance, map colors to slots, and monitor runout sensors.': スプールのロード、アンロード、交換を行います。マルチフィラメントシステムを一目で確認し、色をスロットにマッピングし、ランアウトセンサーを監視できます。
@@ -1611,6 +1594,7 @@ translations:
   Match: 一致度
   Match to belt A: ベルトAに合わせる
   Match your typical print fan speed: 通常の印刷ファン速度に合わせてください
+  Matching printers: 一致するプリンター
   Material: 素材
   'Material Comfort:': '素材の適合度:'
   Material Mismatch: 素材の不一致
@@ -1778,9 +1762,6 @@ translations:
   No networks found: ネットワークが見つかりません
   No notifications: 通知なし
   No objects defined for this print: この印刷にはオブジェクトが定義されていません
-  No plugins: プラグインなし
-  No plugins discovered: プラグインが見つかりませんでした
-  No plugins found: プラグインが見つかりません
   No presets configured: プリセットが設定されていません
   No preview: プレビューなし
   No print history found: 印刷履歴が見つかりません
@@ -1969,8 +1950,6 @@ translations:
     (低いほどスクロールが早く開始)
   'Place image files (PNG, JPEG, BMP, GIF) in config/custom_images/. Max size: 2048×2048 pixels.': '画像ファイル
     (PNG, JPEG, BMP, GIF) を config/custom_images/ に配置してください。最大サイズ: 2048×2048 ピクセル。'
-  Place plugins in the plugins directory: プラグインを plugins ディレクトリに配置してください
-  Place plugins in the plugins directory to extend HelixScreen: HelixScreen を拡張するには、プラグインディレクトリにプラグインを配置してください
   Placed: 配置済み
   Platform: プラットフォーム
   'Platform: ': 'プラットフォーム: '
@@ -1991,9 +1970,8 @@ translations:
     を再起動中...
   ? "Plugin not responding after restart.\nIt may need more time to load."
   : "再起動後にプラグインが応答しません。\n読み込みに時間がかかる場合があります。"
+  Plugin removed. A config file needs attention - check the HelixScreen log for details.: プラグインを削除しました。設定ファイルに対応が必要です。詳細は HelixScreen のログを確認してください。
   Plugin uninstalled successfully.: プラグインが正常にアンインストールされました。
-  Plugins: プラグイン
-  Plugins are discovered on application startup: プラグインはアプリケーション起動時に検出されます
   Point camera at QR code on spool: スプールの QR コードにカメラを向けてください
   Polymaker: Polymaker
   Poor Accuracy: 精度不良
@@ -2530,6 +2508,7 @@ translations:
   Setup: 'セットアップ'
   Setup Complete!: セットアップ完了！
   Setup Timelapse: タイムラプスを設定
+  Several printers match - choose yours: 複数のプリンターが一致します - 選択してください
   Shadow Intensity: 影の強度
   Share Usage Data: 使用データを共有
   Share anonymous usage statistics to help us make HelixScreen better. No personal data is ever collected.: 匿名の使用統計を共有して、HelixScreen
@@ -2726,7 +2705,6 @@ translations:
   Temp: 温度
   Temp Compensation: 温度補正
   Temp °C: 温度 °C
-  Temp °C (%d–%d): 温度 °C (%d〜%d)
   Temperature: 温度
   Temperature Graph: '温度グラフ'
   Temperature Graph Config: 温度グラフ設定
@@ -2852,7 +2830,8 @@ translations:
     %.0fg 必要ですが、スプールの残量は約 %.0fg です。それでも開始しますか？
   ? This printer looks like a {} ({}% confidence), but it is set up as a {}. A wrong type applies incorrect pre-print options and presets.
   : このプリンターは {} のようです（信頼度 {}%）が、{} として設定されています。誤ったタイプでは不正確な印刷前オプションとプリセットが適用されます。
-  This removes the plugin's macros and its Moonraker component from the printer and restarts Klipper.: プラグインのマクロと Moonraker コンポーネントをプリンターから削除し、Klipper を再起動します。
+  ? This removes the plugin's Moonraker component and restarts Moonraker. The printer will briefly disconnect. If old phase-tracking lines are still in PRINT_START, they are removed too, with backups kept. A Klipper restart applies that.
+  : プラグインの Moonraker コンポーネントを削除し、Moonraker を再起動します。プリンターは一時的に切断されます。PRINT_START に古いフェーズトラッキングの行が残っている場合、それらも削除されますが、バックアップは保持されます。Klipper を再起動すると、その変更が適用されます。
   This replaces the printer's helper macros with the current version and restarts Klipper.: 'プリンターのヘルパーマクロを現在のバージョンに置き換え、Klipper を再起動します。'
   ? This replaces the printer's helper macros with the current version. A print is running, so Klipper restarts after it finishes.
   : 'プリンターのヘルパーマクロを現在のバージョンに置き換えます。印刷中のため、Klipper は印刷完了後に再起動されます。'
@@ -2982,13 +2961,12 @@ translations:
   Uninstall HelixPrint Plugin: HelixPrint プラグインをアンインストール
   Uninstall HelixPrint Plugin?: HelixPrint プラグインをアンインストールしますか？
   Uninstall script not found.: アンインストールスクリプトが見つかりません。
-  'Uninstall: Coming soon': 'アンインストール: 近日公開'
   Uninstallation failed. Check logs for details.: アンインストールに失敗しました。詳細はログを確認してください。
   'Uninstallation failed: ': 'アンインストールに失敗しました: '
   Uninstallation timed out. The script may be stuck.: アンインストールがタイムアウトしました。スクリプトが停止している可能性があります。
   Unit: ユニット
   'Unit ': 'ユニット '
-  'Units: %d   Boxes: %d   Dryers: %d': ''
+  'Units: %d   Boxes: %d   Dryers: %d': 'ユニット: %d   ボックス: %d   ドライヤー: %d'
   Unknown: 不明
   Unknown Error: '不明なエラー'
   Unknown Event: 不明なイベント
@@ -3003,7 +2981,6 @@ translations:
   Unload filament: 'フィラメントをアンロード'
   Unload from toolhead first: '先にツールヘッドから取り出してください'
   Unload macro not configured: アンロードマクロが未設定です
-  Unload may still be running — response timed out: 排出がまだ実行中の可能性があります — 応答タイムアウト
   Unload the CFS filament before enabling bypass: 'バイパスを有効にする前に CFS のフィラメントを取り出してください'
   Unloading: アンロード中
   Unloading Start Speed: 'アンロード開始速度'
@@ -3069,9 +3046,8 @@ translations:
   View Full History: 全履歴を表示
   View Telemetry Data: テレメトリデータを表示
   View Timelapse: タイムラプスを表示
-  View all boxes: ''
+  View all boxes: すべてのボックスを表示
   View and rename fans: ファンの表示と名前変更
-  View installed plugins and status: インストール済みプラグインとステータスを表示
   View live camera feed: ライブカメラ映像を表示
   View print statistics and job history: 印刷統計とジョブ履歴を表示
   'Visits: ': '表示回数: '
@@ -3089,8 +3065,8 @@ translations:
   Wait for the current operation to complete or cancel it first: 現在の操作が完了するまで待つか、先にキャンセルしてください
   Wait until the print finishes: 印刷が完了するまでお待ちください
   Waiting for Moonraker...: Moonraker を待機中...
-  'Waiting for %s to finish. One heater at a time.': ''
-  Waiting for another box to finish.: ''
+  Waiting for %s to finish. One heater at a time.: '%s の完了を待っています。ヒーターは一度に1つだけです。'
+  Waiting for another box to finish.: 別のボックスの完了を待っています。
   Waiting for bed to reach temperature for accurate calibration.: 正確なキャリブレーションのためにベッド温度到達を待機中。
   Waiting for the filament system to report its state: フィラメントシステムの状態報告を待機中
   Warm Bed: ベッドを予熱
@@ -3236,9 +3212,10 @@ translations:
   AFC's remember_spool is retaining spool info in firmware; that takes precedence over this toggle: AFC の remember_spool がファームウェア側でスプール情報を保持しているため、このトグル設定より優先されます
   AI detection: AI 検出
   Monitor for print abnormalities (K2 Plus camera-based): 印刷異常を監視 (K2 Plus カメラベース)
+  Monitor for print abnormalities (camera-based): '印刷異常を監視 (カメラベース)'
   on unit {}: 'ユニット {}'
   or type a macro name: またはマクロ名を入力
-  passive: ''
+  passive: パッシブ
   printer default: プリンター既定
   prints: 印刷
   remaining: 残り

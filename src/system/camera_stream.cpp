@@ -1026,12 +1026,10 @@ void CameraStream::deliver_frame() {
 
     // No frame_pending_ gate — camera continues decoding immediately.
     // The callback queues lv_image_set_src() to the UI thread, which
-    // processes it BEFORE rendering (UpdateQueue design). Typically the
-    // ~3ms decode time (with downscaling) exceeds the UI tick interval,
-    // so set_src runs before the next swap. If the UI thread stalls and
-    // two swaps occur between ticks, the camera may write to a buffer
-    // LVGL is still rendering — this can cause a torn frame (visual
-    // artifact) but NOT a crash, since both buffers remain allocated.
+    // applies it at a later UpdateQueue drain (once per LV_DEF_REFR_PERIOD).
+    // If the next frame decodes before that drain, it is written into the
+    // buffer LVGL is still showing. That can tear a frame (visual artifact)
+    // but NOT crash, since both buffers remain allocated.
     // The throughput gain (~3x fps) outweighs occasional tearing.
     frame_cb(front_buf_);
 }

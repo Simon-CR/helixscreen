@@ -23,6 +23,7 @@
  */
 
 #include "../test_fixtures.h"
+#include "../test_helpers/scoped_widget_factory.h"
 #include "config.h"
 #include "grid_layout.h"
 #include "helix-xml/src/xml/lv_xml.h"
@@ -42,6 +43,7 @@
 #include "../catch_amalgamated.hpp"
 
 using namespace helix;
+using helix_test::ScopedWidgetFactory;
 
 // Access LayoutManager internals for test setup.
 // Note: LayoutManagerTestAccess is also defined in test_layout_manager.cpp and
@@ -109,24 +111,6 @@ struct PlainSpyWidget : helix::PanelWidget {
     std::string get_component_name() const override {
         return "test_span_spy_widget";
     }
-};
-
-/// Swap a registry factory for the duration of a test and restore it after.
-class ScopedFactoryOverride {
-  public:
-    ScopedFactoryOverride(const char* id, WidgetFactory factory) : id_(id) {
-        const auto* def = helix::find_widget_def(id);
-        REQUIRE(def != nullptr);
-        original_ = def->factory;
-        helix::register_widget_factory(id, std::move(factory));
-    }
-    ~ScopedFactoryOverride() {
-        helix::register_widget_factory(id_, original_);
-    }
-
-  private:
-    const char* id_;
-    WidgetFactory original_;
 };
 
 /// Temporarily rewrite a widget definition's span limits. The registry hands out
@@ -267,7 +251,7 @@ TEST_CASE_METHOD(PortraitSpanFixture,
     REQUIRE(tips_def->colspan > grid.cols);                  // authored for landscape
     REQUIRE(tips_def->effective_min_colspan() <= grid.cols); // …but its minimum fits
 
-    ScopedFactoryOverride factory("tips", [](const std::string&) -> std::unique_ptr<PanelWidget> {
+    ScopedWidgetFactory factory("tips", [](const std::string&) -> std::unique_ptr<PanelWidget> {
         return std::make_unique<SpanSpyWidget>();
     });
 
@@ -312,13 +296,13 @@ TEST_CASE_METHOD(PortraitSpanFixture,
 TEST_CASE_METHOD(PortraitSpanFixture,
                  "Portrait auto-place does not persist enabled=false for a shrinkable widget",
                  "[panel_widget][manager][regression][1216]") {
-    ScopedFactoryOverride factory("tips", [](const std::string&) -> std::unique_ptr<PanelWidget> {
+    ScopedWidgetFactory factory("tips", [](const std::string&) -> std::unique_ptr<PanelWidget> {
         return std::make_unique<SpanSpyWidget>();
     });
-    ScopedFactoryOverride companion("shutdown",
-                                    [](const std::string&) -> std::unique_ptr<PanelWidget> {
-                                        return std::make_unique<PlainSpyWidget>();
-                                    });
+    ScopedWidgetFactory companion("shutdown",
+                                  [](const std::string&) -> std::unique_ptr<PanelWidget> {
+                                      return std::make_unique<PlainSpyWidget>();
+                                  });
 
     const std::string panel_id = "test_portrait_span_persist";
     auto* cfg = Config::get_instance();
@@ -361,7 +345,7 @@ TEST_CASE_METHOD(PortraitSpanFixture,
 // so a stored landscape span fell straight through to auto-place.
 TEST_CASE_METHOD(PortraitSpanFixture, "Portrait saved-position pass clamps an over-wide span",
                  "[panel_widget][manager][regression][1216]") {
-    ScopedFactoryOverride factory("tips", [](const std::string&) -> std::unique_ptr<PanelWidget> {
+    ScopedWidgetFactory factory("tips", [](const std::string&) -> std::unique_ptr<PanelWidget> {
         return std::make_unique<SpanSpyWidget>();
     });
 
@@ -413,7 +397,7 @@ TEST_CASE_METHOD(PortraitSpanFixture, "Portrait still disables a widget that can
     const int too_wide = grid.cols + GridLayout::TRACKS_PER_CELL;
     ScopedSpanOverride span("tips", /*colspan=*/too_wide, /*rowspan=*/2,
                             /*min_colspan=*/too_wide, /*min_rowspan=*/2);
-    ScopedFactoryOverride factory("tips", [](const std::string&) -> std::unique_ptr<PanelWidget> {
+    ScopedWidgetFactory factory("tips", [](const std::string&) -> std::unique_ptr<PanelWidget> {
         return std::make_unique<SpanSpyWidget>();
     });
 

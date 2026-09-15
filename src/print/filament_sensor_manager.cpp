@@ -1335,7 +1335,7 @@ void FilamentSensorManager::set_sync_mode(bool enabled) {
 }
 
 void FilamentSensorManager::update_subjects_on_main_thread() {
-    // This is called by lv_async_call from the main LVGL thread
+    // Called from a queue_update callback on the main LVGL thread
     // It's safe to update subjects here without causing render-phase assertions
     update_subjects();
 }

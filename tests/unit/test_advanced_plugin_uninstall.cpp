@@ -6,10 +6,12 @@
  * @brief The Advanced panel's Uninstall HelixPrint Plugin row
  *
  * The row asks for confirmation and only then runs the uninstaller, which
- * removes the plugin's macros and Moonraker component and restarts Klipper.
- * These cases pin that the uninstaller runs on the confirm button and on
- * nothing else (cancel, backdrop dismissal), and that a successful run is
- * what clears helix_plugin_installed - a failed one leaves it alone.
+ * removes the plugin's Moonraker component (helix_macros.cfg is kept) and
+ * strips any old phase-tracking lines from PRINT_START. These cases pin that
+ * the uninstaller runs on the confirm button and on nothing else (cancel,
+ * backdrop dismissal), and that helix_plugin_installed clears on both
+ * SUCCESS and NEEDS_ATTENTION - the plugin is gone either way - and only a
+ * FAILED run leaves it alone.
  */
 
 #include "ui_modal.h"
@@ -31,10 +33,12 @@ using helix::ui::UpdateQueue;
 namespace {
 
 struct PluginUninstallFixture : LVGLUITestFixture {
+    using Outcome = helix::UninstallOutcome;
+
     AdvancedPanel panel{get_printer_state(), nullptr};
 
     int uninstall_runs = 0;
-    bool uninstall_result = true;
+    Outcome uninstall_outcome = Outcome::SUCCESS;
 
     PluginUninstallFixture() {
         helix::ui::modal_init_subjects();
@@ -42,9 +46,13 @@ struct PluginUninstallFixture : LVGLUITestFixture {
         // The recorder answers synchronously, the way the real installer does
         // once the script has exited.
         AdvancedPanelTestAccess::set_uninstall_runner(
-            panel, [this](helix::HelixPluginInstaller::InstallCallback done) {
+            panel, [this](helix::HelixPluginInstaller::UninstallCallback done) {
                 ++uninstall_runs;
-                done(uninstall_result, uninstall_result ? "removed" : "script failed");
+                const char* message = uninstall_outcome == Outcome::SUCCESS ? "removed"
+                                      : uninstall_outcome == Outcome::NEEDS_ATTENTION
+                                          ? "removed, config needs a look"
+                                          : "script failed";
+                done(uninstall_outcome, message);
             });
 
         // The row is only reachable while the plugin is installed.
@@ -133,11 +141,25 @@ TEST_CASE_METHOD(PluginUninstallFixture, "dismissing the uninstall dialog runs n
 
 TEST_CASE_METHOD(PluginUninstallFixture, "a failed uninstall leaves the plugin marked installed",
                  "[advanced][plugin_installer][1232]") {
-    uninstall_result = false;
+    uninstall_outcome = Outcome::FAILED;
 
     tap_row();
     answer_modal("btn_primary");
 
     CHECK(uninstall_runs == 1);
     CHECK(plugin_installed() == 1);
+}
+
+TEST_CASE_METHOD(PluginUninstallFixture, "a needs-attention uninstall still clears installed",
+                 "[advanced][plugin_installer][1232]") {
+    // The plugin's Moonraker component is gone either way; NEEDS_ATTENTION
+    // only means a config file needs a human look, not that the plugin is
+    // still there.
+    uninstall_outcome = Outcome::NEEDS_ATTENTION;
+
+    tap_row();
+    answer_modal("btn_primary");
+
+    CHECK(uninstall_runs == 1);
+    CHECK(plugin_installed() == 0);
 }

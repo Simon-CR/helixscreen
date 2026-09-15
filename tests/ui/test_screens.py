@@ -34,6 +34,8 @@ from pathlib import Path
 
 import pytest
 
+from helix.goldens import compare_images
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 RECIPES_SCRIPT = REPO_ROOT / "scripts" / "screenshot-recipes.sh"
 
@@ -222,6 +224,35 @@ _POST_NAV_WAIT_SUBJECT = {
     "print-select": ("print_source_usb_present", 1),
 }
 
+# freeze() pauses every LVGL timer it finds armed (remote_control_server.cpp's
+# handle_freeze walks lv_timer_get_next()), including a panel's own one-shot
+# debounce timer if it is still pending, e.g. PrintSelectPanel::refresh_timer_,
+# armed from inside a queued thumbnail-fetch callback and not itself visible to
+# wait_idle() (neither UpdateQueue, HttpExecutor, nor ThumbnailProcessor work).
+# A timer paused before it fires never fires, so a capture can freeze on the
+# card grid's pre-refresh layout. _capture_settled() re-unfreezes between
+# attempts, giving a stranded timer its next chance to run, and only accepts
+# a capture once two consecutive attempts agree pixel for pixel.
+_SETTLE_MAX_ATTEMPTS = 5
+
+
+def _capture_settled(helix_app):
+    previous = None
+    for _ in range(_SETTLE_MAX_ATTEMPTS):
+        helix_app.wait_idle()
+        helix_app.freeze()
+        try:
+            image = helix_app.capture(stable=True)
+        finally:
+            helix_app.unfreeze()
+        if previous is not None and compare_images(image, previous).matches:
+            return image
+        previous = image
+    raise RuntimeError(
+        f"screen never settled across {_SETTLE_MAX_ATTEMPTS} freeze/unfreeze "
+        "cycles - two consecutive captures never matched"
+    )
+
 
 @pytest.mark.parametrize("name,steps", SCREENS, ids=[s[0] for s in SCREENS])
 def test_screen_matches_golden(helix_app, golden, name, steps):
@@ -230,10 +261,5 @@ def test_screen_matches_golden(helix_app, golden, name, steps):
     wait_target = _POST_NAV_WAIT_SUBJECT.get(name)
     if wait_target:
         helix_app.wait_for(*wait_target)
-    helix_app.wait_idle()
-    helix_app.freeze()
-    try:
-        image = helix_app.capture(stable=True)
-    finally:
-        helix_app.unfreeze()
+    image = _capture_settled(helix_app)
     golden(image, name)

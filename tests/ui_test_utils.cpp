@@ -107,27 +107,8 @@ uint32_t lv_timer_handler_safe() {
             if (t->repeat_count > 0 && (now - t->last_run >= t->period)) {
                 if (t->timer_cb) {
                     t->last_run = now;
-                    if (t->repeat_count > 0) {
-                        t->repeat_count--;
-                    }
-                    const bool exhausted = t->repeat_count == 0;
+                    t->repeat_count--;
                     t->timer_cb(t);
-                    // Match lv_timer_handler(): it deletes a timer whose repeat
-                    // count reached 0 (lv_timer.c:369). Leaving it behind parks
-                    // a spent lv_timer_t in LVGL's list holding the callback's
-                    // user_data, so an owner destroyed later cannot free what it
-                    // no longer has a handle to. Re-find it rather than reusing
-                    // `t`: the callback may already have deleted it (the common
-                    // one-shot pattern nulls its own handle and returns).
-                    if (exhausted) {
-                        for (lv_timer_t* s = lv_timer_get_next(nullptr); s != nullptr;
-                             s = lv_timer_get_next(s)) {
-                            if (s == t) {
-                                lv_timer_delete(t);
-                                break;
-                            }
-                        }
-                    }
                     found = true;
                     break; // Restart iteration since list may have changed
                 }
@@ -136,6 +117,35 @@ uint32_t lv_timer_handler_safe() {
         }
         if (!found)
             break; // No more ready one-shot timers
+    }
+
+    // Reap every one-shot left at repeat_count == 0, matching lv_timer_exec()'s
+    // own cleanup for an exhausted timer (lv_timer.c). The loop above's
+    // readiness check requires repeat_count > 0, so once a timer reaches zero
+    // it is invisible to that loop forever; without this pass it would sit in
+    // LVGL's list holding its callback's user_data until the process exits.
+    //
+    // Read by CURRENT repeat_count on a fresh list walk, never by a pointer
+    // saved before a callback ran. The common one-shot pattern (every
+    // lv_async_call included) deletes itself from inside its own callback
+    // (lib/lvgl/src/misc/lv_async.c#lv_async_timer_cb), so that node is
+    // already gone by the time this runs; a timer freshly created in its
+    // place never starts at repeat_count == 0 (lv_timer_create() defaults to
+    // -1, and lv_async_call sets 1 synchronously before returning), so this
+    // pass can only ever find a timer that is genuinely spent right now, and
+    // deletes it in the same step it is found, with no gap where a nested
+    // callback could invalidate the pointer first.
+    t = lv_timer_get_next(nullptr);
+    while (t) {
+        lv_timer_t* next = lv_timer_get_next(t);
+        if (t->repeat_count == 0) {
+            if (t->auto_delete) {
+                lv_timer_delete(t);
+            } else {
+                lv_timer_pause(t);
+            }
+        }
+        t = next;
     }
 
     // Re-pause ALL timers before calling lv_timer_handler().
@@ -1052,6 +1062,8 @@ void app_globals_init_subjects() {
     if (!s_test_notification_subject_initialized) {
         lv_subject_init_pointer(&s_test_notification_subject, nullptr);
         lv_subject_init_int(&s_test_home_edit_mode_subject, 0);
+        // Registered by name as app_globals.cpp does, before any panel exists.
+        lv_xml_register_subject(nullptr, "home_edit_mode", &s_test_home_edit_mode_subject);
         lv_subject_init_int(&s_test_wizard_active_subject, 0);
 #if defined(HELIX_PLATFORM_ESP32)
         lv_subject_init_int(&s_test_platform_extras_subject, 0);

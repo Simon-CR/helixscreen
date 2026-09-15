@@ -5,8 +5,8 @@
  * @file test_phase_tracking_absence.cpp
  * @brief The phase-tracking toggle stays out of the app (#1234)
  *
- * Each case first proves its setup ran — the panel built with its plugin and
- * macro rows, the subject scope holding the plugin subjects — so the absence
+ * Each case first proves its setup ran - the panel built with its plugin and
+ * macro rows, the subject scope holding the plugin subjects - so the absence
  * assertions cannot pass on a setup that silently did nothing.
  */
 

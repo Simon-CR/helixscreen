@@ -616,7 +616,7 @@ class AmsBackendCfs : public AmsSubscriptionBackend {
     /// Undo the derived LOADED stamp, putting back whatever the last parse
     /// wrote there. Caller must hold mutex_. Runs at the TOP of
     /// handle_status_update so check_hardware_event_clear, the lane_data mirror
-    /// and apply_overrides all see firmware truth rather than a synthesized
+    /// and apply_resolved_lane all see firmware truth rather than a synthesized
     /// seat; restoring the saved status (rather than assuming AVAILABLE) is
     /// what keeps a bay firmware called EMPTY from acquiring a phantom spool
     /// when the toolhead clears. A no-op when the slot vector was rebuilt
@@ -661,8 +661,8 @@ class AmsBackendCfs : public AmsSubscriptionBackend {
     /// Empty observed_uid (no tag / sentinel `-1` / `None`) is treated as
     /// "no signal" — never updates the baseline and never clears. First
     /// observation for a slot establishes the baseline and NEVER fires a
-    /// clear. Must be called BEFORE apply_overrides so the clear's field
-    /// reset isn't masked by a stale override layer.
+    /// clear. Must be called BEFORE apply_resolved_lane so the clear's field
+    /// reset isn't masked by a stale declaration.
     ///
     /// CFS-specific field policy on clear: CFS firmware populates
     /// brand/color_name/total_weight_g from its material database via RFID
@@ -689,9 +689,8 @@ class AmsBackendCfs : public AmsSubscriptionBackend {
     /// EMPTY. CFS has no other ejection path: the RFID fingerprint LATCHES
     /// after a spool is pulled, so check_hardware_event_clear sees Unchanged
     /// forever and the lane_data record would keep advertising a spool that
-    /// isn't there (stale color/material published to OrcaSlicer, plus
-    /// apply_overrides promoting the empty bay back to AVAILABLE as a ghost
-    /// slot).
+    /// isn't there: stale color/material published to OrcaSlicer, and a lane
+    /// that goes on declaring an identity for a bay holding nothing.
     ///
     /// User-locked overrides are RETAINED across an empty bay — a deliberate
     /// assignment means "this is what lives in this slot", and a slot that is
@@ -700,7 +699,7 @@ class AmsBackendCfs : public AmsSubscriptionBackend {
     /// the AD5X IFS policy of retaining the lane->Spoolman override across
     /// empty (#1071).
     ///
-    /// Caller must hold mutex_ and must call this BEFORE apply_overrides.
+    /// Caller must hold mutex_ and must call this BEFORE apply_resolved_lane.
     /// Returns true iff the override was cleared.
     [[nodiscard]] bool clear_stale_override_on_removal_locked(SlotInfo& slot, int slot_index);
 
@@ -752,8 +751,10 @@ class AmsBackendCfs : public AmsSubscriptionBackend {
     /// runout_lane_ is consumed here, so a later transient EMPTY read of the
     /// same bay cannot strip a freshly relinked spool.
     ///
-    /// Caller must hold mutex_ and must call this BEFORE apply_overrides (the
-    /// merge would re-paint the old id onto the live slot for this poll).
+    /// Caller must hold mutex_ and must call this BEFORE apply_resolved_lane,
+    /// which re-paints from the lane sources, so the retraction this performs
+    /// has to be in place first or the old id lands on the live slot for this
+    /// poll.
     void strip_spoolman_link_on_runout_locked(SlotInfo& slot, int slot_index);
 
     // Runout-episode state (see the two helpers above). All access under
@@ -767,8 +768,8 @@ class AmsBackendCfs : public AmsSubscriptionBackend {
 
     // Persistent per-slot overrides. Writers (on_started bulk load,
     // set_slot_info persist path, check_hardware_event_clear) all hold
-    // mutex_. Reads happen inside apply_overrides, which is also called
-    // under mutex_.
+    // mutex_. Reads happen inside the parse path's lane_data mirror and the
+    // clear helpers, which are also called under mutex_.
     std::unique_ptr<helix::ams::FilamentSlotOverrideStore> override_store_;
     std::unordered_map<int, helix::ams::FilamentSlotOverride> overrides_;
 

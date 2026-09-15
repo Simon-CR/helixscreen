@@ -769,7 +769,7 @@ Replace the dot loop at `:2135-2169`. The whole-cell lattice is drawn at full we
             const bool major = (c % cell == 0) && (r % cell == 0);
             const int size = major ? DOT_SIZE_MAJOR : DOT_SIZE_MINOR;
 
-            lv_obj_t* dot = lv_obj_create(dots_overlay_);
+            lv_obj_t* dot = lv_obj_create(shield_);
             lv_obj_set_size(dot, size, size);
             lv_obj_set_style_radius(dot, LV_RADIUS_CIRCLE, 0);
             lv_obj_set_style_bg_color(dot, dot_color, 0);

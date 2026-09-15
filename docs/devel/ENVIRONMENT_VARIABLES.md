@@ -180,6 +180,8 @@ HELIX_MOUSE_DEVICE=/dev/input/event4 ./build/bin/helix-screen
 
 **Mouse cursor:** When a mouse is detected (manually or via auto-detection), a 12px white circular cursor is displayed. The mouse works alongside the touchscreen — both are active simultaneously.
 
+**Rotation:** the cursor moves with the picture at every display rotation, on the DRM plane path and under fbdev's software rotation alike. A relative device's position is never turned with the panel the way a touchscreen's samples are, whichever variable or scan found it (`include/pointer_frame_hook.h#pointer_transform_for`).
+
 ### `HELIX_ALSA_DEVICE`
 
 Override the ALSA PCM device used for UI sounds. The stock `default` resolves to `hw:0`, which fails on boards whose only audio output enumerates at a higher card index — leaving ALSA unable to open any PCM device.

@@ -103,6 +103,37 @@ TEST_CASE("GCodeParser - Coordinate extraction", "[gcode][parser]") {
         REQUIRE(seg2.end.x == Approx(15.5f));
         REQUIRE(seg2.end.y == Approx(-15.3f));
     }
+
+    SECTION("A leading '+' on a coordinate parses as the signed value, matching Klipper") {
+        // Klipper's klippy/gcode.py reads G-code parameters through Python's float(),
+        // which accepts a single leading '+' ("+10.5" == 10.5); the preview follows suit
+        // so a hand-written G1 X+10.5 renders the same move the printer executes.
+        parser.parse_line("G1 X+10.5 Y20");
+        auto file = parser.finalize();
+
+        REQUIRE(file.total_segments == 1);
+        auto& seg = file.layers[0].segments[0];
+        CHECK(seg.start.x == Approx(0.0f));
+        CHECK(seg.end.x == Approx(10.5f));
+        CHECK(seg.end.y == Approx(20.0f));
+    }
+
+    SECTION("A lone '+' or a second sign right after it is not extracted, matching Klipper") {
+        // Python's float() rejects "+" and a second sign immediately after the first
+        // ("++1", "+-1"); the coordinate is treated as absent in each case.
+        parser.parse_line("G1 X+ Y1");
+        parser.parse_line("G1 X++1 Y2");
+        parser.parse_line("G1 X+-1 Y3");
+        auto file = parser.finalize();
+
+        REQUIRE(file.total_segments == 3);
+        for (const auto& seg : file.layers[0].segments) {
+            CHECK(seg.end.x == Approx(0.0f)); // X was never extracted on any of the 3 lines
+        }
+        CHECK(file.layers[0].segments[0].end.y == Approx(1.0f));
+        CHECK(file.layers[0].segments[1].end.y == Approx(2.0f));
+        CHECK(file.layers[0].segments[2].end.y == Approx(3.0f));
+    }
 }
 
 TEST_CASE("GCodeParser - Comments and whitespace", "[gcode][parser]") {
@@ -164,6 +195,47 @@ TEST_CASE("GCodeParser - EXCLUDE_OBJECT commands", "[gcode][parser]") {
         REQUIRE(file.get_object_name(file.layers[0].segments[0].object_name_index) == "part1");
         REQUIRE(file.get_object_name(file.layers[0].segments[1].object_name_index) == "part1");
         REQUIRE(file.layers[0].segments[2].object_name_index < 0);
+    }
+
+    SECTION("CENTER with a leading '+' parses as the signed value, matching Klipper") {
+        // Klipper's float()-based parameter parsing accepts a leading '+', so the
+        // preview must too rather than reading the object as centered at its default.
+        parser.parse_line("EXCLUDE_OBJECT_DEFINE NAME=cube_1 CENTER=+50,75");
+        auto file = parser.finalize();
+
+        REQUIRE(file.objects.count("cube_1") == 1);
+        auto& obj = file.objects["cube_1"];
+        CHECK(obj.center.x == Approx(50.0f));
+        CHECK(obj.center.y == Approx(75.0f));
+    }
+
+    SECTION("POLYGON point with a leading '+' parses as the signed value, matching Klipper") {
+        parser.parse_line("EXCLUDE_OBJECT_DEFINE NAME=cube_3 "
+                          "POLYGON=[[+45,70],[55,70],[55,+80],[45,80]]");
+        auto file = parser.finalize();
+
+        REQUIRE(file.objects.count("cube_3") == 1);
+        auto& obj = file.objects["cube_3"];
+        REQUIRE(obj.polygon.size() == 4);
+        CHECK(obj.polygon[0].x == Approx(45.0f));
+        CHECK(obj.polygon[2].y == Approx(80.0f));
+    }
+
+    SECTION("POLYGON point too large for float truncates the polygon instead of writing inf") {
+        // An overflowing token reports result_out_of_range, so
+        // parse_exclude_object_command stops at the first bad point instead of
+        // continuing with an inf coordinate.
+        std::string huge_x(80, '9');
+        parser.parse_line("EXCLUDE_OBJECT_DEFINE NAME=cube_2 CENTER=50,75 "
+                          "POLYGON=[[45,70],[" +
+                          huge_x + ",70],[55,80],[45,80]]");
+        auto file = parser.finalize();
+
+        REQUIRE(file.objects.count("cube_2") == 1);
+        auto& obj = file.objects["cube_2"];
+        REQUIRE(obj.polygon.size() == 1); // only the point before the overflow survives
+        CHECK(obj.polygon[0].x == Approx(45.0f));
+        CHECK(obj.polygon[0].y == Approx(70.0f));
     }
 }
 

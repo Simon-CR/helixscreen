@@ -1312,7 +1312,7 @@ TEST_CASE("PanelWidgetConfig: build_default_grid produces correct layout",
     std::vector<PanelWidgetEntry> placed;
     std::vector<PanelWidgetEntry> disabled;
     for (const auto& e : entries) {
-        if (e.enabled && e.has_grid_position()) {
+        if (e.is_placed()) {
             placed.push_back(e);
         } else if (!e.enabled) {
             disabled.push_back(e);
@@ -1391,7 +1391,7 @@ TEST_CASE("PanelWidgetConfig: build_default_grid produces correct layout",
     {
         std::set<std::pair<int, int>> occupied;
         for (const auto& e : entries) {
-            if (!e.enabled || !e.has_grid_position())
+            if (!e.is_placed())
                 continue;
             for (int dc = 0; dc < e.colspan; ++dc) {
                 for (int dr = 0; dr < e.rowspan; ++dr) {
@@ -1557,6 +1557,25 @@ TEST_CASE_METHOD(PanelWidgetConfigFixture, "PanelWidgetConfig: add_page refuses 
     int idx = wc.add_page();
     REQUIRE(idx == -1);
     REQUIRE(wc.page_count() == MAX_PAGES);
+}
+
+TEST_CASE_METHOD(PanelWidgetConfigFixture,
+                 "PanelWidgetConfig: can_add_page holds until the page cap",
+                 "[panel_widget][widget_config][multipage][1638]") {
+    setup_empty_config();
+    PanelWidgetConfig wc("home", config);
+    wc.load();
+    REQUIRE(wc.page_count() == 1);
+    CHECK(wc.can_add_page());
+
+    while (wc.page_count() < MAX_PAGES) {
+        REQUIRE(wc.add_page() >= 0);
+    }
+    CHECK_FALSE(wc.can_add_page());
+
+    REQUIRE(wc.remove_page(wc.page_count() - 1));
+    REQUIRE(wc.page_count() == MAX_PAGES - 1);
+    CHECK(wc.can_add_page());
 }
 
 TEST_CASE_METHOD(PanelWidgetConfigFixture, "PanelWidgetConfig: remove_page removes non-main page",
@@ -1729,6 +1748,269 @@ TEST_CASE_METHOD(PanelWidgetConfigFixture,
     wc.set_widget_config("thermistor:1", {{"sensor", "extruder"}});
     auto cfg2 = wc.get_widget_config("thermistor:1");
     REQUIRE(cfg2["sensor"] == "extruder");
+}
+
+// ============================================================================
+// Multi-page tests — placement and page population
+// ============================================================================
+
+/// The page of every entry named @p id, one element per entry, in page order.
+static std::vector<size_t> pages_holding(const PanelWidgetConfig& wc, const std::string& id) {
+    std::vector<size_t> found;
+    for (size_t p = 0; p < wc.page_count(); ++p) {
+        for (const auto& e : wc.page_entries(p)) {
+            if (e.id == id) {
+                found.push_back(p);
+            }
+        }
+    }
+    return found;
+}
+
+TEST_CASE("PanelWidgetEntry: is_placed needs both enabled and a grid cell",
+          "[panel_widget][widget_config][multipage][1638]") {
+    CHECK(PanelWidgetEntry{"a", true, {}, 0, 0, 1, 1}.is_placed());
+    CHECK_FALSE(PanelWidgetEntry{"b", true, {}, -1, -1, 1, 1}.is_placed()); // enabled, no cell
+    CHECK_FALSE(PanelWidgetEntry{"c", false, {}, 0, 0, 1, 1}.is_placed());  // a cell, disabled
+    CHECK_FALSE(PanelWidgetEntry{"d", true, {}, 2, -1, 1, 1}.is_placed());  // half a coordinate
+}
+
+TEST_CASE_METHOD(PanelWidgetConfigFixture,
+                 "PanelWidgetConfig: page_is_populated asks for a placed entry",
+                 "[panel_widget][widget_config][multipage][1638]") {
+    json w0 = json::array({{{"id", "shutdown"}, {"enabled", true}, {"col", 0}, {"row", 0}}});
+    json w1 = json::array({
+        {{"id", "thermistor:1"}, {"enabled", false}, {"col", 0}, {"row", 0}},
+        {{"id", "thermistor:2"}, {"enabled", true}},
+    });
+    setup_with_pages({{"p0", w0}, {"p1", w1}, {"p2", json::array()}}, 0, 3);
+
+    PanelWidgetConfig wc("home", config);
+    wc.load();
+    REQUIRE(wc.page_count() == 3);
+    // Page 1 holds entries, and none of them is placed.
+    REQUIRE(wc.page_entries(1).size() == 2);
+    REQUIRE(wc.page_entries(1)[1].enabled);
+    REQUIRE_FALSE(wc.page_entries(1)[1].has_grid_position());
+
+    CHECK(wc.page_is_populated(0));
+    CHECK_FALSE(wc.page_is_populated(1)); // a disabled entry with a cell, an enabled one without
+    CHECK_FALSE(wc.page_is_populated(2)); // no entries at all
+    CHECK_FALSE(wc.page_is_populated(3)); // past the last page
+
+    wc.page_entries_mut(1)[1].col = 1;
+    wc.page_entries_mut(1)[1].row = 0;
+    CHECK(wc.page_is_populated(1));
+}
+
+TEST_CASE_METHOD(PanelWidgetConfigFixture,
+                 "PanelWidgetConfig: page_entries reads a page past the last as empty",
+                 "[panel_widget][widget_config][multipage][1638]") {
+    json w0 = json::array({{{"id", "shutdown"}, {"enabled", true}, {"col", 0}, {"row", 0}}});
+    json w1 = json::array({{{"id", "thermistor:1"}, {"enabled", true}, {"col", 0}, {"row", 0}}});
+    setup_with_pages({{"p0", w0}, {"p1", w1}}, 0, 2);
+
+    PanelWidgetConfig wc("home", config);
+    wc.load();
+    REQUIRE(wc.page_count() == 2);
+    // The last page holds an entry, so a read past it that lands on a real
+    // page shows up as a non-empty result.
+    REQUIRE_FALSE(wc.page_entries(1).empty());
+
+    CHECK(wc.page_entries(2).empty());  // the next-page slot's index
+    CHECK(wc.page_entries(10).empty()); // further out
+}
+
+TEST_CASE_METHOD(PanelWidgetConfigFixture,
+                 "PanelWidgetConfig: place_entry moves an entry to another page",
+                 "[panel_widget][widget_config][multipage][1638]") {
+    json w0 = json::array({
+        {{"id", "shutdown"}, {"enabled", true}, {"col", 0}, {"row", 0}},
+        {{"id", "thermistor:1"}, {"enabled", true}, {"col", 1}, {"row", 0}},
+    });
+    json w1 = json::array({{{"id", "thermistor:2"}, {"enabled", true}, {"col", 0}, {"row", 0}}});
+    setup_with_pages({{"p0", w0}, {"p1", w1}}, 0, 2);
+
+    PanelWidgetConfig wc("home", config);
+    wc.load();
+    REQUIRE(pages_holding(wc, "thermistor:1") == std::vector<size_t>{0});
+
+    const int landed = wc.place_entry("thermistor:1", 1, 2, 1, 2, 2);
+
+    CHECK(pages_holding(wc, "thermistor:1") == std::vector<size_t>{1});
+    REQUIRE(landed == 1);
+    const auto& e = wc.page_entries(1)[1];
+    CHECK(e.id == "thermistor:1");
+    CHECK(e.enabled);
+    CHECK(e.col == 2);
+    CHECK(e.row == 1);
+    CHECK(e.colspan == 2);
+    CHECK(e.rowspan == 2);
+    // The origin page loses only the moved entry.
+    CHECK(wc.page_entries(0).front().id == "shutdown");
+    CHECK(wc.page_entries(1).front().id == "thermistor:2");
+}
+
+TEST_CASE_METHOD(PanelWidgetConfigFixture,
+                 "PanelWidgetConfig: place_entry updates an entry already on the page",
+                 "[panel_widget][widget_config][multipage][1638]") {
+    json w0 = json::array({{{"id", "shutdown"}, {"enabled", true}, {"col", 0}, {"row", 0}}});
+    json w1 = json::array({
+        {{"id", "thermistor:1"}, {"enabled", false}, {"col", -1}, {"row", -1}},
+        {{"id", "thermistor:2"}, {"enabled", true}, {"col", 0}, {"row", 0}},
+    });
+    setup_with_pages({{"p0", w0}, {"p1", w1}}, 0, 2);
+
+    PanelWidgetConfig wc("home", config);
+    wc.load();
+    REQUIRE(wc.page_entries(1).size() == 2);
+    REQUIRE_FALSE(wc.page_entries(1)[0].enabled);
+
+    const int landed = wc.place_entry("thermistor:1", 1, 3, 2, 2, 1);
+
+    CHECK(landed == 0);
+    CHECK(wc.page_entries(1).size() == 2); // updated where it stands, not appended
+    CHECK(pages_holding(wc, "thermistor:1") == std::vector<size_t>{1});
+    const auto& e = wc.page_entries(1)[0];
+    CHECK(e.id == "thermistor:1");
+    CHECK(e.enabled);
+    CHECK(e.col == 3);
+    CHECK(e.row == 2);
+    CHECK(e.colspan == 2);
+    CHECK(e.rowspan == 1);
+}
+
+TEST_CASE_METHOD(PanelWidgetConfigFixture,
+                 "PanelWidgetConfig: place_entry creates an entry no page holds",
+                 "[panel_widget][widget_config][multipage][1638]") {
+    json w0 = json::array({{{"id", "shutdown"}, {"enabled", true}, {"col", 0}, {"row", 0}}});
+    json w1 = json::array({{{"id", "thermistor:2"}, {"enabled", true}, {"col", 0}, {"row", 0}}});
+    setup_with_pages({{"p0", w0}, {"p1", w1}}, 0, 2);
+
+    PanelWidgetConfig wc("home", config);
+    wc.load();
+    REQUIRE(pages_holding(wc, "thermistor:7").empty());
+
+    const int landed = wc.place_entry("thermistor:7", 1, 1, 0, 1, 1);
+
+    REQUIRE(landed == 1);
+    CHECK(pages_holding(wc, "thermistor:7") == std::vector<size_t>{1});
+    const auto& e = wc.page_entries(1)[1];
+    CHECK(e.id == "thermistor:7");
+    CHECK(e.enabled);
+    CHECK(e.col == 1);
+    CHECK(e.row == 0);
+    CHECK(e.colspan == 1);
+    CHECK(e.rowspan == 1);
+}
+
+TEST_CASE_METHOD(PanelWidgetConfigFixture,
+                 "PanelWidgetConfig: place_entry keeps the widget's config with it",
+                 "[panel_widget][widget_config][multipage][1638]") {
+    const json shutdown = json{{"id", "shutdown"}, {"enabled", true}, {"col", 0}, {"row", 0}};
+
+    SECTION("a moved entry brings its config") {
+        json w0 = json::array({shutdown,
+                               {{"id", "thermistor:1"},
+                                {"enabled", true},
+                                {"config", {{"sensor", "bed"}}},
+                                {"col", 1},
+                                {"row", 0}}});
+        setup_with_pages({{"p0", w0}, {"p1", json::array()}}, 0, 2);
+        PanelWidgetConfig wc("home", config);
+        wc.load();
+
+        const int landed = wc.place_entry("thermistor:1", 1, 0, 0, 1, 1);
+
+        REQUIRE(landed == 0);
+        CHECK(wc.page_entries(1)[0].config.value("sensor", "") == "bed");
+    }
+
+    SECTION("an entry on the landing page keeps its own config over a duplicate's") {
+        json w0 = json::array({shutdown,
+                               {{"id", "thermistor:1"},
+                                {"enabled", true},
+                                {"config", {{"sensor", "bed"}}},
+                                {"col", 1},
+                                {"row", 0}}});
+        json w1 = json::array({{{"id", "thermistor:1"},
+                                {"enabled", false},
+                                {"config", {{"sensor", "chamber"}}},
+                                {"col", -1},
+                                {"row", -1}}});
+        setup_with_pages({{"p0", w0}, {"p1", w1}}, 0, 2);
+        PanelWidgetConfig wc("home", config);
+        wc.load();
+
+        const int landed = wc.place_entry("thermistor:1", 1, 0, 0, 1, 1);
+
+        REQUIRE(landed == 0);
+        CHECK(wc.page_entries(1)[0].config.value("sensor", "") == "chamber");
+    }
+
+    SECTION("an unconfigured entry on the landing page takes a duplicate's config") {
+        json w0 = json::array({shutdown,
+                               {{"id", "thermistor:1"},
+                                {"enabled", true},
+                                {"config", {{"sensor", "bed"}}},
+                                {"col", 1},
+                                {"row", 0}}});
+        json w1 =
+            json::array({{{"id", "thermistor:1"}, {"enabled", false}, {"col", -1}, {"row", -1}}});
+        setup_with_pages({{"p0", w0}, {"p1", w1}}, 0, 2);
+        PanelWidgetConfig wc("home", config);
+        wc.load();
+
+        const int landed = wc.place_entry("thermistor:1", 1, 0, 0, 1, 1);
+
+        REQUIRE(landed == 0);
+        CHECK(wc.page_entries(1)[0].config.value("sensor", "") == "bed");
+    }
+}
+
+TEST_CASE_METHOD(PanelWidgetConfigFixture,
+                 "PanelWidgetConfig: place_entry leaves one entry per id across pages",
+                 "[panel_widget][widget_config][multipage][1638]") {
+    const json twin = json{{"id", "thermistor:1"}, {"enabled", false}, {"col", -1}, {"row", -1}};
+    json w0 = json::array({{{"id", "shutdown"}, {"enabled", true}, {"col", 0}, {"row", 0}}, twin});
+    json w1 = json::array({twin, {{"id", "thermistor:2"}, {"enabled", true}}});
+    json w2 = json::array({twin});
+    setup_with_pages({{"p0", w0}, {"p1", w1}, {"p2", w2}}, 0, 3);
+
+    PanelWidgetConfig wc("home", config);
+    wc.load();
+    // load() drops an id repeated within one page, so the landing page's own
+    // twin is added in memory.
+    wc.page_entries_mut(1).push_back({"thermistor:1", false, json::object(), -1, -1, 1, 1});
+    REQUIRE(pages_holding(wc, "thermistor:1") == std::vector<size_t>{0, 1, 1, 2});
+
+    const int landed = wc.place_entry("thermistor:1", 1, 0, 0, 1, 1);
+
+    CHECK(pages_holding(wc, "thermistor:1") == std::vector<size_t>{1});
+    REQUIRE(landed == 0);
+    CHECK(wc.page_entries(1)[0].is_placed());
+    CHECK(wc.page_entries(1).size() == 2); // the landing page's own twin is gone too
+    CHECK(wc.page_entries(2).empty());
+}
+
+TEST_CASE_METHOD(PanelWidgetConfigFixture,
+                 "PanelWidgetConfig: place_entry refuses a page past the last",
+                 "[panel_widget][widget_config][multipage][1638]") {
+    json w0 = json::array({
+        {{"id", "shutdown"}, {"enabled", true}, {"col", 0}, {"row", 0}},
+        {{"id", "thermistor:1"}, {"enabled", true}, {"col", 1}, {"row", 0}},
+    });
+    setup_with_pages({{"p0", w0}, {"p1", json::array()}}, 0, 2);
+
+    PanelWidgetConfig wc("home", config);
+    wc.load();
+    const auto page0_before = wc.page_entries(0);
+
+    CHECK(wc.place_entry("thermistor:1", 2, 0, 0, 1, 1) == -1);
+
+    CHECK(wc.page_count() == 2);
+    CHECK(wc.page_entries(0) == page0_before); // the entry was not taken from its page
+    CHECK(wc.page_entries(1).empty());
 }
 
 // ============================================================================

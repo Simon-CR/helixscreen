@@ -395,7 +395,7 @@ bool DisplayManager::init(const Config& config) {
     }
 
     // Initialize UI update queue for thread-safe async updates
-    // Must be done AFTER display is created - registers LV_EVENT_REFR_START handler
+    // Creates the queue's drain timer, which needs lv_init() but not a display
     helix::ui::update_queue_init();
 
 #ifdef HELIX_DISPLAY_SDL

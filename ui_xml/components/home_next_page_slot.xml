@@ -1,0 +1,13 @@
+<?xml version="1.0"?>
+<!-- Copyright (C) 2025-2026 356C LLC -->
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<!-- The tile past the last home page, below the page cap: the drop target that adds a
+     page. An edit session carries a dragged widget onto next_page_container like any
+     page, and a drop there creates the page. -->
+<component>
+  <view extends="lv_obj"
+        width="100%" height="100%" style_pad_all="0" style_border_width="0" style_bg_opa="0" scrollable="false"
+        event_bubble="true">
+    <home_page_container name="next_page_container"/>
+  </view>
+</component>

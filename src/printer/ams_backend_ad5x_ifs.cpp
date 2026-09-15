@@ -1128,8 +1128,8 @@ void AmsBackendAd5xIfs::update_slot_from_state(int slot_index) {
     // Color: read the string through the shared lane grammar. observed_color
     // is what this call read out of colors_[idx], and it is the ONLY
     // firmware-truth colour in scope below - entry->info.color_rgb stops being
-    // one the moment apply_overrides() has run over this persistent SlotInfo
-    // once.
+    // one the moment apply_resolved_lane() has run over this persistent
+    // SlotInfo once.
     //
     // colors_[idx] is not guaranteed to be six hex digits: parse_adventurer_json
     // stores ffmColorN as the printer sent it, minus a leading '#', and the
@@ -1187,9 +1187,10 @@ void AmsBackendAd5xIfs::update_slot_from_state(int slot_index) {
     // Reverse tool mapping: find first tool that maps to this port
     entry->info.mapped_tool = find_first_tool_for_port(slot_index + 1);
 
-    // External-edit detection MUST run BEFORE apply_overrides: it compares a
-    // firmware reading against the last firmware baseline, and apply_overrides
-    // masks entry->info with the (possibly stale) override.
+    // External-edit detection MUST run BEFORE apply_resolved_lane: it compares
+    // a firmware reading against the last firmware baseline, and
+    // apply_resolved_lane overwrites entry->info with the lane's resolved
+    // answer, in which a declared field outranks this frame's vendor reading.
     //
     // observed_color is nullopt whenever this call read no colour at all: an
     // empty colors_[idx] (parse_save_variables / handle_status_update run
@@ -1208,9 +1209,9 @@ void AmsBackendAd5xIfs::update_slot_from_state(int slot_index) {
     check_external_type_change(slot_index, materials_[idx], observed_color, port_presence_[idx]);
 
     // Translate this frame's signal into the lane source model. Every value
-    // read here is one this call produced, never entry->info: apply_overrides
-    // rewrites that struct in place, so reading it back files the override
-    // store's content as something the board reported. What makes this correct
+    // read here is one this call produced, never entry->info:
+    // apply_resolved_lane rewrites that struct in place, so reading it back
+    // files a declared value as something the board reported. What makes this correct
     // is the values, not the position - the same block one line lower, reading
     // entry->info, would launder every user edit into a vendor reading.
     {
@@ -1239,8 +1240,8 @@ void AmsBackendAd5xIfs::update_slot_from_state(int slot_index) {
     // value read here. Of the sources, a DECLARED field outranks the vendor
     // cache this frame just filed, and a merely remembered one does not.
     // Callers hold mutex_, which also covers overrides_ writes from
-    // on_started() and set_slot_info(); see apply_overrides() below for the
-    // invariant.
+    // on_started() and set_slot_info(); apply_resolved_lane() requires that
+    // lock, as its declaration in ams_backend.h states.
     apply_resolved_lane(entry->info, slot_index);
 }
 
@@ -1272,8 +1273,8 @@ bool AmsBackendAd5xIfs::check_external_color_change(int slot_index,
     if (it == last_firmware_color_.end()) {
         // First observation for this slot — establish baseline. Even if the
         // override's color_rgb differs from firmware, the initial startup
-        // observation is NEVER an external-edit signal. apply_overrides will
-        // still run after us and the override wins.
+        // observation is NEVER an external-edit signal. apply_resolved_lane
+        // still runs after us and a declared colour outranks this reading.
         last_firmware_color_[slot_index] = color;
         spdlog::debug("{} Slot {} baseline color: #{:06X}", backend_log_tag(), slot_index, color);
         return false;
@@ -1314,9 +1315,10 @@ bool AmsBackendAd5xIfs::check_external_color_change(int slot_index,
     // CHANGE_ZCOLOR from any non-Helix path). Refresh the override's
     // color_rgb + material — preserving brand/spool_name/spoolman_id —
     // and push the result to lane_data so OrcaSlicer's MoonrakerPrinterAgent
-    // sees the new state. The caller's next apply_overrides() call lays the
-    // refreshed override back over entry->info; since color_rgb + material
-    // now match firmware-truth, that's a no-op for those fields.
+    // sees the new state. The caller's next apply_resolved_lane() lays the
+    // lane's resolved answer back over entry->info; the call below retracts
+    // the lane's declaration of the same fields, so color_rgb + material
+    // resolve to the firmware truth just accepted.
     sync_override_to_firmware_locked(slot_index, color,
                                      materials_[static_cast<size_t>(slot_index)]);
     return true;
@@ -1410,7 +1412,7 @@ bool AmsBackendAd5xIfs::check_external_type_change(int slot_index,
 
     // OverwriteAlways mirror skips user-locked material (#965), so a genuine
     // user choice is preserved; a stale auto-mirror material is refreshed so
-    // the new firmware type surfaces on the next apply_overrides().
+    // the new firmware type surfaces on the next apply_resolved_lane().
     sync_override_to_firmware_locked(slot_index, *observed_color, observed_material);
     return true;
 }
@@ -1538,9 +1540,10 @@ void AmsBackendAd5xIfs::release_color_material_locks_locked(int slot_index,
     ovr.user_locked_color = false;
     ovr.user_locked_material = false;
     if (disposition == ReleasedValues::Strip) {
-        // apply_overrides only masks a field the override still carries a real
-        // value for, so clearing these is what lets the firmware-truth
-        // color_rgb/material show through on this frame.
+        // These are the fields the persisted record stops carrying, so a
+        // restart reloads a record that declares nothing for them and the
+        // firmware-truth color_rgb/material resolve. The live lane's own
+        // declaration is retracted below.
         ovr.color_set = false;
         ovr.color_rgb = 0;
         ovr.color_name.clear();
@@ -1588,8 +1591,8 @@ void AmsBackendAd5xIfs::release_locked_override_keep_identity_locked(int slot_in
     // (firmware truth wins), but the firmware can't carry brand/spool_name/
     // spoolman_id/weights — those are the user's identity metadata and must
     // survive a routine physical load (Bug B / #981). Release the locks + strip
-    // the firmware-carryable fields so apply_overrides stops masking firmware
-    // truth for color/material, but keep the identity fields. When there is no
+    // the firmware-carryable fields so the lane stops declaring color/material
+    // and firmware truth resolves, but keep the identity fields. When there is no
     // identity to preserve, fall back to a full erase.
     auto it = overrides_.find(slot_index);
     if (it == overrides_.end())
@@ -2842,8 +2845,9 @@ AmsError AmsBackendAd5xIfs::set_slot_info(int slot_index, const SlotInfo& info, 
         //
         //   2. User metadata the firmware can't carry (brand, spool_name,
         //      spoolman_id, weights, color_name) lands in the Moonraker DB
-        //      lane_data namespace via the override store. apply_overrides
-        //      layers these back over firmware data on every parse.
+        //      lane_data namespace via the override store. The lane resolves
+        //      these back over firmware data on every parse, through
+        //      apply_resolved_lane().
         //
         // Color + material go into BOTH stores so an external writer
         // (Orca via its own MoonrakerPrinterAgent, another HelixScreen
@@ -2978,8 +2982,9 @@ void AmsBackendAd5xIfs::update_slot_weight_impl(int slot_index, float remaining_
                 entry->info.total_weight_g = total_weight_g;
         }
         // A slot with no prior override gets a weight-only record (material
-        // empty, color_set=false, locks false), so apply_overrides layers only
-        // the weight. An existing override keeps every other field intact.
+        // empty, color_set=false, locks false), so the lane declares only the
+        // weight. An existing override (e.g. a user-locked material edit) keeps
+        // every other field intact.
         ovr_to_save = helix::ams::stage_weight_override(overrides_, slot_index, remaining_weight_g,
                                                         total_weight_g);
     }
@@ -3970,8 +3975,8 @@ bool AmsBackendAd5xIfs::on_gcode_response_line(const std::string& line) {
         // the AD5X LCD, Mainsail, or zmod's COLOR/material macro. If the slot
         // still carries a user-locked override from an earlier HelixScreen edit,
         // sync_override_to_firmware_locked() skips the locked color/material
-        // (the #965 guard) and apply_overrides() keeps re-painting that stale
-        // value on every parse — so the user's new firmware color/type never
+        // (the #965 guard) and apply_resolved_lane() keeps re-painting that
+        // stale declared value on every parse — so the user's new firmware color/type never
         // surfaces (raza616, #981: set yellow PLA on the zmod screen, HelixScreen
         // kept showing the previously Helix-set white PETG). The user has plainly
         // overridden their earlier choice, so drop the stale override and let
@@ -4121,9 +4126,10 @@ bool AmsBackendAd5xIfs::on_gcode_response_line(const std::string& line) {
 
                         // Refresh a pre-existing NON-locked auto-mirror override
                         // to match what we just wrote. Without this, the values
-                        // above land in colors_/materials_ but apply_overrides
-                        // (below, via update_slot_from_state) re-masks them with
-                        // the override's stale color_rgb / material — so the
+                        // above land in colors_/materials_ but
+                        // apply_resolved_lane (below, via update_slot_from_state)
+                        // re-paints them from the lane's stale declared
+                        // color_rgb / material — so the
                         // just-tapped value never surfaces. Concretely: change a
                         // slot's type then its color from back-to-back COLOR
                         // macros and the new color never appeared, because an
@@ -4137,8 +4143,9 @@ bool AmsBackendAd5xIfs::on_gcode_response_line(const std::string& line) {
                         // stream with echoed CHANGE_ZCOLOR button-definition
                         // lines on every prompt render — syncing on each would
                         // fabricate auto-mirror overrides for slots the user
-                        // never edited. When no override exists, apply_overrides
-                        // is already a no-op and firmware truth shows unaided.
+                        // never edited. When no override exists, the lane
+                        // declares nothing for those fields and firmware truth
+                        // shows unaided.
                         //
                         // The #981 clear above erases any locked override before
                         // we get here, so a surviving entry is auto-mirror
@@ -4159,10 +4166,11 @@ bool AmsBackendAd5xIfs::on_gcode_response_line(const std::string& line) {
                     }
 
                     if (mutated) {
-                        // Re-run apply_overrides + slot-state derivation so the
-                        // UI-visible SlotInfo picks up the new values. If a
-                        // locked override was cleared above, apply_overrides is
-                        // now a no-op and the firmware-truth arrays win.
+                        // Re-run the lane resolve + slot-state derivation so
+                        // the UI-visible SlotInfo picks up the new values. If a
+                        // locked override was cleared above, the lane declares
+                        // nothing for those fields and the firmware-truth
+                        // arrays win.
                         update_slot_from_state(slot0);
                     }
                 }

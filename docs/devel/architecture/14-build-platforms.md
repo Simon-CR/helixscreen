@@ -172,11 +172,33 @@ itself or supports no software rotation at all:
 | SDL | yes | yes | driver calls `lv_draw_sw_rotate()` |
 | DRM dumb buffer | yes | **no** | hardware plane rotation, or the CPU reversal in `patches/lvgl-drm-flush-rotation.patch`, which covers 180 only |
 
-Hardware plane rotation is refused outright, even where the dumb-buffer driver's plane
-supports it: the plane rotates the picture but not the touch frame, since LVGL transforms
-pointer input solely from its own display rotation, which the plane path clears
+The scanout plane carries 180 when its rotation mask advertises it (the Pi 3B's vc4 plane,
+mask `0x35`). The plane rotates the picture but not the touch frame, since LVGL transforms
+pointer input solely from its own display rotation and the plane path clears that, so
+`DisplayBackendDRM` chains the transform onto the read callback of every panel-attached
+absolute pointer it opens
 ([`include/drm_rotation_strategy.h#plane_may_own_rotation`](../../../include/drm_rotation_strategy.h)).
-That covers every Pi and x86 DRM build, so those fall to the fbdev backend and get 180 only.
+
+Whether a pointer device turns is decided by what the device is, read from its own evdev
+capabilities with the same rule mouse auto-detection uses
+([`include/input_device_scanner.h#PointerKind`](../../../include/input_device_scanner.h)),
+never by which backend member holds it. Both the DRM and fbdev backends front every pointer
+they open with one hook
+([`include/pointer_frame_hook.h#pointer_transform_for`](../../../include/pointer_frame_hook.h)):
+
+| Device | Its driver reports | Under a scanout plane | Under LVGL's rotation |
+|---|---|---|---|
+| touchscreen (ABS axes or `BTN_TOUCH`) | where on the panel it was touched | turned with the plane | turned by LVGL |
+| mouse, trackpad (`REL_X` + `REL_Y`) | the position the user moves it to on the picture | never turned | handed to LVGL as the point LVGL's rotation carries back onto that position |
+
+Cursor direction is judged with the picture upright, the way a rotated install is used.
+lv_evdev bounds a relative position by the unrotated display, which at 90 and 270 is not the
+picture, so the hook reads the position before that bound and bounds it by the picture instead.
+
+90 and 270 never go to the plane, whatever its mask advertises: the plane is programmed at
+the panel's own width and height and LVGL keeps laying out unrotated
+([`include/drm_rotation_strategy.h#choose_drm_rotation_strategy`](../../../include/drm_rotation_strategy.h)).
+A board whose plane cannot carry the angle falls to the fbdev backend.
 
 **A panel needing 90 or 270 belongs on the fbdev binary.** Pi targets ship two
 ([`mk/pi-dual-link.mk`](../../../mk/pi-dual-link.mk)): `helix-screen` for DRM and

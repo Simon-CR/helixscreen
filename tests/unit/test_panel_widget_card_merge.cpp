@@ -20,6 +20,7 @@
  */
 
 #include "../test_fixtures.h"
+#include "../test_helpers/scoped_widget_factory.h"
 #include "config.h"
 #include "grid_layout.h"
 #include "helix-xml/src/xml/lv_xml.h"
@@ -36,6 +37,7 @@
 #include "../catch_amalgamated.hpp"
 
 using namespace helix;
+using helix_test::ScopedWidgetFactory;
 
 namespace {
 
@@ -53,25 +55,10 @@ struct StubWidget : helix::PanelWidget {
     }
 };
 
-/// Swap a registry factory for the duration of a test and restore it after.
-class ScopedStubFactory {
-  public:
-    explicit ScopedStubFactory(const char* id) : id_(id) {
-        const auto* def = helix::find_widget_def(id);
-        REQUIRE(def != nullptr);
-        original_ = def->factory;
-        helix::register_widget_factory(id, [](const std::string& wid) {
-            return std::unique_ptr<PanelWidget>(new StubWidget(wid));
-        });
-    }
-    ~ScopedStubFactory() {
-        helix::register_widget_factory(id_, original_);
-    }
-
-  private:
-    const char* id_;
-    WidgetFactory original_;
-};
+/// A registry factory building a StubWidget for the id it is asked for.
+WidgetFactory stub_factory() {
+    return [](const std::string& wid) { return std::unique_ptr<PanelWidget>(new StubWidget(wid)); };
+}
 
 /// Every direct child of the container that is not one of the widget objects is
 /// a card background — populate_widgets() names each widget object after its
@@ -188,8 +175,8 @@ TEST_CASE_METHOD(XMLTestFixture, "Card merge: adjacent aligned widgets share one
         "<component><view extends=\"lv_obj\" width=\"100%\" height=\"100%\"/></component>");
     REQUIRE(theme_manager_get_spacing("space_xs") > 0);
 
-    ScopedStubFactory a("shutdown");
-    ScopedStubFactory b("lock");
+    ScopedWidgetFactory a("shutdown", stub_factory());
+    ScopedWidgetFactory b("lock", stub_factory());
 
     // Two whole-cell widgets side by side, both on cell boundaries.
     nlohmann::json widgets = {{{"id", "shutdown"},
@@ -230,8 +217,8 @@ TEST_CASE_METHOD(XMLTestFixture, "Card merge: a widget on an odd track still get
     REQUIRE(def->supports_half_col);
     REQUIRE(TPC > 1);
 
-    ScopedStubFactory a("shutdown");
-    ScopedStubFactory b("lock");
+    ScopedWidgetFactory a("shutdown", stub_factory());
+    ScopedWidgetFactory b("lock", stub_factory());
 
     // shutdown sits one track right of the cell boundary; lock is aligned and
     // close enough that a truncated card would land on top of it.
@@ -272,7 +259,7 @@ TEST_CASE_METHOD(XMLTestFixture, "Card merge: a widget 1.5 cells wide gets a car
     REQUIRE(def->merges_into_card);
     REQUIRE(def->effective_max_colspan() >= 3);
 
-    ScopedStubFactory a("clock");
+    ScopedWidgetFactory a("clock", stub_factory());
 
     nlohmann::json widgets = {{{"id", "clock"},
                                {"enabled", true},

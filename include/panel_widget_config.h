@@ -35,6 +35,13 @@ struct PanelWidgetEntry {
         return col >= 0 && row >= 0;
     }
 
+    /// True when this entry is enabled AND holds a grid cell, which is what
+    /// puts the widget on a dashboard. An entry enabled at (-1,-1), or disabled
+    /// while keeping coordinates, draws nothing.
+    bool is_placed() const {
+        return enabled && has_grid_position();
+    }
+
     /// Turn this entry off AND surrender its grid cell.
     ///
     /// These belong together. save() persists col/row for every entry whether
@@ -42,8 +49,7 @@ struct PanelWidgetEntry {
     /// a claim on a cell nothing is drawing in - and the anchored pass, which
     /// looks entries up by id, could then hand that cell to a widget the
     /// manager synthesizes (the temporary firmware_restart tile), knocking a
-    /// user-anchored widget off its saved rectangle (#1414). Three call sites
-    /// wrote this rule by hand; one of them forgot the coordinates.
+    /// user-anchored widget off its saved rectangle (#1414).
     void disable_and_unplace() {
         enabled = false;
         col = -1;
@@ -104,12 +110,20 @@ class PanelWidgetConfig {
         return main_page_index_;
     }
 
-    /// Get widget entries for a specific page (const)
+    /// Get widget entries for a specific page (const). A page index past the
+    /// last page reads as an empty page.
     const std::vector<PanelWidgetEntry>& page_entries(size_t page_index) const {
+        if (page_index >= pages_.size()) {
+            static const std::vector<PanelWidgetEntry> kEmpty;
+            return kEmpty;
+        }
         return pages_[page_index].widgets;
     }
 
-    /// Get mutable widget entries for a specific page
+    /// Get mutable widget entries for a specific page.
+    ///
+    /// Precondition: @p page_index < page_count(). Unlike page_entries(), an
+    /// index past the last page is not checked: there is no page to write to.
     std::vector<PanelWidgetEntry>& page_entries_mut(size_t page_index) {
         return pages_[page_index].widgets;
     }
@@ -124,12 +138,43 @@ class PanelWidgetConfig {
         return pages_;
     }
 
+    /// True when page @p page_index holds at least one placed entry
+    /// (PanelWidgetEntry::is_placed). A page index past the last page reads as
+    /// unpopulated.
+    bool page_is_populated(size_t page_index) const;
+
+    /// Place widget @p id on page @p page_index at (@p col, @p row), spanning
+    /// @p colspan x @p rowspan, enabled. Returns the entry's index on that page,
+    /// or -1 when @p page_index is past the last page, in which case nothing
+    /// changes.
+    ///
+    /// Leaves exactly one entry named @p id across all pages. The first entry
+    /// with that id on the landing page is updated in place; with none there,
+    /// the entry is created on it. Every other entry with that id, on any page,
+    /// is removed: two entries with one id render the widget twice, and
+    /// delete_entry() only removes the first.
+    ///
+    /// Per-widget config belongs to the widget, not to the page it sat on. The
+    /// kept entry's own config stays; an entry without one takes the first
+    /// non-empty config among the removed entries, in page order.
+    ///
+    /// The rectangle is written as given: fitting it to the grid is the
+    /// caller's job. Does not save(). @p id is taken by value because callers
+    /// pass the id of an entry this call may erase.
+    int place_entry(std::string id, size_t page_index, int col, int row, int colspan, int rowspan);
+
+    /// True while another page fits under the cap (MAX_PAGES).
+    bool can_add_page() const {
+        return pages_.size() < MAX_PAGES;
+    }
+
     /// Add a new empty page. Returns the index of the new page, or -1 if at cap.
     int add_page(const std::string& name = "");
 
-    /// Remove a page by index. Cannot remove the last page.
-    /// If the removed page is the main page, main_page_index resets to 0.
-    /// Returns true if removed.
+    /// Remove a page by index. Returns true if removed.
+    /// Refuses, returning false, the last remaining page, the main page and an
+    /// index past the last page. Removing a page before the main page shifts
+    /// main_page_index down with it.
     bool remove_page(size_t page_index);
 
     /// Generate a unique page ID

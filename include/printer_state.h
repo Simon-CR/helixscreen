@@ -182,8 +182,8 @@ const char* print_job_state_to_string(PrintJobState state);
  * - LVGL subjects for UI-bound data (automatic reactive updates)
  * - JSON cache for complex data (file lists, capabilities, metadata)
  *
- * @note Thread Safety: Public setters that update LVGL subjects (set_printer_capabilities,
- *       set_klipper_version, etc.) use lv_async_call internally to defer updates to the
+ * @note Thread Safety: Public setters that update LVGL subjects (set_klipper_version,
+ *       set_printer_connection_state, etc.) use queue_update internally to defer updates to the
  *       main thread. This allows safe calls from WebSocket callbacks without risking
  *       "Invalidate area not allowed during rendering" assertions.
  */
@@ -1524,7 +1524,7 @@ class PrinterState {
     /**
      * @brief Set Klipper firmware state (thread-safe, async)
      *
-     * Updates klippy_state subject via lv_async_call to ensure thread safety.
+     * Updates klippy_state subject via queue_update to ensure thread safety.
      * Called when Moonraker sends klippy state notifications from WebSocket
      * callbacks (notify_klippy_ready, notify_klippy_disconnected).
      *
@@ -2531,11 +2531,11 @@ class PrinterState {
     bool timelapse_default_enabled_ = false;
 
     // ============================================================================
-    // Thread-safe internal methods (called via lv_async_call from main thread)
+    // Main-thread internal methods (run from queued callbacks)
     // ============================================================================
     // These methods contain the actual LVGL subject updates and must only be called
-    // from the main thread. The public methods (set_hardware, etc.) use
-    // lv_async_call to defer to these internal methods, ensuring thread safety.
+    // from the main thread. Public setters such as set_klipper_version() reach them
+    // through queue_update (helix::async::call_method), ensuring thread safety.
 
     friend class PrinterStateTestAccess;
     friend class PrinterTemperatureStateTestAccess;

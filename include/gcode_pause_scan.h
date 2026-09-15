@@ -19,8 +19,9 @@
 
 #pragma once
 
+#include "utils/decimal_parse.h"
+
 #include <cstdint>
-#include <limits>
 #include <optional>
 #include <string_view>
 #include <system_error>
@@ -58,70 +59,6 @@ inline bool first_word_is(std::string_view line, std::string_view word) {
         }
     }
     return true;
-}
-
-/// Result of parse_decimal(), matching std::from_chars's {ptr, ec} contract:
-/// ec == std::errc{} on success, with ptr past the consumed characters. No
-/// recognizable number: ptr == first, ec == std::errc::invalid_argument.
-/// A recognizable number too large for float: ptr past the consumed
-/// characters (as on success) but value is left unmodified and
-/// ec == std::errc::result_out_of_range.
-struct DecimalParseResult {
-    const char* ptr;
-    std::errc ec;
-};
-
-/// Locale-independent float parse over [first, last), matching
-/// std::from_chars<float>'s grammar and error reporting: an optional '-' (a
-/// leading '+' is not part of the grammar and is rejected, same as
-/// std::from_chars), a digit sequence, an optional '.' with a digit
-/// sequence, and no exponent -- no slicer emits one for an M73 P value. A
-/// magnitude too large for float is rejected with result_out_of_range,
-/// leaving value unmodified, the same as std::from_chars. GCC 10 (AD5M) has
-/// no std::from_chars for floats and Apple libc++ deletes that overload, so
-/// this reads ASCII digits directly instead of going through strtof/atof,
-/// which stays correct wherever LC_NUMERIC is not "." (this process only
-/// ever setlocale()s LC_TIME, but a parser that does not touch the C locale
-/// at all is independent of that by construction rather than by convention).
-inline DecimalParseResult parse_decimal(const char* first, const char* last, float& value) {
-    const char* p = first;
-    bool negative = false;
-    if (p != last && *p == '-') {
-        negative = true;
-        ++p;
-    }
-
-    const char* int_start = p;
-    double whole = 0.0;
-    while (p != last && *p >= '0' && *p <= '9') {
-        whole = whole * 10.0 + static_cast<double>(*p - '0');
-        ++p;
-    }
-    const bool have_int_digits = (p != int_start);
-
-    double frac = 0.0;
-    bool have_frac_digits = false;
-    if (p != last && *p == '.') {
-        ++p;
-        const char* frac_start = p;
-        double scale = 1.0;
-        while (p != last && *p >= '0' && *p <= '9') {
-            scale *= 10.0;
-            frac += static_cast<double>(*p - '0') / scale;
-            ++p;
-        }
-        have_frac_digits = (p != frac_start);
-    }
-
-    if (!have_int_digits && !have_frac_digits) {
-        return {first, std::errc::invalid_argument};
-    }
-    const double magnitude = whole + frac;
-    if (magnitude > static_cast<double>(std::numeric_limits<float>::max())) {
-        return {p, std::errc::result_out_of_range};
-    }
-    value = static_cast<float>(negative ? -magnitude : magnitude);
-    return {p, std::errc{}};
 }
 
 } // namespace pause_scan_detail
@@ -188,7 +125,6 @@ inline std::optional<PauseKind> classify_pause_command(std::string_view line) {
 /// ignored — P is the only word that feeds display_status.progress.
 inline std::optional<float> m73_progress_percent(std::string_view line) {
     using pause_scan_detail::first_word_is;
-    using pause_scan_detail::parse_decimal;
     if (!first_word_is(line, "m73")) {
         return std::nullopt;
     }

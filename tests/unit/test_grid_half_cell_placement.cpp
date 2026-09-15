@@ -23,6 +23,7 @@
  */
 
 #include "../test_fixtures.h"
+#include "../test_helpers/scoped_widget_factory.h"
 #include "config.h"
 #include "grid_edit_mode.h"
 #include "grid_layout.h"
@@ -42,6 +43,7 @@
 #include "../catch_amalgamated.hpp"
 
 using namespace helix;
+using helix_test::ScopedWidgetFactory;
 
 namespace {
 
@@ -171,27 +173,12 @@ struct StubWidget : PanelWidget {
     std::string id_;
 };
 
-/// Swap a registry factory for the duration of a test and restore it after.
-/// Mirrors ScopedFactoryOverride in test_panel_widget_portrait_span.cpp; the
-/// two files compile separately under the amalgamated build.
-class ScopedStubFactory {
-  public:
-    explicit ScopedStubFactory(const char* id) : id_(id) {
-        const auto* def = find_widget_def(id);
-        REQUIRE(def != nullptr);
-        original_ = def->factory;
-        register_widget_factory(id, [id](const std::string&) -> std::unique_ptr<PanelWidget> {
-            return std::make_unique<StubWidget>(id);
-        });
-    }
-    ~ScopedStubFactory() {
-        register_widget_factory(id_, original_);
-    }
-
-  private:
-    const char* id_;
-    WidgetFactory original_;
-};
+/// A registry factory building a StubWidget for the id it is asked for.
+WidgetFactory stub_factory() {
+    return [](const std::string& id) -> std::unique_ptr<PanelWidget> {
+        return std::make_unique<StubWidget>(id);
+    };
+}
 
 nlohmann::json entry(const char* id, int col, int row, int colspan, int rowspan) {
     return {{"id", id},   {"enabled", true},    {"col", col},
@@ -214,9 +201,9 @@ class HalfCellPlacementFixture : public XMLTestFixture {
 TEST_CASE_METHOD(HalfCellPlacementFixture,
                  "Auto-place never straddles a cell after a half-cell resize",
                  "[panel_widget][manager][half_cell][regression][1126]") {
-    ScopedStubFactory tips("tips");     // filler, anchored
-    ScopedStubFactory clock("clock");   // declares half-cell support
-    ScopedStubFactory macros("macros"); // declares none — the widget at risk
+    ScopedWidgetFactory tips("tips", stub_factory());     // filler, anchored
+    ScopedWidgetFactory clock("clock", stub_factory());   // declares half-cell support
+    ScopedWidgetFactory macros("macros", stub_factory()); // declares none: the widget at risk
 
     lv_obj_t* container = lv_obj_create(test_screen());
     lv_obj_set_size(container, 800, 480);
@@ -289,7 +276,7 @@ TEST_CASE_METHOD(HalfCellPlacementFixture,
     // The other way in: a layout that already holds an odd origin — written by
     // a build where the widget declared half-cell support, or by hand. The load
     // path honoured it verbatim, so the straddle survived every restart.
-    ScopedStubFactory macros("macros");
+    ScopedWidgetFactory macros("macros", stub_factory());
 
     lv_obj_t* container = lv_obj_create(test_screen());
     lv_obj_set_size(container, 800, 480);

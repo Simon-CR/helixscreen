@@ -11,6 +11,7 @@
 #include "ams_backend_mock.h"
 #include "ams_state.h"
 #include "http_executor.h"
+#include "thumbnail_processor.h"
 
 #include <spdlog/spdlog.h>
 
@@ -355,9 +356,9 @@ static std::vector<MockScenario> build_scenarios() {
     // Not a printer state — a synthetic HTTP-lane busy condition for testing
     // wait_idle()'s "which counter was busy" reporting deterministically.
     // A burst of subject changes makes UpdateQueue's `pending_` nonzero for
-    // at most one LVGL tick (~16ms): process_pending() drains the entire
-    // batch every tick, so there's no way to widen that window from the
-    // subject side. HttpExecutor::inflight() instead stays incremented for
+    // at most one drain period (LV_DEF_REFR_PERIOD, 33 ms): process_pending()
+    // drains the entire batch each time, so there's no way to widen that window
+    // from the subject side. HttpExecutor::inflight() instead stays incremented for
     // the full wall-clock duration of the submitted job body (see
     // http_executor.h's `submit()` — incremented there, decremented only on
     // completion), so a deliberately slow job gives wait_idle(timeout=0.0) a
@@ -372,6 +373,18 @@ static std::vector<MockScenario> build_scenarios() {
                                  std::this_thread::sleep_for(std::chrono::milliseconds(2000));
                              });
                          }});
+
+    // --- thumbnail_busy ---
+    // Same purpose as http_busy above, for ThumbnailProcessor's worker pool
+    // instead of HttpExecutor's. submit_test_task() bypasses PNG decoding
+    // entirely, so the 2s window is exact rather than however long a real
+    // thumbnail happens to take on this machine.
+    scenarios.push_back(
+        {"thumbnail_busy",
+         "Synthetic ThumbnailProcessor busy state (test-only, not a printer condition)", []() {
+             helix::ThumbnailProcessor::instance().submit_test_task(
+                 []() { std::this_thread::sleep_for(std::chrono::milliseconds(2000)); });
+         }});
 
     // --- clog / flow detection -------------------------------------------
     //

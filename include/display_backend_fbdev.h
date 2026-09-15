@@ -11,6 +11,7 @@
 #ifdef HELIX_DISPLAY_FBDEV
 
 #include "display_backend.h"
+#include "pointer_frame_hook.h"
 #include "touch_calibration.h"
 #include "touch_calibration_wrapper.h"
 
@@ -199,6 +200,11 @@ class DisplayBackendFbdev : public DisplayBackend {
 
     /// Calibration context for touch input (member to avoid memory leak)
     helix::CalibrationContext calibration_context_;
+
+    /// Fronts the touch device and the mouse, each with the evdev read callback
+    /// it replaced. LVGL rotates every pointer sample by the display's rotation,
+    /// which a relative pointer's position must not get.
+    helix::PointerFrameHook pointer_frames_;
 
     /// True once install_calibration_wrapper() has wired calibrated_read_cb onto
     /// touch_ with user_data = &calibration_context_. Tracks install state so

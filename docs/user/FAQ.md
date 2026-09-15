@@ -278,7 +278,7 @@ Features include visual slot configuration with tool badges, endless spool arrow
 
 To customize:
 1. **Long-press the widget grid** to enter Edit Mode
-2. **Drag** a widget to move it, or drag its edges to resize it
+2. **Tap** a widget to select it, then press it again and **drag** it to move it, or drag its edges to resize it. Drag a widget across the page border to move it to another page
 3. **Long-press an empty area** — or tap **+** on the navigation bar — to open the Widget Catalog and add something
 4. Select a widget and tap the **trash icon** to remove it, or the **gear icon** to configure it
 5. Tap **Done** when you are finished

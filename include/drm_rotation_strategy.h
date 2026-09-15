@@ -17,12 +17,14 @@
 /**
  * @brief Strategy for applying display rotation on DRM backend
  *
- * HARDWARE is reachable only on a plane whose rotation mask advertises the angle,
- * and only under the dumb-buffer driver: the EGL build compiles the plane rotation
- * entry points out, so it reports no hardware rotation at all. SOFTWARE is chosen
- * for a plane that cannot honour the request, which DisplayManager answers by
- * swapping in fbdev before this backend is asked to apply it - so on any board
- * without a capable plane, every nonzero angle still rotates through fbdev.
+ * HARDWARE is reachable only for 180°, only on a plane whose rotation mask
+ * advertises it, and only under the dumb-buffer driver: the EGL build compiles the
+ * plane rotation entry points out, so it reports no hardware rotation at all. 90°
+ * and 270° swap width and height, which the plane path accounts for nowhere, so
+ * they are always SOFTWARE. SOFTWARE is chosen for a request the plane cannot
+ * honour, which DisplayManager answers by swapping in fbdev before this backend is
+ * asked to apply it - so on any board without a capable plane, every nonzero angle
+ * still rotates through fbdev.
  */
 enum class DrmRotationStrategy {
     NONE,     ///< No rotation needed (0°)
@@ -37,7 +39,9 @@ enum class DrmRotationStrategy {
  * Examines the requested rotation against the DRM plane's supported
  * rotation bitmask to choose the best strategy:
  * - 0° always returns NONE (no rotation needed)
- * - If the plane supports the requested angle, returns HARDWARE
+ * - 90° and 270° always return SOFTWARE: the plane keeps the panel's own width
+ *   and height, so it cannot carry an angle that swaps them
+ * - 180° returns HARDWARE if the plane supports it
  * - Otherwise returns SOFTWARE (LVGL matrix rotation fallback)
  *
  * @param requested_drm_rot  DRM_MODE_ROTATE_* constant for the desired angle
@@ -78,6 +82,23 @@ struct PointerXY { // NAMESPACE_OK: matches DrmRotationStrategy, this file's glo
 PointerXY rotate_pointer_for_plane(PointerXY p, int degrees, int32_t panel_w, int32_t panel_h);
 
 /**
+ * @brief Map a point on a picture LVGL rotated back onto the unrotated display
+ *
+ * The inverse of `lv_display_rotate_point()`. LVGL turns every pointer sample it
+ * reads by its display rotation, so a sample handed over as this result lands
+ * back on @p p. `tests/unit/test_display_rotation_source.cpp` asserts the round
+ * trip at every angle.
+ *
+ * @param p        point in the rotated picture's frame
+ * @param degrees  angle LVGL rotates the display by: 0, 90, 180 or 270
+ * @param panel_w  display width before rotation (LVGL's raw hor_res)
+ * @param panel_h  display height before rotation (LVGL's raw ver_res)
+ * @return the point LVGL's rotation carries onto @p p; unchanged for any other angle
+ */
+// NAMESPACE_OK: matches rotate_pointer_for_plane, this file's existing global-scope API
+PointerXY unrotate_pointer_for_display(PointerXY p, int degrees, int32_t panel_w, int32_t panel_h);
+
+/**
  * @brief What LVGL should be told about rotation for a given strategy
  */
 enum class LvglRotationAction { // NAMESPACE_OK: matches DrmRotationStrategy, this file's existing
@@ -116,13 +137,16 @@ bool drm_rotation_needs_full_render(DrmRotationStrategy strategy);
  * Rotating the scanout plane rotates the picture but not the touch frame, since
  * LVGL transforms pointer input solely from its own display rotation and the
  * plane path clears that. `DisplayBackendDRM` closes the gap by chaining
- * rotate_pointer_for_plane() onto the pointer's read callback and reporting the
- * plane's angle from applied_rotation_degrees(), so the two transforms are
- * mutually exclusive and the touch pipeline still sees the angle the panel is
- * really at (prestonbrown/helixscreen#1275).
+ * rotate_pointer_for_plane() onto the read callback of every panel-attached
+ * absolute pointer it opens (helix::PointerFrameHook; a relative pointer's
+ * position is already on the picture the plane turns), and reporting the plane's angle from
+ * applied_rotation_degrees(), so the two transforms are mutually exclusive and
+ * the touch pipeline still sees the angle the panel is really at
+ * (prestonbrown/helixscreen#1275).
  *
- * A plane still only gets an angle its rotation mask advertises; everything else
- * falls to the software path.
+ * A plane still only gets an angle its rotation mask advertises, and never 90°
+ * or 270° (see choose_drm_rotation_strategy()); everything else falls to the
+ * software path.
  */
 // NAMESPACE_OK: matches choose_drm_rotation_strategy, this file's existing global-scope function
 bool plane_may_own_rotation();

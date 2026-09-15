@@ -24,6 +24,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdlib>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -642,14 +643,35 @@ class PrinterDiscovery {
             }
         }
 
+        // multiACE hangs ACE Pro units off a Snapmaker U1's four toolheads and
+        // registers a plain `ace` object, so it matches ACE detection above and
+        // outranks the U1 fallback below. Its slots live per unit under
+        // `aces[]`, not in the top-level `slots` array AmsBackendAce requires,
+        // so an ACE backend would attach and read nothing while the Snapmaker
+        // backend that drives those toolheads stayed suppressed. objects.list
+        // carries names without status, so the discriminator is co-presence:
+        // filament_detect is published by U1 firmware alone, and no ACE stack
+        // this chain matches runs on an unmodded U1. Yielding the printer back
+        // costs the ACE-specific affordances and keeps filament management
+        // (prestonbrown/helixscreen#1426). The object names stay recorded: the
+        // hardware really does carry them, and nothing subscribes them once the
+        // type is no longer ACE.
+        if (has_mmu_ && mmu_type_ == AmsType::ACE && has_snapmaker_) {
+            has_mmu_ = false;
+            spdlog::info("[PrinterDiscovery] ACE object alongside filament_detect: multiACE on a "
+                         "Snapmaker U1. Its slot shape is unreadable, so the Snapmaker backend "
+                         "keeps the printer.");
+        }
+
         // Collect all detected AMS systems
         detected_ams_systems_.clear();
 
         // Register the filament management backend. When a real MMU (AFC, Happy
         // Hare, etc.) is present, it always wins — even on Snapmaker U1 hardware
         // that also reports filament_detect. The Snapmaker backend is a basic
-        // 4-slot fallback for U1s without an aftermarket MMU. Toolchanger alone
-        // only handles tool switching, not filament management.
+        // 4-slot fallback for U1s without an aftermarket MMU, and for a U1 whose
+        // MMU is one we cannot read. Toolchanger alone only handles tool
+        // switching, not filament management.
         if (has_mmu_) {
             if (mmu_type_ == AmsType::HAPPY_HARE) {
                 detected_ams_systems_.push_back({AmsType::HAPPY_HARE, "Happy Hare"});
@@ -790,6 +812,49 @@ class PrinterDiscovery {
         read("stepper_y", "position_max", volume.y_max);
         read("stepper_z", "position_max", volume.z_max);
 
+        // The bed size a firmware's own config declares, where it declares one.
+        // Travel above also covers overtravel to a purge or nozzle-clean
+        // position, so it cannot stand for the bed. One row per firmware; a
+        // bed is declared only when both axes read as positive numbers. Macro
+        // variables reach configfile.settings as strings ("350").
+        struct DeclaredBedSource {
+            const char* section;
+            const char* x_key;
+            const char* y_key;
+        };
+        static constexpr DeclaredBedSource kDeclaredBedSources[] = {
+            // Creality K2 series
+            {"gcode_macro product_param", "variable_bed_size_x", "variable_bed_size_y"},
+        };
+        auto read_size = [](const nlohmann::json& section, const char* key, float& out) {
+            const auto v = section.find(key);
+            if (v == section.end()) {
+                return false;
+            }
+            if (v->is_number()) {
+                out = v->get<float>();
+                return out > 0.0f;
+            }
+            if (!v->is_string()) {
+                return false;
+            }
+            const std::string& text = v->get_ref<const std::string&>();
+            char* end = nullptr;
+            out = std::strtof(text.c_str(), &end);
+            return !text.empty() && end == text.c_str() + text.size() && out > 0.0f;
+        };
+        for (const auto& source : kDeclaredBedSources) {
+            const auto s = settings.find(source.section);
+            float x = 0.0f;
+            float y = 0.0f;
+            if (s != settings.end() && s->is_object() && read_size(*s, source.x_key, x) &&
+                read_size(*s, source.y_key, y)) {
+                volume.declared_bed_x = x;
+                volume.declared_bed_y = y;
+                break;
+            }
+        }
+
         // An all-zero volume is worse than none: build_volume_range heuristics
         // would score it against every printer's window. Only a real extent is
         // worth storing.
@@ -799,8 +864,9 @@ class PrinterDiscovery {
 
         build_volume_ = volume;
         spdlog::debug("[PrinterDiscovery] Build volume from config: X[{:.0f},{:.0f}] "
-                      "Y[{:.0f},{:.0f}] Z[0,{:.0f}]",
-                      volume.x_min, volume.x_max, volume.y_min, volume.y_max, volume.z_max);
+                      "Y[{:.0f},{:.0f}] Z[0,{:.0f}] declared bed [{:.0f},{:.0f}]",
+                      volume.x_min, volume.x_max, volume.y_min, volume.y_max, volume.z_max,
+                      volume.declared_bed_x, volume.declared_bed_y);
         return true;
     }
 

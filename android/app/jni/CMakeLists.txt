@@ -272,6 +272,17 @@ target_compile_definitions(main PRIVATE
     HELIX_HAS_BED_MESH_3D=1
     HELIX_HAS_PLUGINS=1
     HELIX_HAS_TIMELAPSE_VIEWER=1
+    # FONT_SOURCES above globs every face under assets/fonts/*.c with no tier
+    # filtering, so the 48/64pt and 32/40pt hi-DPI CJK rungs are linked into
+    # libmain.so same as every other tier. Left undefined, HELIX_HAS_HIDPI_FONTS
+    # falls back to a conservative 0 (src/system/cjk_font_manager.cpp and
+    # src/application/asset_manager.cpp both assume "not linked" when unset),
+    # which drops those faces' mappings and asset registrations at compile time
+    # even though the symbols are there. HELIX_MAX_FONT_TIER already falls back
+    # to 6 by the same convention, matching this glob; declared here too so
+    # both macros are explicit rather than one being coincidentally right.
+    HELIX_MAX_FONT_TIER=6
+    HELIX_HAS_HIDPI_FONTS=1
     ENABLE_GLES_3D
     $<$<CONFIG:Debug>:HELIX_ENABLE_MOCKS>
     LV_CONF_INCLUDE_SIMPLE

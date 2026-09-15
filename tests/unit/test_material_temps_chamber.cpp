@@ -25,6 +25,7 @@
 #include "panel_widget_manager.h"
 #include "static_panel_registry.h"
 #include "temperature_controller.h"
+#include "test_helpers/scoped_shared_resource.h"
 #include "test_helpers/temperature_controller_test_access.h"
 
 #include <cstdio>
@@ -72,20 +73,14 @@ bool hidden(lv_obj_t* obj) {
 class ControllerScope {
   public:
     explicit ControllerScope(XMLTestFixture& f)
-        : controller_(std::make_shared<helix::TemperatureController>(f.state(), &f.api())) {
-        helix::PanelWidgetManager::instance().register_shared_resource(controller_);
-    }
-
-    ~ControllerScope() {
-        helix::PanelWidgetManager::instance().clear_shared_resources();
-    }
+        : scope_(std::make_shared<helix::TemperatureController>(f.state(), &f.api())) {}
 
     helix::TemperatureController& controller() {
-        return *controller_;
+        return scope_.get();
     }
 
   private:
-    std::shared_ptr<helix::TemperatureController> controller_;
+    helix_test::ScopedSharedResource<helix::TemperatureController> scope_;
 };
 
 /// Open the ABS edit view against a printer that has a chamber heater.
@@ -417,6 +412,37 @@ TEST_CASE_METHOD(XMLTestFixture, "Saving a chamber value above the printer's cap
     CHECK(mat->chamber_temp_c == 90);
 
     MaterialSettingsManager::instance().clear_override("ABS");
+    reset_material_temps_singleton();
+}
+
+TEST_CASE_METHOD(XMLTestFixture,
+                 "The defaults hint mentions the chamber exactly when its column is shown",
+                 "[material_temps][chamber]") {
+    ControllerScope scope(*this);
+    const int chamber_heater = GENERATE(1, 0);
+    CAPTURE(chamber_heater);
+
+    reset_material_temps_singleton();
+    MaterialSettingsManager::instance().clear_override("ABS");
+    set_capability("printer_has_chamber_heater", chamber_heater);
+    REQUIRE(register_component("material_temps_overlay"));
+
+    auto& overlay = helix::settings::get_material_temps_overlay();
+    overlay.show(lv_screen_active());
+    helix::ui::UpdateQueue::instance().drain();
+    overlay.handle_material_row_clicked("ABS");
+
+    lv_obj_t* chamber_input = find_widget("edit_chamber_temp");
+    REQUIRE(chamber_input != nullptr);
+    REQUIRE(hidden(lv_obj_get_parent(chamber_input)) == (chamber_heater == 0));
+
+    lv_obj_t* hint = find_widget("edit_defaults_hint");
+    REQUIRE(hint != nullptr);
+    const std::string text = lv_label_get_text(hint);
+    // The hint was written for this material at all.
+    REQUIRE(text.find("nozzle") != std::string::npos);
+    CHECK((text.find("chamber") != std::string::npos) == (chamber_heater == 1));
+
     reset_material_temps_singleton();
 }
 

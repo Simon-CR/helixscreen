@@ -52,11 +52,11 @@ Your dashboard can have **multiple pages** of widgets — just like home screens
 
 - **Swipe left or right** anywhere on the widget grid to move between pages
 - **Dot indicators** at the bottom of the screen show which page you're on and how many pages you have
-- If you only have one page, the dots and swiping are hidden — it works exactly like a single-page dashboard
+- If you only have one page, the dots are hidden and swiping is off, in Edit Mode too, so it works exactly like a single-page dashboard
 
 ### The Main Page
 
-One page is designated as the **main page** (the first page by default). This is the page shown when you first connect to your printer or navigate to the Home panel.
+One page is designated as the **main page** (the first page by default). This is the page shown when you first connect to your printer.
 
 **Home button behavior:**
 
@@ -66,15 +66,19 @@ One page is designated as the **main page** (the first page by default). This is
 
 ### Adding a Page
 
+A new page starts with a widget on it: you add a page by dragging a widget past your last page.
+
 1. Enter **Edit Mode** (long-press the widget grid)
-2. Swipe to the **last page** — a **"+" tile** appears
-3. Tap the **"+"** to create a new empty page
-4. You can have up to **8 pages** maximum
-5. Exit Edit Mode and start adding widgets to your new page
+2. Pick up a widget (see [Moving a Widget](#moving-a-widget)) and carry it across the right edge of each page until you are on your **last page**
+3. Keep going past the right edge of your last page: an empty page slides in, with the widget still under your finger
+4. Drop the widget anywhere on it. The new page is created, with the widget where you dropped it. Drag back instead and no page is created
+5. Add more widgets to the new page (see [Adding a Widget](#adding-a-widget))
+
+Swiping never takes you past your last page, in Edit Mode or out of it: the empty page slides in only while you drag a widget onto it. If the widget you dragged was the last one on its page, that page is removed as the new one is created (see [Moving a Widget to Another Page](#moving-a-widget-to-another-page)).
 
 ### Page Limit
 
-The dashboard supports up to **8 pages**. Once you reach the limit, the "+" tile no longer appears.
+The dashboard supports up to **8 pages**. Once you reach the limit, no empty page slides in when you drag a widget past your last page.
 
 ---
 
@@ -84,7 +88,7 @@ Edit Mode is how you customize your dashboard layout. While in Edit Mode, all no
 
 > **Edit Mode is on by default.** If it triggers accidentally when a finger rests on the screen (common on a tablet lying flat), you have two options: turn it off entirely with **Allow Home Screen Editing** under **Settings → System → Touch & Input**, or raise the **Long Press Time** slider in the same page so a longer hold is required. Both take effect immediately.
 
-**Page swiping in Edit Mode:** Swiping between pages is disabled while in Edit Mode so you can drag widgets without accidentally changing pages. The one exception is swiping past the last page to reach the "+" add-page tile. When you exit Edit Mode, normal page swiping is re-enabled.
+**Page swiping in Edit Mode:** Swiping between pages works in Edit Mode just as it does outside it: with more than one page, and never past your last page. Swiping pauses from the moment your finger lands on the selected widget until you lift it, while you drag or resize a widget, and while the Widget Catalog is open. To take a widget to another page, or to a new page past your last one, drag it across the page border - see [Moving a Widget to Another Page](#moving-a-widget-to-another-page).
 
 ### Entering Edit Mode
 
@@ -94,7 +98,7 @@ Edit Mode is how you customize your dashboard layout. While in Edit Mode, all no
 - **Corner brackets** appear on the widget under your finger, indicating it's selected
 - All normal widget tap actions are disabled — you can touch anything without triggering it
 
-The widget you long-pressed is automatically selected and ready to drag. You can start moving it immediately without lifting your finger.
+The widget you long-pressed is selected, not picked up, however long you keep holding. To move it, lift your finger and press it again.
 
 ![Edit Mode — widget selected with gear and trash icons, toolbar at top](../../images/user/home-edit-mode.png)
 
@@ -104,18 +108,29 @@ The widget you long-pressed is automatically selected and ready to drag. You can
 - The corner brackets **pulse** gently to indicate the active selection
 - **Tap empty space** to deselect the current widget
 - Only one widget can be selected at a time
+- Pressing a widget that is not selected only selects it, even if your finger then slides: a slide across the grid swipes pages rather than dragging a widget
 
 ### Moving a Widget
 
-1. **Select** a widget by tapping it (or it's auto-selected when you enter Edit Mode)
-2. **Press and drag** the widget to a new position
+1. **Select** a widget by tapping it (the widget you long-pressed to enter Edit Mode is already selected)
+2. **Press it again and drag** it to a new position. You can also skip the tap: **press and hold** any widget for about half a second to pick it up, then drag
 3. As you drag, a **snap preview** appears showing where the widget will land:
    - **Blue/accent preview** = valid drop position
-   - **Red preview** = invalid position (would overlap another widget or go off-grid)
-4. **Release** to drop the widget — it snaps into the grid position with a smooth animation
-5. If the position is invalid, the widget returns to its original spot
+   - **Red preview** = invalid position (would overlap another widget)
+   - Carrying a widget past the edge of the grid doesn't make it invalid: the preview stays at the nearest position inside the grid
+4. **Release** to drop the widget - it lands in the grid position the preview showed
+5. If the position is invalid, the widget returns to its original spot and stays selected
 
-A faint outline stays at the widget's original position while dragging so you can see where it came from.
+### Moving a Widget to Another Page
+
+1. Start dragging a widget
+2. Carry it past the left or right edge of the page until most of the widget is over the border, or hold your finger near the edge of the widget area for a moment (in landscape, the left edge is the one beside the navigation bar)
+3. The next page slides in, with the widget still under your finger
+4. Drop the widget where you want it
+
+**Creating a page by dropping:** drag a widget past your last page and an empty page slides in. Drop the widget anywhere on it and the page is created, with the widget where you dropped it. Drag back instead and no page is created. At the 8-page limit there is no empty page to drag onto.
+
+**Empty pages remove themselves:** when a page's last widget is moved to another page or removed, the empty page is deleted from your layout. The main page is never removed this way. A page that still holds widgets greyed out because their hardware isn't detected is not empty, and stays.
 
 
 ### Resizing a Widget
@@ -143,7 +158,7 @@ Many widgets snap to whole cells when you drag or resize them. The ones that sho
 | Widget | What it can do |
 |--------|----------------|
 | **Print Status**, **Camera**, **Printer Image**, **Temperature Graph**, **Tips**, **Job Queue**, **Print Stats**, **Multi-Filament System Status**, **Active Spool**, **Nozzle Temperatures**, **Temperatures**, **Fan Speeds**, **Tool Switcher**, **Clog Detection**, **Digital Clock** | Move **and resize** in half-cell steps on **both** axes - so 1.5x1 and 2x2.5 are real sizes |
-| **Preheat**, **Fan**, **Temperature Sensors**, **Macro Button** | Half-cell steps **across** only - useful when a long fan, sensor, or macro name is getting cut off |
+| **Preheat**, **Fan**, **Temperature Sensors**, **Macro Button**, **Bypass** | Half-cell steps **across** only - useful when a long fan, sensor, or macro name is getting cut off |
 | **Shutdown/Reboot**, **Lock Screen**, **Firmware Restart**, **LED Controls** | Stay one cell in size, but can be **positioned** half a cell across, so a row of them can sit between the main columns |
 
 Everything else - the small tiles that are just an icon and a short label, like **Network**, **LED Light**, **Filament Sensor**, **Humidity**, and the individual temperature tiles - snaps to whole cells. An in-between size would only add empty space around a centred icon, and whole-cell snapping is easier to hit with a finger.
@@ -159,7 +174,7 @@ Half-cell sizes are also why the Widget Catalog occasionally shows a size like "
 
 In Edit Mode there are two ways to open the Widget Catalog:
 
-- Tap the **+** button at the top of the navigation bar
+- Tap the **+** button at the start of the navigation bar (the navigation bar runs along the bottom of the screen in portrait)
 - **Long-press an empty area** of the grid — this also tells HelixScreen where you want the widget to go
 
 **The Widget Catalog** opens on a list of **5 categories** - Print & Status, Temperature & Cooling, Filament, Controls, and System, each showing how many widgets it holds. Tap a category to see the widgets inside it. A **back button** in the header returns you to the category list, so you can browse another category without closing the catalog.
@@ -170,7 +185,7 @@ Inside a category, each widget entry shows:
 - Widgets already on your dashboard are **dimmed** and labeled "Placed"
 - Widgets whose hardware isn't detected are **dimmed** too, with the reason in brackets after the name
 
-Tap any available widget to add it. HelixScreen places it near where you long-pressed, or finds the best available spot if that area is occupied. If the grid is completely full, you'll need to remove a widget first.
+Tap any available widget to add it. HelixScreen places it near where you long-pressed, or finds the best available spot if that area is occupied. If there's no room at the widget's usual size, HelixScreen tries smaller sizes, down to the widget's minimum, before telling you there isn't enough room.
 
 The **Reset** button in the catalog header resets your whole dashboard — see [Resetting to Defaults](#resetting-to-defaults).
 
@@ -181,10 +196,10 @@ The **Reset** button in the catalog header resets your whole dashboard — see [
 ### Removing a Widget
 
 1. **Select** the widget you want to remove
-2. A **trash icon** appears — drag the widget to the trash, or tap the delete button
+2. A **trash icon** appears at the widget's upper-right corner - tap it
 3. The widget is removed from your grid
 
-Removing a widget doesn't delete any data — you can always add it back from the Widget Catalog.
+Removing a widget you can add only once keeps its settings, so adding it back from the Widget Catalog brings them back. A widget you can add more than once, like Fan or Macro Button, is added as a new copy each time, and removing a copy you added deletes that copy along with its settings.
 
 ![Widget selected with trash icon in upper-right corner](../../images/user/home-widget-trash.png)
 
@@ -234,8 +249,8 @@ The default layout is authored per screen shape rather than being one arrangemen
 
 ### Exiting Edit Mode
 
-- Tap the **Done** button in the toolbar
-- Or **navigate away** to any other panel — Edit Mode exits automatically and saves your changes
+- Tap the **Done** button in the navigation bar
+- The other navigation buttons are disabled while you edit. If something else takes you off the Home panel, Edit Mode exits automatically and saves your changes
 
 ---
 
@@ -321,7 +336,7 @@ Some widgets depend on specific hardware being detected by Klipper. If the hardw
 
 - The widget still **appears** in the Widget Catalog, but it is **dimmed and can't be tapped**, and the reason is added to its name in parentheses — for example "Humidity (No humidity sensor detected)"
 - If hardware is detected later (plugged in, configured), the widget becomes available automatically
-- If hardware is removed after placing a widget, the widget **hides automatically** but keeps its grid position — it reappears if the hardware returns
+- If hardware is removed after placing a widget, the widget **greys out automatically** and can't be tapped, but keeps its grid position, and it works again if the hardware returns
 
 | Widget | Required Hardware |
 |--------|-------------------|

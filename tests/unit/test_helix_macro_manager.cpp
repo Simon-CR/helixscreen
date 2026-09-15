@@ -4,6 +4,7 @@
 #include "ui_update_queue.h"
 
 #include "../lvgl_test_fixture.h"
+#include "../test_helpers/config_dir_guard.h"
 #include "macro_manager.h"
 #include "moonraker_api.h"
 #include "moonraker_api_mock.h"
@@ -11,6 +12,7 @@
 #include "printer_discovery.h"
 #include "printer_state.h"
 
+#include <fstream>
 #include <optional>
 #include <thread>
 
@@ -221,6 +223,46 @@ TEST_CASE("MacroManager - get_macro_names returns expected macros", "[config][co
     // Phase tracking (spot check a few)
     REQUIRE(std::find(names.begin(), names.end(), "HELIX_PHASE_HOMING") != names.end());
     REQUIRE(std::find(names.begin(), names.end(), "HELIX_PHASE_BED_MESH") != names.end());
+}
+
+TEST_CASE("MacroManager - every macro name an instrumented PRINT_START calls stays defined",
+          "[config][content]") {
+    // A PRINT_START macro instrumented by pre-1.1 HelixScreen calls these
+    // names directly, by name, from lines it wrote into the macro itself. No
+    // producer of this list exists in the tree, so it is enumerated here.
+    static const std::vector<std::string> instrumentation_macro_names = {
+        "HELIX_PHASE_HOMING",         "HELIX_PHASE_QGL",         "HELIX_PHASE_Z_TILT",
+        "HELIX_PHASE_BED_MESH",       "HELIX_PHASE_CLEANING",    "HELIX_PHASE_PURGING",
+        "HELIX_PHASE_HEATING_NOZZLE", "HELIX_PHASE_HEATING_BED", "HELIX_READY"};
+
+    auto names = MacroManager::get_macro_names();
+
+    for (const auto& macro_name : instrumentation_macro_names) {
+        INFO("instrumentation calls " << macro_name);
+        REQUIRE(std::find(names.begin(), names.end(), macro_name) != names.end());
+    }
+}
+
+TEST_CASE("MacroManager - get_macro_names ignores a commented-out section header",
+          "[config][content]") {
+    // Klipper never defines a macro whose [gcode_macro ...] header is
+    // commented out, so the parser must not either.
+    ConfigDirGuard guard("commented_section");
+    {
+        std::ofstream out(guard.dir / "helix_macros.cfg");
+        out << "[gcode_macro HELIX_READY]\n"
+               "gcode:\n"
+               "    RESPOND MSG=\"HELIX:READY\"\n"
+               "\n"
+               "# [gcode_macro HELIX_PHASE_QGL]\n"
+               "#gcode:\n"
+               "#    RESPOND MSG=\"HELIX:PHASE:QGL\"\n";
+    }
+
+    auto names = MacroManager::get_macro_names();
+
+    CHECK(std::find(names.begin(), names.end(), "HELIX_READY") != names.end());
+    CHECK(std::find(names.begin(), names.end(), "HELIX_PHASE_QGL") == names.end());
 }
 
 // ============================================================================

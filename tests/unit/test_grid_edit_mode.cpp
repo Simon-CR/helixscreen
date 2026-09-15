@@ -977,27 +977,6 @@ TEST_CASE("Drag collision detection: occupied target with different size rejects
     REQUIRE_FALSE(can_swap);
 }
 
-TEST_CASE("Drag: saved cfg_idx is stable across FLOATING flag changes", "[grid_edit][drag]") {
-    // Test the pattern where drag_cfg_idx_ is saved at drag start and
-    // reused at drag end (because find_config_index_for_widget skips FLOATING objects).
-    // This is a pure logic test verifying the pattern works.
-    int drag_cfg_idx = 3; // Saved at drag start
-
-    // At drag end, we use the saved index instead of re-looking up
-    int cfg_idx = drag_cfg_idx;
-    REQUIRE(cfg_idx == 3);
-
-    // Verify the entry can be accessed with the saved index
-    std::vector<PanelWidgetEntry> entries = {
-        {"a", true, {}, 0, 0, 1, 1},
-        {"b", true, {}, 1, 0, 1, 1},
-        {"c", true, {}, 2, 0, 1, 1},
-        {"d", true, {}, 3, 0, 1, 1}, // This is the dragged widget
-    };
-    REQUIRE(static_cast<size_t>(cfg_idx) < entries.size());
-    CHECK(entries[static_cast<size_t>(cfg_idx)].id == "d");
-}
-
 TEST_CASE("Drag: FLOATING position compensation prevents visual shift", "[grid_edit][drag]") {
     // When a grid-managed widget becomes FLOATING, its coordinate reference
     // changes from content area to parent outer coords + padding. Without
@@ -1138,7 +1117,7 @@ TEST_CASE("Drag: occupant detection should skip invisible widgets", "[grid_edit]
 
     int occupant_cfg_idx = -1;
     for (size_t i = 0; i < entries.size(); ++i) {
-        if (!entries[i].enabled || !entries[i].has_grid_position()) {
+        if (!entries[i].is_placed()) {
             continue;
         }
         if (static_cast<int>(i) == drag_idx) {
@@ -1862,7 +1841,9 @@ TEST_CASE_METHOD(LVGLTestFixture,
     CHECK(GridEditMode::dot_count(cols, rows, 1, 1) == (cols + 1) * (rows + 1));
 }
 
-TEST_CASE_METHOD(XMLTestFixture, "dots overlay: rebuilds to match the selected widget's snap step",
+TEST_CASE_METHOD(XMLTestFixture,
+                 "dots overlay: the shield is kept and its lattice rebuilt for the selected "
+                 "widget's snap step",
                  "[grid_edit][half_cell][dots]") {
     // dot_count() above proves the counting formula; this proves GridEditMode
     // actually calls it on every selection change. "temperature" has no
@@ -1909,10 +1890,10 @@ TEST_CASE_METHOD(XMLTestFixture, "dots overlay: rebuilds to match the selected w
     // PanelWidgetConfig::load() appends registry defaults onto the FIRST page
     // parsed (parse_widget_array's append_registry_defaults, gated on
     // pages_.empty() in src/system/panel_widget_config.cpp), so the test's
-    // two widgets live on a second page — same trick test_grid_edit_drag_path
-    // uses. main_page_index points AT that second page so create_dots_overlay()
-    // does not also add a delete_page_btn_ child, which would throw off the
-    // exact child-count checks below.
+    // two widgets live on a second page, the same trick test_grid_edit_drag_path
+    // uses. main_page_index points AT that second page so the lattice does not
+    // also get a delete_page_btn_ child, which would throw off the exact
+    // child-count checks below.
     const std::string panel_id = "test_grid_edit_mode_dots";
     constexpr int kPageIndex = 1;
     auto* cfg = Config::get_instance();
@@ -1945,22 +1926,23 @@ TEST_CASE_METHOD(XMLTestFixture, "dots overlay: rebuilds to match the selected w
 
     GridEditMode em;
     em.enter(container, &config, kPageIndex);
-    lv_obj_t* dots_at_enter = GridEditModeTestAccess::dots_overlay(em);
+    lv_obj_t* dots_at_enter = GridEditModeTestAccess::shield(em);
     REQUIRE(dots_at_enter != nullptr);
 
     em.select_widget(temperature_widget);
-    lv_obj_t* dots_for_temperature = GridEditModeTestAccess::dots_overlay(em);
+    lv_obj_t* dots_for_temperature = GridEditModeTestAccess::shield(em);
     REQUIRE(dots_for_temperature != nullptr);
-    // A new lattice object, not the one enter() built — the selection changed
-    // what is a legal drop target, so the overlay must be rebuilt, not reused.
-    CHECK(dots_for_temperature != dots_at_enter);
+    // The same shield object: the indev glues a live gesture to its press
+    // target, so the shield must never be destroyed mid-session. What changes
+    // with the selection is its lattice children, the legal drop targets.
+    CHECK(dots_for_temperature == dots_at_enter);
     CHECK(lv_obj_get_child_count(dots_for_temperature) ==
           static_cast<uint32_t>(GridEditMode::dot_count(ncols, nrows, cell, cell)));
 
     em.select_widget(shutdown_widget);
-    lv_obj_t* dots_for_shutdown = GridEditModeTestAccess::dots_overlay(em);
+    lv_obj_t* dots_for_shutdown = GridEditModeTestAccess::shield(em);
     REQUIRE(dots_for_shutdown != nullptr);
-    CHECK(dots_for_shutdown != dots_for_temperature);
+    CHECK(dots_for_shutdown == dots_for_temperature);
     CHECK(lv_obj_get_child_count(dots_for_shutdown) ==
           static_cast<uint32_t>(GridEditMode::dot_count(ncols, nrows, 1, cell)));
 

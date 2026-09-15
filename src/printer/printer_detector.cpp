@@ -442,11 +442,27 @@ bool is_corroborating_only(const json& heuristic) {
     return false;
 }
 
-// Check if build volume is within specified range
+// Check if build volume is within specified range. A window measures stepper
+// travel unless the heuristic sets "measure": "declared_bed", which reads the
+// bed size the firmware's config declares instead: travel also covers
+// overtravel to a purge or nozzle-clean position, which is not the bed. A
+// firmware that declares no bed matches no declared-bed window; nothing falls
+// back to travel.
 bool check_build_volume_range(const BuildVolume& volume, const json& heuristic) {
-    // Get the dimensions we need to check
-    float x_size = volume.x_max - volume.x_min;
-    float y_size = volume.y_max - volume.y_min;
+    const std::string measure = heuristic.value("measure", "");
+    float x_size = 0.0f;
+    float y_size = 0.0f;
+    if (measure.empty()) {
+        x_size = volume.x_max - volume.x_min;
+        y_size = volume.y_max - volume.y_min;
+    } else if (measure == "declared_bed") {
+        x_size = volume.declared_bed_x;
+        y_size = volume.declared_bed_y;
+    } else {
+        spdlog::warn("[PrinterDetector] build_volume_range measure '{}' is unknown, not matching",
+                     measure);
+        return false;
+    }
 
     // If no volume data, can't match
     if (x_size <= 0 || y_size <= 0) {
@@ -1000,6 +1016,28 @@ PrinterDetectionResult PrinterDetector::detect(const PrinterHardwareData& hardwa
                     break;
                 }
             }
+
+            // The machines a person has to choose between: every outcome the
+            // winner does not lead by the margin floor, one name per machine.
+            // Listed past the winner only when the result is ambiguous, so the
+            // list never disagrees with margin().
+            best_match.contenders.push_back(winner.result.type_name);
+            if (best_match.ambiguous()) {
+                std::vector<const ScoredCandidate*> listed{&winner};
+                for (auto it = candidates.begin() + 1; it != candidates.end(); ++it) {
+                    const bool separated =
+                        best_match.lead_over(it->result.confidence,
+                                             it->result.uncapped_confidence) >= DETECT_MIN_MARGIN;
+                    const bool same_machine =
+                        std::any_of(listed.begin(), listed.end(), [&](const ScoredCandidate* c) {
+                            return it->same_outcome_as(*c);
+                        });
+                    if (!separated && !same_machine) {
+                        listed.push_back(&*it);
+                        best_match.contenders.push_back(it->result.type_name);
+                    }
+                }
+            }
         }
 
         if (best_match.confidence > 0) {
@@ -1225,6 +1263,10 @@ std::string PrinterDetector::get_name_for_preset(const std::string& preset_name)
     std::transform(preset_lower.begin(), preset_lower.end(), preset_lower.begin(),
                    [](unsigned char c) { return std::tolower(c); });
 
+    // Entries sharing a preset are one family. The entry marked
+    // "preset_default" names the family when nothing narrower is known; a
+    // family without one answers with its first entry.
+    std::string first_match;
     for (const auto& printer : g_database.data["printers"]) {
         std::string db_preset = printer.value("preset", "");
         std::string db_preset_lower = db_preset;
@@ -1232,11 +1274,16 @@ std::string PrinterDetector::get_name_for_preset(const std::string& preset_name)
                        [](unsigned char c) { return std::tolower(c); });
 
         if (db_preset_lower == preset_lower) {
-            return printer.value("name", "");
+            if (printer.value("preset_default", false)) {
+                return printer.value("name", "");
+            }
+            if (first_match.empty()) {
+                first_match = printer.value("name", "");
+            }
         }
     }
 
-    return "";
+    return first_match;
 }
 
 std::string PrinterDetector::get_preset_for_name(const std::string& printer_name) {
@@ -2137,13 +2184,25 @@ bool PrinterDetector::auto_detect_and_save(const helix::PrinterDiscovery& discov
         // nobody is ever asked, the type stays empty for good, and a known
         // printer wears the generic image.
         //
-        // The package named the machine family at install time, so an ambiguous
-        // field inside that family is still an answer: the winner is the variant
-        // carrying the most corroboration, and the family's own name is the
-        // floor under it.
+        // The package named the machine family at install time, so a weak win
+        // inside that family is still an answer: the winner is the variant
+        // carrying the most corroboration. A result whose winner is outside the
+        // family, or that names no machine at all, gets the family's default
+        // name. A tie with at most one of the family's machines in it resolves
+        // the same way, entries picturing the same machine counting as one: to
+        // the winner when the winner is in the family, otherwise to the
+        // family's default name, even when the family machine in the tie is a
+        // different one. A tie between two of the family's own machines saves
+        // nothing: any name would be a guess between them, so the Printer
+        // Manager's model row is where the choice is made
+        // (prestonbrown/helixscreen#1606).
         const std::string installed_preset = config->get_preset();
+        const auto family_machines = std::count_if(
+            result.contenders.begin(), result.contenders.end(), [&](const std::string& name) {
+                return preset_in_family(get_preset_for_name(name), installed_preset);
+            });
         std::string resolved;
-        if (!installed_preset.empty()) {
+        if (!installed_preset.empty() && family_machines < 2) {
             resolved = (result.detected() && preset_in_family(result.preset, installed_preset))
                            ? result.type_name
                            : get_name_for_preset(installed_preset);

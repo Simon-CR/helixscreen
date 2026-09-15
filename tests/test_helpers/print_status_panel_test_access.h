@@ -95,6 +95,13 @@ class PrintStatusPanelTestAccess {
         return panel.get_tools_used();
     }
 
+    /// The runout-sensor-edge and AMS-slots-version observers' entry point, so a
+    /// test can drive it directly instead of threading a subject update through
+    /// FilamentSensorManager or AmsState.
+    static void recompute_scoped_runout(PrintStatusPanel& panel) {
+        panel.recompute_scoped_runout();
+    }
+
     /// The deferred gcode load's entry point: fetch @p filename's gcode and
     /// load it into the viewer.
     static void load_gcode_for_viewing(PrintStatusPanel& panel, const std::string& filename) {

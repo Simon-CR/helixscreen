@@ -426,7 +426,7 @@ static std::unordered_map<std::string, int> count_multi_placed(const PanelWidget
     std::unordered_map<std::string, int> multi_placed;
     for (const auto& entry : config.entries()) {
         auto colon_pos = entry.id.find(':');
-        if (colon_pos != std::string::npos && entry.enabled && entry.has_grid_position()) {
+        if (colon_pos != std::string::npos && entry.is_placed()) {
             multi_placed[entry.id.substr(0, colon_pos)]++;
         }
     }
@@ -702,6 +702,10 @@ lv_obj_t* WidgetCatalogOverlay::create_widget_row(
 // Show
 // ============================================================================
 
+void WidgetCatalogOverlay::close() {
+    close_catalog();
+}
+
 void WidgetCatalogOverlay::show(lv_obj_t* parent_screen, const PanelWidgetConfig& config,
                                 WidgetSelectedCallback on_select, CatalogClosedCallback on_close) {
     if (g_catalog_state.overlay_root) {
@@ -738,7 +742,7 @@ void WidgetCatalogOverlay::show(lv_obj_t* parent_screen, const PanelWidgetConfig
     g_catalog_state.backdrop = backdrop;
 
     // Park the callbacks before anything can fail. GridEditMode has already set
-    // catalog_open_ and hidden the dots overlay by the time it calls us, and it
+    // catalog_open_ by the time it calls us, and it
     // only learns otherwise through on_close — so an early return that drops the
     // callback on the floor leaves edit mode permanently believing the catalog is
     // open, with the backdrop stranded over the panel. release_catalog_state()

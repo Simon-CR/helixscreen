@@ -61,9 +61,9 @@ void NotificationManager::notification_history_clicked([[maybe_unused]] lv_event
     }
 
     // Clean up old panel if it exists but is hidden.
-    // Use lv_obj_delete_async to schedule deletion for the next lv_timer_handler cycle
-    // where event_head is guaranteed NULL, preventing lv_event_mark_deleted from
-    // corrupting the LVGL event linked list (issue #190, previously #179).
+    // safe_delete_deferred uses lv_obj_delete_async, a one-shot LVGL timer that runs in the
+    // same or the next lv_timer_handler() pass, where event_head is guaranteed NULL, so
+    // lv_event_mark_deleted cannot corrupt the LVGL event linked list (#190, #179).
     if (mgr.notification_panel_obj_) {
         helix::ui::safe_delete_deferred(mgr.notification_panel_obj_);
     }

@@ -49,7 +49,7 @@ class PrinterDiscovery;
  *
  * Thread Safety:
  * All public methods are thread-safe. Subject updates are posted
- * to LVGL's thread via lv_async_call when called from background threads.
+ * to LVGL's thread via queue_update when called from background threads.
  */
 /**
  * @brief Does a pre-print-send backend's SEED follow the persisted auto-color

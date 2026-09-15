@@ -15,6 +15,12 @@ All K2 models use Allwinner ARM Cortex-A7 dual-core processors running Tina Linu
 | K2 Plus | 350 mm cubed | 4.3" 480x800 | Yes (60C) | Yes (CFS) | **Hardware confirmed** |
 | K2 SE | 220x215x245 mm | Unknown | No | Unknown | User-confirmed install (wget) |
 
+Detection has an entry for the K2, K2 Pro and K2 Plus (plus the K2 Plus k2-improvements variant),
+all sharing the `k2` preset. They are told apart by the model hostname or by the bed size the
+firmware declares in `gcode_macro product_param` (250-270, 290-310 and 340-360 mm). The base K2
+entry is the preset's `preset_default`, so a K2 preset install that identifies no K2 machine
+persists "Creality K2". Its image is a copy of the K2 Plus photo until one of the base model exists.
+
 ## Hardware (Confirmed on K2 Plus — 2026-03-23)
 
 | Spec | Value |
@@ -152,7 +158,7 @@ Deploy directory: `/mnt/UDISK/helixscreen` (override with `K2_DEPLOY_DIR`). SSH 
 ### What Happens on Deploy
 
 1. Stops any running HelixScreen processes
-2. Deploys platform hooks (`config/platform/hooks-k2.sh` → /mnt/UDISK/helixscreen/platform/hooks.sh)
+2. Deploys platform hooks (`assets/config/platform/hooks-k2.sh` → /mnt/UDISK/helixscreen/platform/hooks.sh)
 3. Transfers binaries, assets, XML layouts, and config
 4. Installs SysV init script at `/etc/init.d/S99helixscreen` for boot persistence
 5. Installs the web-server carve-out at `/etc/init.d/helix-k2-webserver` (`config/k2-webserver.init`). Boot liveness rides the platform hook, not the procd boot iterator: the hook's `/etc/init.d/app` stop+disable take a running `web-server` down at every start, and procd's iterator has been observed to skip our S99 while dispatching the helixscreen shim — so `platform_stop_competing_uis` restores `web-server` at its end, through this script (prestonbrown/helixscreen#1617)

@@ -211,3 +211,46 @@ TEST_CASE_METHOD(LVGLTestFixture, "the plane pointer transform leaves unknown an
         REQUIRE(out.y == raw.y);
     }
 }
+
+TEST_CASE_METHOD(LVGLTestFixture, "LVGL's own rotation undoes the unrotated pointer transform",
+                 "[display][rotation]") {
+    ScopedRotation restore;
+    lv_display_t* disp = lv_display_get_default();
+    REQUIRE(disp != nullptr);
+
+    lv_display_set_rotation(disp, LV_DISPLAY_ROTATION_0);
+    const int32_t panel_w = lv_display_get_horizontal_resolution(disp);
+    const int32_t panel_h = lv_display_get_vertical_resolution(disp);
+    // A square display would hide a width and height used the wrong way round.
+    REQUIRE(panel_w != panel_h);
+
+    const lv_display_rotation_t rots[] = {LV_DISPLAY_ROTATION_0, LV_DISPLAY_ROTATION_90,
+                                          LV_DISPLAY_ROTATION_180, LV_DISPLAY_ROTATION_270};
+    for (lv_display_rotation_t rot : rots) {
+        const int degrees = static_cast<int>(rot) * 90;
+        lv_display_set_rotation(disp, rot);
+        const int32_t picture_w = lv_display_get_horizontal_resolution(disp);
+        const int32_t picture_h = lv_display_get_vertical_resolution(disp);
+        const PointerXY samples[] = {{0, 0},
+                                     {picture_w - 1, 0},
+                                     {0, picture_h - 1},
+                                     {picture_w - 1, picture_h - 1},
+                                     {picture_w / 3, picture_h / 4}};
+        for (PointerXY on_picture : samples) {
+            const PointerXY handed =
+                unrotate_pointer_for_display(on_picture, degrees, panel_w, panel_h);
+            INFO("angle " << degrees << " picture (" << on_picture.x << "," << on_picture.y
+                          << ") handed (" << handed.x << "," << handed.y << ")");
+            // What LVGL reads has to be a point on the unrotated display.
+            CHECK(handed.x >= 0);
+            CHECK(handed.x < panel_w);
+            CHECK(handed.y >= 0);
+            CHECK(handed.y < panel_h);
+
+            lv_point_t lvgl_point = {handed.x, handed.y};
+            lv_display_rotate_point(disp, &lvgl_point);
+            REQUIRE(lvgl_point.x == on_picture.x);
+            REQUIRE(lvgl_point.y == on_picture.y);
+        }
+    }
+}
