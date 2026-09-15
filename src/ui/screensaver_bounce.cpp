@@ -54,7 +54,11 @@ constexpr int CORNER_FLASH_TICKS = 3;
 // How far the backdrop travels from black toward the tint. The overlay stays
 // fully opaque throughout — fading it would show the UI it is covering.
 constexpr lv_opa_t CORNER_FLASH_MIX = 56;
-constexpr int CORNER_CONFETTI_PARTICLES = 40;
+// Every particle costs a position, a size and a style write each frame, so one is
+// roughly 2.5x a flying-toaster sprite. The tightest board that runs animations
+// sustains 49 toaster sprites; this keeps the celebration inside that same band
+// instead of spiking to twice it.
+constexpr int CORNER_CONFETTI_PARTICLES = 24;
 
 // Procedural palette for the sprite tint and the corner flash. These are
 // animation content rather than UI chrome, so they are not theme tokens —
