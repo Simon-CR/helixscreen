@@ -3230,6 +3230,98 @@ TEST_CASE("CFS: relabeling a TAGGED bay still suppresses the untagged fallback",
     }
 }
 
+// =============================================================================
+// An empty bay means the spool is gone. A stored record that carries no lock
+// and no identity is cleared with it, whatever weights the user entered: the
+// removal check does not read weights, so a weights-only edit is not a reason
+// to keep the record.
+// =============================================================================
+
+namespace {
+
+// Bay A holds an untagged spool on firmware whose `vender` stays sentinel, so
+// remain_len is its only presence signal. Firmware states no brand, colour or
+// material for the bay, and an editor opened on it carries none of them back.
+json make_unbranded_bay_box(const std::string& bay_a_remain_len) {
+    return make_unit_box_explicit({"-1", "-1", "-1", "-1"}, {"-1", "-1", "-1", "-1"},
+                                  {"none", "none", "none", "none"},
+                                  {bay_a_remain_len, "-1", "-1", "-1"});
+}
+
+constexpr float EDITED_REMAINING_G = 750.0f;
+
+} // namespace
+
+TEST_CASE("CFS: a weights-only edit is cleared when its bay reads EMPTY",
+          "[ams][cfs][filament_slot_override]") {
+    CfsOverrideRig rig("cfs_weights_only_empty_bay");
+    rig.poll(make_unbranded_bay_box("46"));
+    REQUIRE(rig.backend->get_slot_info(0).status == SlotStatus::AVAILABLE);
+
+    SlotInfo edit = rig.backend->get_slot_info(0);
+    edit.remaining_weight_g = EDITED_REMAINING_G;
+    helix::test::edit_slot_as_user(*rig.backend, 0, edit);
+
+    // The edit stored a record that declares the weight and nothing else, so
+    // neither lock nor any identity field can speak for it.
+    const auto staged = CfsTestAccess::get_override(*rig.backend, 0);
+    REQUIRE(staged.has_value());
+    REQUIRE(staged->remaining_weight_g == EDITED_REMAINING_G);
+    REQUIRE_FALSE(staged->user_locked_color);
+    REQUIRE_FALSE(staged->user_locked_material);
+    REQUIRE(staged->material.empty());
+    REQUIRE(staged->brand.empty());
+    REQUIRE(staged->spool_name.empty());
+    REQUIRE(staged->spoolman_id == 0);
+    REQUIRE(staged->spoolman_vendor_id == 0);
+    REQUIRE(staged->catalog_id.empty());
+    REQUIRE(staged->product_name.empty());
+
+    const helix::ams::LaneSources before = helix::ams::lane_sources(rig.registration->lane(0));
+    REQUIRE(before.local_user.has_value());
+    REQUIRE(before.local_user->remaining_weight_g == EDITED_REMAINING_G);
+    REQUIRE_FALSE(before.local_user->color_rgb.has_value());
+    REQUIRE_FALSE(before.local_user->material.has_value());
+    REQUIRE_FALSE(before.local_user->brand.has_value());
+
+    rig.poll(make_unbranded_bay_box("-1"));
+    REQUIRE(rig.backend->get_slot_info(0).status == SlotStatus::EMPTY);
+
+    CHECK_FALSE(CfsTestAccess::get_override(*rig.backend, 0).has_value());
+    const helix::ams::LaneSources after = helix::ams::lane_sources(rig.registration->lane(0));
+    CHECK_FALSE(after.local_user.has_value());
+}
+
+TEST_CASE("CFS: a weight edit that also names a brand survives its bay reading EMPTY",
+          "[ams][cfs][filament_slot_override]") {
+    CfsOverrideRig rig("cfs_weight_and_brand_empty_bay");
+    rig.poll(make_unbranded_bay_box("46"));
+    REQUIRE(rig.backend->get_slot_info(0).status == SlotStatus::AVAILABLE);
+
+    SlotInfo edit = rig.backend->get_slot_info(0);
+    edit.remaining_weight_g = EDITED_REMAINING_G;
+    edit.brand = "Sunlu";
+    helix::test::edit_slot_as_user(*rig.backend, 0, edit);
+
+    // Still no lock: the brand alone is what the removal check keeps it for.
+    const auto staged = CfsTestAccess::get_override(*rig.backend, 0);
+    REQUIRE(staged.has_value());
+    REQUIRE(staged->brand == "Sunlu");
+    REQUIRE_FALSE(staged->user_locked_color);
+    REQUIRE_FALSE(staged->user_locked_material);
+
+    rig.poll(make_unbranded_bay_box("-1"));
+    REQUIRE(rig.backend->get_slot_info(0).status == SlotStatus::EMPTY);
+
+    const auto kept = CfsTestAccess::get_override(*rig.backend, 0);
+    REQUIRE(kept.has_value());
+    CHECK(kept->brand == "Sunlu");
+    CHECK(kept->remaining_weight_g == EDITED_REMAINING_G);
+    const helix::ams::LaneSources after = helix::ams::lane_sources(rig.registration->lane(0));
+    REQUIRE(after.local_user.has_value());
+    CHECK(after.local_user->brand == "Sunlu");
+}
+
 TEST_CASE("CFS probes RFID on a bay insert, without feeding filament",
           "[ams][cfs][presence][probe_on_insert]") {
     // Firmware reports occupancy the instant a spool goes in but does not read
