@@ -252,12 +252,13 @@ TEST_CASE_METHOD(PreheatSkipFixture, "needs_home_confirmation: an ordinary macro
                                                /*toolhead_homed=*/false));
 }
 
-TEST_CASE_METHOD(PreheatSkipFixture, "needs_home_confirmation: the raw-gcode tier always asks",
+TEST_CASE_METHOD(PreheatSkipFixture, "needs_home_confirmation: the raw-gcode tier never asks",
                  "[filament][preheat][homing]") {
+    // The fallback extrudes and retracts E only, which Klipper runs unhomed.
     detect_with({"M604"});
-    REQUIRE(helix::ui::needs_home_confirmation(plan_at(FilamentTier::RawGcode),
-                                               StandardMacroSlot::LoadFilament, nullptr,
-                                               /*toolhead_homed=*/false));
+    REQUIRE_FALSE(helix::ui::needs_home_confirmation(plan_at(FilamentTier::RawGcode),
+                                                     StandardMacroSlot::LoadFilament, nullptr,
+                                                     /*toolhead_homed=*/false));
 }
 
 TEST_CASE_METHOD(PreheatSkipFixture, "needs_home_confirmation: a backend that does not delegate",

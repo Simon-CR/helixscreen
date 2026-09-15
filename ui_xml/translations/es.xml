@@ -1106,6 +1106,7 @@
   <translation tag="FilamentSensor" es="Sensor de filamento"/>
   <translation tag="File" es="Archivo"/>
   <translation tag="File Size" es="Tamaño del archivo"/>
+  <translation tag="File Will Stop the Printer" es="El archivo detendrá la impresora"/>
   <translation tag="Filename" es="Nombre de Archivo"/>
   <translation tag="Filter Fan" es="Ventilador de filtro"/>
   <translation tag="Filter Fan: Off" es="Ventilador de filtro: Apagado"/>
@@ -1438,6 +1439,7 @@
   <translation tag="Lifetime Print Stats" es="Estadísticas de impresión totales"/>
   <translation tag="Light" es="Claro"/>
   <translation tag="Light will switch when the current operation finishes" es="La luz cambiará cuando termine la operación actual"/>
+  <translation tag="Line {} calls {}, which this printer treats as an emergency stop. Re-slice the file with a profile made for this printer." es="La línea {} llama a {}, que esta impresora trata como una parada de emergencia. Vuelva a laminar el archivo con un perfil hecho para esta impresora."/>
   <translation tag="Listen to all theme sounds" es="Escucha todos los sonidos del tema"/>
   <translation tag="Listening" es="Escuchando"/>
   <translation tag="Live view from your webcam" es="Vista en vivo de tu webcam"/>
@@ -2026,6 +2028,7 @@
   <translation tag="Printer image set to auto-detect" es="Imagen de impresora configurada en auto-detectar"/>
   <translation tag="Printer is busy - {} stays in the queue" es="La impresora está ocupada: {} permanece en la cola"/>
   <translation tag="Printer is not paired — pair it first" es="La impresora no está emparejada — empareja primero"/>
+  <translation tag="Printer message: {}" es="Mensaje de la impresora: {}"/>
   <translation tag="Printer name" es="Nombre de impresora"/>
   <translation tag="Printer not connected" es="Impresora no conectada"/>
   <translation tag="Printer not ready" es="Impresora no lista"/>

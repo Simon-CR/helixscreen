@@ -16,10 +16,12 @@
  * macro runs with no dialog; otherwise the dialog opens with them typed in.
  */
 
+#include "ui_ams_sidebar.h"
 #include "ui_panel_filament.h"
 #include "ui_update_queue.h"
 
 #include "../lvgl_ui_test_fixture.h"
+#include "../test_helpers/filament_panel_macro_harness.h"
 #include "../test_helpers/filament_panel_test_access.h"
 #include "../test_helpers/lane_material_backend.h"
 #include "../test_helpers/load_filament_expression_default.h"
@@ -57,6 +59,7 @@
 using TA = helix::ui::FilamentPanelTestAccess;
 using ParamValues = std::map<std::string, std::string>;
 using Scripts = std::vector<std::string>;
+using PrefillPanelHarness = helix::test::FilamentPanelMacroHarness;
 
 namespace {
 
@@ -75,125 +78,6 @@ constexpr const char* TEMP_BETWEEN_TWO = "{% set l = params.LENGTH|default(100)|
                                          "{% set t = params.EXTRUDER_TEMP|default(220)|int %}\n"
                                          "{% set s = params.SPEED|default(5)|float %}\n"
                                          "M109 S{t}\nG1 E{l} F{s * 60}";
-
-/// A real FilamentPanel with no AMS backend over a mock printer, so every op
-/// reaches the configured-macro tier and the gcode it sends is observable. The
-/// shared executor sends Load and Unload through the process-wide API, so the
-/// harness installs its own for its lifetime.
-struct PrefillPanelHarness {
-    MoonrakerClientMock client{MoonrakerClientMock::PrinterType::VORON_24};
-    helix::PrinterState state;
-    MoonrakerAPI api{client, state};
-    std::unique_ptr<FilamentPanel> panel;
-
-    int prompt_count = 0;
-    std::string prompted_macro;
-    ParamValues prompted_prefill;
-    IMoonrakerAPI* previous_api = nullptr;
-
-    /// @p backend, when given, is installed before the panel is built.
-    explicit PrefillPanelHarness(std::unique_ptr<AmsBackend> backend = nullptr) {
-        ToolState::instance().init_subjects(true);
-        AmsState::instance().init_subjects(true);
-        AmsState::instance().clear_backends();
-        AmsState::instance().clear_external_spool_info();
-        if (backend) {
-            AmsState::instance().set_backend(std::move(backend));
-        }
-        state.init_subjects(false);
-        state.init_extruders({"extruder"});
-        state.set_klippy_state_sync(helix::KlippyState::READY);
-
-        helix::PrinterDiscovery hardware;
-        nlohmann::json objects = {"extruder", "gcode_macro LOAD_FILAMENT",
-                                  "gcode_macro UNLOAD_FILAMENT", "gcode_macro PURGE"};
-        hardware.parse_objects(objects);
-        StandardMacros::instance().reset();
-        StandardMacros::instance().init(hardware);
-
-        helix::MacroParamCache::instance().clear();
-        helix::ui::set_filament_param_prompter(
-            [this](const std::string& macro, const helix::CachedMacroInfo&,
-                   const ParamValues& prefill, helix::MacroExecuteCallback) {
-                ++prompt_count;
-                prompted_macro = macro;
-                prompted_prefill = prefill;
-            });
-
-        previous_api = get_moonraker_api();
-        set_moonraker_api(&api);
-
-        panel = std::make_unique<FilamentPanel>(state, &api);
-        panel->init_subjects();
-        client.clear_gcode_script_history();
-    }
-
-    ~PrefillPanelHarness() {
-        // A macro that ran queued its completion callbacks, which reach the panel,
-        // so they run while it is still alive. Completing an op can schedule the
-        // post-op cooldown, whose timer would otherwise outlive this test.
-        helix::ui::UpdateQueue::instance().drain();
-        PostOpCooldownManager::instance().cancel();
-        helix::ui::UpdateQueue::instance().drain();
-
-        helix::ui::set_filament_param_prompter({});
-        panel.reset();
-        set_moonraker_api(previous_api);
-        AmsState::instance().clear_backends();
-        AmsState::instance().clear_external_spool_info();
-        StandardMacros::instance().reset();
-        helix::MacroParamCache::instance().clear();
-        helix::ui::UpdateQueue::instance().drain();
-        AmsState::instance().deinit_subjects();
-        ToolState::instance().deinit_subjects();
-    }
-
-    /// populate_from_configfile() replaces the cache, so every macro goes in one call.
-    static void cache_macros(std::initializer_list<std::pair<const char*, const char*>> macros) {
-        nlohmann::json config;
-        std::unordered_set<std::string> names;
-        for (const auto& [name, gcode] : macros) {
-            config[std::string("gcode_macro ") + name]["gcode"] = gcode;
-            names.insert(name);
-        }
-        helix::MacroParamCache::instance().populate_from_configfile(config, names);
-    }
-
-    /// The extruder target Klipper reports, in degrees.
-    void set_extruder_target(double degrees) {
-        state.update_from_status({{"extruder", {{"target", degrees}}}});
-    }
-
-    /// The printer's safety limits as discovery hands them to the panel: Klipper's
-    /// min_extrude_temp and the hotend's max_temp.
-    void set_safety_limits(double min_extrude_c, double nozzle_max_c = 300.0) {
-        SafetyLimits limits;
-        limits.min_extrude_temp_celsius = min_extrude_c;
-        limits.set_max_temp_for("extruder", nozzle_max_c);
-        panel->set_limits(limits);
-    }
-
-    /// An external spool whose material heats to exactly @p nozzle_c: a name the
-    /// filament database does not know, so the spool's own temperatures stand.
-    static void set_external_spool(int nozzle_c) {
-        SlotInfo spool;
-        spool.material = "Spool Test Filament";
-        spool.nozzle_temp_min = nozzle_c;
-        spool.nozzle_temp_max = nozzle_c;
-        AmsState::instance().set_external_spool_info_in_memory(spool);
-    }
-
-    /// Every script sent whose first word is @p macro.
-    [[nodiscard]] Scripts sent_for(const std::string& macro) const {
-        Scripts out;
-        for (const auto& script : client.gcode_script_history()) {
-            if (script == macro || script.rfind(macro + " ", 0) == 0) {
-                out.push_back(script);
-            }
-        }
-        return out;
-    }
-};
 
 } // namespace
 
@@ -474,6 +358,118 @@ TEST_CASE_METHOD(LVGLUITestFixture,
 
     CHECK(h.prompt_count == 0);
     CHECK(h.sent_for("PURGE") == Scripts{"PURGE PURGE_TEMP=235"});
+}
+
+// =============================================================================
+// Multi-extruder: the limits and target are the op's own extruder's
+// =============================================================================
+
+namespace {
+constexpr const char* PURGE_TEMP_ONLY =
+    "{% set t = params.PURGE_TEMP|default(240)|int %}\nM109 S{t}\nG1 E30 F300";
+} // namespace
+
+/// A panel over two hotends whose loaded lane 1 names a material heating to
+/// @p nozzle_c and maps to @p lane_tool (T1 heats extruder1; -1 maps to none).
+/// T0, on extruder, is the active tool.
+struct TwoExtruderPurge {
+    explicit TwoExtruderPurge(int nozzle_c, int lane_tool = 1)
+        : h(std::make_unique<helix::test::LaneMaterialBackend>(/*lane=*/1, nozzle_c,
+                                                               /*selected_slot=*/-1, lane_tool)) {
+        h.use_two_extruders();
+        h.cache_macros({{"PURGE", PURGE_TEMP_ONLY}});
+        h.panel->set_limits(PrefillPanelHarness::two_extruder_limits());
+        TA::set_selected_material(*h.panel, -1);
+    }
+    PrefillPanelHarness h;
+};
+
+TEST_CASE_METHOD(LVGLUITestFixture, "Purge on a lane mapped to T1 stays under extruder1's ceiling",
+                 "[filament][prefill][multi_extruder]") {
+    // 260 is within extruder's 300 and above extruder1's 250.
+    TwoExtruderPurge t(/*nozzle_c=*/260);
+    t.h.set_extruder_targets(0.0, 0.0);
+
+    TA::execute_purge(*t.h.panel);
+
+    CHECK(t.h.prompt_count == 1);
+    CHECK(t.h.prompted_prefill.empty());
+    CHECK(t.h.sent_for("PURGE").empty());
+}
+
+TEST_CASE_METHOD(LVGLUITestFixture, "Purge on a lane mapped to T1 stays above extruder1's floor",
+                 "[filament][prefill][multi_extruder]") {
+    // 190 is above extruder's 170 and below extruder1's 200.
+    TwoExtruderPurge t(/*nozzle_c=*/190);
+    t.h.set_extruder_targets(0.0, 0.0);
+
+    TA::execute_purge(*t.h.panel);
+
+    CHECK(t.h.prompt_count == 1);
+    CHECK(t.h.prompted_prefill.empty());
+    CHECK(t.h.sent_for("PURGE").empty());
+}
+
+TEST_CASE_METHOD(LVGLUITestFixture, "Purge on a lane mapped to T1 reads extruder1's target",
+                 "[filament][prefill][multi_extruder]") {
+    TwoExtruderPurge t(/*nozzle_c=*/210);
+    t.h.set_extruder_targets(280.0, 230.0);
+
+    TA::execute_purge(*t.h.panel);
+
+    CHECK(t.h.prompt_count == 0);
+    CHECK(t.h.sent_for("PURGE") == Scripts{"PURGE PURGE_TEMP=230"});
+}
+
+TEST_CASE_METHOD(LVGLUITestFixture, "Purge on a lane mapped to no tool uses the active extruder",
+                 "[filament][prefill][multi_extruder]") {
+    TwoExtruderPurge t(/*nozzle_c=*/210, /*lane_tool=*/-1);
+    // 280 is within extruder's ceiling and above extruder1's.
+    t.h.set_extruder_targets(280.0, 230.0);
+
+    TA::execute_purge(*t.h.panel);
+
+    CHECK(t.h.prompt_count == 0);
+    CHECK(t.h.sent_for("PURGE") == Scripts{"PURGE PURGE_TEMP=280"});
+}
+
+/// The AMS sidebar loading lane 1, which names a material heating to @p nozzle_c
+/// and maps to T1, on the same two hotends.
+struct TwoExtruderSidebarLoad {
+    explicit TwoExtruderSidebarLoad(int nozzle_c)
+        : h(std::make_unique<helix::test::LaneMaterialBackend>(/*lane=*/1, nozzle_c,
+                                                               /*selected_slot=*/-1,
+                                                               /*lane_tool=*/1)) {
+        h.use_two_extruders();
+        h.cache_macros({{"LOAD_FILAMENT", helix::test::LOAD_FILAMENT_EXPRESSION_DEFAULT}});
+        h.api.set_safety_limits(PrefillPanelHarness::two_extruder_limits());
+    }
+    /// The sidebar runs its macro through its lifetime token, so it outlives the drain.
+    void load() {
+        sidebar.handle_load_with_preheat(1);
+        helix::ui::UpdateQueue::instance().drain();
+    }
+    PrefillPanelHarness h;
+    helix::ui::AmsOperationSidebar sidebar{h.state};
+};
+
+TEST_CASE_METHOD(LVGLUITestFixture, "The AMS sidebar prefills a T1 lane's load from extruder1",
+                 "[filament][prefill][multi_extruder][ams]") {
+    SECTION("its target") {
+        TwoExtruderSidebarLoad t(/*nozzle_c=*/210);
+        t.h.set_extruder_targets(280.0, 230.0);
+        t.load();
+        CHECK(t.h.prompt_count == 0);
+        CHECK(t.h.sent_for("LOAD_FILAMENT") == Scripts{"LOAD_FILAMENT EXTRUDER_TEMP=230"});
+    }
+    SECTION("its ceiling") {
+        TwoExtruderSidebarLoad t(/*nozzle_c=*/260);
+        t.h.set_extruder_targets(0.0, 0.0);
+        t.load();
+        CHECK(t.h.prompt_count == 1);
+        CHECK(t.h.prompted_prefill.empty());
+        CHECK(t.h.sent_for("LOAD_FILAMENT").empty());
+    }
 }
 
 TEST_CASE_METHOD(LVGLUITestFixture, "Purge offers its temperature only as PURGE_TEMP",

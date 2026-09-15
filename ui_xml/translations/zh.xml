@@ -1106,6 +1106,7 @@
   <translation tag="FilamentSensor" zh="耗材传感器"/>
   <translation tag="File" zh="文件"/>
   <translation tag="File Size" zh="文件大小"/>
+  <translation tag="File Will Stop the Printer" zh="文件会使打印机停止"/>
   <translation tag="Filename" zh="文件名"/>
   <translation tag="Filter Fan" zh="滤网风扇"/>
   <translation tag="Filter Fan: Off" zh="滤网风扇: 关"/>
@@ -1438,6 +1439,7 @@
   <translation tag="Lifetime Print Stats" zh="累计打印统计"/>
   <translation tag="Light" zh="浅色"/>
   <translation tag="Light will switch when the current operation finishes" zh="灯光将在当前操作完成后切换"/>
+  <translation tag="Line {} calls {}, which this printer treats as an emergency stop. Re-slice the file with a profile made for this printer." zh="第 {} 行调用 {}，此打印机将其视为紧急停止。请使用为此打印机制作的配置重新切片该文件。"/>
   <translation tag="Listen to all theme sounds" zh="试听所有主题声音"/>
   <translation tag="Listening" zh="正在监听"/>
   <translation tag="Live view from your webcam" zh="摄像头实时画面"/>
@@ -2026,6 +2028,7 @@
   <translation tag="Printer image set to auto-detect" zh="打印机图片已设为自动检测"/>
   <translation tag="Printer is busy - {} stays in the queue" zh="打印机忙碌中 – {} 保留在队列中"/>
   <translation tag="Printer is not paired — pair it first" zh="打印机未配对 — 请先进行配对"/>
+  <translation tag="Printer message: {}" zh="打印机消息：{}"/>
   <translation tag="Printer name" zh="打印机名称"/>
   <translation tag="Printer not connected" zh="打印机未连接"/>
   <translation tag="Printer not ready" zh="打印机未就绪"/>

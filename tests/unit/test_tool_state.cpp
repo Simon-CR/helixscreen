@@ -226,6 +226,28 @@ TEST_CASE_METHOD(ToolStateFixture, "ToolState: init_tools with toolchanger creat
     REQUIRE(tools[2].extruder_name.value() == "extruder2");
 }
 
+TEST_CASE_METHOD(ToolStateFixture, "ToolState: extruder_name_for_tool", "[tool][tool-state]") {
+    lv_init_safe();
+
+    ToolState& ts = ToolState::instance();
+    ts.deinit_subjects();
+    ts.init_subjects(false);
+
+    helix::PrinterDiscovery hw;
+    nlohmann::json objects = nlohmann::json::array(
+        {"toolchanger", "tool T0", "tool T1", "tool T2", "extruder", "extruder1", "gcode_move"});
+    hw.parse_objects(objects);
+    ts.init_tools(hw);
+    REQUIRE(ts.tool_count() == 3);
+
+    CHECK(ts.extruder_name_for_tool(0) == "extruder");
+    CHECK(ts.extruder_name_for_tool(1) == "extruder1");
+    // Three tools on two extruders: T2 names none.
+    CHECK(ts.extruder_name_for_tool(2).empty());
+    CHECK(ts.extruder_name_for_tool(3).empty());
+    CHECK(ts.extruder_name_for_tool(-1).empty());
+}
+
 TEST_CASE_METHOD(ToolStateFixture, "ToolState: active_tool accessors", "[tool][tool-state]") {
     lv_init_safe();
 

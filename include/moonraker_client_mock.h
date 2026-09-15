@@ -760,6 +760,22 @@ class MoonrakerClientMock : public helix::MoonrakerClient {
     }
 
     /**
+     * @brief Report an extra section in configfile.settings, replacing any the mock
+     *        already builds under that name
+     *
+     * @param name     Section header, e.g. "extruder1"
+     * @param settings Its parsed settings
+     */
+    void set_config_settings_section(const std::string& name, const json& settings) {
+        extra_config_settings_[name] = settings;
+    }
+
+    /// Sections set_config_settings_section() added.
+    [[nodiscard]] const json& extra_config_settings() const {
+        return extra_config_settings_;
+    }
+
+    /**
      * @brief Check if mock accelerometer is enabled
      * @return true if accelerometer should be reported as available
      */
@@ -1777,6 +1793,7 @@ class MoonrakerClientMock : public helix::MoonrakerClient {
     double extruder_max_temp_{300.0};    ///< Extruder max_temp reported in configfile.settings
     double extruder_min_temp_{0.0};      ///< Extruder min_temp reported in configfile.settings
     double extruder_min_extrude_temp_{170.0}; ///< Extruder min_extrude_temp in configfile.settings
+    json extra_config_settings_ = json::object(); ///< set_config_settings_section() sections
     double resonance_min_freq_{5.0};   ///< [resonance_tester] min_freq the mock reports/sweeps
     double resonance_max_freq_{135.0}; ///< [resonance_tester] max_freq the mock reports/sweeps
     bool mmu_enabled_{true};           ///< MMU available (default true for existing tests)

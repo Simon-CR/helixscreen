@@ -10,6 +10,7 @@
 #include "gcode_classify.h"
 #include "gcode_homing.h"
 #include "json_utils.h"
+#include "klipper_extruder_naming.h"
 #include "macro_param_cache.h"
 #include "moonraker_api.h"
 #include "moonraker_api_internal.h"
@@ -731,14 +732,19 @@ void MoonrakerAPI::update_safety_limits_from_printer(SuccessCallback on_success,
                                 updated = true;
                             }
                         }
-                        // Extract min_extrude_temp from extruder (not heater_bed)
-                        if (key == "extruder" && value.contains("min_extrude_temp") &&
+                        // Every extruder section carries its own min_extrude_temp;
+                        // the primary one's is also the global floor for callers
+                        // with no extruder name to hand.
+                        if (helix::is_extruder_name(key) && value.contains("min_extrude_temp") &&
                             value["min_extrude_temp"].is_number()) {
                             double min_extrude = value["min_extrude_temp"].get<double>();
-                            safety_limits_.min_extrude_temp_celsius = min_extrude;
+                            safety_limits_.set_min_extrude_temp_for(key, min_extrude);
+                            if (key == "extruder") {
+                                safety_limits_.min_extrude_temp_celsius = min_extrude;
+                            }
                             updated = true;
-                            spdlog::debug("[Moonraker API] min_extrude_temp from config: {}°C",
-                                          min_extrude);
+                            spdlog::debug("[Moonraker API] {} min_extrude_temp from config: {}°C",
+                                          key, min_extrude);
                         }
                     }
                 }

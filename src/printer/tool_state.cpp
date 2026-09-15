@@ -721,6 +721,13 @@ std::string ToolState::tool_name_for_extruder(const std::string& extruder_name) 
     return {};
 }
 
+std::string ToolState::extruder_name_for_tool(int tool_index) const {
+    if (tool_index < 0 || tool_index >= static_cast<int>(tools_.size())) {
+        return {};
+    }
+    return tools_[static_cast<size_t>(tool_index)].extruder_name.value_or("");
+}
+
 std::string ToolState::display_label_for_extruder(const std::string& extruder_name) const {
     for (const auto& tool : tools_) {
         if (tool.extruder_name && *tool.extruder_name == extruder_name) {

@@ -2786,7 +2786,8 @@ void PrintSelectPanel::start_print(bool force) {
     // tapped before readiness, defer the attempt; run_when_preflight_ready()
     // carries a safety timeout so a stuck/failed scan can never wedge the print.
     // force=true bypasses (deferred re-entry + "Print Anyway" both call with force).
-    if (!force && detail_view_ && !detail_view_->is_preflight_ready()) {
+    // The wait also covers the file scan's printer-stopping command check.
+    if (!force && detail_view_ && !detail_view_->is_print_start_ready()) {
         spdlog::debug("[{}] Print tapped before pre-flight ready - deferring", get_name());
         detail_view_->run_when_preflight_ready(
             []() { get_global_print_select_panel().start_print(false); });

@@ -261,6 +261,15 @@ class PrintSelectDetailView : public OverlayBase {
     }
 
     /**
+     * @brief Whether a Print tap can be evaluated now.
+     *
+     * is_preflight_ready(), and the file scan has answered the printer-stopping
+     * command question for this file (or the wait for it timed out). The mapping
+     * card keys on is_preflight_ready() alone.
+     */
+    [[nodiscard]] bool is_print_start_ready() const;
+
+    /**
      * @brief Run @p cb once the gcode parse + pre-flight validation complete.
      *
      * If the gcode is already loaded, @p cb is invoked synchronously (main
@@ -272,14 +281,15 @@ class PrintSelectDetailView : public OverlayBase {
     void run_when_loaded(std::function<void()> cb);
 
     /**
-     * @brief Run @p cb once pre-flight inputs are ready (is_preflight_ready()).
+     * @brief Run @p cb once a Print tap can be evaluated (is_print_start_ready()).
      *
      * Unlike run_when_loaded() this fires when EITHER the viewer parse OR the
-     * headless tools_used scan completes — so it never hangs on 2D-only
-     * platforms. If already ready, runs @p cb synchronously. A safety timeout
-     * (see PREFLIGHT_READY_TIMEOUT_MS) fires @p cb anyway if neither signal
-     * arrives, so a stuck/failed scan can never wedge the print: the print
-     * proceeds without Part A's optimization rather than never starting.
+     * headless tools_used scan completes, and the file scan has answered — so it
+     * never hangs on 2D-only platforms. If already ready, runs @p cb
+     * synchronously. A safety timeout (see PREFLIGHT_READY_TIMEOUT_MS) fires
+     * @p cb anyway if the answers do not arrive, so a stuck/failed scan can never
+     * wedge the print: the print proceeds without those checks rather than never
+     * starting.
      */
     void run_when_preflight_ready(std::function<void()> cb);
 
@@ -667,6 +677,8 @@ class PrintSelectDetailView : public OverlayBase {
     // scan would make the scanner see "no file" ≡ "no tools" and persist an
     // authoritative-empty tools set (the Finding-1 poison).
     bool headless_scan_settled_ = false;
+    /// The wait for the file scan's printer-stopping command answer timed out.
+    bool printer_stop_wait_timed_out_ = false;
     // Pending callback registered via run_when_preflight_ready() while neither the
     // viewer parse nor the headless scan had completed. Fired once when readiness
     // arrives (or on the safety timeout), then cleared. Reset on show().

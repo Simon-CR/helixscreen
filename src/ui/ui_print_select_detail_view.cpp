@@ -330,6 +330,8 @@ lv_obj_t* PrintSelectDetailView::create(lv_obj_t* parent_screen) {
     // survives destroy-on-close so callbacks set by PrintSelectPanel persist)
     if (!prep_manager_) {
         prep_manager_ = std::make_unique<PrintPreparationManager>();
+        // A scan answer can be what a deferred Print tap is waiting on.
+        prep_manager_->set_on_scan_answered([this]() { fire_on_preflight_ready(); });
     }
 
     spdlog::debug("[DetailView] Detail view created");
@@ -455,6 +457,7 @@ void PrintSelectDetailView::show(const std::string& filename, const std::string&
     headless_tool_grams_.clear();
     headless_scan_done_ = false;
     headless_scan_settled_ = false;
+    printer_stop_wait_timed_out_ = false;
     // Moonraker's metadata is the one palette source available before any read:
     // when it carried colors the question is already answered, and when it did
     // not (Creality's Moonraker reports filament_type and no filament_colors for
@@ -790,6 +793,7 @@ void PrintSelectDetailView::on_deactivating(DeactivateReason) {
     // the previous open's settlement as authorization to delete files.
     headless_scan_done_ = false;
     headless_scan_settled_ = false;
+    printer_stop_wait_timed_out_ = false;
     palette_settled_ = false;
     publish_mapping_ready();
 
@@ -1587,8 +1591,8 @@ void PrintSelectDetailView::run_when_preflight_ready(std::function<void()> cb) {
     if (!cb) {
         return;
     }
-    // Already ready (viewer parsed or headless scan done): run synchronously.
-    if (is_preflight_ready()) {
+    // Already ready: run synchronously.
+    if (is_print_start_ready()) {
         cb();
         return;
     }
@@ -1614,13 +1618,26 @@ void PrintSelectDetailView::run_when_preflight_ready(std::function<void()> cb) {
             // file while the scanner is reading it (authoritative-empty
             // poison — see load_gcode_for_preview's oversize gate).
             self->headless_scan_done_ = true;
+            self->printer_stop_wait_timed_out_ = true;
             self->fire_on_preflight_ready();
         },
         PREFLIGHT_READY_TIMEOUT_MS, this);
     lv_timer_set_repeat_count(preflight_ready_timeout_timer_, 1);
 }
 
+bool PrintSelectDetailView::is_print_start_ready() const {
+    const bool stop_check_answered = printer_stop_wait_timed_out_ || !prep_manager_ ||
+                                     current_filename_.empty() ||
+                                     prep_manager_->has_printer_stop_answer_for(current_filename_);
+    return is_preflight_ready() && stop_check_answered;
+}
+
 void PrintSelectDetailView::fire_on_preflight_ready() {
+    // Each half of the readiness calls this when it lands; the other half's
+    // arrival calls it again.
+    if (!is_print_start_ready()) {
+        return;
+    }
     if (preflight_ready_timeout_timer_) {
         lv_timer_delete(preflight_ready_timeout_timer_);
         preflight_ready_timeout_timer_ = nullptr;

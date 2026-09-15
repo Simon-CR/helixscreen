@@ -14,12 +14,12 @@
 #include "../lvgl_ui_test_fixture.h"
 #include "../test_helpers/filament_panel_test_access.h"
 #include "afc_config_manager.h"
-#include "test_helpers/afc_test_access.h"
 #include "ams_backend_afc.h"
 #include "ams_backend_mock.h"
 #include "ams_state.h"
 #include "ams_types.h"
 #include "printer_state.h"
+#include "test_helpers/afc_test_access.h"
 #include "test_helpers/scoped_home_confirm_prompter.h"
 #include "tool_state.h"
 
@@ -342,7 +342,7 @@ TEST_CASE_METHOD(LVGLTestFixture,
 }
 
 TEST_CASE_METHOD(LVGLUITestFixture,
-                 "filament panel pre-preheat home prompt fires with no backend (#1265)",
+                 "filament panel home prompt: the raw fallback with no backend never asks (#1265)",
                  "[ui][homing][1265][filament]") {
     PanelPrePromptHarness h(*this);
     REQUIRE(AmsState::instance().get_backend() == nullptr);
@@ -351,12 +351,24 @@ TEST_CASE_METHOD(LVGLUITestFixture,
     ScopedHomeConfirmPrompter prompter(
         [&prompts](std::function<void()>, std::function<void()>) { ++prompts; });
 
+    // No backend and no load macro: the raw extrude fallback moves E only.
+    TA::handle_load_button(*h.panel);
+    CHECK(prompts == 0);
+}
+
+TEST_CASE_METHOD(
+    LVGLUITestFixture,
+    "filament panel pre-preheat home prompt fires for a non-delegating backend (#1265)",
+    "[ui][homing][1265][filament]") {
+    PanelPrePromptHarness h(*this);
+    h.install_stub(false);
+
+    int prompts = 0;
+    ScopedHomeConfirmPrompter prompter(
+        [&prompts](std::function<void()>, std::function<void()>) { ++prompts; });
+
     TA::handle_load_button(*h.panel);
     CHECK(prompts == 1);
-
-    h.install_stub(false);
-    TA::handle_load_button(*h.panel);
-    CHECK(prompts == 2);
     CHECK(h.stub->armed == 0);
 }
 

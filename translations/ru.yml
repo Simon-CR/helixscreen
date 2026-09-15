@@ -1206,6 +1206,7 @@ translations:
   FilamentSensor: Датчик филамента
   File: Файл
   File Size: Размер файла
+  File Will Stop the Printer: 'Файл остановит принтер'
   Filename: Имя файла
   Filter Fan: Вентилятор фильтра
   'Filter Fan: Off': 'Вентилятор фильтра: Выкл'
@@ -1587,6 +1588,7 @@ translations:
   Light: Подсветка
   Light will switch when the current operation finishes: Подсветка переключится после
     завершения текущей операции
+  Line {} calls {}, which this printer treats as an emergency stop. Re-slice the file with a profile made for this printer.: 'Строка {} вызывает {}, что этот принтер считает аварийной остановкой. Нарежьте файл заново с профилем для этого принтера.'
   Listen to all theme sounds: Прослушать все звуки темы
   Listening: Прослушивание
   Live view from your webcam: Прямая трансляция с веб-камеры
@@ -2216,6 +2218,7 @@ translations:
   Printer image set to auto-detect: Изображение принтера — автоопределение
   Printer is busy - {} stays in the queue: 'Принтер занят – {} остаётся в очереди'
   Printer is not paired — pair it first: Принтер не сопряжён — сначала выполните сопряжение
+  'Printer message: {}': 'Сообщение принтера: {}'
   Printer name: Название принтера
   Printer not connected: Принтер не подключен
   Printer not ready: Принтер не готов

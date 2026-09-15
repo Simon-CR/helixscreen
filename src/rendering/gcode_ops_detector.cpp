@@ -498,5 +498,42 @@ void GCodeOpsDetector::parse_start_print_params(const std::string& line, size_t 
     }
 }
 
+std::string_view GCodeOpsDetector::command_word(std::string_view line) {
+    const auto is_blank = [](char c) { return c == ' ' || c == '\t' || c == '\r'; };
+    size_t start = 0;
+    while (start < line.size() && is_blank(line[start])) {
+        ++start;
+    }
+    size_t end = start;
+    while (end < line.size() && !is_blank(line[end]) && line[end] != ';') {
+        ++end;
+    }
+    return line.substr(start, end - start);
+}
+
+std::optional<CommandHit>
+GCodeOpsDetector::find_first_command(std::string_view content,
+                                     const std::set<std::string>& commands) {
+    if (commands.empty()) {
+        return std::nullopt;
+    }
+    size_t line_number = 0;
+    size_t line_start = 0;
+    while (line_start < content.size()) {
+        size_t line_end = content.find('\n', line_start);
+        if (line_end == std::string_view::npos) {
+            line_end = content.size();
+        }
+        ++line_number;
+        const std::string_view word =
+            command_word(content.substr(line_start, line_end - line_start));
+        if (!word.empty() && commands.count(helix::to_upper(std::string(word))) > 0) {
+            return CommandHit{std::string(word), line_number};
+        }
+        line_start = line_end + 1;
+    }
+    return std::nullopt;
+}
+
 } // namespace gcode
 } // namespace helix

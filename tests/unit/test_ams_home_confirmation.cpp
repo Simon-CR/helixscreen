@@ -1,6 +1,7 @@
 // Copyright (C) 2025-2026 356C LLC
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "../lvgl_test_fixture.h"
+#include "../lvgl_ui_test_fixture.h"
 #include "ams_backend_afc.h"
 #include "ams_backend_cfs.h"
 #include "ams_backend_toolchanger.h"
@@ -9,6 +10,11 @@
 #include "moonraker_client_mock.h"
 #include "printer_state.h"
 #include "test_helpers/cfs_test_access.h"
+#include "test_helpers/filament_panel_macro_harness.h"
+#include "test_helpers/filament_panel_test_access.h"
+#include "test_helpers/lane_material_backend.h"
+#include "test_helpers/load_filament_expression_default.h"
+#include "test_helpers/printer_state_test_access.h"
 #include "test_helpers/scoped_home_confirm_prompter.h"
 #include "test_helpers/toolchanger_test_access.h"
 #include "test_helpers/update_queue_test_access.h"
@@ -570,4 +576,118 @@ TEST_CASE("CFS Fork variant never homes via dispatch_action_script", "[ams][homi
     REQUIRE(client.gcode_script_history().size() == 1);
     CHECK(client.gcode_script_history()[0] == "BOX_LOAD LANE=1");
     CHECK_FALSE(client.last_send_silent());
+}
+
+// =====================================================================
+// FilamentPanel: what "Home printer first?" leads to on the macro tier
+// =====================================================================
+
+namespace {
+
+/// A FilamentPanel whose load reaches the configured-macro tier on an unhomed
+/// printer with a hot nozzle, answering the home prompt with @p confirm.
+struct UnhomedMacroLoad {
+    explicit UnhomedMacroLoad(bool confirm, std::unique_ptr<helix::AmsBackend> backend = nullptr)
+        : h(std::move(backend)),
+          prompter([this, confirm](std::function<void()> yes, std::function<void()> no) {
+              ++prompts;
+              if (confirm) {
+                  yes();
+              } else {
+                  no();
+              }
+          }) {
+        // helix::ensure_homed_then() reads the process-wide printer state; the
+        // panel reads its own.
+        helix::PrinterStateTestAccess::reset(get_printer_state());
+        get_printer_state().init_subjects(false);
+        get_printer_state().update_from_status({{"toolhead", {{"homed_axes", ""}}}});
+        h.state.update_from_status({{"toolhead", {{"homed_axes", ""}}},
+                                    {"extruder", {{"temperature", 240.0}, {"target", 240.0}}}});
+        h.cache_macros({{"LOAD_FILAMENT", helix::test::LOAD_FILAMENT_EXPRESSION_DEFAULT}});
+    }
+
+    void press_load() {
+        helix::ui::FilamentPanelTestAccess::handle_load_button(*h.panel);
+        helix::ui::UpdateQueueTestAccess::drain_all(helix::ui::UpdateQueue::instance());
+    }
+
+    /// Position of the first sent script starting with @p word, or -1.
+    [[nodiscard]] long first_sent(const std::string& word) const {
+        const auto& sent = h.client.gcode_script_history();
+        for (size_t i = 0; i < sent.size(); ++i) {
+            if (sent[i] == word || sent[i].rfind(word + " ", 0) == 0) {
+                return static_cast<long>(i);
+            }
+        }
+        return -1;
+    }
+
+    int prompts = 0;
+    helix::test::FilamentPanelMacroHarness h;
+    ScopedHomeConfirmPrompter prompter;
+};
+
+/// A lane backend that hands Load to the macro tier and counts home pre-confirmations.
+class ArmCountingLaneBackend : public helix::test::LaneMaterialBackend {
+  public:
+    using LaneMaterialBackend::LaneMaterialBackend;
+    void arm_home_preconfirmed() override {
+        ++arms;
+    }
+    int arms = 0;
+};
+
+} // namespace
+
+TEST_CASE_METHOD(LVGLUITestFixture,
+                 "Confirming the home before a macro-tier load sends G28, then the macro",
+                 "[filament][homing][confirm]") {
+    UnhomedMacroLoad t(/*confirm=*/true);
+
+    t.press_load();
+
+    REQUIRE(t.prompts == 1);
+    const long home = t.first_sent("G28");
+    const long load = t.first_sent("LOAD_FILAMENT");
+    REQUIRE(home >= 0);
+    REQUIRE(load >= 0);
+    CHECK(home < load);
+}
+
+TEST_CASE_METHOD(LVGLUITestFixture, "A home that fails before a macro-tier load sends no macro",
+                 "[filament][homing][confirm]") {
+    UnhomedMacroLoad t(/*confirm=*/true);
+    t.h.client.force_next_gcode_error(MoonrakerErrorType::UNKNOWN, "Homing failed", "G28");
+
+    t.press_load();
+
+    REQUIRE(t.prompts == 1);
+    CHECK(t.first_sent("G28") >= 0);
+    CHECK(t.first_sent("LOAD_FILAMENT") < 0);
+    // The op's own failure path ran: nothing is left waiting on the guard.
+    CHECK(helix::ui::FilamentPanelTestAccess::operation_timer(*t.h.panel) == nullptr);
+}
+
+TEST_CASE_METHOD(LVGLUITestFixture, "Declining the home before a macro-tier load sends nothing",
+                 "[filament][homing][confirm]") {
+    UnhomedMacroLoad t(/*confirm=*/false);
+
+    t.press_load();
+
+    REQUIRE(t.prompts == 1);
+    CHECK(t.h.client.gcode_script_history().empty());
+}
+
+TEST_CASE_METHOD(LVGLUITestFixture, "A macro-tier load never arms the backend's home confirmation",
+                 "[filament][homing][preconfirm]") {
+    auto owned = std::make_unique<ArmCountingLaneBackend>(/*lane=*/0, /*nozzle_c=*/240);
+    ArmCountingLaneBackend* backend = owned.get();
+    UnhomedMacroLoad t(/*confirm=*/true, std::move(owned));
+
+    t.press_load();
+
+    REQUIRE(t.prompts == 1);
+    REQUIRE(t.first_sent("LOAD_FILAMENT") >= 0); // the load did take the macro tier
+    CHECK(backend->arms == 0);
 }

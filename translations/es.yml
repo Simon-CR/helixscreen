@@ -1223,6 +1223,7 @@ translations:
   FilamentSensor: Sensor de filamento
   File: Archivo
   File Size: Tamaño del archivo
+  File Will Stop the Printer: 'El archivo detendrá la impresora'
   Filename: Nombre de Archivo
   Filter Fan: Ventilador de filtro
   'Filter Fan: Off': 'Ventilador de filtro: Apagado'
@@ -1605,6 +1606,7 @@ translations:
   Light: Claro
   Light will switch when the current operation finishes: La luz cambiará cuando termine
     la operación actual
+  Line {} calls {}, which this printer treats as an emergency stop. Re-slice the file with a profile made for this printer.: 'La línea {} llama a {}, que esta impresora trata como una parada de emergencia. Vuelva a laminar el archivo con un perfil hecho para esta impresora.'
   Listen to all theme sounds: Escucha todos los sonidos del tema
   Listening: Escuchando
   Live view from your webcam: Vista en vivo de tu webcam
@@ -2243,6 +2245,7 @@ translations:
   Printer is busy - {} stays in the queue: 'La impresora está ocupada: {} permanece en la cola'
   Printer is not paired — pair it first: La impresora no está emparejada — empareja
     primero
+  'Printer message: {}': 'Mensaje de la impresora: {}'
   Printer name: Nombre de impresora
   Printer not connected: Impresora no conectada
   Printer not ready: Impresora no lista
