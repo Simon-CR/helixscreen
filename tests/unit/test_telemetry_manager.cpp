@@ -15,6 +15,7 @@
 #include "ui_update_queue.h"
 
 #include "../lvgl_test_fixture.h"
+#include "../test_helpers/scoped_moonraker_client.h"
 #include "../test_helpers/telemetry_manager_test_access.h"
 #include "app_globals.h"
 #include "async_lifetime_guard.h"
@@ -2075,28 +2076,6 @@ TEST_CASE_METHOD(TelemetryTestFixture, "record_hardware_profile creates valid ev
     // Hardware profile may have empty sections in test mode (no printer connected)
     // but the event itself should be valid
 }
-
-namespace {
-
-/// Installs a global Moonraker client for a scope and restores the previous one.
-class ScopedMoonrakerClient {
-  public:
-    explicit ScopedMoonrakerClient(helix::IMoonrakerClient* client)
-        : previous_(get_moonraker_client()) {
-        set_moonraker_client(client);
-    }
-    ~ScopedMoonrakerClient() {
-        set_moonraker_client(previous_);
-    }
-
-    ScopedMoonrakerClient(const ScopedMoonrakerClient&) = delete;
-    ScopedMoonrakerClient& operator=(const ScopedMoonrakerClient&) = delete;
-
-  private:
-    helix::IMoonrakerClient* previous_;
-};
-
-} // namespace
 
 TEST_CASE_METHOD(TelemetryTestFixture,
                  "session and hardware_profile extruder counts use the strict extruder grammar",
