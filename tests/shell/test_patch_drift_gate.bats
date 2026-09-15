@@ -249,6 +249,60 @@ in_sync() {
     [[ "$output" == *"gone from patches/"* ]]
 }
 
+init_root_repo() {
+    # The stale-stamp discrimination needs a superproject git can ask about:
+    # commit the fixture's shelf and wiring so a deleted patch is either
+    # ref-held (a real removal) or ref-less (never shipped anywhere).
+    git -C "$ROOT" init -q
+    git -C "$ROOT" config user.email t@example.invalid
+    git -C "$ROOT" config user.name "Fixture"
+    printf 'FAKE_DIR := lib/fake\n' > "$ROOT/Makefile"
+    git -C "$ROOT" add Makefile mk/patches.mk patches
+    git -C "$ROOT" commit -qm fixture
+}
+
+@test "a stamp entry no ref ever held is a stale entry, not a removed patch" {
+    # An uncommitted ghost patch is applied and stamped, then deleted and
+    # unwired. The stamp is the only place it ever existed; the patch-removed
+    # wording would claim its hunks linger in the submodule and send someone
+    # hunting for a patch that never shipped anywhere.
+    init_root_repo
+    printf 'ghost\n' > "$SUB/ghost.txt"
+    git -C "$SUB" add -N ghost.txt
+    git -C "$SUB" diff -- ghost.txt > "$ROOT/patches/ghost.patch"
+    git -C "$SUB" reset -q -- ghost.txt
+    rm -f "$SUB/ghost.txt"
+    write_patches_mk alpha beta gamma ghost
+    apply_all
+    git -C "$SUB" apply "$ROOT/patches/ghost.patch"
+    write_stamp
+    rm -f "$ROOT/patches/ghost.patch"
+    write_patches_mk alpha beta gamma
+
+    run_gate
+    [ "$status" -eq 1 ]
+    contains "ghost.patch" "$output"
+    contains "stale-stamp-entry" "$output"
+    contains "exists in no ref" "$output"
+    contains "to resync the stamp" "$output"
+    lacks "patch-removed" "$output"
+}
+
+@test "a stamp entry a ref still holds keeps the patch-removed verdict" {
+    # beta was committed before it was deleted: its hunks really do linger,
+    # and the remedy is the ordinary removal repair, not a stamp resync.
+    init_root_repo
+    in_sync
+    rm -f "$ROOT/patches/beta.patch"
+    write_patches_mk alpha gamma
+
+    run_gate
+    [ "$status" -eq 1 ]
+    contains "beta.patch" "$output"
+    contains "patch-removed" "$output"
+    lacks "stale-stamp-entry" "$output"
+}
+
 # ---------------------------------------------------------------------------
 # --pre-apply: the mode mk/patches.mk runs BEFORE the apply blocks.
 # ---------------------------------------------------------------------------

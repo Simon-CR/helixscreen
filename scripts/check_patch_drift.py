@@ -172,6 +172,7 @@ class Submodule:
     def __init__(self, var: str, rel: str, root: Path):
         self.var = var
         self.rel = rel
+        self.root = root
         self.path = root / rel
         self.patches: list[str] = []
 
@@ -309,6 +310,27 @@ class Finding:
         return f"{self.kind} {self.sub} {self.item}"
 
 
+def patch_in_any_ref(root: Path, name: str) -> bool | None:
+    """Does any ref of the superproject hold patches/<name>?
+
+    None when git cannot answer (not a repository, no git): the caller then
+    keeps the plain patch-removed verdict rather than guess.
+    """
+    try:
+        proc = subprocess.run(
+            ["git", "-C", str(root), "log", "--all", "--oneline", "--",
+             f"patches/{name}"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if proc.returncode != 0:
+        return None
+    return bool(proc.stdout.strip())
+
+
 def check_submodule(
     sub: Submodule, patch_dir: Path, pre_apply: bool
 ) -> tuple[list[Finding], str | None]:
@@ -377,6 +399,22 @@ def check_submodule(
 
     for name in sorted(stamped_patches):
         if name not in current_patches:
+            if patch_in_any_ref(sub.root, name) is False:
+                # A stamp entry is the only place this patch ever existed: an
+                # uncommitted file, applied and stamped, then deleted. Calling
+                # that "removed" claims its hunks linger in the submodule and
+                # sends someone hunting for a patch that never shipped.
+                findings.append(
+                    Finding(
+                        "stale-stamp-entry",
+                        sub.rel,
+                        name,
+                        "recorded in the stamp but exists in no ref - likely an "
+                        "uncommitted patch that was applied and then deleted. Run "
+                        "'make reapply-patches' to resync the stamp",
+                    )
+                )
+                continue
             findings.append(
                 Finding(
                     "patch-removed",
