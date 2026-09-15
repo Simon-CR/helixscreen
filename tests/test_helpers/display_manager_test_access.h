@@ -68,6 +68,30 @@ class DisplayManagerTestAccess {
         dm.rebuild_input_after_backend_swap();
     }
 
+    // Creates the debug-touch ripple timer against the manager's current
+    // m_pointer. init() calls this once; a test drives it directly so it can
+    // exist against an injected pointer without a full init().
+    static lv_timer_t* install_debug_touch_timer(DisplayManager& dm) {
+        return dm.install_debug_touch_timer();
+    }
+
+    // Runs the debug-touch timer's tick directly, without going through
+    // lv_timer_handler() - which would also run every other timer live in
+    // the process, risking the very freed-memory reuse a red-without-the-fix
+    // proof needs to rule out.
+    static void debug_touch_tick(lv_timer_t* t) {
+        DisplayManager::debug_touch_tick(t);
+    }
+
+    // Publishes (or clears, with nullptr) the manager DisplayManager::instance()
+    // returns. init()/shutdown() call this as part of a full lifecycle; a test
+    // that never runs init() calls it directly so a lambda that can only reach
+    // state through instance() (lv_timer_create takes a plain function
+    // pointer, so it cannot capture a test's manager) reaches the right one.
+    static void set_active_instance(DisplayManager* dm) {
+        DisplayManager::set_active_instance(dm);
+    }
+
     // Which branch the last enter_sleep() actually took (#1245). Not the same as
     // re-running select_sleep_mechanism(): the power-off branch can degrade to the
     // overlay at runtime, so this is the only way to prove enter_sleep() honored

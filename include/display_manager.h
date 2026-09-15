@@ -836,6 +836,29 @@ class DisplayManager : public helix::ICalibrationSink {
     void configure_scroll(int scroll_throw, int scroll_limit);
 
     /**
+     * @brief Create the debug-touch ripple timer
+     *
+     * No-op (returns nullptr) when m_pointer is null. The timer runs
+     * unconditionally once created; RuntimeConfig::debug_touches() is checked
+     * inside so the Settings toggle takes effect without a restart. Reads the
+     * pointer through pointer_input() on every tick rather than a copy
+     * captured at creation time, so an unplug (which clears m_pointer) is
+     * seen here too.
+     *
+     * @return The created timer, so a caller can force it ready (lv_timer_ready())
+     */
+    lv_timer_t* install_debug_touch_timer();
+
+    /// The debug-touch timer's tick, named so a test can call it directly
+    /// instead of only through lv_timer_handler().
+    static void debug_touch_tick(lv_timer_t* t);
+
+    /// The single assignment behind instance(): init() publishes this manager
+    /// through it, shutdown() clears it. Named so both call sites read as the
+    /// same action instead of a bare pointer write repeated twice.
+    static void set_active_instance(DisplayManager* dm);
+
+    /**
      * @brief Recreate input devices on the current backend after a backend swap
      *
      * Used by the DRM→fbdev rotation fallback when it runs post-init: the old

@@ -15,6 +15,7 @@
 #include "config.h"
 #include "data_root_resolver.h"
 #include "display_manager.h"
+#include "runtime_config.h"
 #include "test_helpers/display_manager_test_access.h"
 
 #include <filesystem>
@@ -531,4 +532,54 @@ TEST_CASE_METHOD(ApplicationTestFixture,
     lv_indev_delete(pointer);
 
     CHECK(mgr.pointer_input() == nullptr);
+}
+
+TEST_CASE_METHOD(ApplicationTestFixture,
+                 "DisplayManager's debug-touch timer reads the current pointer, not a copy "
+                 "captured at creation",
+                 "[application][display][indev]") {
+    DisplayManager mgr;
+    DisplayManagerTestAccess::set_backend(mgr, std::make_unique<MockPointerBackend>());
+    DisplayManagerTestAccess::rebuild_input_after_backend_swap(mgr);
+    lv_indev_t* pointer = mgr.pointer_input();
+    REQUIRE(pointer != nullptr);
+
+    // DisplayManager::instance() is how the timer's plain-function-pointer
+    // callback reaches this manager - lv_timer_create() cannot take a
+    // capturing lambda. Restore whatever the process had on the way out.
+    struct InstanceGuard {
+        ~InstanceGuard() {
+            DisplayManagerTestAccess::set_active_instance(nullptr);
+        }
+    } instance_guard;
+    DisplayManagerTestAccess::set_active_instance(&mgr);
+
+    struct DebugTouchesGuard {
+        bool prev = RuntimeConfig::debug_touches();
+        ~DebugTouchesGuard() {
+            RuntimeConfig::set_debug_touches(prev);
+        }
+    } debug_touches_guard;
+    RuntimeConfig::set_debug_touches(true);
+
+    lv_timer_t* timer = DisplayManagerTestAccess::install_debug_touch_timer(mgr);
+    REQUIRE(timer != nullptr);
+    const uint32_t children_before = lv_obj_get_child_count(lv_layer_top());
+
+    // lv_evdev deletes its own device when a read fails, as it does on
+    // unplug. The watch DisplayManager installed on this device already
+    // clears m_pointer for it.
+    lv_indev_delete(pointer);
+    REQUIRE(mgr.pointer_input() == nullptr);
+
+    // Call the tick directly rather than through lv_timer_handler(), which
+    // would also run every other timer live in the process and risk it
+    // reusing the just-freed indev's memory before this one reads it.
+    // Reading pointer_input() fresh sees null and returns before drawing
+    // anything; a tick that instead read a copy of the pointer captured at
+    // timer-creation time would call lv_indev_get_state() on the freed
+    // device.
+    DisplayManagerTestAccess::debug_touch_tick(timer);
+
+    CHECK(lv_obj_get_child_count(lv_layer_top()) == children_before);
 }
