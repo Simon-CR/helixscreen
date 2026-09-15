@@ -2826,11 +2826,11 @@ AmsError AmsBackendAd5xIfs::set_slot_info(int slot_index, const SlotInfo& info, 
         last_firmware_material_[slot_index] = normalized_material;
 
         // Recalculate slot status now that port_presence may have changed.
-        // update_slot_from_state() re-applies apply_overrides() from
-        // overrides_ — which for persist=true now holds the values we
-        // just staged above, so the override wins and matches the edit.
-        // For persist=false with NO existing override, apply_overrides is
-        // a no-op and the direct entry->info fields survive.
+        // update_slot_from_state() paints entry->info from the lane through
+        // apply_resolved_lane(). A persisting edit's declaration is not on the
+        // lane yet: AmsBackend::commit_user_edit() files it once this call
+        // returns and then repaints through repaint_slot_from_lane(). A field no
+        // lane source observes keeps the value written to entry->info above.
         update_slot_from_state(slot_index);
     }
 

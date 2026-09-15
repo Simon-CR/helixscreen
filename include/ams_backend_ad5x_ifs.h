@@ -1490,13 +1490,14 @@ class AmsBackendAd5xIfs : public AmsSubscriptionBackend {
     //   - on_started(): initial bulk load from Moonraker DB lane_data.
     //     Swap happens under mutex_ so a concurrent status notification can
     //     never see a torn map.
-    //   - set_slot_info(persist=true): user edit staged into overrides_
-    //     BEFORE update_slot_from_state() is called, so apply_overrides on
-    //     the very same call applies the new values rather than the old
-    //     pre-edit override.
+    //   - set_slot_info(persist=true): the user's edit is staged here and
+    //     persisted. What the slot shows comes from the lane, not from this
+    //     map: AmsBackend::commit_user_edit() files the declaration once
+    //     set_slot_info() returns, then repaint_slot_from_lane() repaints.
     //
-    // Read: in apply_overrides() during the parse path, which always runs
-    // under mutex_ (via update_slot_from_state).
+    // Read under mutex_ by the persist, firmware-mirror and lock-release
+    // paths. The paint path (apply_resolved_lane) reads the lane source store
+    // and never this map.
     std::unique_ptr<helix::ams::FilamentSlotOverrideStore> override_store_;
     std::unordered_map<int, helix::ams::FilamentSlotOverride> overrides_;
 
