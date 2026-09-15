@@ -12,6 +12,8 @@
 #include <cctype>
 #include <cmath>
 #include <fstream>
+#include <locale>
+#include <sstream>
 
 #include "hv/json.hpp"
 
@@ -330,6 +332,20 @@ bool PrintStartProfile::match_pattern_list(const std::vector<ResponsePattern>& p
             result.message =
                 substitute_captures(std::string(lv_tr(rp.message_template.c_str())), match);
             result.progress = rp.weight; // Caller interprets based on progress_mode
+            result.hold_seconds = 0;
+            if (rp.hold_minutes_group > 0 &&
+                static_cast<size_t>(rp.hold_minutes_group) < match.size()) {
+                // Firmware prints the number with a '.' whatever the UI locale.
+                // A day bounds the seconds well inside an int.
+                constexpr double MAX_HOLD_MINUTES = 24.0 * 60.0;
+                std::istringstream minutes_text(match[rp.hold_minutes_group].str());
+                minutes_text.imbue(std::locale::classic());
+                double minutes = 0.0;
+                if (minutes_text >> minutes && std::isfinite(minutes) && minutes > 0.0) {
+                    result.hold_seconds =
+                        static_cast<int>(std::lround(std::min(minutes, MAX_HOLD_MINUTES) * 60.0));
+                }
+            }
             spdlog::trace("[PrintStartProfile] Pattern match: '{}' -> phase={}, msg='{}'", text,
                           static_cast<int>(result.phase), result.message);
             return true;
@@ -376,6 +392,7 @@ bool PrintStartProfile::evaluate_status_signal(const json& object_status,
     // Translate the message like a pattern template (no capture groups here).
     result.message = lv_tr(rule.message.c_str());
     result.progress = rule.weight; // Caller interprets based on progress_mode
+    result.hold_seconds = 0;
     return true;
 }
 
@@ -635,6 +652,19 @@ void PrintStartProfile::parse_pattern_array(const nlohmann::json& array,
             rp.weight = rp_json["weight"].get<int>();
         } else {
             rp.weight = 0;
+        }
+
+        // Silent minutes the text announces, from a capture group (optional)
+        if (rp_json.contains("hold_minutes_group")) {
+            const auto& group = rp_json["hold_minutes_group"];
+            if (group.is_number_integer() && group.get<int>() >= 1 &&
+                static_cast<unsigned>(group.get<int>()) <= rp.pattern.mark_count()) {
+                rp.hold_minutes_group = group.get<int>();
+            } else {
+                spdlog::warn("[PrintStartProfile] Ignoring hold_minutes_group for {} '{}' in {}: "
+                             "not a capture group of the pattern",
+                             kind, pattern_str, source_path);
+            }
         }
 
         out.push_back(std::move(rp));

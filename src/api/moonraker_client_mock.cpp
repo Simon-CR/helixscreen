@@ -2067,30 +2067,22 @@ void MoonrakerClientMock::generate_mock_bed_mesh_with_variation() {
                   dome_amp, x_tilt, y_tilt);
 }
 
-void MoonrakerClientMock::dispatch_bed_mesh_update() {
-    // Build bed mesh JSON in Moonraker format
-    json probed_matrix_json = json::array();
-    for (const auto& row : active_bed_mesh_.probed_matrix) {
-        json row_json = json::array();
-        for (float val : row) {
-            row_json.push_back(val);
-        }
-        probed_matrix_json.push_back(row_json);
-    }
-
-    json profiles_json = json::object();
-    for (const auto& [name, profile] : stored_bed_mesh_profiles_) {
-        // Build points array for this profile
-        json points_json = json::array();
-        for (const auto& row : profile.probed_matrix) {
+json MoonrakerClientMock::bed_mesh_status() const {
+    const auto matrix_json = [](const std::vector<std::vector<float>>& matrix) {
+        json rows = json::array();
+        for (const auto& row : matrix) {
             json row_json = json::array();
             for (float val : row) {
                 row_json.push_back(val);
             }
-            points_json.push_back(row_json);
+            rows.push_back(row_json);
         }
+        return rows;
+    };
 
-        profiles_json[name] = {{"points", points_json},
+    json profiles_json = json::object();
+    for (const auto& [name, profile] : stored_bed_mesh_profiles_) {
+        profiles_json[name] = {{"points", matrix_json(profile.probed_matrix)},
                                {"mesh_params",
                                 {{"min_x", profile.mesh_min[0]},
                                  {"min_y", profile.mesh_min[1]},
@@ -2100,17 +2092,34 @@ void MoonrakerClientMock::dispatch_bed_mesh_update() {
                                  {"y_count", profile.y_count}}}};
     }
 
-    json bed_mesh_status = {
-        {"bed_mesh",
-         {{"profile_name", active_bed_mesh_.name},
-          {"probed_matrix", probed_matrix_json},
-          {"mesh_min", {active_bed_mesh_.mesh_min[0], active_bed_mesh_.mesh_min[1]}},
-          {"mesh_max", {active_bed_mesh_.mesh_max[0], active_bed_mesh_.mesh_max[1]}},
-          {"profiles", profiles_json},
-          {"mesh_params", {{"algo", active_bed_mesh_.algo}}}}}};
+    json status = {{"profile_name", active_bed_mesh_.name},
+                   {"probed_matrix", matrix_json(active_bed_mesh_.probed_matrix)},
+                   {"mesh_min", {active_bed_mesh_.mesh_min[0], active_bed_mesh_.mesh_min[1]}},
+                   {"mesh_max", {active_bed_mesh_.mesh_max[0], active_bed_mesh_.mesh_max[1]}},
+                   {"profiles", profiles_json},
+                   {"mesh_params", {{"algo", active_bed_mesh_.algo}}}};
+    return status;
+}
 
-    // Dispatch via base class method
-    dispatch_status_update(bed_mesh_status);
+void MoonrakerClientMock::calibrate_mock_mesh(const std::string& profile_name) {
+    // Regenerate mesh with slight random variation
+    active_bed_mesh_.name = profile_name;
+    generate_mock_bed_mesh_with_variation();
+
+    if (std::find(bed_mesh_profiles_.begin(), bed_mesh_profiles_.end(), profile_name) ==
+        bed_mesh_profiles_.end()) {
+        bed_mesh_profiles_.push_back(profile_name);
+    }
+    stored_bed_mesh_profiles_[profile_name] = active_bed_mesh_;
+
+    spdlog::info("[MoonrakerClientMock] Mesh calibration: generated new mesh for profile '{}'",
+                 profile_name);
+    dispatch_bed_mesh_update();
+}
+
+void MoonrakerClientMock::dispatch_bed_mesh_update() {
+    json status = {{"bed_mesh", bed_mesh_status()}};
+    dispatch_status_update(status);
 }
 
 void MoonrakerClientMock::disconnect() {
@@ -2968,7 +2977,9 @@ int MoonrakerClientMock::gcode_script(const std::string& raw_gcode) {
     }
 
     // Bed mesh commands
-    if (gcode.find("BED_MESH_CALIBRATE") != std::string::npos) {
+    if (auto forced_profile = take_forced_mesh_calibration(gcode)) {
+        calibrate_mock_mesh(*forced_profile);
+    } else if (gcode.find("BED_MESH_CALIBRATE") != std::string::npos) {
         // Parse optional PROFILE= parameter
         std::string profile_name = "default";
         auto profile_pos = gcode.find("PROFILE=");
@@ -2977,26 +2988,7 @@ int MoonrakerClientMock::gcode_script(const std::string& raw_gcode) {
             size_t end = gcode.find_first_of(" \t\n", start);
             profile_name = gcode.substr(start, end == std::string::npos ? end : end - start);
         }
-
-        // Regenerate mesh with slight random variation
-        active_bed_mesh_.name = profile_name;
-        generate_mock_bed_mesh_with_variation();
-
-        // Add new profile to list if not already present
-        if (std::find(bed_mesh_profiles_.begin(), bed_mesh_profiles_.end(), profile_name) ==
-            bed_mesh_profiles_.end()) {
-            bed_mesh_profiles_.push_back(profile_name);
-        }
-        // Store the calibrated mesh
-        stored_bed_mesh_profiles_[profile_name] = active_bed_mesh_;
-
-        spdlog::info(
-            "[MoonrakerClientMock] BED_MESH_CALIBRATE: generated new mesh for profile '{}'",
-            profile_name);
-
-        // Dispatch bed mesh update notification
-        dispatch_bed_mesh_update();
-
+        calibrate_mock_mesh(profile_name);
     } else if (gcode.find("BED_MESH_PROFILE") != std::string::npos) {
         // Parse LOAD= or SAVE= or REMOVE= parameter
         if (gcode.find("LOAD=") != std::string::npos) {
@@ -4274,37 +4266,6 @@ void MoonrakerClientMock::dispatch_initial_state() {
     }
     double progress = print_progress_.load();
 
-    // Convert probed_matrix to JSON 2D array
-    json probed_matrix_json = json::array();
-    for (const auto& row : active_bed_mesh_.probed_matrix) {
-        json row_json = json::array();
-        for (float val : row) {
-            row_json.push_back(val);
-        }
-        probed_matrix_json.push_back(row_json);
-    }
-
-    // Build profiles object with full mesh data (Moonraker format)
-    json profiles_json = json::object();
-    for (const auto& [name, profile] : stored_bed_mesh_profiles_) {
-        json points_json = json::array();
-        for (const auto& row : profile.probed_matrix) {
-            json row_json = json::array();
-            for (float val : row) {
-                row_json.push_back(val);
-            }
-            points_json.push_back(row_json);
-        }
-        profiles_json[name] = {{"points", points_json},
-                               {"mesh_params",
-                                {{"min_x", profile.mesh_min[0]},
-                                 {"min_y", profile.mesh_min[1]},
-                                 {"max_x", profile.mesh_max[0]},
-                                 {"max_y", profile.mesh_max[1]},
-                                 {"x_count", profile.x_count},
-                                 {"y_count", profile.y_count}}}};
-    }
-
     // Build LED state JSON
     json led_json = json::object();
     {
@@ -4364,13 +4325,7 @@ void MoonrakerClientMock::dispatch_initial_state() {
         {"webhooks", {{"state", klippy_str}, {"state_message", "Printer is ready"}}},
         {"print_stats", {{"state", print_state_str}, {"filename", filename}}},
         {"virtual_sdcard", {{"progress", progress}}},
-        {"bed_mesh",
-         {{"profile_name", active_bed_mesh_.name},
-          {"probed_matrix", probed_matrix_json},
-          {"mesh_min", {active_bed_mesh_.mesh_min[0], active_bed_mesh_.mesh_min[1]}},
-          {"mesh_max", {active_bed_mesh_.mesh_max[0], active_bed_mesh_.mesh_max[1]}},
-          {"profiles", profiles_json},
-          {"mesh_params", {{"algo", active_bed_mesh_.algo}}}}}};
+        {"bed_mesh", bed_mesh_status()}};
 
     // Include exclude_object initial state (empty - no objects defined until print starts)
     initial_status["exclude_object"] = {{"objects", json::array()},

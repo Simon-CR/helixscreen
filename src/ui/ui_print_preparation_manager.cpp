@@ -171,9 +171,6 @@ void PrintPreparationManager::recalculate_estimate() {
     total += mgr.estimate_heating_seconds("extruder", ext_temp, ext_target);
     total += mgr.estimate_heating_seconds("heater_bed", bed_temp, bed_target);
 
-    // Homing always happens
-    total += 20.0f;
-
     // Non-heating ops from predictor (cached to avoid reparsing config JSON on every toggle)
     if (!predictor_cached_) {
         auto entries = helix::PreprintPredictor::load_entries_from_config();
@@ -183,6 +180,9 @@ void PrintPreparationManager::recalculate_estimate() {
                                        is_warm ? StartCondition::WARM : StartCondition::COLD);
         predictor_cached_ = true;
     }
+
+    // Homing always happens, and takes the collector's estimate for it
+    total += static_cast<float>(cached_predictor_.predicted_homing_seconds());
     auto phases = cached_predictor_.predicted_phases();
 
     // Add phase estimate if the option is currently enabled. State is read

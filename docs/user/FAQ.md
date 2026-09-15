@@ -37,7 +37,7 @@ HelixScreen works with any Klipper-based printer running Moonraker. Tested and s
 | Anycubic Kobra 2 Pro / Kobra 3 / 3 V2 / 3 Max / S1 / S1 Max | **Community** | Auto-detected on [Rinkhals](https://github.com/jbatonnet/Rinkhals) firmware; native ACE (`filament_hub`) supported. Untested on our hardware. |
 | FlashForge AD5X | **Tested** | IFS filament system integrated |
 | SOVOL SV06 / SV08 | **Tested** | Community reports welcome |
-| Elegoo Centauri Carbon 1 | **Tested** | Requires [OpenCentauri COSMOS](https://docs.opencentauri.cc/klipper-conversion/cosmos/cosmos/) firmware; ships with factory white-balance calibration |
+| Elegoo Centauri Carbon 1 | **Tested** | Requires [OpenCentauri COSMOS](https://docs.opencentauri.cc/klipper-conversion/cosmos/cosmos/) firmware 26.07.0 or newer; ships with factory white-balance calibration |
 | Snapmaker U1 (SnapSwap toolchanger) | **Tested** | Native four-head support with RFID spool recognition. Needs SSH — stock firmware (1.2+) via its **Root access** option, or PAXX Extended Firmware (SSH on by default). Tested on PAXX 1.2.x–1.4.x; the stock-firmware path is unverified on a real stock device. Reinstall after a firmware update. On PAXX firmware you can also view/control the screen remotely in Mainsail/Fluidd (the "gui" webcam) via the firmware's `web remote_screen` toggle; physical cameras work normally. |
 | Artillery M1 Pro | **Tested** | |
 | Zero G Mercury / Nebula / Hydra | **Tested** | Multiple variants supported |

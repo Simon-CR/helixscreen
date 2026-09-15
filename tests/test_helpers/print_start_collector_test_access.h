@@ -8,22 +8,26 @@ class PrintStartCollectorTestAccess {
   public:
     /// Wind back the start time to simulate elapsed seconds.
     ///
-    /// Also winds back last_activity_time_, so this models "N seconds passed
-    /// and the printer said nothing" — the case the timeouts exist for. Use
+    /// Also winds back both activity stamps, so this models "N seconds passed
+    /// and the printer showed nothing" — the case the timeouts exist for. Use
     /// set_last_activity_seconds_ago() afterwards to model a printer that is
-    /// still narrating its pre-print.
+    /// still working on its pre-print.
     static void set_elapsed_seconds(PrintStartCollector& c, int seconds) {
         std::lock_guard<std::mutex> lock(c.state_mutex_);
         auto when = helix::sim::SimulatedClock::now() - std::chrono::seconds(seconds);
         c.printing_state_start_ = when;
-        c.last_activity_time_ = when;
+        c.last_signal_time_ = when;
+        c.last_inferred_activity_time_ = when;
     }
 
-    /// Set how long ago the last pre-print activity (phase match or probe line)
-    /// was observed, independent of total elapsed time.
+    /// Set how long ago the printer last showed pre-print activity of every
+    /// kind (a matched line, a probe line, a climbing heater, a status-signal
+    /// rule), independent of total elapsed time.
     static void set_last_activity_seconds_ago(PrintStartCollector& c, int seconds) {
         std::lock_guard<std::mutex> lock(c.state_mutex_);
-        c.last_activity_time_ = helix::sim::SimulatedClock::now() - std::chrono::seconds(seconds);
+        const auto when = helix::sim::SimulatedClock::now() - std::chrono::seconds(seconds);
+        c.last_signal_time_ = when;
+        c.last_inferred_activity_time_ = when;
     }
 
     /// Set predicted_total_seconds_ directly for timeout threshold tests

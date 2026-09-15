@@ -39,6 +39,16 @@ struct FilamentPanelTestAccess {
         p.handle_load_button();
     }
 
+    static void execute_purge(FilamentPanel& p) {
+        p.execute_purge();
+    }
+
+    /// The preset index the material buttons select (-1 = none), set without
+    /// the heater commands a real preset press also sends.
+    static void set_selected_material(FilamentPanel& p, int preset) {
+        p.selected_material_ = preset;
+    }
+
     static void populate_extruder_dropdown(FilamentPanel& p) {
         p.populate_extruder_dropdown();
     }

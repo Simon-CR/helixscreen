@@ -404,17 +404,16 @@ class PrinterDetector {
     /**
      * @brief Printer-specific bed-mesh calibration gcode template
      *
-     * Some printers need pre-probe housekeeping that helixscreen can't express
-     * with a single macro slot — notably the Elegoo Centauri Carbon whose
-     * mainline-Klipper `[load_cell_probe]` requires `LOAD_CELL_SAVE_TARE` and
-     * a nozzle-wipe wrapper before `BED_MESH_CALIBRATE`. The database entry
-     * may supply a multi-line template under `calibration.bed_mesh_gcode`.
+     * For a printer whose firmware mesh macro takes parameters a bare macro slot
+     * cannot carry, or needs housekeeping helixscreen cannot infer. The database
+     * entry may supply a template, one line or several, under
+     * `calibration.bed_mesh_gcode`.
      *
      * Read through StandardMacros rather than directly: this feeds the SHIPPED
      * tier, so the user's own Settings override still outranks it and
-     * resolve_macro_script() handles the `{profile}` substitution.
+     * resolve_macro_script() substitutes its placeholders.
      *
-     * @return Template with `{profile}` placeholder, or empty string if the
+     * @return Template, possibly with placeholders, or empty string if the
      *         printer ships no sequence for this operation.
      */
     static std::string get_bed_mesh_calibrate_gcode(const std::string& printer_name);
@@ -464,6 +463,20 @@ class PrinterDetector {
      * @return phase_enum_int → seconds; empty map falls back to generic defaults.
      */
     static std::map<int, int> get_print_start_default_phases(const std::string& printer_name);
+
+    /**
+     * @brief Measured heating rates for a printer, in seconds per degree C
+     *
+     * Database field `thermal_rates` maps a heater name to the rate a first
+     * print should assume, e.g. `{"heater_bed": 6.0, "extruder": 0.4}`.
+     * ThermalRateManager uses these in place of its build-volume guess; a rate
+     * learned from this printer's own prints still wins. Only heaters in
+     * ThermalRateManager::PERSISTED_HEATERS are returned.
+     *
+     * @param printer_name Printer name (e.g., "Elegoo Centauri Carbon")
+     * @return heater name -> s/°C; empty when the entry declares none
+     */
+    static std::map<std::string, float> get_thermal_rates(const std::string& printer_name);
 
     // =========================================================================
     // User Extensions API

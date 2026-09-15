@@ -35,6 +35,11 @@ ProfileNameCheck check_profile_name(std::string_view raw,
     }
 
     std::string name(trimmed);
+    // Klipper ends a command at ';' before reading its parameters, and a line break
+    // starts another command, so no quoting carries either inside a name.
+    if (name.find_first_of(";\r\n") != std::string::npos) {
+        return {ProfileNameVerdict::Unusable, std::move(name)};
+    }
     const bool clashes = std::find(existing.begin(), existing.end(), name) != existing.end();
     return {clashes ? ProfileNameVerdict::Overwrite : ProfileNameVerdict::New, std::move(name)};
 }

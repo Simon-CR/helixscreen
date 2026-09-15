@@ -836,17 +836,12 @@ void PrinterState::set_hardware(helix::PrinterDiscovery hardware) {
         set_kinematics(discovery_.kinematics());
     }
 
-    // Resolve chamber assignments. A named sensor overrides auto-detection; a named
-    // heater counts only while Klipper reports it (chamber::resolve_heater).
+    // Resolve chamber assignments. A named sensor or heater counts only while Klipper
+    // reports it (chamber::resolve_sensor, chamber::resolve_heater).
     auto& settings = helix::SettingsManager::instance();
 
-    std::string chamber_sensor = settings.get_chamber_sensor_assignment();
-    if (chamber_sensor == "auto") {
-        chamber_sensor = discovery_.chamber_sensor_name();
-    } else if (chamber_sensor == "none") {
-        chamber_sensor = "";
-    }
-
+    const std::string chamber_sensor =
+        chamber::resolve_sensor(settings.get_chamber_sensor_assignment(), discovery_);
     const std::string chamber_heater =
         chamber::resolve_heater(settings.get_chamber_heater_assignment(), discovery_);
 

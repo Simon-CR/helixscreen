@@ -26,6 +26,7 @@
   <translation tag="%zu events queued" ja="%zu 件のイベントを待機中"/>
   <translation tag="%zu plugins failed to load" ja="%zu 個のプラグインの読み込みに失敗しました"/>
   <translation tag="&apos;{}&apos; already exists. Replace the stored mesh?" ja="&apos;{}&apos; は既に存在します。保存されたメッシュを置き換えますか？"/>
+  <translation tag="&apos;{}&apos; and &apos;{}&apos; already exist. Replace the stored meshes?" ja="&apos;{}&apos; と &apos;{}&apos; は既に存在します。保存されたメッシュを置き換えますか？"/>
   <translation tag="(different grade)" ja="(グレード違い)"/>
   <translation tag="(incompatible)" ja="(非対応)"/>
   <translation tag="(multi-tool)" ja="(マルチツール)"/>
@@ -641,6 +642,7 @@
   <translation tag="Could not read the screw adjustments from the printer" ja="プリンターからネジ調整を読み取れませんでした"/>
   <translation tag="Could not resolve printer RFCOMM channel" ja="プリンターの RFCOMM チャンネルを解決できませんでした"/>
   <translation tag="Could not save filament" ja="フィラメントを保存できませんでした"/>
+  <translation tag="Could not save the mesh as &apos;{}&apos;: {}" ja="メッシュを &apos;{}&apos; として保存できませんでした: {}"/>
   <translation tag="Could not start Bluetooth discovery" ja="Bluetooth の検出を開始できませんでした"/>
   <translation tag="Could not update filaments" ja="フィラメントを更新できませんでした"/>
   <translation tag="Could not verify Spoolman status. Moonraker may still be restarting." ja="Spoolman のステータスを確認できませんでした。Moonraker がまだ再起動中の可能性があります。"/>
@@ -853,7 +855,6 @@
   <translation tag="Enter a multiplier between 0.5 and 2.0" ja="倍率は 0.5〜2.0 にしてください"/>
   <translation tag="Enter a name for this profile" ja="このプロファイルの名前を入力"/>
   <translation tag="Enter a name for your custom theme:" ja="カスタムテーマの名前を入力してください:"/>
-  <translation tag="Enter a name to save this profile" ja="このプロファイルを保存する名前を入力"/>
   <translation tag="Enter network name" ja="ネットワーク名を入力"/>
   <translation tag="Enter password" ja="パスワードを入力"/>
   <translation tag="Enter printer IP address first" ja="先にプリンターのIPアドレスを入力してください"/>
@@ -1000,7 +1001,6 @@
   <translation tag="Failed to save fan configuration" ja="ファン設定の保存に失敗しました"/>
   <translation tag="Failed to save heater configuration" ja="ヒーター設定の保存に失敗しました"/>
   <translation tag="Failed to save printer configuration" ja="プリンター設定の保存に失敗しました"/>
-  <translation tag="Failed to save profile" ja="プロファイルの保存に失敗しました"/>
   <translation tag="Failed to save setup completion" ja="セットアップ完了の保存に失敗しました"/>
   <translation tag="Failed to save spool" ja="スプールの保存に失敗しました"/>
   <translation tag="Failed to save theme file" ja="テーマファイルの保存に失敗しました"/>
@@ -1384,6 +1384,7 @@
   <translation tag="Klipper firmware has disconnected from the host. Try restarting Klipper or performing a firmware restart." ja="Klipper ファームウェアがホストから切断されました。Klipper を再起動するか、ファームウェア再起動を実行してみてください。"/>
   <translation tag="Klipper has entered an error state. This is typically caused by an MCU connection failure or configuration error. Try a firmware restart." ja="Klipper がエラー状態になりました。これは通常、MCU 接続の失敗または設定エラーが原因です。ファームウェア再起動を試してください。"/>
   <translation tag="Klipper has entered shutdown state. This may be due to an emergency stop, thermal runaway, or configuration error." ja="Klipper がシャットダウン状態になりました。緊急停止、熱暴走、または設定エラーが原因の可能性があります。"/>
+  <translation tag="Klipper reserves &apos;default&apos; for new calibrations. Choose another name." ja="Klipper は &apos;default&apos; を新しいキャリブレーション用に予約しています。別の名前を選んでください。"/>
   <translation tag="Klipper restarting - macros activating" ja="Klipper を再起動しています - マクロを有効化中"/>
   <translation tag="Klipper will restart to apply changes" ja="変更を適用するために Klipper が再起動します"/>
   <translation tag="Klipper will restart to apply changes." ja="変更を適用するために Klipper が再起動します。"/>
@@ -1580,7 +1581,6 @@
   <translation tag="Memory" ja="メモリ"/>
   <translation tag="Memory (MB)" ja="メモリ (MB)"/>
   <translation tag="Memory Snapshot" ja="メモリースナップショット"/>
-  <translation tag="Mesh Complete" ja="メッシュ完了"/>
   <translation tag="Mesh saved as &apos;{}&apos;" ja="&quot;メッシュを &apos;{}&apos; として保存しました&quot;"/>
   <translation tag="Method" ja="方法"/>
   <translation tag="Min" ja="最小"/>
@@ -1713,6 +1713,7 @@
   <translation tag="No multi-filament system detected" ja="マルチフィラメントシステムが検出されません"/>
   <translation tag="No network. Scan QR code to report on your phone." ja="ネットワークなし。QR コードをスキャンしてスマホから報告してください。"/>
   <translation tag="No networks found" ja="ネットワークが見つかりません"/>
+  <translation tag="No new mesh was stored as &apos;{}&apos;" ja="新しいメッシュは &apos;{}&apos; として保存されませんでした"/>
   <translation tag="No notifications" ja="通知なし"/>
   <translation tag="No objects defined for this print" ja="この印刷にはオブジェクトが定義されていません"/>
   <translation tag="No presets configured" ja="プリセットが設定されていません"/>
@@ -2018,6 +2019,7 @@
   <translation tag="Printer connection unavailable" ja="プリンターとの接続が利用できません"/>
   <translation tag="Printer database format error" ja="プリンターデータベースの形式エラー"/>
   <translation tag="Printer database is corrupt" ja="プリンターデータベースが破損しています"/>
+  <translation tag="Printer default" ja="プリンター既定"/>
   <translation tag="Printer didn&apos;t respond — make sure it&apos;s on and in range" ja="プリンターが応答しません — 電源が入っており通信範囲内にあることを確認してください"/>
   <translation tag="Printer doesn&apos;t expose the expected service — wrong device?" ja="プリンターが想定されるサービスを公開していません — デバイスが違う可能性があります"/>
   <translation tag="Printer hardware detected" ja="プリンターのハードウェアを検出"/>
@@ -2061,6 +2063,7 @@
   <translation tag="Processing..." ja="処理中..."/>
   <translation tag="Profile deleted" ja="プロファイルを削除しました"/>
   <translation tag="Profile name (e.g., default)" ja="プロファイル名（例: default）"/>
+  <translation tag="Profile names cannot contain &apos;;&apos;" ja="プロファイル名に &apos;;&apos; は使用できません"/>
   <translation tag="Profile renamed" ja="プロファイル名を変更しました"/>
   <translation tag="Profiles" ja="プロファイル"/>
   <translation tag="Progress, file, and time remaining" ja="進行状況、ファイル、残り時間"/>
@@ -2172,7 +2175,6 @@
   <translation tag="Rename Mesh Profile" ja="メッシュプロファイルの名前を変更"/>
   <translation tag="Rename failed at load step" ja="名前変更が読込ステップで失敗しました"/>
   <translation tag="Rename failed at remove step" ja="名前変更が削除ステップで失敗しました"/>
-  <translation tag="Rename failed at save step" ja="名前変更が保存ステップで失敗しました"/>
   <translation tag="Render Now" ja="今すぐレンダリング"/>
   <translation tag="Rendering timelapse..." ja="タイムラプスをレンダリング中..."/>
   <translation tag="Replace" ja="置き換え"/>

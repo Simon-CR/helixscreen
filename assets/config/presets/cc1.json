@@ -79,9 +79,9 @@
       "cooldown": "SET_HEATER_TEMPERATURE HEATER=extruder TARGET=0\nSET_HEATER_TEMPERATURE HEATER=heater_bed TARGET=0",
       "load_filament": { "label": "Load", "gcode": "LOAD_FILAMENT" },
       "unload_filament": { "label": "Unload", "gcode": "UNLOAD_FILAMENT" },
-      "macro_1": { "label": "Clean Nozzle", "gcode": "WIPE_NOZZLE" },
-      "macro_2": { "label": "Bed Mesh", "gcode": "BED_MESH_CALIBRATE_WITH_WIPE" },
-      "macro_3": { "label": "Full Calibration", "gcode": "FULL_CALIBRATION" }
+      "macro_1": { "label": "Clean Nozzle", "gcode": "CLEAN_NOZZLE" },
+      "macro_2": { "label": "Bed Mesh", "gcode": "BED_MESH_CALIBRATE" },
+      "macro_3": { "label": "Check Calibration", "gcode": "CHECK_CALIBRATION" }
     }
   }
 }

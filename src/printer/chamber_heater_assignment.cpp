@@ -11,9 +11,14 @@
 
 namespace helix::chamber {
 
-std::string resolve_heater(const std::string& assignment, const PrinterDiscovery& discovery) {
+namespace {
+
+/// One chamber role's assignment against discovery's pick for that role. Blind to
+/// the object's type: whatever discovery picked for the role is the fallback.
+std::string resolve(const std::string& assignment, const std::string& discovered,
+                    const PrinterDiscovery& discovery, const char* role) {
     if (assignment == "auto") {
-        return discovery.chamber_heater_name();
+        return discovered;
     }
     if (assignment == "none") {
         return "";
@@ -24,10 +29,22 @@ std::string resolve_heater(const std::string& assignment, const PrinterDiscovery
         return assignment;
     }
 
-    spdlog::info("[ChamberHeater] Assigned chamber heater '{}' is not a Klipper object on this "
-                 "printer; using the discovered one ('{}')",
-                 assignment, discovery.chamber_heater_name());
-    return discovery.chamber_heater_name();
+    // Every discovery pass (each klippy ready and reconnect) lands here while the saved
+    // name stays stale, so it is not news each time.
+    spdlog::debug("[ChamberAssignment] Assigned chamber {} '{}' is not a Klipper object on this "
+                  "printer; using the discovered one ('{}')",
+                  role, assignment, discovered);
+    return discovered;
+}
+
+} // namespace
+
+std::string resolve_heater(const std::string& assignment, const PrinterDiscovery& discovery) {
+    return resolve(assignment, discovery.chamber_heater_name(), discovery, "heater");
+}
+
+std::string resolve_sensor(const std::string& assignment, const PrinterDiscovery& discovery) {
+    return resolve(assignment, discovery.chamber_sensor_name(), discovery, "sensor");
 }
 
 } // namespace helix::chamber

@@ -32,6 +32,11 @@ struct BedMeshPanelTestAccess {
         return p.wire_canvas_and_content(overlay_content);
     }
 
+    /// Name the profile row @p index shows, as the profile list does.
+    static void set_profile_name(BedMeshPanel& p, int index, const std::string& name) {
+        p.profile_names_[static_cast<size_t>(index)] = name;
+    }
+
     /// Drives the private SAVE_CONFIG initiation so the expected-restart flow
     /// tests can exercise it without the panel's full XML UI.
     static void save_config(BedMeshPanel& p) {
