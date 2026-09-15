@@ -12,6 +12,7 @@
 #include "ui_update_queue.h"
 
 #include "../lvgl_ui_test_fixture.h"
+#include "../test_helpers/log_capture.h"
 #include "ams_backend_mock.h"
 #include "ams_error.h"
 #include "ams_state.h"
@@ -122,6 +123,19 @@ class AmsEditOverlayViewTestAccess {
     }
     bool save_opt_in() {
         return overlay_.save_to_spoolman_opt_in_;
+    }
+    static bool save_is_disabled(int view, bool save_in_flight, bool dirty) {
+        return AmsEditOverlay::save_is_disabled(view, save_in_flight, dirty);
+    }
+    int save_disabled() {
+        return lv_subject_get_int(&overlay_.save_disabled_subject_);
+    }
+    void set_save_opt_in(bool opted_in) {
+        overlay_.save_to_spoolman_opt_in_ = opted_in;
+    }
+    /// What the identity prompt's "It's a new spool" button runs.
+    void call_do_spoolman_save(helix::SpoolmanSlotSaver::LinkIntent intent) {
+        overlay_.do_spoolman_save(intent);
     }
     void call_open_color_view() {
         overlay_.open_color_view();
@@ -2675,4 +2689,185 @@ TEST_CASE_METHOD(LVGLUITestFixture,
     CHECK(access.working_info().product_name != "PLA+ 9.9");
 
     close_editor_overlay();
+}
+
+TEST_CASE_METHOD(LVGLUITestFixture,
+                 "a failed Spoolman save keeps the editor open and commits nothing",
+                 "[ams_edit_overlay][spool_edit]") {
+    // A save that did not reach Spoolman has changed nothing anywhere, so the
+    // editor stays on the user's edit rather than closing on a local commit
+    // they would read as saved.
+    PrinterState state;
+    MoonrakerClientMock client;
+    MoonrakerAPIMock api(client, state);
+
+    SpoolInfo linked;
+    linked.id = 7;
+    linked.filament_id = 3;
+    linked.vendor = "Generic";
+    linked.material = "PLA";
+    linked.color_hex = "112233";
+    api.spoolman_mock().get_mock_spools().push_back(linked);
+
+    auto* spoolman_subj = lv_xml_get_subject(nullptr, "printer_has_spoolman");
+    REQUIRE(spoolman_subj != nullptr);
+    lv_subject_set_int(spoolman_subj, 1);
+    get_printer_state().set_spoolman_available(true);
+    UpdateQueue::instance().drain();
+
+    auto& overlay = get_ams_edit_overlay();
+    AmsEditOverlayViewTestAccess access(overlay);
+
+    bool fired = false;
+    REQUIRE(overlay.show_for_slot(test_screen(), 0, tracked_slot(), &api,
+                                  [&](const AmsEditOverlay::EditResult&) { fired = true; }));
+    UpdateQueue::instance().drain();
+    process_lvgl(10);
+
+    // Every Spoolman request from here on fails.
+    api.spoolman_mock().set_mock_spoolman_enabled(false);
+    helix::TextLogCapture log;
+
+    // A brand move is an edit Spoolman has to write, and it never prompts.
+    SlotInfo edited = access.working_info();
+    edited.brand = "Sunlu";
+    access.set_working_info(edited);
+
+    access.call_handle_save();
+    UpdateQueue::instance().drain();
+    process_lvgl(10);
+    // The toast is queued from inside the deferred save answer.
+    UpdateQueue::instance().drain();
+    process_lvgl(10);
+
+    CHECK_FALSE(fired);
+    CHECK(access.working_info().brand == "Sunlu");
+    CHECK(log.contains("Spoolman save failed; nothing written"));
+    // Save is available again: the edit is still staged and still unsaved.
+    CHECK(access.save_disabled() == 0);
+
+    NavigationManager::instance().go_back();
+    UpdateQueue::instance().drain();
+    process_lvgl(10);
+}
+
+TEST_CASE_METHOD(LVGLUITestFixture,
+                 "an incomplete new spool keeps the editor open and names what is missing",
+                 "[ams_edit_overlay][spool_edit]") {
+    // "It's a new spool" creates a filament, and Spoolman identifies one by
+    // vendor, material and colour. With a field missing there is nothing to
+    // create, so the editor stays open rather than closing on a save that
+    // wrote nothing.
+    PrinterState state;
+    MoonrakerClientMock client;
+    MoonrakerAPIMock api(client, state);
+
+    auto* spoolman_subj = lv_xml_get_subject(nullptr, "printer_has_spoolman");
+    REQUIRE(spoolman_subj != nullptr);
+    lv_subject_set_int(spoolman_subj, 1);
+    get_printer_state().set_spoolman_available(true);
+    UpdateQueue::instance().drain();
+
+    auto& overlay = get_ams_edit_overlay();
+    AmsEditOverlayViewTestAccess access(overlay);
+
+    bool fired = false;
+    REQUIRE(overlay.show_for_slot(test_screen(), 0, tracked_slot(), &api,
+                                  [&](const AmsEditOverlay::EditResult&) { fired = true; }));
+    UpdateQueue::instance().drain();
+    process_lvgl(10);
+
+    SlotInfo edited = access.working_info();
+    edited.brand = "";
+    edited.color_rgb = 0xE53935;
+    access.set_working_info(edited);
+
+    helix::TextLogCapture log;
+    access.call_do_spoolman_save(SpoolmanSlotSaver::LinkIntent::CreateAndRebind);
+    UpdateQueue::instance().drain();
+    process_lvgl(10);
+    // The toast is queued from inside the deferred save answer.
+    UpdateQueue::instance().drain();
+    process_lvgl(10);
+
+    CHECK_FALSE(fired);
+    // The save stopped for the missing field rather than as a generic failure,
+    // which is what decides the sentence the user is shown.
+    CHECK(log.contains("missing a field it is identified by"));
+    CHECK_FALSE(log.contains("Spoolman save failed"));
+    CHECK(api.spoolman_mock().created_spools.empty());
+    CHECK(api.spoolman_mock().created_filaments.empty());
+
+    NavigationManager::instance().go_back();
+    UpdateQueue::instance().drain();
+    process_lvgl(10);
+}
+
+TEST_CASE_METHOD(LVGLUITestFixture,
+                 "Save to Spoolman on an incomplete untracked filament keeps the editor open",
+                 "[ams_edit_overlay][spool_edit]") {
+    // The toggle is the user asking for the spool to exist in Spoolman. With a
+    // field missing it cannot, so the save stops and says so instead of closing
+    // and quietly ignoring the toggle.
+    PrinterState state;
+    MoonrakerClientMock client;
+    MoonrakerAPIMock api(client, state);
+
+    auto* spoolman_subj = lv_xml_get_subject(nullptr, "printer_has_spoolman");
+    REQUIRE(spoolman_subj != nullptr);
+    lv_subject_set_int(spoolman_subj, 1);
+    get_printer_state().set_spoolman_available(true);
+    UpdateQueue::instance().drain();
+
+    auto& overlay = get_ams_edit_overlay();
+    AmsEditOverlayViewTestAccess access(overlay);
+
+    bool fired = false;
+    REQUIRE(overlay.show_for_slot(test_screen(), 0, untracked_slot(), &api,
+                                  [&](const AmsEditOverlay::EditResult&) { fired = true; }));
+    UpdateQueue::instance().drain();
+    process_lvgl(10);
+
+    SlotInfo edited = access.working_info();
+    edited.spoolman_id = 0;
+    edited.brand = "Sunlu";
+    edited.material = "";
+    edited.color_rgb = 0xE53935;
+    access.set_working_info(edited);
+    access.set_save_opt_in(true);
+
+    access.call_handle_save();
+    UpdateQueue::instance().drain();
+    process_lvgl(10);
+    // The toast is queued from inside the deferred save answer.
+    UpdateQueue::instance().drain();
+    process_lvgl(10);
+
+    CHECK_FALSE(fired);
+    CHECK(api.spoolman_mock().created_spools.empty());
+
+    NavigationManager::instance().go_back();
+    UpdateQueue::instance().drain();
+    process_lvgl(10);
+}
+
+TEST_CASE("AmsEditOverlay::save_is_disabled holds Save shut while a save is in flight",
+          "[ams_edit_overlay][spool_edit]") {
+    // The rule as a rule, with no editor around it: the async seam a live save
+    // runs through is what makes the in-flight moment unobservable otherwise.
+    using Access = AmsEditOverlayViewTestAccess;
+
+    SECTION("the overview gates on the edit") {
+        CHECK(Access::save_is_disabled(AmsEditOverlay::VIEW_OVERVIEW, false, false));
+        CHECK_FALSE(Access::save_is_disabled(AmsEditOverlay::VIEW_OVERVIEW, false, true));
+    }
+
+    SECTION("the spool-edit view keeps Save available") {
+        CHECK_FALSE(Access::save_is_disabled(AmsEditOverlay::VIEW_SPOOL_EDIT, false, false));
+    }
+
+    SECTION("a save in flight holds it shut on either view") {
+        CHECK(Access::save_is_disabled(AmsEditOverlay::VIEW_OVERVIEW, true, true));
+        CHECK(Access::save_is_disabled(AmsEditOverlay::VIEW_SPOOL_EDIT, true, false));
+    }
 }

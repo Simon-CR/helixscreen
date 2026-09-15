@@ -727,8 +727,7 @@ translations:
   Could not verify Spoolman status. Moonraker may still be restarting.: Impossibile
     verificare lo stato di Spoolman. Moonraker potrebbe essere ancora in riavvio.
   Couldn't save the material name: 'Impossibile salvare il nome del materiale'
-  Couldn't update Spoolman — saved locally: Impossibile aggiornare Spoolman — salvato
-    localmente
+  Couldn't save to Spoolman. Nothing changed on this printer.: ''
   Cover open: Coperchio aperto
   Crash Report: Rapporto di crash
   Crash report sent — thank you!: Report crash inviato — grazie!
@@ -2806,6 +2805,9 @@ translations:
   Spoolman has no spools configured: Spoolman non ha bobine configurate
   Spoolman is not configured — nothing to remove.: Spoolman non è configurato — niente
     da rimuovere.
+  Spoolman needs a brand for this filament.: ''
+  Spoolman needs a color for this filament.: ''
+  Spoolman needs a material for this filament.: ''
   Spoolman removed.: Spoolman rimosso.
   Spoolman unavailable — filament weights may be stale: Spoolman non disponibile —
     i pesi del filamento potrebbero non essere aggiornati

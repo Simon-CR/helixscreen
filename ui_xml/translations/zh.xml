@@ -648,7 +648,7 @@
   <translation tag="Could not update filaments" zh="无法更新耗材"/>
   <translation tag="Could not verify Spoolman status. Moonraker may still be restarting." zh="无法验证 Spoolman 状态。Moonraker 可能仍在重启中。"/>
   <translation tag="Couldn&apos;t save the material name" zh="无法保存材料名称"/>
-  <translation tag="Couldn&apos;t update Spoolman — saved locally" zh="无法更新 Spoolman — 已保存在本地"/>
+  <translation tag="Couldn&apos;t save to Spoolman. Nothing changed on this printer."/>
   <translation tag="Cover open" zh="盖子未关闭"/>
   <translation tag="Crash Report" zh="崩溃报告"/>
   <translation tag="Crash report sent — thank you!" zh="崩溃报告已发送 — 谢谢！"/>
@@ -2530,6 +2530,9 @@
   <translation tag="Spoolman found! Configuring..." zh="已找到 Spoolman！正在配置..."/>
   <translation tag="Spoolman has no spools configured" zh="Spoolman 未配置料盘"/>
   <translation tag="Spoolman is not configured — nothing to remove." zh="Spoolman 未配置 — 无需移除。"/>
+  <translation tag="Spoolman needs a brand for this filament."/>
+  <translation tag="Spoolman needs a color for this filament."/>
+  <translation tag="Spoolman needs a material for this filament."/>
   <translation tag="Spoolman removed." zh="Spoolman 已移除。"/>
   <translation tag="Spoolman unavailable — filament weights may be stale" zh="Spoolman不可用 — 耗材重量可能已过期"/>
   <translation tag="Spoolman was not configured." zh="Spoolman 未配置。"/>

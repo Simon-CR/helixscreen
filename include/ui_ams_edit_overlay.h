@@ -113,6 +113,9 @@ class AmsEditOverlay : public OverlayBase {
     // Explicit "Save to Spoolman" opt-in captured from the filament-details
     // toggle (spec §3.3). Reset per show_for_slot; false = local-only save.
     bool save_to_spoolman_opt_in_ = false;
+    // A Spoolman save is in flight. The editor stays open while it runs, so a
+    // second tap on Save is reachable and would start a second save.
+    bool save_in_flight_ = false;
     // Whether the slot was Spoolman-tracked when the spool-edit view was
     // entered. Captured in enter_spool_edit() before any unlink zeroes
     // spoolman_id, so handle_spool_edit_save() can tell a genuine untracked
@@ -253,6 +256,12 @@ class AmsEditOverlay : public OverlayBase {
     // when the metadata is complete.
     static bool should_create_new_spool(const SlotInfo& working_info, bool save_to_spoolman);
 
+    // Whether Save is unavailable, from the three things that decide it. The
+    // spool-edit view keeps Save available because its edits live in the
+    // on-screen widgets and is_dirty() cannot see them; the overview gates on
+    // the edit; and a save already in flight holds it shut on either view.
+    [[nodiscard]] static bool save_is_disabled(int view, bool save_in_flight, bool dirty);
+
     static bool is_material_identity_change(const SlotInfo& original, const SlotInfo& edited);
 
     // Which weight fields the untracked branch of handle_spool_edit_save() may
@@ -306,6 +315,15 @@ class AmsEditOverlay : public OverlayBase {
     // view, so the now-inert selector must be brought back to life or
     // vendor/type/product picking silently stops working.
     void reattach_details_selector();
+
+    // A save that wrote nothing leaves the editor where it was: the spool-edit
+    // view gets its catalog selector back, and Save becomes available again.
+    void stay_open_after_failed_save();
+
+    // Name the first field a Spoolman filament needs and this slot does not
+    // carry. One sentence per field, never a list: substituting a translated
+    // field name into a sentence breaks agreement in most locales.
+    void show_missing_filament_toast(const helix::MissingFilamentFields& missing);
     // Bind + configure + populate details_selector_ against the spool-edit
     // view's fragment (find + attach + configure + preselect). Shared by
     // enter_spool_edit() and reattach_details_selector(). Returns false (and

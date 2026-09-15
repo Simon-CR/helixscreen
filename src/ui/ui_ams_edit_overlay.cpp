@@ -1617,8 +1617,17 @@ void AmsEditOverlay::update_sync_button_state() {
     // can't see them. Overview: dirty-gated (replaces the modal's Save/Close text
     // morph). Reads (never writes) the view subject.
     const int view = lv_subject_get_int(&view_mode_subject_);
-    const bool disabled = (view == VIEW_SPOOL_EDIT) ? false : !is_dirty();
-    lv_subject_set_int(&save_disabled_subject_, disabled ? 1 : 0);
+    lv_subject_set_int(&save_disabled_subject_,
+                       save_is_disabled(view, save_in_flight_, is_dirty()) ? 1 : 0);
+}
+
+bool AmsEditOverlay::save_is_disabled(int view, bool save_in_flight, bool dirty) {
+    // A save in flight holds Save shut on either view: the editor stays open
+    // while it runs, so a second tap would start a second save.
+    if (save_in_flight) {
+        return true;
+    }
+    return (view == VIEW_SPOOL_EDIT) ? false : !dirty;
 }
 
 void AmsEditOverlay::open_color_view() {
@@ -1866,6 +1875,19 @@ void AmsEditOverlay::commit_and_close() {
             return;
         }
 
+        // The toggle is the user asking for this spool to exist in Spoolman.
+        // It cannot while a field a filament is identified by is missing, so
+        // the save stops here instead of closing with the toggle ignored.
+        if (save_to_spoolman_opt_in_ && working_info_.spoolman_id == 0) {
+            const helix::MissingFilamentFields missing =
+                helix::SpoolmanSlotSaver::missing_filament_fields(working_info_);
+            if (missing.any()) {
+                show_missing_filament_toast(missing);
+                stay_open_after_failed_save();
+                return;
+            }
+        }
+
         if ((has_linked_spool && changes.any()) || can_create_new) {
             do_spoolman_save();
             return; // Async path - close_editor called from callback
@@ -1876,21 +1898,65 @@ void AmsEditOverlay::commit_and_close() {
     close_editor(true);
 }
 
+void AmsEditOverlay::stay_open_after_failed_save() {
+    // The spool-edit view's Save detaches its catalog selector on the way to
+    // the save, so the view needs it back before the user can try again.
+    if (lv_subject_get_int(&view_mode_subject_) == VIEW_SPOOL_EDIT) {
+        reattach_details_selector();
+    }
+    update_sync_button_state();
+}
+
+void AmsEditOverlay::show_missing_filament_toast(const helix::MissingFilamentFields& missing) {
+    const char* message = nullptr;
+    if (missing.brand) {
+        message = lv_tr("Spoolman needs a brand for this filament.");
+    } else if (missing.material) {
+        message = lv_tr("Spoolman needs a material for this filament.");
+    } else if (missing.color) {
+        message = lv_tr("Spoolman needs a color for this filament.");
+    }
+    if (message) {
+        ToastManager::instance().show(ToastSeverity::ERROR, message, 3000);
+    }
+}
+
 void AmsEditOverlay::do_spoolman_save(helix::SpoolmanSlotSaver::LinkIntent intent) {
     auto token = lifetime_.token();
     auto saver = std::make_shared<helix::SpoolmanSlotSaver>(api_);
+    // One save at a time. The editor stays open while this runs, so a second
+    // tap on Save is reachable until the answer arrives.
+    save_in_flight_ = true;
+    update_sync_button_state();
     saver->save(original_info_, working_info_, intent,
                 [this, token, saver](const helix::SaveResult& result) {
                     // Spoolman callback arrives on a background thread — defer
                     // to the UI thread before touching LVGL subjects/widgets.
                     token.defer([this, result]() {
+                        save_in_flight_ = false;
+                        if (result.missing.any()) {
+                            // Spoolman was given no filament to write, so
+                            // nothing was sent. Naming the field is what lets
+                            // the user finish the save.
+                            spdlog::info("[AmsEditOverlay] Spoolman save stopped: the filament is "
+                                         "missing a field it is identified by");
+                            show_missing_filament_toast(result.missing);
+                            stay_open_after_failed_save();
+                            return;
+                        }
                         if (!result.success) {
-                            // Local save still proceeds; only the Spoolman mirror failed.
-                            spdlog::error("[AmsEditOverlay] Spoolman save failed, saving locally");
+                            // Nothing reached Spoolman and nothing is committed
+                            // here, so the edit stays on screen to retry.
+                            spdlog::error("[AmsEditOverlay] Spoolman save failed; nothing written");
                             ToastManager::instance().show(
                                 ToastSeverity::ERROR,
-                                lv_tr("Couldn't update Spoolman — saved locally"), 3000);
-                        } else if (result.created_new_spool || result.repointed_filament) {
+                                lv_tr("Couldn't save to Spoolman. Nothing changed on this "
+                                      "printer."),
+                                3000);
+                            stay_open_after_failed_save();
+                            return;
+                        }
+                        if (result.created_new_spool || result.repointed_filament) {
                             // Persist new Spoolman IDs into working_info_ so the
                             // completion callback's commit_slot_edit() writes
                             // the link back to the slot. Without this, a subsequent

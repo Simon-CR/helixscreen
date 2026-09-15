@@ -658,7 +658,7 @@ translations:
   Could not verify Spoolman status. Moonraker may still be restarting.: 无法验证 Spoolman
     状态。Moonraker 可能仍在重启中。
   Couldn't save the material name: '无法保存材料名称'
-  Couldn't update Spoolman — saved locally: 无法更新 Spoolman — 已保存在本地
+  Couldn't save to Spoolman. Nothing changed on this printer.: ''
   Cover open: 盖子未关闭
   Crash Report: 崩溃报告
   Crash report sent — thank you!: 崩溃报告已发送 — 谢谢！
@@ -2593,6 +2593,9 @@ translations:
   Spoolman found! Configuring...: 已找到 Spoolman！正在配置...
   Spoolman has no spools configured: Spoolman 未配置料盘
   Spoolman is not configured — nothing to remove.: Spoolman 未配置 — 无需移除。
+  Spoolman needs a brand for this filament.: ''
+  Spoolman needs a color for this filament.: ''
+  Spoolman needs a material for this filament.: ''
   Spoolman removed.: Spoolman 已移除。
   Spoolman unavailable — filament weights may be stale: Spoolman不可用 — 耗材重量可能已过期
   Spoolman was not configured.: Spoolman 未配置。

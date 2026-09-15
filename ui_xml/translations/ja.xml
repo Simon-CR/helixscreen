@@ -648,7 +648,7 @@
   <translation tag="Could not update filaments" ja="フィラメントを更新できませんでした"/>
   <translation tag="Could not verify Spoolman status. Moonraker may still be restarting." ja="Spoolman のステータスを確認できませんでした。Moonraker がまだ再起動中の可能性があります。"/>
   <translation tag="Couldn&apos;t save the material name" ja="材料名を保存できませんでした"/>
-  <translation tag="Couldn&apos;t update Spoolman — saved locally" ja="Spoolman を更新できませんでした — ローカルに保存しました"/>
+  <translation tag="Couldn&apos;t save to Spoolman. Nothing changed on this printer."/>
   <translation tag="Cover open" ja="カバーが開いています"/>
   <translation tag="Crash Report" ja="クラッシュレポート"/>
   <translation tag="Crash report sent — thank you!" ja="クラッシュレポートを送信しました — ありがとうございます！"/>
@@ -2530,6 +2530,9 @@
   <translation tag="Spoolman found! Configuring..." ja="Spoolman を検出しました！設定中..."/>
   <translation tag="Spoolman has no spools configured" ja="Spoolman にスプールが設定されていません"/>
   <translation tag="Spoolman is not configured — nothing to remove." ja="Spoolman が設定されていません — 削除する項目はありません。"/>
+  <translation tag="Spoolman needs a brand for this filament."/>
+  <translation tag="Spoolman needs a color for this filament."/>
+  <translation tag="Spoolman needs a material for this filament."/>
   <translation tag="Spoolman removed." ja="Spoolman を削除しました。"/>
   <translation tag="Spoolman unavailable — filament weights may be stale" ja="Spoolmanが利用できません — フィラメント重量が古い可能性があります"/>
   <translation tag="Spoolman was not configured." ja="Spoolman は設定されていませんでした。"/>

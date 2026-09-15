@@ -648,7 +648,7 @@
   <translation tag="Could not update filaments" fr="Impossible de mettre à jour les filaments"/>
   <translation tag="Could not verify Spoolman status. Moonraker may still be restarting." fr="Impossible de vérifier l&apos;état de Spoolman. Moonraker est peut-être encore en cours de redémarrage."/>
   <translation tag="Couldn&apos;t save the material name" fr="Impossible d&apos;enregistrer le nom du matériau"/>
-  <translation tag="Couldn&apos;t update Spoolman — saved locally" fr="Impossible de mettre à jour Spoolman — enregistré localement"/>
+  <translation tag="Couldn&apos;t save to Spoolman. Nothing changed on this printer."/>
   <translation tag="Cover open" fr="Capot ouvert"/>
   <translation tag="Crash Report" fr="Rapport de plantage"/>
   <translation tag="Crash report sent — thank you!" fr="Rapport de crash envoyé — merci !"/>
@@ -2530,6 +2530,9 @@
   <translation tag="Spoolman found! Configuring..." fr="Spoolman trouvé ! Configuration..."/>
   <translation tag="Spoolman has no spools configured" fr="Spoolman n&apos;a aucune bobine configurée"/>
   <translation tag="Spoolman is not configured — nothing to remove." fr="Spoolman n&apos;est pas configuré — rien à supprimer."/>
+  <translation tag="Spoolman needs a brand for this filament."/>
+  <translation tag="Spoolman needs a color for this filament."/>
+  <translation tag="Spoolman needs a material for this filament."/>
   <translation tag="Spoolman removed." fr="Spoolman supprimé."/>
   <translation tag="Spoolman unavailable — filament weights may be stale" fr="Spoolman indisponible — les poids de filament peuvent être obsolètes"/>
   <translation tag="Spoolman was not configured." fr="Spoolman n&apos;était pas configuré."/>
