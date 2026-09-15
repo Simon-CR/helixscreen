@@ -2022,18 +2022,29 @@ EOF
 # This is a spelling-level scanner, not a C++ parser, and it is NOT exhaustive.
 # It sees char and auto* declarations (west-const, east-const, pointer-const,
 # wrapped after the name) and bare `auto` initialized by the getenv() call
-# itself, retires each capture at its closing brace, and blanks comments and
-# literal contents before matching. Known-uncovered spellings: assignment-form
-# capture (`const char* p; p = getenv(..)`), a declaration wrapped BEFORE the
-# name (`const char*\np = getenv(..)`), and bare `auto` with the getenv() on a
-# continuation line. Scope: all first-party C and C++ outside lib/ — the roots
-# named in the @test below; lib/ is vendored submodules. The 400-line backstop
-# window exists only so a pathological single function cannot pin a name
-# forever; a same-named local in a NESTED scope of the same function (a
-# for-loop shadowing the capture) is the one residual false-positive shape.
+# itself, retires each capture at its closing brace (a capture declared in a
+# control-statement header whose body opens on the same line retires with that
+# statement), and blanks comments, literal contents and qualified names
+# (`x.name`, `ptr->name`, `ns::name`, `name::member`) before matching. A read
+# is stale only when a setenv()/unsetenv() call has COMPLETED - its closing
+# paren sits between the capture and the read - so an argument of a call still
+# open on the read's line stays quiet, wrapped or not, while a read after a
+# call that closed earlier on the same line flags. Known-uncovered spellings:
+# assignment-form capture (`const char* p; p = getenv(..)`), direct-init
+# (`const char* p(getenv(..))`), the second declarator of a comma declaration
+# (`const char* a = getenv(..), *b = getenv(..)`), a declaration wrapped
+# BEFORE the name (`const char*\np = getenv(..)`), and bare `auto` with the
+# getenv() on a continuation line. Scope: all first-party C and C++ outside
+# lib/ - the roots named in the @test below; lib/ is vendored submodules. The
+# 400-line backstop window exists only so a pathological single function
+# cannot pin a name forever. Residual false-positive shapes: a same-named
+# local in a NESTED scope of the same function, and a control-statement
+# header that WRAPS across lines (its capture retires only at the function's
+# closing brace).
 
 getenv_pointer_live_across_setenv_files() {
     python3 - "$@" <<'EOF'
+import bisect
 import pathlib
 import re
 import sys
@@ -2102,23 +2113,41 @@ def strip_comments_and_strings(lines):
         out.append(''.join(kept))
     return out
 
-def env_call_spans(line):
-    """(start, end) extents of each setenv()/unsetenv() call: a name read
-    inside the parentheses is an argument, evaluated before the call runs."""
-    spans = []
-    for m in SETENV.finditer(line):
+def env_call_completions(text):
+    """Offsets of every setenv()/unsetenv() call's closing paren, wrapped
+    calls included: a read is stale only once the call has completed."""
+    done = []
+    for m in SETENV.finditer(text):
         j = m.end()
         paren = 1
-        while j < len(line) and paren:
-            if line[j] == '(':
+        while j < len(text) and paren:
+            if text[j] == '(':
                 paren += 1
-            elif line[j] == ')':
+            elif text[j] == ')':
                 paren -= 1
             j += 1
-        spans.append((m.start(), j))
-    return spans
+        if paren == 0:
+            done.append(j - 1)
+    return sorted(done)
 
-def register_capture(m, line, i, lines, active, depth):
+def line_depths(line, start):
+    """Depth at each column, the minimum depth over each suffix, and the
+    depth at line end, for scope retirement."""
+    at = []
+    run = start
+    for c in line:
+        at.append(run)
+        if c == '{':
+            run += 1
+        elif c == '}':
+            run -= 1
+    at.append(run)
+    suffix_min = list(at)
+    for c in range(len(at) - 2, -1, -1):
+        suffix_min[c] = min(suffix_min[c], suffix_min[c + 1])
+    return at, suffix_min, run
+
+def register_capture(m, line, i, lines, active, pos, depth_at, retire_col):
     initializer = line[m.end():]
     # '{' ends an initializer the same way ';' does: a parameter default like
     # `const char* value = nullptr) : m_(m) {` must not swallow the
@@ -2133,7 +2162,7 @@ def register_capture(m, line, i, lines, active, depth):
             initializer += ' ' + cont
     if GETENV.search(initializer):
         # a redeclaration of the same name starts a new capture
-        active[m.group(1)] = [i, False, depth]
+        active[m.group(1)] = [i, retire_col, pos, depth_at]
 
 bad = 0
 for arg in sys.argv[1:]:
@@ -2150,45 +2179,68 @@ for arg in sys.argv[1:]:
             lines = strip_comments_and_strings(path.read_text(errors='replace').splitlines())
         except OSError:
             continue
+        text = '\n'.join(lines)
+        completions = env_call_completions(text)
+        starts = []
+        o = 0
+        for ln in lines:
+            starts.append(o)
+            o += len(ln) + 1
         depth = 0  # brace depth; a capture dies when its scope closes
-        active = {}  # name -> [capture line, setenv seen since, capture depth]
+        active = {}  # name -> [capture line, retire col, offset, depth]
         for i, line in enumerate(lines):
+            at, smin, depth = line_depths(line, depth)
             for rx in (DECL, DECL_AUTO_PTR):
                 for m in rx.finditer(line):
-                    register_capture(m, line, i, lines, active, depth)
+                    prefix = line[:m.start(1)]
+                    # A capture declared in a for/if/while header whose body
+                    # opens on the same line is scoped to that statement: one
+                    # level deeper, and it retires from the body's opening
+                    # brace rather than from the name.
+                    in_header = (prefix.count('(') - prefix.count(')') > 0 and
+                                 re.search(r'\b(?:for|if|while)\b[^;{}]*$', prefix) and
+                                 '{' in line[m.end(1):])
+                    retire_col = (line.rfind('{', m.end(1)) + 1
+                                  if in_header else m.end(1))
+                    register_capture(m, line, i, lines, active,
+                                     starts[i] + m.start(1),
+                                     at[m.start(1)] + (1 if in_header else 0),
+                                     retire_col)
             for m in DECL_AUTO_DIRECT.finditer(line):
-                active[m.group(1)] = [i, False, depth]
-            # A name read inside a setenv()'s own parentheses is an argument,
-            # evaluated before the call runs — the restore-only re-assert
-            # idiom must stay quiet. A read after the call completes on the
-            # same line is post-setenv and flags even without an earlier one.
-            spans = env_call_spans(line)
+                active[m.group(1)] = [i, m.end(1), starts[i] + m.start(1),
+                                      at[m.start(1)]]
+            # A read is stale only when a setenv()/unsetenv() completed at an
+            # offset between the capture and the read: an argument of a call
+            # still open at the read's position is evaluated before that call
+            # runs, while a read after a closing paren earlier on the same
+            # line is post-setenv and flags.
             for name, state in list(active.items()):
-                if i <= state[0] or i > state[0] + WINDOW:
+                if i < state[0] or i > state[0] + WINDOW:
                     continue
-                # cfg.name and ptr->name are different entities, not uses of
-                # the captured local; blanked same-length so spans stay valid
-                quiet = re.sub(r'(?:\.|->)\s*' + re.escape(name) + r'\b',
+                # cfg.name, ptr->name, ns::name and name::member are different
+                # entities, not uses of the captured local; blanked same-length
+                # so offsets stay valid
+                quiet = re.sub(r'(?:\.|->|::)\s*' + re.escape(name) + r'\b' +
+                               r'|\b' + re.escape(name) + r'\s*::',
                                lambda mm: ' ' * len(mm.group(0)), line)
                 for um in re.finditer(r'\b' + re.escape(name) + r'\b', quiet):
-                    in_span = any(s <= um.start() < e for s, e in spans)
-                    ran_first = any(um.start() >= e for _, e in spans)
-                    if state[1] or (ran_first and not in_span):
+                    k = bisect.bisect_right(completions, state[2])
+                    if (k < len(completions) and
+                            completions[k] < starts[i] + um.start()):
                         print(f"{path}:{state[0] + 1}: '{name}' from getenv() is read at "
                               f"line {i + 1}, after a setenv() between the two; copy the "
                               f"value into a std::string at capture (helix::ScopedEnv)")
                         bad = 1
                         del active[name]
                         break
-            if SETENV.search(line):
-                for state in active.values():
-                    state[1] = True
-            depth = max(0, depth + line.count('{') - line.count('}'))
-            # Brace depth dropping below the depth at capture closes the
+            # The running depth dipping below the depth at capture closes the
             # capture's scope, so one inline method's local never reaches the
             # next method's same-named local.
             for name, state in list(active.items()):
-                if state[2] > depth:
+                if i == state[0]:
+                    if smin[state[1]] < state[3]:
+                        del active[name]
+                elif smin[0] < state[3]:
                     del active[name]
 sys.exit(bad)
 EOF
@@ -2473,4 +2525,107 @@ EOF
     run getenv_pointer_live_across_setenv_files "$d"
     [ "$status" -eq 0 ]
     [ -z "$output" ]
+}
+
+@test "the getenv/setenv gate stays quiet on a qualified ::name" {
+    # A capture named `path` is not read by std::filesystem::path::iterator;
+    # a variable can never appear as a scope qualifier on either side.
+    local d="${BATS_TEST_TMPDIR}/quiet5"
+    mkdir -p "$d"
+    cat > "$d/qualified.cpp" <<'EOF'
+TEST_CASE("iterates a filesystem path") {
+    const char* path = std::getenv("HELIX_PATH");
+    std::string saved = path;
+    setenv("OTHER", "x", 1);
+    std::filesystem::path::iterator it;
+    for (auto seg = it; seg != end(); ++seg) {
+        total += seg->string().size();
+    }
+    setenv("HELIX_PATH", saved.c_str(), 1);
+}
+EOF
+    run getenv_pointer_live_across_setenv_files "$d"
+    [ "$status" -eq 0 ]
+    [ -z "$output" ]
+}
+
+@test "the getenv/setenv gate stays quiet on a wrapped re-assert" {
+    # The re-assert idiom split across lines by clang-format keeps the same
+    # meaning: the read is still an argument of the call it belongs to.
+    local d="${BATS_TEST_TMPDIR}/quiet6"
+    mkdir -p "$d"
+    cat > "$d/wrapped_reassert.cpp" <<'EOF'
+TEST_CASE("re-asserts a long variable name") {
+    const char* cur = std::getenv("HELIX_EXTENDED_CONFIGURATION_MODE");
+    setenv("HELIX_EXTENDED_CONFIGURATION_MODE",
+           cur,
+           1);
+}
+EOF
+    cat > "$d/wrapped_arg_use.cpp" <<'EOF'
+TEST_CASE("restores with a wrapped call") {
+    const char* original = std::getenv("PATH");
+    std::string saved = original;
+    setenv("PATH", "", 1);
+    system("true");
+    setenv("PATH",
+           saved.c_str(),
+           1);
+}
+EOF
+    run getenv_pointer_live_across_setenv_files "$d"
+    [ "$status" -eq 0 ]
+    [ -z "$output" ]
+}
+
+@test "the getenv/setenv gate stays quiet on a for-init capture's sibling" {
+    # A capture declared in a for-init header is scoped to the statement:
+    # its closing brace retires it, so a same-named local in a later loop
+    # of the same function is never read against the dead capture.
+    local d="${BATS_TEST_TMPDIR}/quiet7"
+    mkdir -p "$d"
+    cat > "$d/for_init.cpp" <<'EOF'
+TEST_CASE("walks env then a table") {
+    for (const char* p = std::getenv("HELIX_LIST"); *p; ++p) {
+        count += (*p == ',');
+    }
+    setenv("OTHER", "x", 1);
+    for (int i = 0; i < 3; ++i) {
+        const char* p = table[i];
+        use(p);
+    }
+}
+EOF
+    run getenv_pointer_live_across_setenv_files "$d"
+    [ "$status" -eq 0 ]
+    [ -z "$output" ]
+}
+
+@test "the getenv/setenv gate fires on a capture, setenv and use on one line" {
+    local d="${BATS_TEST_TMPDIR}/fire5"
+    mkdir -p "$d"
+    cat > "$d/one_line_all.cpp" <<'EOF'
+TEST_CASE("compresses the whole bug into one line") {
+    const char* p = std::getenv("X"); setenv("X", "1", 1); use(p);
+}
+EOF
+    run getenv_pointer_live_across_setenv_files "$d"
+    [ "$status" -eq 1 ]
+    contains "'p' from getenv() is read at line 2" "$output"
+}
+
+@test "the getenv/setenv gate fires on a read after an earlier same-line setenv" {
+    # The first setenv completes before the second call's arguments are
+    # evaluated, so passing the capture to the second is already a stale read.
+    local d="${BATS_TEST_TMPDIR}/fire6"
+    mkdir -p "$d"
+    cat > "$d/two_setenv_one_line.cpp" <<'EOF'
+TEST_CASE("sets two variables in one statement") {
+    const char* p = std::getenv("B");
+    setenv("A", "1", 1); setenv("B", p, 1);
+}
+EOF
+    run getenv_pointer_live_across_setenv_files "$d"
+    [ "$status" -eq 1 ]
+    contains "'p' from getenv() is read at line 3" "$output"
 }
