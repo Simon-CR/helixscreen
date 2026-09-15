@@ -17,13 +17,13 @@ struct SlotInfo;
 
 namespace helix::ams {
 
-/// Which spelling of the lock-flag keys a stored document uses.
+/// Which spelling of HelixScreen's authorship keys a stored document uses.
 ///
 /// lane_data is a namespace shared with AFC, Happy Hare, Mainsail and Orca, so
-/// our lock flags carry the helix_ prefix there. filament_slot_overrides.json
-/// is HelixScreen-private and uses the bare names. Every reader below that
-/// checks a lock key takes one of these so it agrees with whichever document
-/// the caller actually has.
+/// the lock keys and the declared set carry the helix_ prefix there.
+/// filament_slot_overrides.json is HelixScreen-private and uses the bare names.
+/// Every reader below that checks one of those keys takes one of these so it
+/// agrees with whichever document the caller actually has.
 enum class LegacyLockKeys {
     LaneData,   ///< "helix_locked_color" / "helix_locked_material"
     LocalCache, ///< "user_locked_color" / "user_locked_material"
@@ -59,30 +59,24 @@ enum class LegacyLockKeys {
 
 /// Who declared the identity in a stored record.
 ///
-/// A record carrying a spool id is the server's statement and its lock flags
-/// are not read: on a linked lane those flags record that a colour rode in on
-/// the binding, not that a person chose it. An unlinked record is the user's
-/// only when a lock key is actually present in @p wire, spelled per @p keys;
-/// the parsed struct defaults a missing key from color_set, so the struct
-/// alone cannot tell a declaration from a legacy colour.
-[[nodiscard]] ObservationSource
-classify_declaration(const FilamentSlotOverride& record, const nlohmann::json& wire,
-                     LegacyLockKeys keys = LegacyLockKeys::LaneData);
+/// A record carrying a spool id is the server's statement. An unlinked record
+/// is the user's when it declares its colour or material. The parser has
+/// already read the document's authorship into the record's declared set
+/// (declared_fields_on_load), so the record alone answers.
+[[nodiscard]] ObservationSource classify_declaration(const FilamentSlotOverride& record);
 
 /// The record's identity as an Observation, tagged by classify_declaration().
 /// Only the fields the record actually carries are observed.
-[[nodiscard]] Observation declared_from_record(const FilamentSlotOverride& record,
-                                               const nlohmann::json& wire,
-                                               LegacyLockKeys keys = LegacyLockKeys::LaneData);
+[[nodiscard]] Observation declared_from_record(const FilamentSlotOverride& record);
 
 /// Split a stored record into the several sources it may declare independently.
 ///
 /// declared_from_record gives a record ONE verdict, which is right the moment
 /// a record is still on the wire it was just read from: a linked lane is
 /// wholly the server's, and a mixed unlinked record where only one field
-/// carries a lock key is not the shape live traffic produces. A record
+/// is declared is not the shape live traffic produces. A record
 /// already on disk under the pre-source-model scheme does not get to make
-/// that assumption: a lane can carry a locked colour beside an unlocked
+/// that assumption: a lane can carry a declared colour beside an undeclared
 /// material in the same document, and its weight is never a declaration from
 /// either rung, linked or not.
 ///
@@ -92,10 +86,10 @@ classify_declaration(const FilamentSlotOverride& record, const nlohmann::json& w
 /// name and even the colour's wire shape (a "#RRGGBB" string vs. a bare
 /// color_rgb integer), so parsing has to stay with whichever of
 /// from_lane_data_record / from_json already knows the document's shape.
-/// @p wire is still needed for the lock-key presence check, same reason
-/// declared_from_record needs it: pass the SAME document @p record was
-/// parsed from, or a lock key that happens to be absent reads as a
-/// declaration-free cache when the source document actually set it.
+/// @p wire is still needed to tell a record that carries a declared set,
+/// spelled per @p keys, from one written before the set existed: only the
+/// latter falls back to the legacy rule for its brand, spool name and vendor
+/// id. Pass the SAME document @p record was parsed from.
 ///
 /// Pure: no clock, no globals, no I/O.
 [[nodiscard]] LaneSources sources_from_record(const FilamentSlotOverride& record,
@@ -125,13 +119,11 @@ classify_declaration(const FilamentSlotOverride& record, const nlohmann::json& w
 /// which includes fields the machine supplied and the user never moved; only
 /// the observation separates the two.
 ///
-/// Colour and material come back on the two lock flags rather than in the
-/// declared set. Those flags are load-bearing past authorship - a reader of
-/// the shared lane_data namespace keys on their presence to recognise a record
-/// as HelixScreen's - and a lock also needs a value to stand over, so a field
-/// @p amended carries nothing in never locks however the edit moved it.
-/// sources_from_record reads each field from whichever of the two homes it
-/// uses, so no caller has to know which is which.
+/// Every identity field comes back in the declared set, colour and material
+/// included. A colour or material declaration also needs a value to stand
+/// over, so a field @p amended carries nothing in is never declared however the
+/// edit moved it. Brand, spool name and vendor id have no such guard, because
+/// clearing one of them is itself a declaration.
 [[nodiscard]] RecordAuthorship amend_authorship(const Observation& observed,
                                                 const FilamentSlotOverride& prior,
                                                 const FilamentSlotOverride& amended);
@@ -146,6 +138,33 @@ classify_declaration(const FilamentSlotOverride& record, const nlohmann::json& w
 /// The inverse. A name with no field on this build is ignored rather than
 /// refused, so a record written by a newer build still loads.
 [[nodiscard]] DeclaredFields declared_fields_from_names(const nlohmann::json& names);
+
+/// The declared set a stored record carries, for a parser that has already
+/// read every other field of @p parsed off @p wire.
+///
+/// A field is declared when the document's set (`helix_declared`, or bare
+/// `declared` in the local cache) names it, or, on a record with no spool id,
+/// when @p wire carries that field's lock key present and true. The lock keys
+/// are how a record written before the set could name colour and material said
+/// who chose them. On a linked record they are not read, because a release 1.0
+/// writer set them on links and meter flushes alike, and a missing key declares
+/// nothing. Either way a colour or material declaration needs a value to stand
+/// over, so neither is declared on a record holding no value for it.
+[[nodiscard]] DeclaredFields declared_fields_on_load(const nlohmann::json& wire,
+                                                     LegacyLockKeys keys,
+                                                     const FilamentSlotOverride& parsed);
+
+/// Whether @p record declares its colour as the user's own choice. The declared
+/// set is the one home for the answer; the lock keys a stored document carries
+/// are written from it.
+[[nodiscard]] bool declares_color(const FilamentSlotOverride& record);
+
+/// Whether @p record declares its material as the user's own choice.
+[[nodiscard]] bool declares_material(const FilamentSlotOverride& record);
+
+/// Withdraw @p record's colour and material declarations, leaving both values
+/// where they are.
+void withdraw_color_and_material(FilamentSlotOverride& record);
 
 /// What a lane-shaped record's colour string says.
 enum class ColorReadingKind {

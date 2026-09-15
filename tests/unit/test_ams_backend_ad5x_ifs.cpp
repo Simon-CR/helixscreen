@@ -16,6 +16,7 @@
 #include "filament_slot_override_store.h"
 #include "filament_variants.h"
 #include "lane_source_store.h"
+#include "lane_translation.h"
 #include "moonraker_api_mock.h"
 #include "moonraker_client_mock.h"
 #include "printer_discovery.h"
@@ -2890,13 +2891,13 @@ TEST_CASE("AD5X IFS: physical insert refreshes material/color on an auto-tracked
     }
     REQUIRE(Ad5xIfsTestAccess::port_presence(backend, 0));
 
-    // User set the type via the menu: material + color locked, NO Spoolman link.
+    // User set the type via the menu: material + color declared, NO Spoolman link.
     helix::ams::FilamentSlotOverride ovr;
     ovr.material = "PETG";
-    ovr.user_locked_material = true;
     ovr.color_rgb = 0xFF0000;
     ovr.color_set = true;
-    ovr.user_locked_color = true;
+    ovr.declared =
+        helix::ams::declared_fields_from_names(nlohmann::json::array({"color_rgb", "material"}));
     ovr.spoolman_id = 0; // auto-tracked, not a deliberate binding
     Ad5xIfsTestAccess::seed_override(backend, 0, ovr);
 
@@ -2921,11 +2922,11 @@ TEST_CASE("AD5X IFS: physical insert refreshes material/color on an auto-tracked
     SlotInfo info = backend.get_slot_info(0);
     CHECK(info.material == "PLA");
     CHECK(info.color_rgb == 0x00FF00);
-    // The locks were dropped so the auto-mirror could refresh.
+    // The declarations were withdrawn so the auto-mirror could refresh.
     auto staged = Ad5xIfsTestAccess::get_override(backend, 0);
     REQUIRE(staged.has_value());
-    CHECK_FALSE(staged->user_locked_material);
-    CHECK_FALSE(staged->user_locked_color);
+    CHECK_FALSE(helix::ams::declares_material(*staged));
+    CHECK_FALSE(helix::ams::declares_color(*staged));
     CHECK(staged->material == "PLA");
 }
 
@@ -2946,10 +2947,10 @@ TEST_CASE("AD5X IFS: physical insert does NOT unlock a Spoolman-bound lane (#106
 
     helix::ams::FilamentSlotOverride ovr;
     ovr.material = "PETG";
-    ovr.user_locked_material = true;
     ovr.color_rgb = 0xFF0000;
     ovr.color_set = true;
-    ovr.user_locked_color = true;
+    ovr.declared =
+        helix::ams::declared_fields_from_names(nlohmann::json::array({"color_rgb", "material"}));
     ovr.spoolman_id = 42; // deliberate binding
     ovr.brand = "Polymaker";
     Ad5xIfsTestAccess::seed_override(backend, 0, ovr);
@@ -2973,7 +2974,7 @@ TEST_CASE("AD5X IFS: physical insert does NOT unlock a Spoolman-bound lane (#106
     CHECK(info.material == "PETG");
     auto staged = Ad5xIfsTestAccess::get_override(backend, 0);
     REQUIRE(staged.has_value());
-    CHECK(staged->user_locked_material);
+    CHECK(helix::ams::declares_material(*staged));
     CHECK(staged->material == "PETG");
 }
 
@@ -5121,10 +5122,10 @@ TEST_CASE("AD5X IFS update_slot_weight preserves identity and does not write Adv
     // A prior in-app edit: slot 0 locked to PETG / #ABCDEF with a weight.
     helix::ams::FilamentSlotOverride locked;
     locked.material = "PETG";
-    locked.user_locked_material = true;
     locked.color_rgb = 0xABCDEF;
     locked.color_set = true;
-    locked.user_locked_color = true;
+    locked.declared =
+        helix::ams::declared_fields_from_names(nlohmann::json::array({"color_rgb", "material"}));
     locked.remaining_weight_g = 100.0f;
     Ad5xIfsTestAccess::seed_override(backend, 0, locked);
 
@@ -5137,14 +5138,14 @@ TEST_CASE("AD5X IFS update_slot_weight preserves identity and does not write Adv
 
     backend.update_slot_weight(0, /*remaining=*/42.0f, /*total=*/-1.0f, /*persist=*/true);
 
-    // Weight updated; identity and locks untouched.
+    // Weight updated; identity and declarations untouched.
     auto ovr = Ad5xIfsTestAccess::get_override(backend, 0);
     REQUIRE(ovr.has_value());
     CHECK(ovr->remaining_weight_g == 42.0f);
     CHECK(ovr->material == "PETG");
-    CHECK(ovr->user_locked_material == true);
+    CHECK(helix::ams::declares_material(*ovr));
     CHECK(ovr->color_rgb == 0xABCDEFu);
-    CHECK(ovr->user_locked_color == true);
+    CHECK(helix::ams::declares_color(*ovr));
 
     // Adventurer5M.json was NOT rewritten — this is the #981 regression guard.
     std::ifstream check(json_path);
@@ -5178,16 +5179,16 @@ TEST_CASE("AD5X IFS update_slot_weight on an un-overridden slot does not lock id
 
     backend.update_slot_weight(1, /*remaining=*/55.0f, /*total=*/-1.0f, /*persist=*/true);
 
-    // A weight-only override is created — crucially WITHOUT locking material or
-    // color. apply_user_edit would have stamped user_locked_material=true and
+    // A weight-only override is created, crucially WITHOUT declaring material
+    // or color. apply_user_edit would have declared the material and
     // frozen the firmware material into the override (the bug).
     auto ovr = Ad5xIfsTestAccess::get_override(backend, 1);
     REQUIRE(ovr.has_value());
     CHECK(ovr->remaining_weight_g == 55.0f);
     CHECK(ovr->material.empty());
-    CHECK(ovr->user_locked_material == false);
+    CHECK_FALSE(helix::ams::declares_material(*ovr));
     CHECK(ovr->color_set == false);
-    CHECK(ovr->user_locked_color == false);
+    CHECK_FALSE(helix::ams::declares_color(*ovr));
 
     // Identity still flows from firmware (override doesn't shadow it).
     auto info = backend.get_slot_info(1);
@@ -5255,8 +5256,8 @@ TEST_CASE("AD5X IFS user-edited slot survives firmware FFMInfo revert (#965 regr
     //   → mirror runs OverwriteAlways → override.material flipped from PLA to
     //     HIPS, save_async persists the wrong value to Moonraker DB.
     //
-    // Post-fix: apply_user_edit() tags user_locked_material=true,
-    // so the mirror's material branch is skipped even when color changes.
+    // apply_user_edit() declares the material, so the mirror's material
+    // branch is skipped even when color changes.
     // Color may still propagate (treated as firmware-authoritative drift) —
     // the regression we're guarding against is material data loss.
     Ad5xIfsTmpCacheDir tmp("ifs_postprint_revert_965");
@@ -5282,8 +5283,8 @@ TEST_CASE("AD5X IFS user-edited slot survives firmware FFMInfo revert (#965 regr
     {
         auto staged = Ad5xIfsTestAccess::get_override(backend, 0);
         REQUIRE(staged.has_value());
-        CHECK(staged->user_locked_color);
-        CHECK(staged->user_locked_material);
+        CHECK(helix::ams::declares_color(*staged));
+        CHECK(helix::ams::declares_material(*staged));
     }
 
     // First parse — establishes color baseline at FF5500.
@@ -8010,8 +8011,8 @@ helix::ams::FilamentSlotOverride make_locked_override(uint32_t color_rgb,
     ovr.color_rgb = color_rgb;
     ovr.color_set = true;
     ovr.material = material;
-    ovr.user_locked_color = true;
-    ovr.user_locked_material = true;
+    ovr.declared =
+        helix::ams::declared_fields_from_names(nlohmann::json::array({"color_rgb", "material"}));
     return ovr;
 }
 
@@ -8027,8 +8028,6 @@ helix::ams::FilamentSlotOverride make_auto_mirror_override(uint32_t color_rgb,
     ovr.color_rgb = color_rgb;
     ovr.color_set = true;
     ovr.material = material;
-    ovr.user_locked_color = false;
-    ovr.user_locked_material = false;
     return ovr;
 }
 } // namespace
@@ -8397,10 +8396,10 @@ TEST_CASE("AD5X IFS external CHANGE_ZCOLOR preserves the user brand override (#9
         auto staged = Ad5xIfsTestAccess::get_override(backend, 0);
         REQUIRE(staged.has_value());
         REQUIRE(staged->brand == "Sunlu");
-        REQUIRE(staged->user_locked_color); // colour moved -> locked
+        REQUIRE(helix::ams::declares_color(*staged)); // colour moved -> declared
         // The material read back what firmware already said, so the edit made
         // no claim on it and the mirror keeps it.
-        REQUIRE_FALSE(staged->user_locked_material);
+        REQUIRE_FALSE(helix::ams::declares_material(*staged));
     }
 
     // AD5X native LCD load/insert: a bare CHANGE_ZCOLOR with the material only,
@@ -8418,9 +8417,9 @@ TEST_CASE("AD5X IFS external CHANGE_ZCOLOR preserves the user brand override (#9
     CHECK(ovr_after.has_value());
     if (ovr_after.has_value()) {
         CHECK(ovr_after->brand == "Sunlu");
-        // The color/material user-locks are released so firmware truth wins.
-        CHECK_FALSE(ovr_after->user_locked_material);
-        CHECK_FALSE(ovr_after->user_locked_color);
+        // The color/material declarations are withdrawn so firmware truth wins.
+        CHECK_FALSE(helix::ams::declares_material(*ovr_after));
+        CHECK_FALSE(helix::ams::declares_color(*ovr_after));
     }
 }
 
@@ -8739,9 +8738,9 @@ TEST_CASE("AD5X IFS CHANGE_ZCOLOR HEX= refreshes a stale auto-mirror override so
     auto ovr = Ad5xIfsTestAccess::get_override(backend, 1);
     REQUIRE(ovr.has_value());
     REQUIRE(ovr->color_rgb == 0x2750E0);
-    // The refresh must not fabricate a lock on an auto-tracked field.
-    REQUIRE_FALSE(ovr->user_locked_color);
-    REQUIRE_FALSE(ovr->user_locked_material);
+    // The refresh must not fabricate a declaration on an auto-tracked field.
+    REQUIRE_FALSE(helix::ams::declares_color(*ovr));
+    REQUIRE_FALSE(helix::ams::declares_material(*ovr));
 }
 
 TEST_CASE("AD5X IFS CHANGE_ZCOLOR does NOT create an override for an auto-tracked slot "
@@ -9109,7 +9108,7 @@ TEST_CASE("AD5X IFS COLOR-menu slot row does not clear a user-locked override "
 
     helix::ams::FilamentSlotOverride ovr;
     ovr.material = "PLA";
-    ovr.user_locked_material = true;
+    ovr.declared = helix::ams::declared_fields_from_names(nlohmann::json::array({"material"}));
     Ad5xIfsTestAccess::seed_override(backend, 0, ovr);
 
     REQUIRE_FALSE(Ad5xIfsTestAccess::on_gcode_response_line(
@@ -9118,7 +9117,7 @@ TEST_CASE("AD5X IFS COLOR-menu slot row does not clear a user-locked override "
 
     auto staged = Ad5xIfsTestAccess::get_override(backend, 0);
     REQUIRE(staged.has_value());
-    CHECK(staged->user_locked_material);
+    CHECK(helix::ams::declares_material(*staged));
     CHECK(staged->material == "PLA");
     // The user's locked choice still wins on screen.
     CHECK(backend.get_slot_info(0).material == "PLA");
@@ -10224,7 +10223,6 @@ TEST_CASE("AD5X IFS: firmware type change refreshes a non-locked override (#981)
     ovr.material = "PETG";
     ovr.color_rgb = 0x00FF00;
     ovr.color_set = true;
-    ovr.user_locked_material = false;
     Ad5xIfsTestAccess::seed_override(backend, 1, ovr);
 
     // Firmware type changes externally (color unchanged): PETG -> TPU.
@@ -10248,7 +10246,7 @@ TEST_CASE("AD5X IFS: firmware type change does NOT clobber a user-locked materia
     ovr.material = "SILK";
     ovr.color_rgb = 0x00FF00;
     ovr.color_set = true;
-    ovr.user_locked_material = true;
+    ovr.declared = helix::ams::declared_fields_from_names(nlohmann::json::array({"material"}));
     Ad5xIfsTestAccess::seed_override(backend, 1, ovr);
 
     Ad5xIfsTestAccess::set_material(backend, 1, "TPU"); // firmware type change
@@ -10267,7 +10265,6 @@ TEST_CASE("AD5X IFS: first material observation is a baseline, not an edit",
     // first firmware observation (startup): baseline only, no sync.
     helix::ams::FilamentSlotOverride ovr;
     ovr.material = "ABS";
-    ovr.user_locked_material = false;
     Ad5xIfsTestAccess::seed_override(backend, 1, ovr);
 
     // First-ever material reading for slot 1 establishes the baseline.
@@ -10278,7 +10275,7 @@ TEST_CASE("AD5X IFS: first material observation is a baseline, not an edit",
     auto staged = Ad5xIfsTestAccess::get_override(backend, 1);
     REQUIRE(staged.has_value());
     CHECK(staged->material == "ABS");
-    CHECK_FALSE(staged->user_locked_material);
+    CHECK_FALSE(helix::ams::declares_material(*staged));
     // On screen the reading wins anyway: an unlocked record remembers what the
     // machine last said, and the machine is saying something else now.
     CHECK(backend.get_slot_info(1).material == "PETG");
@@ -10305,7 +10302,6 @@ TEST_CASE("AD5X IFS: insert after an empty lane refreshes a stale non-locked mat
     ovr.material = "PLA";
     ovr.color_rgb = 0x00FF00;
     ovr.color_set = true;
-    ovr.user_locked_material = false;
     Ad5xIfsTestAccess::seed_override(backend, 1, ovr);
 
     // Firmware reports a color (so the sync's color-availability guard passes),
@@ -10340,7 +10336,7 @@ TEST_CASE("AD5X IFS: insert after an empty lane preserves a user-locked material
     ovr.material = "SILK";
     ovr.color_rgb = 0x00FF00;
     ovr.color_set = true;
-    ovr.user_locked_material = true;
+    ovr.declared = helix::ams::declared_fields_from_names(nlohmann::json::array({"material"}));
     Ad5xIfsTestAccess::seed_override(backend, 1, ovr);
 
     Ad5xIfsTestAccess::set_color(backend, 1, "00FF00");
@@ -10371,7 +10367,6 @@ TEST_CASE("AD5X IFS: an empty first material observation is a baseline, not a sp
     ovr.material = "ABS";
     ovr.color_rgb = 0x00FF00;
     ovr.color_set = true;
-    ovr.user_locked_material = false;
     Ad5xIfsTestAccess::seed_override(backend, 1, ovr);
 
     // First-ever observation for slot 1 is an empty lane: presence false, empty

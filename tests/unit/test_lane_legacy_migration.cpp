@@ -132,10 +132,9 @@ TEST_CASE_METHOD(HelixTestFixture, "Ingesting the same namespace twice changes n
 
 TEST_CASE_METHOD(HelixTestFixture, "Classification reads the document the store actually received",
                  "[lane][migration]") {
-    // The proof that the raw side-channel is wired, not just declared: a record
-    // with a colour and NO lock key must come back as a cache. Routed through
-    // the parsed struct it would come back as the user's, because the parser
-    // defaults the missing key to the colour's own presence.
+    // A record with a colour and NO lock key must come back as a cache: a
+    // missing key is never the user's declaration, whatever value it sits
+    // beside.
     MoonrakerClientMock client(MoonrakerClientMock::PrinterType::VORON_24);
     helix::PrinterState state;
     state.init_subjects(false);
@@ -145,8 +144,8 @@ TEST_CASE_METHOD(HelixTestFixture, "Classification reads the document the store 
     FilamentSlotOverrideStore store(&api, "ad5x_ifs");
     const auto loaded = store.load_blocking();
 
-    // The parsed struct says locked. That is the trap.
-    REQUIRE(loaded.at(0).user_locked_color);
+    // The load rule has already refused the missing key.
+    REQUIRE_FALSE(helix::ams::declares_color(loaded.at(0)));
 
     ingest_legacy_records(store, LegacyLockKeys::LaneData, 0);
     const auto lane = lane_sources(lane_id_for(0, 0));
@@ -175,9 +174,10 @@ TEST_CASE_METHOD(HelixTestFixture, "A load that falls back to the on-disk cache 
 }
 
 // ============================================================================
-// Per-field authorship. Colour and material each carry a lock flag, so a
-// record has always been able to say who chose them. Brand, spool name and
-// vendor id have no flag of their own and answer from the declared set.
+// Per-field authorship. Every identity field answers from the declared set.
+// Colour and material also carry lock keys on the wire, written from the set,
+// which is how a record written before the set could name them said who chose
+// them.
 // ============================================================================
 
 TEST_CASE_METHOD(HelixTestFixture,
@@ -258,9 +258,10 @@ TEST_CASE_METHOD(HelixTestFixture,
                  "A legacy record's brand is the user's word only beside a true lock",
                  "[lane][migration]") {
     // A record with no helix_declared key was written by an older build, and
-    // its brand counts as declared only when a lock flag on the same record is
-    // true. That flag is the evidence a person edited the record: the
-    // auto-mirror writes both flags false and can populate no brand of its own.
+    // its brand counts as declared only beside a colour or material
+    // declaration on the same record, which a true lock key over a value is.
+    // That declaration is the evidence a person edited the record: the
+    // auto-mirror declares nothing and can populate no brand of its own.
     MoonrakerClientMock client(MoonrakerClientMock::PrinterType::VORON_24);
     helix::PrinterState state;
     state.init_subjects(false);
@@ -354,11 +355,12 @@ TEST_CASE_METHOD(HelixTestFixture,
     CHECK(resolved_lane(lane).brand == "Firmware Brand");
 }
 
-TEST_CASE("Colour and material answer from their lock flags in both wire formats",
+TEST_CASE("Colour and material answer through the load rule in both wire formats",
           "[lane][migration]") {
-    // The two fields that own a lock flag keep answering from it. lane_data is
-    // a shared namespace and spells them helix_locked_*; the private cache
-    // spells them bare. A record can declare one and merely remember the other.
+    // lane_data is a shared namespace and spells the lock keys helix_locked_*;
+    // the private cache spells them bare. Either way the parser reads them into
+    // the declared set, and a record can declare one field and merely remember
+    // the other.
     using helix::ams::from_json;
     using helix::ams::from_lane_data_record;
     using helix::ams::sources_from_record;
@@ -387,9 +389,8 @@ TEST_CASE("Colour and material answer from their lock flags in both wire formats
         helix::ams::FilamentSlotOverride ovr;
         ovr.color_rgb = 0x3355FF;
         ovr.color_set = true;
-        ovr.user_locked_color = true;
         ovr.material = "PETG";
-        ovr.user_locked_material = false;
+        ovr.declared = helix::ams::declared_fields_from_names(nlohmann::json::array({"color_rgb"}));
 
         const nlohmann::json wire = to_json(ovr);
         const auto sources = sources_from_record(from_json(wire), wire, LegacyLockKeys::LocalCache);
@@ -423,17 +424,16 @@ TEST_CASE("A declared brand survives the private cache round-trip", "[lane][migr
     CHECK_FALSE(sources.remembered.has_value());
 }
 
-TEST_CASE("The declared set cannot carry colour or material", "[lane][migration]") {
-    // Colour and material keep their authorship on their lock flags, and the
-    // auto-mirror reads those flags directly rather than through the routing
-    // predicate. A second copy of either in the declared set would leave those
-    // reads answering from the older of two truths, so the set holds neither
-    // however a document spells itself.
+TEST_CASE("The declared set carries colour and material", "[lane][migration]") {
+    // Colour and material keep their authorship in the declared set beside
+    // brand, spool name and vendor id. A name in helix_declared declares the
+    // field whatever its lock key says, since the key is only written from the
+    // set.
     using helix::ams::from_lane_data_record;
     using helix::ams::sources_from_record;
     using helix::ams::to_json;
 
-    SECTION("a record naming them in helix_declared does not get them declared") {
+    SECTION("a record naming them in helix_declared gets them declared") {
         const nlohmann::json wire{{"lane", 0},
                                   {"color", "#3355FF"},
                                   {"helix_material", "PETG"},
@@ -446,31 +446,26 @@ TEST_CASE("The declared set cannot carry colour or material", "[lane][migration]
 
         const auto sources = sources_from_record(parsed->second, wire, LegacyLockKeys::LaneData);
 
-        // brand answers from the set and is the user's.
+        // All three answer from the set and are the user's.
         REQUIRE(sources.local_user.has_value());
         REQUIRE(sources.local_user->brand.has_value());
         CHECK(*sources.local_user->brand == "Hatchbox");
+        REQUIRE(sources.local_user->material.has_value());
+        CHECK(*sources.local_user->material == "PETG");
+        REQUIRE(sources.local_user->color_rgb.has_value());
+        CHECK(*sources.local_user->color_rgb == 0x3355FFu);
+        CHECK_FALSE(sources.remembered.has_value());
 
-        // Colour and material answer from their false lock flags, not from the
-        // names the document put in the set.
-        CHECK_FALSE(sources.local_user->material.has_value());
-        CHECK_FALSE(sources.local_user->color_rgb.has_value());
-        REQUIRE(sources.remembered.has_value());
-        REQUIRE(sources.remembered->material.has_value());
-        CHECK(*sources.remembered->material == "PETG");
-        REQUIRE(sources.remembered->color_rgb.has_value());
-        CHECK(*sources.remembered->color_rgb == 0x3355FFu);
-
-        // The set never took the two names in the first place. Re-emitting it
-        // is what shows that: the emitter mirrors the set without a filter of
-        // its own, so a name in here would be a name the reader admitted.
-        const nlohmann::json reemitted = to_json(parsed->second)["declared"];
-        REQUIRE(reemitted.is_array());
-        CHECK(reemitted.size() == 1);
-        CHECK(reemitted.at(0) == "brand");
+        // The set took all three names. Re-emitting it is what shows that: the
+        // emitter mirrors the set without a filter of its own, and writes the
+        // lock keys from it.
+        const nlohmann::json reemitted = to_json(parsed->second);
+        CHECK(reemitted["declared"] == nlohmann::json::array({"color_rgb", "material", "brand"}));
+        CHECK(reemitted["user_locked_color"] == true);
+        CHECK(reemitted["user_locked_material"] == true);
     }
 
-    SECTION("an edit that supplies all three names only the one in the set") {
+    SECTION("an edit that supplies all three names all three in the set") {
         const helix::SlotInfo empty_lane;
         helix::SlotInfo edited;
         edited.brand = "Hatchbox";
@@ -478,15 +473,10 @@ TEST_CASE("The declared set cannot carry colour or material", "[lane][migration]
         edited.color_rgb = 0x3355FF;
         const auto ovr = helix::ams::user_override_from_slot_info(empty_lane, edited, nullptr);
 
-        // The two locks carry colour and material.
-        CHECK(ovr.user_locked_color);
-        CHECK(ovr.user_locked_material);
-
-        // The set carries brand and names neither of the other two.
-        const nlohmann::json declared = to_json(ovr)["declared"];
-        REQUIRE(declared.is_array());
-        CHECK(declared.size() == 1);
-        CHECK(declared.at(0) == "brand");
+        CHECK(helix::ams::declares_color(ovr));
+        CHECK(helix::ams::declares_material(ovr));
+        CHECK(to_json(ovr)["declared"] ==
+              nlohmann::json::array({"color_rgb", "material", "brand"}));
     }
 }
 
@@ -553,8 +543,8 @@ TEST_CASE_METHOD(HelixTestFixture,
     edited.remaining_weight_g = 730.0F;
 
     const auto ovr = helix::ams::user_override_from_slot_info(before, edited, nullptr);
-    CHECK_FALSE(ovr.user_locked_color);
-    CHECK_FALSE(ovr.user_locked_material);
+    CHECK_FALSE(helix::ams::declares_color(ovr));
+    CHECK_FALSE(helix::ams::declares_material(ovr));
     CHECK_FALSE(ovr.declared.any());
     // The identity still travels: the lane has to show it. Only the claim on it
     // does not.
@@ -596,8 +586,8 @@ TEST_CASE_METHOD(HelixTestFixture, "An edit that moves the brand claims the bran
     edited.brand = "Hatchbox";
 
     const auto ovr = helix::ams::user_override_from_slot_info(before, edited, nullptr);
-    CHECK_FALSE(ovr.user_locked_color);
-    CHECK_FALSE(ovr.user_locked_material);
+    CHECK_FALSE(helix::ams::declares_color(ovr));
+    CHECK_FALSE(helix::ams::declares_material(ovr));
     const nlohmann::json declared = helix::ams::declared_field_names(ovr.declared);
     REQUIRE(declared.is_array());
     CHECK(declared.size() == 1);
@@ -673,9 +663,7 @@ TEST_CASE_METHOD(HelixTestFixture, "An edit that moves the material locks it aga
     edited.material = "ASA";
 
     const auto ovr = helix::ams::user_override_from_slot_info(before, edited, nullptr);
-    CHECK(ovr.user_locked_material);
-    CHECK_FALSE(ovr.user_locked_color);
-    CHECK_FALSE(ovr.declared.any());
+    CHECK(helix::ams::declared_field_names(ovr.declared) == nlohmann::json::array({"material"}));
 
     const helix::ams::LaneId lane = reload_into_lane(store, ovr);
     REQUIRE(lane_sources(lane).local_user.has_value());
@@ -705,8 +693,8 @@ TEST_CASE_METHOD(HelixTestFixture, "A later edit keeps what an earlier edit decl
     helix::SlotInfo chose_colour = before;
     chose_colour.color_rgb = 0x1E5AA8;
     const auto first = helix::ams::user_override_from_slot_info(before, chose_colour, nullptr);
-    REQUIRE(first.user_locked_color);
-    REQUIRE_FALSE(first.declared.any());
+    REQUIRE(helix::ams::declared_field_names(first.declared) ==
+            nlohmann::json::array({"color_rgb"}));
 
     // The editor re-opens on the lane the first edit left behind, and this
     // time only the brand moves.
@@ -714,12 +702,9 @@ TEST_CASE_METHOD(HelixTestFixture, "A later edit keeps what an earlier edit decl
     chose_brand.brand = "Hatchbox";
     const auto second = helix::ams::user_override_from_slot_info(chose_colour, chose_brand, &first);
 
-    CHECK(second.user_locked_color);
     CHECK(second.color_rgb == 0x1E5AA8u);
-    const nlohmann::json declared = helix::ams::declared_field_names(second.declared);
-    REQUIRE(declared.is_array());
-    CHECK(declared.size() == 1);
-    CHECK(declared.at(0) == "brand");
+    CHECK(helix::ams::declared_field_names(second.declared) ==
+          nlohmann::json::array({"color_rgb", "brand"}));
 
     // Both come back as the user's word after a restart, not as something the
     // record merely remembered.
@@ -760,8 +745,8 @@ TEST_CASE_METHOD(HelixTestFixture, "Linking a spool declares the binding, not wh
 
     const auto ovr = helix::ams::user_override_from_slot_info(before, edited, nullptr);
     CHECK(ovr.spoolman_id == 42);
-    CHECK_FALSE(ovr.user_locked_color);
-    CHECK_FALSE(ovr.user_locked_material);
+    CHECK_FALSE(helix::ams::declares_color(ovr));
+    CHECK_FALSE(helix::ams::declares_material(ovr));
     CHECK_FALSE(ovr.declared.any());
 
     // A linked record is wholly the server's on reload, which is the same
@@ -772,4 +757,33 @@ TEST_CASE_METHOD(HelixTestFixture, "Linking a spool declares the binding, not wh
     REQUIRE(sources.spoolman.has_value());
     CHECK(sources.spoolman->spoolman_id == 42);
     CHECK(sources.spoolman->brand == "Hatchbox");
+}
+
+TEST_CASE_METHOD(HelixTestFixture,
+                 "a legacy record whose true lock key stands over no colour does not declare its "
+                 "brand",
+                 "[lane][migration]") {
+    // A declaration needs a value to stand over, so a true colour key beside no
+    // colour declares no colour, and a record with no declared set then has no
+    // evidence a person edited its brand.
+    using helix::ams::declares_color;
+    using helix::ams::from_lane_data_record;
+    using helix::ams::sources_from_record;
+
+    const nlohmann::json wire{{"lane", 0}, {"vendor", "Hatchbox"}, {"helix_locked_color", true}};
+    const auto parsed = from_lane_data_record(wire);
+    REQUIRE(parsed.has_value());
+    CHECK_FALSE(declares_color(parsed->second));
+
+    const auto sources = sources_from_record(parsed->second, wire, LegacyLockKeys::LaneData);
+    CHECK_FALSE(sources.local_user.has_value());
+    REQUIRE(sources.remembered.has_value());
+    CHECK(sources.remembered->brand == "Hatchbox");
+
+    const helix::ams::LaneId lane = lane_id_for(0, 0);
+    CHECK(file_lane_sources(lane, sources));
+    Observation frame(ObservationSource::VendorCache);
+    frame.brand = "Firmware Brand";
+    ingest(lane, frame);
+    CHECK(resolved_lane(lane).brand == "Firmware Brand");
 }

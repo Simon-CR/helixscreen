@@ -1907,23 +1907,13 @@ void AmsBackendSnapmaker::handle_status_update(const nlohmann::json& notificatio
             //
             // The stored override defers to what a declaring lane source holds,
             // so the store reads the lane here. A Spoolman record or a user's
-            // unlocked value never reaches firmware, and firmware's reading must
-            // not overwrite it in the override or in the lane_data record it
+            // value never reaches firmware, and firmware's reading must not
+            // overwrite it in the override or in the lane_data record it
             // persists.
-            const helix::ams::LaneSources declaring_sources = helix::ams::lane_sources(lane_id(i));
-            const auto held = [&declaring_sources](auto field) {
-                return (declaring_sources.spoolman.has_value() &&
-                        ((*declaring_sources.spoolman).*field).has_value()) ||
-                       (declaring_sources.local_user.has_value() &&
-                        ((*declaring_sources.local_user).*field).has_value());
-            };
-            helix::ams::DeclaredOnLane declared;
-            declared.color = held(&helix::ams::Observation::color_rgb);
-            declared.material = held(&helix::ams::Observation::material);
             helix::ams::mirror_firmware_to_lane_data(
                 override_store_.get(), overrides_, i, slot->color_rgb, slot->material,
                 slot->status == SlotStatus::AVAILABLE, helix::ams::MirrorPolicy::OverwriteAlways,
-                backend_log_tag(), declared);
+                backend_log_tag(), helix::ams::declared_on_lane(lane_id(i)));
             apply_resolved_lane(*slot, i);
         }
 

@@ -8,6 +8,7 @@
 #include "ams_state.h"
 #include "ams_types.h"
 #include "hh_defaults.h"
+#include "lane_translation.h"
 #include "moonraker_api.h"
 #include "test_helpers/backend_user_edit.h"
 #include "test_helpers/happy_hare_test_access.h"
@@ -4394,6 +4395,6 @@ TEST_CASE("Happy Hare marks a persisted edit as the user's own",
     REQUIRE(overrides.count(0) == 1);
     REQUIRE(overrides.at(0).material == "PETG");
     REQUIRE(overrides.at(0).color_rgb == 0x1188FFu);
-    CHECK(overrides.at(0).user_locked_color);
-    CHECK(overrides.at(0).user_locked_material);
+    CHECK(helix::ams::declares_color(overrides.at(0)));
+    CHECK(helix::ams::declares_material(overrides.at(0)));
 }

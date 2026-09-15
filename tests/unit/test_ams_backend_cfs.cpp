@@ -12,6 +12,7 @@
 #include "filament_op_dispatch.h"
 #include "filament_slot_override.h"
 #include "filament_slot_override_store.h"
+#include "lane_translation.h"
 #include "macro_param_cache.h"
 #include "moonraker_api_mock.h"
 #include "moonraker_client_mock.h"
@@ -1416,8 +1417,8 @@ TEST_CASE("CFS identity writeback echoes do not self-wipe the override",
     ovr.brand = "Generic";
     ovr.color_rgb = 0xFF0000;
     ovr.color_set = true;
-    ovr.user_locked_color = true;
-    ovr.user_locked_material = true;
+    ovr.declared =
+        helix::ams::declared_fields_from_names(nlohmann::json::array({"color_rgb", "material"}));
     CfsTestAccess::seed_override(helper, 0, ovr);
 
     // User picks PETG + red. Material (000003 via observed vocabulary) and
@@ -2198,8 +2199,8 @@ TEST_CASE("CFS RFID fingerprint change clears override (hardware swap detected)"
     CHECK(post_swap->spoolman_id == 0);
     CHECK(post_swap->brand.empty());
     // Auto-mirror writes must NOT claim to be user edits.
-    CHECK_FALSE(post_swap->user_locked_color);
-    CHECK_FALSE(post_swap->user_locked_material);
+    CHECK_FALSE(helix::ams::declares_color(*post_swap));
+    CHECK_FALSE(helix::ams::declares_material(*post_swap));
 
     // Orca sees the new spool's color, not stale user data.
     auto stored = api.mock_get_db_value("lane_data", "lane1");
@@ -2491,13 +2492,13 @@ TEST_CASE("CFS: user override does not fake presence on an empty bay", "[ams][cf
     FilamentSlotOverrideStoreTestAccess::set_cache_directory(*store, tmp.path);
     CfsTestAccess::inject_override_store(backend, std::move(store));
 
-    // User assigned PLA to slot 0 (untagged spool). Locked, exactly as
-    // apply_user_edit() records a user edit — an UNLOCKED record
+    // User assigned PLA to slot 0 (untagged spool). Declared, exactly as
+    // apply_user_edit() records a user edit. An UNDECLARED record
     // would be an auto-mirror leftover, which the empty bay is entitled to
     // clear (clear_stale_override_on_removal_locked).
     helix::ams::FilamentSlotOverride ovr;
     ovr.material = "PLA";
-    ovr.user_locked_material = true;
+    ovr.declared = helix::ams::declared_fields_from_names(nlohmann::json::array({"material"}));
     CfsTestAccess::seed_override(backend, 0, ovr);
 
     // Firmware reports slot 0 EMPTY (RFID -1 / no length), slots 1-3 EMPTY too.
@@ -2624,8 +2625,8 @@ TEST_CASE("CFS user edit survives the firmware echo of our own color push",
     auto staged = CfsTestAccess::get_override(*rig.backend, 0);
     REQUIRE(staged.has_value());
     REQUIRE(staged->material == "ASA-CF");
-    REQUIRE(staged->user_locked_color);
-    REQUIRE(staged->user_locked_material);
+    REQUIRE(helix::ams::declares_color(*staged));
+    REQUIRE(helix::ams::declares_material(*staged));
 
     SECTION("polls before the echo lands leave the override untouched") {
         // The gcode is queued asynchronously, so firmware keeps reporting the
@@ -2657,8 +2658,8 @@ TEST_CASE("CFS user edit survives the firmware echo of our own color push",
             REQUIRE(ovr.has_value());
             CHECK(ovr->material == "ASA-CF");
             CHECK(ovr->color_rgb == 0x1A1A1Au);
-            CHECK(ovr->user_locked_color);
-            CHECK(ovr->user_locked_material);
+            CHECK(helix::ams::declares_color(*ovr));
+            CHECK(helix::ams::declares_material(*ovr));
 
             auto info = rig.backend->get_slot_info(0);
             CHECK(info.material == "ASA-CF");
@@ -2721,7 +2722,7 @@ TEST_CASE("CFS genuine swap while a color push is in flight still clears the ove
     fresh.material = "PETG";
     fresh.color_rgb = 0x00FF00;
     fresh.color_set = true;
-    fresh.user_locked_material = true;
+    fresh.declared = helix::ams::declared_fields_from_names(nlohmann::json::array({"material"}));
     CfsTestAccess::seed_override(*rig.backend, 0, fresh);
 
     json box_late_echo = make_single_unit_box({"101001", "101001", "101001", "101001"},
@@ -2880,7 +2881,7 @@ TEST_CASE("CFS removal keeps a user-locked assignment for an unloaded slot",
     REQUIRE(ovr.has_value());
     CHECK(ovr->material == "ASA-CF");
     CHECK(ovr->spool_name == "My ASA");
-    CHECK(ovr->user_locked_material);
+    CHECK(helix::ams::declares_material(*ovr));
 
     auto stored = rig.api->mock_get_db_value("lane_data", "lane4");
     REQUIRE(!stored.is_null());
@@ -2976,8 +2977,8 @@ TEST_CASE("CFS runout invalidates the exhausted lane's remembered Spoolman link"
         // Remembered, not claimed. Linking a spool carries the server's colour
         // and material in without a person choosing either, so the record keeps
         // them without outranking a machine that later states its own.
-        CHECK_FALSE(ovr->user_locked_color);
-        CHECK_FALSE(ovr->user_locked_material);
+        CHECK_FALSE(helix::ams::declares_color(*ovr));
+        CHECK_FALSE(helix::ams::declares_material(*ovr));
     }
     SECTION("the live slot shows the drop immediately") {
         auto info = rig.backend->get_slot_info(3);
@@ -3268,8 +3269,8 @@ TEST_CASE("CFS: a weights-only edit is cleared when its bay reads EMPTY",
     const auto staged = CfsTestAccess::get_override(*rig.backend, 0);
     REQUIRE(staged.has_value());
     REQUIRE(staged->remaining_weight_g == EDITED_REMAINING_G);
-    REQUIRE_FALSE(staged->user_locked_color);
-    REQUIRE_FALSE(staged->user_locked_material);
+    REQUIRE_FALSE(helix::ams::declares_color(*staged));
+    REQUIRE_FALSE(helix::ams::declares_material(*staged));
     REQUIRE(staged->material.empty());
     REQUIRE(staged->brand.empty());
     REQUIRE(staged->spool_name.empty());
@@ -3308,8 +3309,8 @@ TEST_CASE("CFS: a weight edit that also names a brand survives its bay reading E
     const auto staged = CfsTestAccess::get_override(*rig.backend, 0);
     REQUIRE(staged.has_value());
     REQUIRE(staged->brand == "Sunlu");
-    REQUIRE_FALSE(staged->user_locked_color);
-    REQUIRE_FALSE(staged->user_locked_material);
+    REQUIRE_FALSE(helix::ams::declares_color(*staged));
+    REQUIRE_FALSE(helix::ams::declares_material(*staged));
 
     rig.poll(make_unbranded_bay_box("-1"));
     REQUIRE(rig.backend->get_slot_info(0).status == SlotStatus::EMPTY);
@@ -3544,19 +3545,19 @@ TEST_CASE("FillUnsetOnly mirror does not overwrite user-locked fields",
     std::unordered_map<int, helix::ams::FilamentSlotOverride> overrides;
 
     SECTION("locked fields are left alone even when the value flags disagree") {
-        // color_set/material carry the locks' normal companions, but a legacy
-        // or third-party record can present a lock without them. The lock is
+        // color_set/material carry a declaration's normal companions, but a
+        // record can present a declaration without them. The declaration is
         // the authoritative signal and must win on its own.
         helix::ams::FilamentSlotOverride ovr;
-        ovr.user_locked_color = true;
-        ovr.user_locked_material = true;
+        ovr.declared = helix::ams::declared_fields_from_names(
+            nlohmann::json::array({"color_rgb", "material"}));
         ovr.color_set = false;
         ovr.material.clear();
         overrides[0] = ovr;
 
         bool changed = helix::ams::mirror_firmware_to_lane_data(
             /*store=*/nullptr, overrides, 0, 0x00FF00, "PETG", /*slot_has_filament=*/true,
-            helix::ams::MirrorPolicy::FillUnsetOnly, "[test]");
+            helix::ams::MirrorPolicy::FillUnsetOnly, "[test]", helix::ams::DeclaredOnLane{});
 
         CHECK_FALSE(changed);
         CHECK_FALSE(overrides[0].color_set);
@@ -3568,15 +3569,15 @@ TEST_CASE("FillUnsetOnly mirror does not overwrite user-locked fields",
 
         bool changed = helix::ams::mirror_firmware_to_lane_data(
             nullptr, overrides, 1, 0x00FF00, "PETG", true, helix::ams::MirrorPolicy::FillUnsetOnly,
-            "[test]");
+            "[test]", helix::ams::DeclaredOnLane{});
 
         CHECK(changed);
         CHECK(overrides[1].color_set);
         CHECK(overrides[1].color_rgb == 0x00FF00u);
         CHECK(overrides[1].material == "PETG");
         // Auto-mirror writes never claim to be user edits.
-        CHECK_FALSE(overrides[1].user_locked_color);
-        CHECK_FALSE(overrides[1].user_locked_material);
+        CHECK_FALSE(helix::ams::declares_color(overrides[1]));
+        CHECK_FALSE(helix::ams::declares_material(overrides[1]));
     }
 }
 

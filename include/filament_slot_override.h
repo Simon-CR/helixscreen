@@ -21,15 +21,19 @@ struct FilamentSlotOverride;
 struct Observation;
 class DeclaredFields;
 struct RecordAuthorship;
+enum class LegacyLockKeys;
 
-// The only two functions that may put a bit in a DeclaredFields. Both walk the
-// field roster in lane_translation.cpp and admit only the rows that roster
-// marks as keeping their authorship in the set, which is what keeps colour and
-// material out of it. Declared here so the class below can befriend them.
+// The only three functions that may put a bit in a DeclaredFields. Each walks
+// the field roster in lane_translation.cpp and admits only the rows that roster
+// marks as keeping their authorship in the set. Declared here so the class
+// below can befriend them.
 [[nodiscard]] RecordAuthorship amend_authorship(const Observation& observed,
                                                 const FilamentSlotOverride& prior,
                                                 const FilamentSlotOverride& amended);
 [[nodiscard]] DeclaredFields declared_fields_from_names(const nlohmann::json& names);
+[[nodiscard]] DeclaredFields declared_fields_on_load(const nlohmann::json& wire,
+                                                     LegacyLockKeys keys,
+                                                     const FilamentSlotOverride& parsed);
 
 // Which of a stored record's fields the user declared, one bit per row of the
 // field roster in lane_translation.cpp.
@@ -40,15 +44,12 @@ struct RecordAuthorship;
 // wire is keyed by field NAME, so a stored record survives a reordering of the
 // roster.
 //
-// Colour and material are the two fields whose authorship does NOT live here:
-// each owns a lock flag below, which a reader of the shared lane_data
-// namespace also keys on to recognise a HelixScreen record. Two homes for one
-// concept drift, so the set is built so it CANNOT hold those two: the only way
-// to set a bit is through the two roster walks befriended below, both of which
-// admit only rows the roster marks as belonging to the set, and the roster
-// static_asserts that colour and material are not among them. The auto-mirror
-// reads the two lock flags directly, so the bool staying the sole truth for
-// its field is what keeps those reads correct.
+// It is the one home for every identity field's authorship, colour and
+// material included. The helix_locked_color / helix_locked_material keys a
+// stored record carries are written from it rather than kept beside it, since
+// two homes for one concept drift. Only the three roster walks befriended below
+// can set a bit, so no caller can claim a field for the user outside the
+// roster's rules; withdrawing a declaration claims nothing, so reset() is open.
 class DeclaredFields {
   public:
     /// Rows the bitmask can address. The roster static_asserts against it.
@@ -63,6 +64,12 @@ class DeclaredFields {
     [[nodiscard]] bool operator==(const DeclaredFields& other) const {
         return bits_ == other.bits_;
     }
+    /// Withdraw the declaration at roster position @p index.
+    void reset(size_t index) {
+        if (index < CAPACITY) {
+            bits_ &= static_cast<uint16_t>(~(uint16_t{1} << index));
+        }
+    }
 
   private:
     void set(size_t index) {
@@ -74,16 +81,14 @@ class DeclaredFields {
     friend RecordAuthorship amend_authorship(const Observation&, const FilamentSlotOverride&,
                                              const FilamentSlotOverride&);
     friend DeclaredFields declared_fields_from_names(const nlohmann::json&);
+    friend DeclaredFields declared_fields_on_load(const nlohmann::json&, LegacyLockKeys,
+                                                  const FilamentSlotOverride&);
 
     uint16_t bits_ = 0;
 };
 
-/// Everything a record says about who authored its fields, in the two homes
-/// that answer lives in: the colour and material lock flags, and the declared
-/// set for the roster rows with no flag of their own.
+/// Everything a record says about who authored its fields.
 struct RecordAuthorship {
-    bool user_locked_color = false;
-    bool user_locked_material = false;
     DeclaredFields declared;
 };
 
@@ -131,36 +136,23 @@ struct FilamentSlotOverride {
     // product, so a non-empty value always means a user pick.
     std::string catalog_id;
     std::string product_name;
-    // User-lock flags — set true when a user explicitly edits a field via
-    // apply_user_edit(). The OverwriteAlways auto-mirror policy
-    // skips fields whose lock is true so a subsequent firmware report (post-
-    // print state restoration, internal CHANGE_ZCOLOR, etc.) cannot silently
-    // overwrite the user's choice (#965 — AD5X firmware re-emitted prior
-    // material in Adventurer5M.json after print completion, clobbering the
-    // user's edit through the mirror).
-    //
-    // Auto-mirror writes (bootstrap on fresh install, swap detection) leave
-    // these false so subsequent firmware changes still propagate. clear_slot
-    // _override erases the whole entry, so locks reset to false naturally on
-    // re-bootstrap.
-    //
-    // Persistence: emitted as `helix_locked_color` / `helix_locked_material`
-    // in the lane_data record so locks survive across restarts. Legacy
-    // records (pre-fix) load with locks defaulted to TRUE when the field has
-    // a value — pessimistic preservation of existing user data we can't
-    // attribute to either auto-mirror or user edit.
-    bool user_locked_color = false;
-    bool user_locked_material = false;
-    // Authorship for the identity fields that have no lock flag of their own:
-    // brand, spool name and Spoolman vendor id. A field in this set was the
-    // user's word, so the reader files it as a declaration rather than as
-    // something the store merely remembered, and a later firmware frame
-    // stating the same field does not displace it.
+    // Authorship for the identity fields: colour, material, brand, spool name
+    // and Spoolman vendor id. A field in this set was the user's word, so the
+    // reader files it as a declaration rather than as something the store
+    // merely remembered, and a later firmware frame stating the same field
+    // does not displace it. The auto-mirror policies leave a declared colour or
+    // material alone for the same reason, so a stale firmware report cannot
+    // silently overwrite the user's choice (#965). Auto-mirror writes declare
+    // nothing, and clear_slot_override erases the whole entry.
     //
     // Persistence: `helix_declared` in the lane_data record, `declared` in the
     // local cache, both an array of field names. Emitted even when empty, so a
     // reader can tell "this record declares nothing" from "this record predates
-    // the key" and apply the legacy rule only to the latter.
+    // the key" and apply the legacy rule only to the latter. The colour and
+    // material bits are also written as `helix_locked_color` /
+    // `helix_locked_material` (bare `user_locked_*` in the local cache) for a
+    // reader that predates the set; declared_fields_on_load() is the rule that
+    // reads them back.
     DeclaredFields declared;
     // Recommended print temperatures, written into the lane_data record so
     // OrcaSlicer 2.3.2+ can sync them onto the filament preset. Source order
@@ -224,12 +216,11 @@ void populate_temps_from_slot_info(FilamentSlotOverride& ovr, const SlotInfo& in
 // @p edited untouched, and a record claiming those would outrank the firmware
 // that supplied them and refuse every later correction (#965).
 //
-// Authorship therefore lands in two homes, both from that one answer: the two
-// lock flags for colour and material, and the declared set for the roster rows
-// that have no flag of their own. A lock needs a value to stand over, so an
-// empty material never locks however the edit moved it: every mirror policy
-// assumes a lock and its value are set together, and a lock over nothing would
-// stop firmware from ever filling that lane.
+// Authorship therefore lands in the declared set, from that one answer. A
+// colour or material declaration needs a value to stand over, so an empty
+// material is never declared however the edit moved it: every mirror policy
+// leaves a declared field alone, and a declaration over nothing would stop
+// firmware from ever filling that lane.
 //
 // @p prior is the record this lane already had, or nullptr for a lane with
 // none. One edit speaks only about the fields it moved, so this edit's
@@ -245,7 +236,7 @@ void populate_temps_from_slot_info(FilamentSlotOverride& ovr, const SlotInfo& in
 // persists firmware's normalized spelling rather than the string the user
 // typed: AD5X stores the firmware-valid value its own normalize_material()
 // produced, so the raw SlotInfo string is the wrong thing to record and the
-// wrong thing to lock on. Whether the material was declared still follows
+// wrong thing to declare. Whether the material was declared still follows
 // @p declaration, since the normalized spelling has no before-value to compare
 // against.
 //

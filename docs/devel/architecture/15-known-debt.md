@@ -137,44 +137,32 @@ The direction is proven: `format_temperature_pair()` ([`src/ui/ui_temperature_ut
 The principal debt is paid. The model that carries an origin - `Observation`, `LaneSources`
 and `resolve()`, described in [`07-filament-ams.md`](07-filament-ams.md) § "Lane identity by
 source" - is both supplied and read: all nine AMS backends file readings into it, the human
-edit path files declarations, a stored record's authorship travels on two lock flags and a
-declared set rather than being re-derived from what its fields happen to hold, and every
+edit path files declarations, a stored record's authorship travels in a declared set rather
+than being re-derived from what its fields happen to hold, and every
 backend's parse ends by laying the resolved lane back onto the `SlotInfo` it just built. A
 value a user sees is ranked by where it came from.
 
 What is left is the residue, and it is worth naming precisely rather than declaring the
 category closed.
 
-**Shape still decides, in one place: a record written before the authorship keys existed.**
-`from_lane_data_record()`
-([`src/printer/filament_slot_override_store.cpp#from_lane_data_record`](../../../src/printer/filament_slot_override_store.cpp))
-defaults a missing `helix_locked_color` from `color_set` and a missing `helix_locked_material`
-from `!material.empty()` - the value's shape standing in for its origin, deliberately and
-pessimistically, so an upgrade cannot hand a user's saved colour to the auto-mirror. The lane
-source model does not honour that guess: `sources_from_record()` requires the lock key to be
-present and true **on the wire**, so the same legacy record's colour is filed as `Remembered`
-and yields to a firmware frame that restates it, while the stored copy the mirror sees stays
-locked and is not refreshed. The two answers are each defensible on their own and they
-disagree; the legacy rule is what has to go for them to converge, and it cannot go while
-records written before the keys are still out there.
-
-**A lock outlives the printer's own colour menu, and that is deliberate.** A colour the user
-picked in HelixScreen sets `user_locked_color`, and a row rendered by the printer's COLOR menu
+**A declaration outlives the printer's own colour menu, and that is deliberate.** A colour the
+user picked in HelixScreen is declared in the record's set, and a row rendered by the printer's
+COLOR menu
 arrives through `apply_color_menu_slot_row()`
 ([`src/printer/ams_backend_ad5x_ifs.cpp#apply_color_menu_slot_row`](../../../src/printer/ams_backend_ad5x_ifs.cpp)),
-which refreshes the firmware-truth arrays and leaves the lock standing, so the locked colour
-keeps painting. Releasing the lock when a menu row moves is **not** the fix, and the test
+which refreshes the firmware-truth arrays and leaves the declaration standing, so the declared
+colour keeps painting. Withdrawing it when a menu row moves is **not** the fix, and the test
 `AD5X IFS COLOR-menu slot row does not clear a user-locked override` in
 [`tests/unit/test_ams_backend_ad5x_ifs.cpp`](../../../tests/unit/test_ams_backend_ad5x_ifs.cpp)
 pins the opposite on purpose: every COLOR macro emits those rows, so honouring them would drop
-a locked choice for the act of opening the dialog. Only a `CHANGE_ZCOLOR` in the gcode stream,
+a declared choice for the act of opening the dialog. Only a `CHANGE_ZCOLOR` in the gcode stream,
 which is an unambiguous deliberate edit, clears it (#981).
 
-What makes that policy rather than debt is that a lock means a person moved that field.
+What makes that policy rather than debt is that a declaration means a person moved that field.
 `user_edit_observation()`
 ([`src/printer/lane_translation.cpp#user_edit_observation`](../../../src/printer/lane_translation.cpp))
 treats a binding change as a statement about the binding and claims none of the fields that
-travelled in with it, and `amend_authorship()` derives both lock flags from that one answer, so
+travelled in with it, and `amend_authorship()` derives the declared set from that one answer, so
 binding a Spoolman spool records no colour choice and leaves the lane auto-tracking.
 
 **A backend can read its own user's edit back as firmware truth.** Six backends write a

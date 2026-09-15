@@ -52,31 +52,40 @@ enum class Authorship {
     /// Nothing consults a bit for this field: either no translation carries
     /// it, or its source follows from something other than authorship.
     Unattributed,
-    /// FilamentSlotOverride::user_locked_color / _material. A reader of the
-    /// shared lane_data namespace keys on these two wire keys to recognise a
-    /// record as ours, so they are load-bearing past authorship and each stays
-    /// the one home for its own field.
-    LockFlag,
     /// FilamentSlotOverride::declared, addressed by this row's position.
     DeclaredSet,
+};
+
+/// Whether a declaration of a field needs a value to stand over.
+enum class EmptyValue {
+    /// Clearing the field is itself a declaration, and the set is the one
+    /// place a stored record can say the user emptied it.
+    Declares,
+    /// A record holding no value for the field declares nothing for it. Every
+    /// mirror policy leaves a declared field alone, so a declaration over
+    /// nothing would stop firmware from ever filling that lane.
+    DeclaresNothing,
 };
 
 /// One field, named once for every translation that carries it. A nullptr
 /// member says that translation does not claim the field, with the reason on
 /// the row.
-template <FieldKind K, Authorship A, typename SlotMember, typename RecordMember, typename ObsMember>
+template <FieldKind K, Authorship A, EmptyValue E, typename SlotMember, typename RecordMember,
+          typename ObsMember>
 struct FieldRow {
     static constexpr FieldKind kind = K;
     static constexpr Authorship authorship = A;
+    static constexpr EmptyValue empty_value = E;
     std::string_view name; ///< the field's name on the wire, in `helix_declared`
     SlotMember slot;       ///< SlotInfo member the edit path reads
     RecordMember record;   ///< FilamentSlotOverride member the record path reads
     ObsMember obs;         ///< where both file the value
 };
 
-template <FieldKind K, Authorship A = Authorship::Unattributed, typename S, typename R, typename O>
+template <FieldKind K, Authorship A = Authorship::Unattributed, EmptyValue E = EmptyValue::Declares,
+          typename S, typename R, typename O>
 constexpr auto field(std::string_view name, S slot, R record, O obs) {
-    return FieldRow<K, A, S, R, O>{name, slot, record, obs};
+    return FieldRow<K, A, E, S, R, O>{name, slot, record, obs};
 }
 
 /// Every Observation field, once. This is the field list both translations
@@ -85,14 +94,14 @@ constexpr auto field(std::string_view name, S slot, R record, O obs) {
 constexpr auto FIELD_ROSTER = std::make_tuple(
     // Presence is sensed, never declared, so neither translation carries it.
     field<FieldKind::Untranslated>("present", nullptr, nullptr, &Observation::present),
-    field<FieldKind::Color, Authorship::LockFlag>("color_rgb", &SlotInfo::color_rgb,
-                                                  &FilamentSlotOverride::color_rgb,
-                                                  &Observation::color_rgb),
+    field<FieldKind::Color, Authorship::DeclaredSet, EmptyValue::DeclaresNothing>(
+        "color_rgb", &SlotInfo::color_rgb, &FilamentSlotOverride::color_rgb,
+        &Observation::color_rgb),
     // color_name has no authorship of its own: it is the colour's own text and
     // the record path files it only alongside a colour it can file.
     field<FieldKind::Text>("color_name", &SlotInfo::color_name, &FilamentSlotOverride::color_name,
                            &Observation::color_name),
-    field<FieldKind::Text, Authorship::LockFlag>(
+    field<FieldKind::Text, Authorship::DeclaredSet, EmptyValue::DeclaresNothing>(
         "material", &SlotInfo::material, &FilamentSlotOverride::material, &Observation::material),
     field<FieldKind::Text, Authorship::DeclaredSet>(
         "brand", &SlotInfo::brand, &FilamentSlotOverride::brand, &Observation::brand),
@@ -186,20 +195,35 @@ constexpr uint16_t declared_set_mask() {
     return mask;
 }
 
-// Colour and material keep their authorship on their lock flags, and the
-// auto-mirror reads those flags directly rather than through the routing
-// predicate. A second copy of either field's authorship in the declared set
-// would leave those reads answering from the older of two truths, so the set
-// may not carry them at all.
-static_assert((declared_set_mask() & (uint16_t{1} << COLOR_INDEX)) == 0,
-              "colour's authorship lives on user_locked_color alone: giving its roster row "
-              "Authorship::DeclaredSet would put a second copy in the declared set");
-static_assert((declared_set_mask() & (uint16_t{1} << MATERIAL_INDEX)) == 0,
-              "material's authorship lives on user_locked_material alone: giving its roster row "
-              "Authorship::DeclaredSet would put a second copy in the declared set");
+// Colour and material keep their authorship in the declared set beside every
+// other identity field. declares_color, declares_material and the lock keys
+// both emitters write all read these two bits, so a row that left the set
+// would leave every one of them answering from a bit nothing sets.
+static_assert((declared_set_mask() & (uint16_t{1} << COLOR_INDEX)) != 0,
+              "colour's authorship lives in the declared set: its roster row must be "
+              "Authorship::DeclaredSet");
+static_assert((declared_set_mask() & (uint16_t{1} << MATERIAL_INDEX)) != 0,
+              "material's authorship lives in the declared set: its roster row must be "
+              "Authorship::DeclaredSet");
 
 /// True when this row's translation does not carry the field.
 template <typename Member> constexpr bool skipped = std::is_null_pointer_v<Member>;
+
+/// True when @p record holds a value a declaration of row @p f can stand over.
+/// A row whose empty value is itself a declaration always does.
+template <typename Row>
+bool can_declare([[maybe_unused]] const Row& f,
+                 [[maybe_unused]] const FilamentSlotOverride& record) {
+    if constexpr (Row::empty_value == EmptyValue::Declares) {
+        return true;
+    } else if constexpr (Row::kind == FieldKind::Color) {
+        // color_set is the record's own "a colour is present" flag, and
+        // color_rgb is undefined while it is false.
+        return record.color_set && is_declarable_color(record.*(f.record));
+    } else {
+        return !(record.*(f.record)).empty();
+    }
+}
 
 struct LockKeyNames {
     const char* color;
@@ -213,8 +237,7 @@ constexpr LockKeyNames lock_key_names(LegacyLockKeys keys) {
 }
 
 /// True only when @p key is present on @p wire and says true. An absent, null
-/// or false key is not a declaration of authorship, whatever the parsed
-/// struct defaulted it to.
+/// or false key is not a declaration of authorship.
 bool locked(const nlohmann::json& wire, const char* key) {
     return wire.contains(key) && helix::json_util::safe_bool(wire, key, false);
 }
@@ -227,8 +250,8 @@ constexpr const char* declared_key_name(LegacyLockKeys keys) {
 
 /// File a stored record's catalog pick on @p user, answering whether the
 /// record held one. Neither firmware nor Spoolman has the concept of a catalog
-/// product, so a value in either field is a person's pick whatever the lock
-/// keys or the binding say, and the editor reopens on the exact product from it.
+/// product, so a value in either field is a person's pick whatever the record
+/// declares or the binding says, and the editor reopens on the exact product from it.
 bool file_catalog_pick(const FilamentSlotOverride& record, Observation& user) {
     if (!record.catalog_id.empty()) {
         user.catalog_id = record.catalog_id;
@@ -288,31 +311,21 @@ Observation user_edit_observation(const SlotInfo& original, const SlotInfo& edit
     return obs;
 }
 
-ObservationSource classify_declaration(const FilamentSlotOverride& record,
-                                       const nlohmann::json& wire, LegacyLockKeys keys) {
+ObservationSource classify_declaration(const FilamentSlotOverride& record) {
     if (record.spoolman_id > 0) {
         return ObservationSource::Spoolman;
     }
-    // A lock counts only when the key is actually present on the wire: the
-    // parsed struct defaults a missing key from color_set / material presence
-    // (from_lane_data_record's legacy-preservation rule), which is not a
-    // declaration. safe_bool supplies the truthiness rule the parser itself
-    // uses, so a non-boolean lock value classifies the same way here as it
-    // did on load, rather than disagreeing with the parser on the same key.
-    const LockKeyNames lock = lock_key_names(keys);
     // Remembered, not VendorCache: every caller of this hands it a record read
     // back from our own store, never a frame the machine just sent. VendorCache
     // is what firmware states now, and a backend replaces that record whole on
     // each parse, so a stored record filed there loses every field the next
     // frame is silent about.
-    return (locked(wire, lock.color) || locked(wire, lock.material))
-               ? ObservationSource::LocalUser
-               : ObservationSource::Remembered;
+    return (declares_color(record) || declares_material(record)) ? ObservationSource::LocalUser
+                                                                 : ObservationSource::Remembered;
 }
 
-Observation declared_from_record(const FilamentSlotOverride& record, const nlohmann::json& wire,
-                                 LegacyLockKeys keys) {
-    Observation obs(classify_declaration(record, wire, keys));
+Observation declared_from_record(const FilamentSlotOverride& record) {
+    Observation obs(classify_declaration(record));
 
     // A stored record has no before-value, so what it carries is what it
     // declares. Every field defaults to something value-shaped (empty string,
@@ -362,14 +375,13 @@ LaneSources sources_from_record(const FilamentSlotOverride& record, const nlohma
     }
 
     if (record.spoolman_id > 0) {
-        // A linked lane's identity is the server's; its lock flags record that
-        // a colour rode in on the binding, not that a person chose it, so they
-        // are not consulted here either. declared_from_record walks every
+        // A linked lane's identity is the server's, so what its record
+        // declares is not consulted here. declared_from_record walks every
         // field, so two kinds are stripped back off the server's record: the
         // weights, already filed above, and the catalog pick, which a spool
         // record cannot state. A fetch replaces the server's record whole, so
         // the pick is filed as the user's or it would not survive the first.
-        Observation server = declared_from_record(record, wire, keys);
+        Observation server = declared_from_record(record);
         server.remaining_weight_g.reset();
         server.total_weight_g.reset();
         server.catalog_id.reset();
@@ -383,35 +395,31 @@ LaneSources sources_from_record(const FilamentSlotOverride& record, const nlohma
         return sources;
     }
 
-    // Colour and material each carry their own lock key, so one record can
-    // declare one field and merely remembered the other.
-    const LockKeyNames lock = lock_key_names(keys);
-    const bool color_locked = locked(wire, lock.color);
-    const bool material_locked = locked(wire, lock.material);
+    // Colour and material each carry their own bit, so one record can declare
+    // one field and merely remember the other.
+    const bool color_declared = declares_color(record);
 
     // A record written by an older build carries no declared key, and its
-    // brand, spool name and vendor id count as declared only when a lock flag
-    // on the same record is true. That flag is the
-    // evidence a person edited the record at all: the auto-mirror writes both
-    // flags false and can populate neither of those three fields, so a record
-    // holding a brand beside a true lock got it from an edit. Reading every
-    // value a legacy record happens to hold as a declaration would instead pin
-    // a mirrored firmware brand as the user's word, and no later firmware
-    // correction could ever land on it.
+    // brand, spool name and vendor id count as declared only beside a colour or
+    // material declaration on the same record. That declaration is the
+    // evidence a person edited the record at all: the auto-mirror declares
+    // neither field and can populate none of those three, so a record holding a
+    // brand beside one got it from an edit. Reading every value a legacy record
+    // happens to hold as a declaration would instead pin a mirrored firmware
+    // brand as the user's word, and no later firmware correction could ever
+    // land on it.
     const bool has_declared = wire.contains(declared_key_name(keys));
-    const bool legacy_declared = color_locked || material_locked;
+    const bool legacy_declared = color_declared || declares_material(record);
 
-    // Whether the user declared the field at roster position `index`. The two
-    // fields that own a lock flag answer from the wire, same as they always
-    // have; the rest answer from the declared set.
+    // Whether the user declared the field at roster position `index`. Colour
+    // and material answer from their bits whatever the record's age, because
+    // the parser already read an older record's lock keys into them; the rest
+    // fall back to the legacy rule on a record with no set.
     const auto declared_field = [&](size_t index) {
-        if (index == COLOR_INDEX) {
-            return color_locked;
+        if (has_declared || index == COLOR_INDEX || index == MATERIAL_INDEX) {
+            return record.declared.test(index);
         }
-        if (index == MATERIAL_INDEX) {
-            return material_locked;
-        }
-        return has_declared ? record.declared.test(index) : legacy_declared;
+        return legacy_declared;
     };
 
     // Everything this record merely REMEMBERS, as opposed to declares, is
@@ -425,12 +433,12 @@ LaneSources sources_from_record(const FilamentSlotOverride& record, const nlohma
     bool have_remembered = false;
 
     if (record.color_set && is_declarable_color(record.color_rgb)) {
-        Observation& target = color_locked ? user : remembered;
+        Observation& target = color_declared ? user : remembered;
         target.color_rgb = record.color_rgb;
         if (!record.color_name.empty()) {
             target.color_name = record.color_name;
         }
-        (color_locked ? have_user : have_remembered) = true;
+        (color_declared ? have_user : have_remembered) = true;
     }
     // Every remaining field whose source turns on who wrote it. The colour is
     // not among them: its row is walked above, together with the colour name
@@ -448,15 +456,18 @@ LaneSources sources_from_record(const FilamentSlotOverride& record, const nlohma
             }
             if (!carried) {
                 // An empty value is still a declaration when the record's own
-                // declared set names this field: that is the one place a
-                // stored record can tell a field the user cleared apart from
-                // a field that was simply never set. legacy_declared answers
-                // a different question - was ANY identity field ever locked -
-                // and cannot make that distinction, so only the set itself,
-                // never its legacy stand-in, may file an empty value here.
-                if (has_declared && record.declared.test(index)) {
-                    user.*(f.obs) = value;
-                    have_user = true;
+                // declared set names this field and clearing the field is a
+                // declaration at all: that is the one place a stored record
+                // can tell a field the user cleared apart from a field that was
+                // simply never set. legacy_declared answers a different
+                // question - was colour or material ever declared - and cannot
+                // make that distinction, so only the set itself, never its
+                // legacy stand-in, may file an empty value here.
+                if constexpr (Row::empty_value == EmptyValue::Declares) {
+                    if (has_declared && record.declared.test(index)) {
+                        user.*(f.obs) = value;
+                        have_user = true;
+                    }
                 }
                 return;
             }
@@ -494,34 +505,32 @@ RecordAuthorship amend_authorship(const Observation& observed, const FilamentSlo
     const FilamentSlotOverride& standing =
         observed.spoolman_id.has_value() ? nothing_declared : prior;
 
-    // A lock stands over a value, so the amended record has to carry one for
-    // either half of the rule to reach the flag: every mirror policy reads a
-    // lock and its value together, and a lock over nothing would stop firmware
-    // from ever filling that lane. An observation only ever carries a
-    // declarable colour, so the colour gets that guard for free; a material
-    // arrives empty from a clear and from a backend whose normalized spelling
-    // came back empty.
-    const bool colour_carried = amended.color_set && is_declarable_color(amended.color_rgb);
-    authorship.user_locked_color =
-        colour_carried &&
-        amended_declaration(observed.color_rgb.has_value(), standing.user_locked_color,
-                            standing.color_set && standing.color_rgb == amended.color_rgb);
-    authorship.user_locked_material =
-        !amended.material.empty() &&
-        amended_declaration(observed.material.has_value(), standing.user_locked_material,
-                            standing.material == amended.material);
-
-    // The same rule for the roster rows that keep their authorship in the
-    // declared set. No per-kind rule for what this edit declares: the
-    // observation was built by comparing the edit against what it opened on,
-    // so a field it carries is one a person moved, whatever value they moved
-    // it to. Clearing a field is a declaration the same as typing into one,
-    // and the set is the one home that can say so.
+    // One rule for every roster row that keeps its authorship in the declared
+    // set. No per-kind rule for what this edit declares: the observation was
+    // built by comparing the edit against what it opened on, so a field it
+    // carries is one a person moved, whatever value they moved it to. Clearing
+    // a brand is a declaration the same as typing into one, and the set is the
+    // one home that can say so.
+    //
+    // A colour or material declaration also needs a value to stand over, so
+    // the amended record has to carry one for either half of the rule to set
+    // the bit. An observation only ever carries a declarable colour, but a
+    // material arrives empty from a clear and from a backend whose normalized
+    // spelling came back empty.
     for_each_field_indexed([&](const auto& f, size_t index) {
         using Row = std::decay_t<decltype(f)>;
         if constexpr (Row::authorship == Authorship::DeclaredSet) {
+            if (!can_declare(f, amended)) {
+                return;
+            }
+            bool value_unchanged = standing.*(f.record) == amended.*(f.record);
+            if constexpr (Row::kind == FieldKind::Color) {
+                // color_rgb means nothing while color_set is false, so the two
+                // are one value.
+                value_unchanged = value_unchanged && standing.color_set == amended.color_set;
+            }
             if (amended_declaration((observed.*(f.obs)).has_value(), standing.declared.test(index),
-                                    standing.*(f.record) == amended.*(f.record))) {
+                                    value_unchanged)) {
                 authorship.declared.set(index);
             }
         }
@@ -533,8 +542,7 @@ nlohmann::json declared_field_names(const DeclaredFields& declared) {
     // A faithful mirror of the set, with no filter of its own. Refusing a field
     // here as well would mean two places decide what the set may hold, and
     // either one could then stop working without anything to show for it. The
-    // two functions that build a set are where that is decided, and neither
-    // admits a field whose authorship lives on a lock flag.
+    // roster walks that build a set are where that is decided.
     nlohmann::json names = nlohmann::json::array();
     for_each_field_indexed([&](const auto& f, size_t index) {
         if (declared.test(index)) {
@@ -554,9 +562,9 @@ DeclaredFields declared_fields_from_names(const nlohmann::json& names) {
             continue;
         }
         const std::string name = entry.get<std::string>();
-        // Only rows that keep their authorship here are admitted. A record
-        // naming colour or material is naming a field whose authorship lives
-        // on a lock flag, and taking it would put a second copy in the set.
+        // Only rows that keep their authorship here are admitted, so a name
+        // the roster files some other way, such as a catalog pick, sets
+        // nothing.
         //
         // A name this build has no row for is a field a newer one declares.
         // Dropping it loses only authorship this build could not act on
@@ -571,6 +579,53 @@ DeclaredFields declared_fields_from_names(const nlohmann::json& names) {
         });
     }
     return declared;
+}
+
+DeclaredFields declared_fields_on_load(const nlohmann::json& wire, LegacyLockKeys keys,
+                                       const FilamentSlotOverride& parsed) {
+    const char* const set_key = declared_key_name(keys);
+    DeclaredFields declared;
+    if (wire.contains(set_key)) {
+        declared = declared_fields_from_names(wire[set_key]);
+    }
+
+    // A lock key speaks only for an unlinked record: a release 1.0 writer set
+    // both keys on every link and meter flush, so on a linked record they say
+    // nothing a person chose.
+    if (parsed.spoolman_id <= 0) {
+        const LockKeyNames lock = lock_key_names(keys);
+        if (locked(wire, lock.color)) {
+            declared.set(COLOR_INDEX);
+        }
+        if (locked(wire, lock.material)) {
+            declared.set(MATERIAL_INDEX);
+        }
+    }
+
+    // Whichever spelling named a colour or material, the declaration stands
+    // only over a value the record holds.
+    for_each_field_indexed([&](const auto& f, size_t index) {
+        using Row = std::decay_t<decltype(f)>;
+        if constexpr (Row::authorship == Authorship::DeclaredSet) {
+            if (!can_declare(f, parsed)) {
+                declared.reset(index);
+            }
+        }
+    });
+    return declared;
+}
+
+bool declares_color(const FilamentSlotOverride& record) {
+    return record.declared.test(COLOR_INDEX);
+}
+
+bool declares_material(const FilamentSlotOverride& record) {
+    return record.declared.test(MATERIAL_INDEX);
+}
+
+void withdraw_color_and_material(FilamentSlotOverride& record) {
+    record.declared.reset(COLOR_INDEX);
+    record.declared.reset(MATERIAL_INDEX);
 }
 
 bool is_declarable_color(uint32_t rgb) {

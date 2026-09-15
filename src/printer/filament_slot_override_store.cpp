@@ -8,6 +8,7 @@
 #include "filament_variants.h"
 #include "i_moonraker_api.h"
 #include "json_utils.h"
+#include "lane_source_store.h"
 #include "lane_translation.h"
 #include "moonraker_error.h"
 
@@ -369,18 +370,19 @@ nlohmann::json to_lane_data_record(int slot_index, const FilamentSlotOverride& o
         j["helix_catalog_id"] = o.catalog_id;
     if (!o.product_name.empty())
         j["helix_product_name"] = o.product_name;
-    // helix_locked_* are HelixScreen-internal markers. Always emit both (even
-    // when false) so a future re-load can distinguish "explicit auto-mirror,
-    // safe to track" from "missing key, fall back to pessimistic default."
-    // OrcaSlicer's MoonrakerPrinterAgent ignores unknown fields, so the two
-    // extra booleans per slot cost nothing on its side.
-    j["helix_locked_color"] = o.user_locked_color;
-    j["helix_locked_material"] = o.user_locked_material;
-    // Authorship for the identity fields that own no lock flag. Always emitted,
-    // for the same reason the two flags are: an empty array says this record
-    // declares none of them, which a reader must be able to tell apart from a
-    // record written before the key existed.
+    // Authorship for the identity fields, colour and material included.
+    // Always emitted: an empty array says this record declares none of them,
+    // which a reader must be able to tell apart from a record written before
+    // the key existed.
     j["helix_declared"] = declared_field_names(o.declared);
+    // helix_locked_* restate the colour and material bits for a reader that
+    // predates helix_declared: a release 1.0 build on the same printer takes
+    // its authorship from them, and load_blocking's heal recognises our own
+    // records by them. Always emitted, false included. OrcaSlicer's
+    // MoonrakerPrinterAgent ignores unknown fields, so the two extra booleans
+    // per slot cost nothing on its side.
+    j["helix_locked_color"] = declares_color(o);
+    j["helix_locked_material"] = declares_material(o);
     if (!o.brand.empty()) {
         j["vendor"] = o.brand;      // legacy key, ours
         j["vendor_name"] = o.brand; // the shared lane_data spelling, established by
@@ -466,21 +468,6 @@ std::optional<std::pair<int, FilamentSlotOverride>> from_lane_data_record(const 
     // (Mainsail, AFC, Happy Hare) and for records written before helix_material
     // existed.
     o.material = string_with_alias(j, "helix_material", "material");
-    // Pessimistic legacy-default: pre-fix records have no helix_locked_* key.
-    // Assume the field IS user-locked when it carries a value — protects
-    // existing overrides from auto-mirror clobber after upgrade. New records
-    // (post-fix) carry the explicit flag and round-trip exactly. See struct
-    // doc + #965 for rationale. A null on the wire falls to the same
-    // pessimistic default as a missing key, which is the safe direction.
-    o.user_locked_color = helix::json_util::safe_bool(j, "helix_locked_color", o.color_set);
-    o.user_locked_material =
-        helix::json_util::safe_bool(j, "helix_locked_material", !o.material.empty());
-    // A record with no key declares nothing here. The legacy rule for what a
-    // keyless record's identity fields count as lives in sources_from_record,
-    // which can still see whether the key was on the wire; this struct cannot.
-    if (j.contains("helix_declared")) {
-        o.declared = declared_fields_from_names(j["helix_declared"]);
-    }
     // Prefer our own `vendor` key; fall back to `vendor_name`, the shared
     // lane_data spelling that Happy Hare established (mmu_server
     // push_lane_data) and AFC adopted in AFCProject/AFC-Klipper-Add-On#833, so
@@ -506,6 +493,12 @@ std::optional<std::pair<int, FilamentSlotOverride>> from_lane_data_record(const 
     // which .value() would throw type_error.302 on.
     o.catalog_id = helix::json_util::safe_string(j, "helix_catalog_id");
     o.product_name = helix::json_util::safe_string(j, "helix_product_name");
+    // Last, because the rule reads what was parsed above: a lock key counts
+    // only on an unlinked record, and a colour or material declaration only
+    // over a value. The legacy rule for a record with no helix_declared key
+    // lives in sources_from_record, which can still see whether the key was on
+    // the wire; this struct cannot.
+    o.declared = declared_fields_on_load(j, LegacyLockKeys::LaneData, o);
     return std::make_pair(slot_index, o);
 }
 
@@ -568,8 +561,8 @@ nlohmann::json to_json(const FilamentSlotOverride& o) {
         // which is helix_locked_color on the shared wire).
         {"catalog_id", o.catalog_id},
         {"product_name", o.product_name},
-        {"user_locked_color", o.user_locked_color},
-        {"user_locked_material", o.user_locked_material},
+        {"user_locked_color", declares_color(o)},
+        {"user_locked_material", declares_material(o)},
         {"declared", declared_field_names(o.declared)},
         {"bed_temp", o.bed_temp},
         {"nozzle_temp", o.nozzle_temp},
@@ -608,21 +601,13 @@ FilamentSlotOverride from_json(const nlohmann::json& j) {
     // (an older build would then truncate a newer cache on its next save).
     o.catalog_id = helix::json_util::safe_string(j, "catalog_id");
     o.product_name = helix::json_util::safe_string(j, "product_name");
-    // Pessimistic legacy-default — see from_lane_data_record + #965.
-    o.user_locked_color = helix::json_util::safe_bool(j, "user_locked_color", o.color_set);
-    o.user_locked_material =
-        helix::json_util::safe_bool(j, "user_locked_material", !o.material.empty());
-    // Same split as from_lane_data_record: absent means the record says
-    // nothing, and what a keyless record's identity counts as is the reader's
-    // rule, not this struct's.
-    if (j.contains("declared")) {
-        o.declared = declared_fields_from_names(j["declared"]);
-    }
     o.bed_temp = helix::json_util::safe_int(j, "bed_temp", 0);
     o.nozzle_temp = helix::json_util::safe_int(j, "nozzle_temp", 0);
     if (j.contains("updated_at") && j["updated_at"].is_string()) {
         o.updated_at = parse_iso8601(j["updated_at"].get<std::string>());
     }
+    // Last, for the same reason as from_lane_data_record.
+    o.declared = declared_fields_on_load(j, LegacyLockKeys::LocalCache, o);
     return o;
 }
 
@@ -666,7 +651,7 @@ FilamentSlotOverride user_override_from_slot_info(const Observation& declaration
     // Catalog product identity. Persisted so a reopen can restore the EXACT
     // product rather than the alphabetically-first variant of the same
     // vendor+material. Firmware has no notion of a catalog product, so a
-    // non-empty value can only be a user pick and needs no lock of its own.
+    // non-empty value can only be a user pick and needs no declaration of its own.
     ovr.catalog_id = edited.catalog_id;
     ovr.product_name = edited.product_name;
     // A deliberate pure black (#000000) is a reading and records; the "no
@@ -691,12 +676,9 @@ FilamentSlotOverride user_override_from_slot_info(const Observation& declaration
     const FilamentSlotOverride no_prior_record;
     const RecordAuthorship authorship =
         amend_authorship(declaration, prior != nullptr ? *prior : no_prior_record, ovr);
-    // The two locks mark their fields as the user's word rather than something
-    // the store merely remembered, both to the auto-mirror policies and to the
-    // reload that classifies the record (#965). The roster rows with no flag
-    // of their own keep the same answer in the declared set.
-    ovr.user_locked_color = authorship.user_locked_color;
-    ovr.user_locked_material = authorship.user_locked_material;
+    // The declared set marks its fields as the user's word rather than
+    // something the store merely remembered, both to the auto-mirror policies
+    // and to the reload that classifies the record (#965).
     ovr.declared = authorship.declared;
 
     // SlotInfo carries the user's edit OR the bound Spoolman spool's filament
@@ -1771,6 +1753,18 @@ std::optional<int> FilamentSlotOverrideStore::load_seated_slot_blocking() {
 // Shared firmware -> lane_data mirror helper
 // =============================================================================
 
+DeclaredOnLane declared_on_lane(LaneId lane) {
+    const LaneSources sources = lane_sources(lane);
+    const auto held = [&sources](auto field) {
+        return (sources.spoolman.has_value() && ((*sources.spoolman).*field).has_value()) ||
+               (sources.local_user.has_value() && ((*sources.local_user).*field).has_value());
+    };
+    DeclaredOnLane declared;
+    declared.color = held(&Observation::color_rgb);
+    declared.material = held(&Observation::material);
+    return declared;
+}
+
 bool mirror_firmware_to_lane_data(FilamentSlotOverrideStore* store,
                                   std::unordered_map<int, FilamentSlotOverride>& overrides,
                                   int slot_index, uint32_t firmware_color,
@@ -1800,26 +1794,26 @@ bool mirror_firmware_to_lane_data(FilamentSlotOverrideStore* store,
         // policy bootstraps an empty override AND catches genuine external
         // edits (Mainsail console, native LCD, etc.).
         //
-        // BUT user-locked fields are NEVER overwritten — apply_user_edit()
-        // tags the fields it wrote, and that tag survives
-        // restart via lane_data. Without this guard, a stale firmware
-        // re-emission (AD5X post-print FFMInfo revert, #965) would clobber
-        // the user's choice. Auto-mirror writes leave the locks false so
+        // BUT a colour or material the record declares is NEVER overwritten.
+        // apply_user_edit() declares the fields the user moved, and that
+        // declaration survives restart via lane_data. Without this guard, a
+        // stale firmware re-emission (AD5X post-print FFMInfo revert, #965)
+        // would clobber the user's choice. Auto-mirror writes declare nothing, so
         // subsequent firmware changes still propagate; users restore the
-        // auto-track behavior on a previously-locked slot by calling
+        // auto-track behavior on a previously-declared slot by calling
         // clear_slot_override.
         //
         // A field a declaring lane source holds is left alone the same way. A
-        // Spoolman record or a user's unlocked value never reaches firmware,
+        // Spoolman record or a user's value never reaches firmware,
         // so the two views cannot converge on it, and overwriting it would
         // publish a value in lane_data that the lane itself does not show.
-        if (!ovr.user_locked_color && !declared.color &&
+        if (!declared.color && !declares_color(ovr) &&
             (!ovr.color_set || ovr.color_rgb != firmware_color)) {
             ovr.color_rgb = firmware_color;
             ovr.color_set = true;
             changed = true;
         }
-        if (!ovr.user_locked_material && !declared.material && ovr.material != firmware_material) {
+        if (!declared.material && !declares_material(ovr) && ovr.material != firmware_material) {
             ovr.material = firmware_material;
             changed = true;
         }
@@ -1832,20 +1826,19 @@ bool mirror_firmware_to_lane_data(FilamentSlotOverrideStore* store,
         // The escape hatch is clear_slot_override, which erases the entry
         // and lets auto-mirror take over again.
         //
-        // The user-lock checks are redundant with the unset checks in the
-        // common path (apply_user_edit sets color_set together with
-        // user_locked_color), but they are the authoritative "the user chose
-        // this" signal and every mirror policy honors them. Keeping both
-        // policies lock-aware means a record whose locks and value-set flags
-        // ever disagree — a legacy record, a hand-edited lane_data entry, a
-        // third-party writer — still cannot lose the user's choice here.
+        // The declaration checks are redundant with the unset checks in the
+        // common path (a colour or material is declared only over a value),
+        // but they are the authoritative "the user chose this" signal and
+        // every mirror policy honors them. Keeping both policies
+        // declaration-aware means a record whose declarations and value-set
+        // flags ever disagree still cannot lose the user's choice here.
         // A field a declaring lane source holds is left alone here too.
-        if (!ovr.user_locked_color && !declared.color && !ovr.color_set) {
+        if (!declared.color && !declares_color(ovr) && !ovr.color_set) {
             ovr.color_rgb = firmware_color;
             ovr.color_set = true;
             changed = true;
         }
-        if (!ovr.user_locked_material && !declared.material && ovr.material.empty() &&
+        if (!declared.material && !declares_material(ovr) && ovr.material.empty() &&
             !firmware_material.empty()) {
             ovr.material = firmware_material;
             changed = true;

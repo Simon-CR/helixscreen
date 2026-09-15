@@ -758,13 +758,13 @@ class AmsBackendAd5xIfs : public AmsSubscriptionBackend {
     // Material counterpart to check_external_color_change. A firmware TYPE
     // change that leaves the color unchanged (user picks a new material on the
     // zmod COLOR menu / LCD, or an external CHANGE_ZCOLOR ... TYPE=) never
-    // trips the color detector, so a non-locked override's baked material would
+    // trips the color detector, so an undeclared override's baked material would
     // otherwise go stale and mask firmware truth forever — color updated, type
     // stuck (raza616, prestonbrown/helixscreen#981/#1065). Same contract as the
     // color detector: called BEFORE apply_resolved_lane, first observation is a
     // baseline, empty material is the "no reading" signal (ignored), and on a
     // real delta it fires sync_override_to_firmware_locked() which refreshes
-    // the override's material via the OverwriteAlways mirror — user-locked
+    // the override's material via the OverwriteAlways mirror; declared
     // materials (#965) are still skipped there. Returns true if a sync fired.
     bool check_external_type_change(int slot_index, const std::string& observed_material,
                                     std::optional<uint32_t> observed_color, bool slot_has_filament);
@@ -790,12 +790,12 @@ class AmsBackendAd5xIfs : public AmsSubscriptionBackend {
     // load emits a bare `CHANGE_ZCOLOR SLOT=N TYPE=<material>` (no brand), so a
     // full clear_override_locked() would silently drop the user's saved vendor
     // on every physical load (Bug B / #981 regression). This helper instead
-    // releases the color/material user-locks and strips the firmware-carryable
+    // withdraws the color/material declarations and strips the firmware-carryable
     // override fields (color_set/color_rgb/color_name/material) so the lane
     // stops declaring them and firmware truth resolves, while RETAINING the identity
     // metadata — mirroring the #1071 insert/eject retention. If nothing but
     // firmware fields were in the override (no identity to keep), it falls back
-    // to a full clear_override_locked() erase so a locked-but-no-brand override
+    // to a full clear_override_locked() erase so a declared-but-no-brand override
     // still sees a clean wipe.
     //
     // The lane's own LocalUser record is trimmed to match, because that record
@@ -817,12 +817,12 @@ class AmsBackendAd5xIfs : public AmsSubscriptionBackend {
     // Caller holds mutex_.
     void retract_lane_declaration_locked(int slot_index, RetractedFields fields);
 
-    /// What a lock release does with the firmware-carryable values themselves.
+    /// What a colour and material release does with the firmware-carryable values themselves.
     enum class ReleasedValues {
         Strip, ///< Clear them, so firmware truth shows through on this frame.
         Keep,  ///< Leave them for the OverwriteAlways auto-mirror to refresh.
     };
-    // Release the user's colour and material locks on one slot, in BOTH stores
+    // Withdraw the user's colour and material declarations on one slot, in BOTH stores
     // that hold the lane. overrides_ decides what a reload carries; the lane's
     // LocalUser record is what resolve() paints from and it outranks the vendor
     // cache, so a release reaching only one of them goes on showing the colour
@@ -832,8 +832,8 @@ class AmsBackendAd5xIfs : public AmsSubscriptionBackend {
     void release_color_material_locks_locked(int slot_index, helix::ams::FilamentSlotOverride& ovr,
                                              ReleasedValues disposition);
     void release_locked_override_keep_identity_locked(int slot_index, SlotInfo& slot);
-    // Called on the empty->present (physical insert) edge for a lane. Drops the
-    // color/material user-lock flags on an AUTO-TRACKED override (one with no
+    // Called on the empty->present (physical insert) edge for a lane. Withdraws the
+    // color/material declarations on an AUTO-TRACKED override (one with no
     // real Spoolman binding) so firmware truth for the freshly inserted spool
     // refreshes through the OverwriteAlways auto-mirror. A physical insert emits
     // no CHANGE_ZCOLOR, so the #981 external-edit clear never fires here — the
@@ -841,7 +841,7 @@ class AmsBackendAd5xIfs : public AmsSubscriptionBackend {
     // deliberate Spoolman binding (spoolman_id > 0) is left untouched: #1071
     // retains it across an eject/insert cycle. brand/spool_name/spoolman_id/
     // weights are never modified: the override keeps its colour and material
-    // values for the mirror to refresh, and only the locks and the lane's
+    // values for the mirror to refresh, and only the declarations and the lane's
     // matching LocalUser declaration go. Caller holds mutex_.
     // See docs/devel/FILAMENT_MANAGEMENT.md § "AD5X IFS material/color reconcile".
     void unlock_auto_tracked_override_on_insert_locked(int slot_index);

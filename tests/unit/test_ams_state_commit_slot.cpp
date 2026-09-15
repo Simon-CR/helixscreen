@@ -17,6 +17,7 @@
 #include "filament_op_dispatch.h"
 #include "lane_resolver.h"
 #include "lane_source_store.h"
+#include "lane_translation.h"
 #include "moonraker_api_mock.h"
 #include "moonraker_client_mock.h"
 #include "printer_state.h"
@@ -968,7 +969,7 @@ TEST_CASE("an unlink that keeps the slot identity leaves it remembered and not d
     RememberedAfcLaneFixture f;
     f.firmware_links(make_spool(42, "eSUN", "Silk Blue", "PETG"));
     f.edit([](SlotInfo& slot) { slot.color_rgb = 0xBCBCBC; });
-    REQUIRE(f.stored().user_locked_color);
+    REQUIRE(helix::ams::declares_color(f.stored()));
 
     f.edit([](SlotInfo& slot) { slot.clear_spoolman_link(); });
 
@@ -988,8 +989,8 @@ TEST_CASE("an unlink that keeps the slot identity leaves it remembered and not d
     CHECK(sources.remembered->brand == slot.brand);
 
     const helix::ams::FilamentSlotOverride stored = f.stored();
-    CHECK_FALSE(stored.user_locked_color);
-    CHECK_FALSE(stored.user_locked_material);
+    CHECK_FALSE(helix::ams::declares_color(stored));
+    CHECK_FALSE(helix::ams::declares_material(stored));
     CHECK_FALSE(stored.declared.any());
     f.check_lane_matches_reload();
 }
@@ -1003,18 +1004,18 @@ TEST_CASE("a relink voids the authorship the stored record held for the previous
     });
     {
         const helix::ams::FilamentSlotOverride picked = f.stored();
-        REQUIRE(picked.user_locked_color);
+        REQUIRE(helix::ams::declares_color(picked));
         REQUIRE(picked.declared.any());
     }
 
-    // The relink keeps every other value on the slot, so each lock still
-    // stands over the value it was set on.
+    // The relink keeps every other value on the slot, so each declaration
+    // still stands over the value it was set on.
     f.relink(99);
 
     const helix::ams::FilamentSlotOverride stored = f.stored();
     REQUIRE(stored.spoolman_id == 99);
-    CHECK_FALSE(stored.user_locked_color);
-    CHECK_FALSE(stored.user_locked_material);
+    CHECK_FALSE(helix::ams::declares_color(stored));
+    CHECK_FALSE(helix::ams::declares_material(stored));
     CHECK_FALSE(stored.declared.any());
     // Spoolman has not answered for spool 99 yet, and what the slot still
     // holds describes spool 42.
@@ -1064,9 +1065,8 @@ TEST_CASE("an edit that keeps the same spool keeps the stored record's authorshi
 
     const helix::ams::FilamentSlotOverride stored = f.stored();
     REQUIRE(stored.spoolman_id == 42);
-    CHECK(stored.user_locked_color);
-    CHECK(stored.user_locked_material);
-    CHECK(helix::ams::declared_field_names(stored.declared) == nlohmann::json::array({"brand"}));
+    CHECK(helix::ams::declared_field_names(stored.declared) ==
+          nlohmann::json::array({"color_rgb", "material", "brand"}));
 }
 
 TEST_CASE("an edit on a linked AFC lane shows the lane's resolved brand at once",
@@ -1363,18 +1363,18 @@ TEST_CASE("a frame that lands while the editor is open does not become the user'
     REQUIRE(sources.local_user.has_value());
     REQUIRE(sources.local_user->brand == "Elegoo");
 
-    bool record_locks_colour = false;
+    bool record_declares_colour = false;
     {
         std::lock_guard<std::mutex> lock(AfcTestAccess::mutex(*afc));
         const auto& overrides = AfcTestAccess::overrides(*afc);
         const auto kept = overrides.find(0);
         REQUIRE(kept != overrides.end());
-        record_locks_colour = kept->second.user_locked_color;
+        record_declares_colour = helix::ams::declares_color(kept->second);
     }
     // The stored record and the lane carry one declaration between them, and
     // the user moved the brand alone.
     CHECK_FALSE(sources.local_user->color_rgb.has_value());
-    CHECK(record_locks_colour == sources.local_user->color_rgb.has_value());
+    CHECK(record_declares_colour == sources.local_user->color_rgb.has_value());
 }
 
 TEST_CASE("a binding change that reached firmware is filed even though the call returned an error",
