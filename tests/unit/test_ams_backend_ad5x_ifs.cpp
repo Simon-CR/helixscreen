@@ -11411,3 +11411,55 @@ TEST_CASE("AD5X without IFS vars falls back to lane-per-tool", "[ams][ad5x][rout
     CHECK(routing.head(0) == 0);
     CHECK(routing.head(3) == 3);
 }
+
+TEST_CASE(
+    "an AD5X linked lane records Spoolman's material spelling while firmware gets a valid one",
+    "[ams][ad5x_ifs][filament_slot_override][1653]") {
+    Ad5xIfsTmpCacheDir tmp("linked_material_spelling");
+    MoonrakerClientMock client(MoonrakerClientMock::PrinterType::VORON_24);
+    helix::PrinterState state;
+    state.init_subjects(false);
+    MoonrakerAPIMock api(client, state);
+
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(&api, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
+    auto store = std::make_unique<helix::ams::FilamentSlotOverrideStore>(&api, "ifs");
+    FilamentSlotOverrideStoreTestAccess::set_cache_directory(*store, tmp.path);
+    Ad5xIfsTestAccess::inject_override_store(backend, std::move(store));
+
+    // Firmware's own store, where an edit writes the whitelist spelling.
+    const std::string json_path = (tmp.path / "Adventurer5M.json").string();
+    { std::ofstream(json_path) << R"({"FFMInfo":{"ffmColor1":"#FF0000","ffmType1":"PLA"}})"; }
+    Ad5xIfsTestAccess::set_local_adventurer_json_path(backend, json_path);
+
+    helix::ams::FilamentSlotOverride linked;
+    linked.spoolman_id = 42;
+    linked.brand = "Polymaker";
+    linked.material = "SILK";
+    Ad5xIfsTestAccess::seed_override(backend, 0, linked);
+
+    // Spoolman spells the material in a way the AD5X whitelist does not.
+    SpoolInfo spool;
+    spool.id = 42;
+    spool.vendor = "Polymaker";
+    spool.filament_name = "PolyLite Silk";
+    spool.material = "Silk PLA";
+    spool.color_hex = "FF0000";
+    helix::test::spool_states(backend, 0, spool);
+    backend.repaint_slot_from_lane(0);
+    REQUIRE(backend.get_slot_info(0).material == "Silk PLA");
+
+    // A colour-only edit that keeps the spool.
+    SlotInfo edit = backend.get_slot_info(0);
+    edit.color_rgb = 0x1E5AA8;
+    helix::test::edit_slot_as_user(backend, 0, edit);
+
+    const auto staged = Ad5xIfsTestAccess::get_override(backend, 0);
+    REQUIRE(staged.has_value());
+    CHECK(staged->material == "Silk PLA");
+
+    std::ifstream written_file(json_path);
+    const nlohmann::json written = nlohmann::json::parse(written_file, nullptr, false);
+    REQUIRE(written.is_object());
+    CHECK(written.at("FFMInfo").at("ffmType1") == "SILK");
+}

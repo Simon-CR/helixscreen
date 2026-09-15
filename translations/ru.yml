@@ -337,6 +337,7 @@ translations:
   Bowden Length: 'Длина боудена'
   Bowden tube length from hub to toolhead: 'Длина боуден-трубки от хаба до печатающей головки'
   Brand: Бренд
+  Brand and material come from Spoolman: ''
   Brightness: Яркость
   Brightness level when LEDs turn on at startup: Уровень яркости при включении LED
     при запуске
@@ -972,6 +973,7 @@ translations:
   Events appear here after sessions and prints: События появятся здесь после сессий
     и печатей
   Every extruder's temperature at once: Температура всех экструдеров
+  Everything else was saved. Change them in Spoolman.: ''
   Everything else was saved. Rename the material using letters, digits, spaces, and + - _ . ( ) /: 'Всё остальное сохранено. Переименуйте материал, используя буквы, цифры, пробелы и + - _ . ( ) /'
   Excellent Accuracy: Отличная точность
   'Exception: {}': 'Исключение: {}'

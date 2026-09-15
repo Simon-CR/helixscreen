@@ -3835,3 +3835,49 @@ TEST_CASE("a mirror call keeps a colour the record declares when the lane declar
     CHECK(overrides[0].color_rgb == 0x1E5AA8u);
     CHECK(overrides[0].material == "PETG");
 }
+
+TEST_CASE("a linked record declares no material", "[filament_slot_override][ams]") {
+    // A linked spool owns its brand, material, spool name and vendor id, so a
+    // linked record claims none of them: not from an edit naming them, and not
+    // by standing on a declaration an earlier record carried.
+    using helix::ams::amend_authorship;
+    using helix::ams::declared_field_names;
+    using helix::ams::Observation;
+    using helix::ams::ObservationSource;
+
+    FilamentSlotOverride linked;
+    linked.spoolman_id = 42;
+    linked.brand = "Polymaker";
+    linked.material = "PLA";
+    linked.spool_name = "PolyLite PLA";
+    linked.spoolman_vendor_id = 7;
+    const json spool_owned = json::array({"material", "brand", "spool_name", "spoolman_vendor_id"});
+
+    SECTION("a declaration the prior record carried does not stand") {
+        FilamentSlotOverride prior = linked;
+        prior.declared = helix::ams::declared_fields_from_names(spool_owned);
+        const Observation nothing(ObservationSource::LocalUser);
+        CHECK(declared_field_names(amend_authorship(nothing, prior, linked).declared) ==
+              json::array());
+    }
+
+    SECTION("an observation naming them does not declare them") {
+        Observation moved(ObservationSource::LocalUser);
+        moved.material = "PLA";
+        moved.brand = "Polymaker";
+        moved.spool_name = "PolyLite PLA";
+        moved.spoolman_vendor_id = 7;
+        CHECK(declared_field_names(amend_authorship(moved, linked, linked).declared) ==
+              json::array());
+    }
+
+    SECTION("the same record with no spool keeps what it declared") {
+        FilamentSlotOverride unlinked = linked;
+        unlinked.spoolman_id = 0;
+        FilamentSlotOverride prior = unlinked;
+        prior.declared = helix::ams::declared_fields_from_names(spool_owned);
+        const Observation nothing(ObservationSource::LocalUser);
+        CHECK(declared_field_names(amend_authorship(nothing, prior, unlinked).declared) ==
+              spool_owned);
+    }
+}

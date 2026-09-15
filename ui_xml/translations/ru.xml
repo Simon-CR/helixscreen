@@ -313,6 +313,7 @@
   <translation tag="Bowden Length" ru="Длина боудена"/>
   <translation tag="Bowden tube length from hub to toolhead" ru="Длина боуден-трубки от хаба до печатающей головки"/>
   <translation tag="Brand" ru="Бренд"/>
+  <translation tag="Brand and material come from Spoolman"/>
   <translation tag="Brightness" ru="Яркость"/>
   <translation tag="Brightness level when LEDs turn on at startup" ru="Уровень яркости при включении LED при запуске"/>
   <translation tag="BrightnessCLI" ru="Командная строка яркости"/>
@@ -890,6 +891,7 @@
   <translation tag="Ethernet" ru="Ethernet"/>
   <translation tag="Events appear here after sessions and prints" ru="События появятся здесь после сессий и печатей"/>
   <translation tag="Every extruder&apos;s temperature at once" ru="Температура всех экструдеров"/>
+  <translation tag="Everything else was saved. Change them in Spoolman."/>
   <translation tag="Everything else was saved. Rename the material using letters, digits, spaces, and + - _ . ( ) /" ru="Всё остальное сохранено. Переименуйте материал, используя буквы, цифры, пробелы и + - _ . ( ) /"/>
   <translation tag="Excellent Accuracy" ru="Отличная точность"/>
   <translation tag="Exception: {}" ru="Исключение: {}"/>

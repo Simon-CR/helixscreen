@@ -1668,8 +1668,10 @@ TEST_CASE_METHOD(OverlayConsumerCommitFixture,
     // overlay the widget opened.
     auto& overlay = get_ams_edit_overlay();
     AmsEditOverlayViewTestAccess access(overlay);
+    // A linked spool owns the material, so the edit moves the colour, which is
+    // the user's to change.
     SlotInfo edited = seeded;
-    edited.material = "PETG";
+    edited.color_rgb = 0x1E5AA8;
     access.set_working_info(edited);
     access.call_handle_save();
     UpdateQueue::instance().drain();
@@ -1677,7 +1679,7 @@ TEST_CASE_METHOD(OverlayConsumerCommitFixture,
 
     // REQUIRED: the edit reached the backend slot through commit_slot_edit...
     const SlotInfo after = backend->get_slot_info(0);
-    REQUIRE(after.material == "PETG");
+    REQUIRE(after.color_rgb == 0x1E5AA8u);
     REQUIRE(after.spoolman_id == 169);
     // ...AND the server active-spool sync fired — the old direct-write arm
     // never did, which is exactly the branch regression this pins.

@@ -342,7 +342,10 @@ arrives in the committed struct untouched, and a record claiming those would out
 that supplied them and refuse every later correction (#965). `user_edit_observation()`
 ([`src/printer/lane_translation.cpp#user_edit_observation`](../../../src/printer/lane_translation.cpp))
 answers "what did this person move" from the two snapshots, and the declared set is derived
-from that one answer rather than guessed again from the record's values.
+from that one answer rather than guessed again from the record's values. On a lane linked to a
+Spoolman spool, what the spool states about itself (material, brand, spool name, vendor id) is not
+the person's to move: an edit that keeps the spool claims none of it, and
+`keep_spool_owned_identity()` puts the spool's values in its place.
 
 **Authorship accumulates.** One edit speaks only about the fields it moved, so `amend_authorship()`
 ([`src/printer/lane_translation.cpp#amend_authorship`](../../../src/printer/lane_translation.cpp))
@@ -350,7 +353,8 @@ merges what this edit declares onto what the record already declared rather than
 prior declaration survives only while the amended record still holds the value that declaration
 stood over: a value that moved with no declaration behind the move belongs to whoever moved it.
 Without the merge a brand-only edit would drop a colour declared before it, and the consumption
-meter's weight-only persist would drop every declaration on the lane at once.
+meter's weight-only persist would drop every declaration on the lane at once. A record with a
+spool id never declares a field the spool owns, whatever an earlier record carried.
 
 **A deliberate clear is a declaration, and it survives a restart** for the fields the set covers.
 The set is the one home that can tell "the user emptied this field" apart from "nobody ever set

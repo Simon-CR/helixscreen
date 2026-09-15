@@ -343,6 +343,7 @@ translations:
   Bowden Length: 'Longitud del bowden'
   Bowden tube length from hub to toolhead: 'Longitud del tubo bowden del hub al cabezal'
   Brand: Marca
+  Brand and material come from Spoolman: ''
   Brightness: Brillo
   Brightness level when LEDs turn on at startup: Nivel de brillo cuando los LEDs se
     encienden al iniciar
@@ -988,6 +989,7 @@ translations:
   Events appear here after sessions and prints: Los eventos aparecen aquí después
     de sesiones e impresiones
   Every extruder's temperature at once: La temperatura de todos los extrusores
+  Everything else was saved. Change them in Spoolman.: ''
   Everything else was saved. Rename the material using letters, digits, spaces, and + - _ . ( ) /: 'Todo lo demás se guardó. Renombre el material usando letras, dígitos, espacios y + - _ . ( ) /'
   Excellent Accuracy: Precisión Excelente
   'Exception: {}': 'Excepción: {}'

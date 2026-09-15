@@ -7,7 +7,10 @@
 #include "lane_sources.h"
 
 #include <cstdint>
+#include <optional>
 #include <string>
+#include <string_view>
+#include <vector>
 
 #include "hv/json.hpp"
 
@@ -42,6 +45,12 @@ enum class LegacyLockKeys {
 ///     negative weight) that means "no reading", never a chosen value;
 ///   - catalog_id and product_name arrive from the editor's auto-highlighted
 ///     product, which is why AmsEditOverlay::is_dirty() excludes them too.
+///
+/// A field a linked spool owns is not the user's to claim either, even when
+/// they moved it. On an edit that keeps a spool, material, brand, spool name
+/// and Spoolman vendor id are the spool's statement, so none of them is
+/// engaged; keep_spool_owned_identity() is what the commit applies in their
+/// place.
 ///
 /// spoolman_id is engaged exactly when the binding changed, and nothing else is
 /// engaged alongside it. amend_authorship() reads its presence as "this edit
@@ -124,6 +133,10 @@ enum class LegacyLockKeys {
 /// over, so a field @p amended carries nothing in is never declared however the
 /// edit moved it. Brand, spool name and vendor id have no such guard, because
 /// clearing one of them is itself a declaration.
+///
+/// A record with a spool id never declares a field the spool owns (material,
+/// brand, spool name, Spoolman vendor id), whatever @p observed or @p prior
+/// says: the spool's own record states it.
 [[nodiscard]] RecordAuthorship amend_authorship(const Observation& observed,
                                                 const FilamentSlotOverride& prior,
                                                 const FilamentSlotOverride& amended);
@@ -165,6 +178,23 @@ enum class LegacyLockKeys {
 /// Withdraw @p record's colour and material declarations, leaving both values
 /// where they are.
 void withdraw_color_and_material(FilamentSlotOverride& record);
+
+/// @p edited with every field a linked spool owns taken from the spool.
+///
+/// Applies to an edit that keeps the same positive spool id. Material, brand,
+/// spool name and Spoolman vendor id then come from @p spool_record, the lane's
+/// Spoolman record, where it names that spool and states the field, and from
+/// @p original otherwise. Every other field, and every edit that changes or
+/// clears the binding, passes through as @p edited has it.
+[[nodiscard]] SlotInfo keep_spool_owned_identity(const SlotInfo& original, const SlotInfo& edited,
+                                                 const std::optional<Observation>& spool_record);
+
+/// The roster names, as `helix_declared` spells them, of the fields a linked
+/// spool owns that @p edited moved away from @p original and @p applied does
+/// not carry. Empty for an edit that changes or clears the binding.
+[[nodiscard]] std::vector<std::string_view> spool_owned_fields_dropped(const SlotInfo& original,
+                                                                       const SlotInfo& edited,
+                                                                       const SlotInfo& applied);
 
 /// What a lane-shaped record's colour string says.
 enum class ColorReadingKind {

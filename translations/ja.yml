@@ -315,6 +315,7 @@ translations:
   Bowden Length: 'ボーデン長'
   Bowden tube length from hub to toolhead: 'ハブからツールヘッドまでのボーデンチューブ長'
   Brand: ブランド
+  Brand and material come from Spoolman: ''
   Brightness: 明るさ
   Brightness level when LEDs turn on at startup: 起動時にLEDが点灯する際の明るさレベル
   BrightnessCLI: 明るさCLI
@@ -906,6 +907,7 @@ translations:
   Ethernet: イーサネット
   Events appear here after sessions and prints: セッションと印刷の後にイベントがここに表示されます
   Every extruder's temperature at once: 全エクストルーダーの温度を一覧表示
+  Everything else was saved. Change them in Spoolman.: ''
   Everything else was saved. Rename the material using letters, digits, spaces, and + - _ . ( ) /: 'その他はすべて保存されました。材料名は英字・数字・スペース・+ - _ . ( ) / で構成される名前に変更してください'
   Excellent Accuracy: 非常に高精度
   'Exception: {}': '例外: {}'

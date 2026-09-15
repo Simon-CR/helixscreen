@@ -238,7 +238,9 @@ void populate_temps_from_slot_info(FilamentSlotOverride& ovr, const SlotInfo& in
 // produced, so the raw SlotInfo string is the wrong thing to record and the
 // wrong thing to declare. Whether the material was declared still follows
 // @p declaration, since the normalized spelling has no before-value to compare
-// against.
+// against. A record with a spool id records edited.material whatever `material`
+// says: a linked spool owns its material, so the record keeps the spool's
+// spelling while firmware receives the backend's own.
 //
 // The colour records only when it is a reading rather than the SlotInfo "no
 // colour" sentinel, the question is_declarable_color() answers; a deliberate

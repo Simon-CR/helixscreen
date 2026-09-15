@@ -1604,13 +1604,21 @@ class AmsBackend {
      * identity files it back at the rungs the stored record reloads it on.
      * Once filed, the slot is repainted from the lane.
      *
+     * An edit that keeps a spool applies keep_spool_owned_identity(): the
+     * spool's material, brand, spool name and vendor id, read from the lane's
+     * Spoolman record, stand in for the edit's. When the edit had moved one of
+     * them, the rest of the edit is still applied and filed, and the result is
+     * an AmsResult::WRONG_STATE error marked partially_applied, so the caller
+     * tells the user what was kept.
+     *
      * @warning Call without holding mutex_: apply_user_edit() takes it, and so
      *          does a backend's repaint_slot_from_lane().
      *
      * @param slot_index Slot to edit (0-based, global)
      * @param original   The slot as the editor opened on it
      * @param info       The slot as the editor committed it
-     * @return apply_user_edit()'s result
+     * @return apply_user_edit()'s result, or the partially applied error above
+     *         when that call succeeded
      */
     AmsError commit_user_edit(int slot_index, const SlotInfo& original, const SlotInfo& info);
 

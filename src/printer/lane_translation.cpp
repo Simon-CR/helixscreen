@@ -67,15 +67,26 @@ enum class EmptyValue {
     DeclaresNothing,
 };
 
+/// Who owns a field's value on a lane bound to a spool.
+enum class Owner {
+    /// Whichever source the lane ranks highest, a person's edit included.
+    Lane,
+    /// The bound spool. An edit that keeps the spool does not move the field:
+    /// the value comes from the spool's record and the edit declares nothing
+    /// for it.
+    SpoolWhenLinked,
+};
+
 /// One field, named once for every translation that carries it. A nullptr
 /// member says that translation does not claim the field, with the reason on
 /// the row.
-template <FieldKind K, Authorship A, EmptyValue E, typename SlotMember, typename RecordMember,
-          typename ObsMember>
+template <FieldKind K, Authorship A, EmptyValue E, Owner W, typename SlotMember,
+          typename RecordMember, typename ObsMember>
 struct FieldRow {
     static constexpr FieldKind kind = K;
     static constexpr Authorship authorship = A;
     static constexpr EmptyValue empty_value = E;
+    static constexpr Owner owner = W;
     std::string_view name; ///< the field's name on the wire, in `helix_declared`
     SlotMember slot;       ///< SlotInfo member the edit path reads
     RecordMember record;   ///< FilamentSlotOverride member the record path reads
@@ -83,9 +94,9 @@ struct FieldRow {
 };
 
 template <FieldKind K, Authorship A = Authorship::Unattributed, EmptyValue E = EmptyValue::Declares,
-          typename S, typename R, typename O>
+          Owner W = Owner::Lane, typename S, typename R, typename O>
 constexpr auto field(std::string_view name, S slot, R record, O obs) {
-    return FieldRow<K, A, E, S, R, O>{name, slot, record, obs};
+    return FieldRow<K, A, E, W, S, R, O>{name, slot, record, obs};
 }
 
 /// Every Observation field, once. This is the field list both translations
@@ -101,13 +112,16 @@ constexpr auto FIELD_ROSTER = std::make_tuple(
     // the record path files it only alongside a colour it can file.
     field<FieldKind::Text>("color_name", &SlotInfo::color_name, &FilamentSlotOverride::color_name,
                            &Observation::color_name),
-    field<FieldKind::Text, Authorship::DeclaredSet, EmptyValue::DeclaresNothing>(
-        "material", &SlotInfo::material, &FilamentSlotOverride::material, &Observation::material),
-    field<FieldKind::Text, Authorship::DeclaredSet>(
+    // Material, brand, spool name and vendor id are what a Spoolman spool states
+    // about itself, so on a linked lane the spool owns them.
+    field<FieldKind::Text, Authorship::DeclaredSet, EmptyValue::DeclaresNothing,
+          Owner::SpoolWhenLinked>("material", &SlotInfo::material, &FilamentSlotOverride::material,
+                                  &Observation::material),
+    field<FieldKind::Text, Authorship::DeclaredSet, EmptyValue::Declares, Owner::SpoolWhenLinked>(
         "brand", &SlotInfo::brand, &FilamentSlotOverride::brand, &Observation::brand),
-    field<FieldKind::Text, Authorship::DeclaredSet>("spool_name", &SlotInfo::spool_name,
-                                                    &FilamentSlotOverride::spool_name,
-                                                    &Observation::spool_name),
+    field<FieldKind::Text, Authorship::DeclaredSet, EmptyValue::Declares, Owner::SpoolWhenLinked>(
+        "spool_name", &SlotInfo::spool_name, &FilamentSlotOverride::spool_name,
+        &Observation::spool_name),
     // The edit path refuses catalog_id and product_name by the rule
     // AmsEditOverlay::is_dirty() applies to them: the spool-edit view
     // auto-highlights a product and Save copies whatever is highlighted, so
@@ -126,9 +140,10 @@ constexpr auto FIELD_ROSTER = std::make_tuple(
     // it carries no authorship bit either.
     field<FieldKind::PositiveId>("spoolman_id", nullptr, &FilamentSlotOverride::spoolman_id,
                                  &Observation::spoolman_id),
-    field<FieldKind::PositiveId, Authorship::DeclaredSet>(
-        "spoolman_vendor_id", &SlotInfo::spoolman_vendor_id,
-        &FilamentSlotOverride::spoolman_vendor_id, &Observation::spoolman_vendor_id),
+    field<FieldKind::PositiveId, Authorship::DeclaredSet, EmptyValue::Declares,
+          Owner::SpoolWhenLinked>("spoolman_vendor_id", &SlotInfo::spoolman_vendor_id,
+                                  &FilamentSlotOverride::spoolman_vendor_id,
+                                  &Observation::spoolman_vendor_id),
     // A weight is a measurement wherever it came from, so the record path
     // files both as Metered without asking who wrote them.
     field<FieldKind::Weight>("remaining_weight_g", &SlotInfo::remaining_weight_g,
@@ -177,22 +192,34 @@ static_assert(COLOR_INDEX < std::tuple_size_v<decltype(FIELD_ROSTER)>, "colour r
 static_assert(MATERIAL_INDEX < std::tuple_size_v<decltype(FIELD_ROSTER)>,
               "material row went missing");
 
-/// Every roster position whose authorship the declared set carries. The two
-/// walks that build a set admit these rows and no others, so this is also the
-/// full set of bits any DeclaredFields can hold.
-constexpr uint16_t declared_set_mask() {
+/// The roster positions whose row satisfies @p pred, one bit per row.
+template <typename Pred> constexpr uint16_t rows_mask(Pred pred) {
     uint16_t mask = 0;
     size_t index = 0;
     std::apply(
         [&](const auto&... rows) {
-            ((mask |= (std::decay_t<decltype(rows)>::authorship == Authorship::DeclaredSet
-                           ? static_cast<uint16_t>(uint16_t{1} << index)
-                           : uint16_t{0}),
+            ((mask |= (pred(rows) ? static_cast<uint16_t>(uint16_t{1} << index) : uint16_t{0}),
               ++index),
              ...);
         },
         FIELD_ROSTER);
     return mask;
+}
+
+/// Every roster position whose authorship the declared set carries. The two
+/// walks that build a set admit these rows and no others, so this is also the
+/// full set of bits any DeclaredFields can hold.
+constexpr uint16_t declared_set_mask() {
+    return rows_mask([](const auto& row) {
+        return std::decay_t<decltype(row)>::authorship == Authorship::DeclaredSet;
+    });
+}
+
+/// Every roster position a linked spool owns.
+constexpr uint16_t spool_owned_mask() {
+    return rows_mask([](const auto& row) {
+        return std::decay_t<decltype(row)>::owner == Owner::SpoolWhenLinked;
+    });
 }
 
 // Colour and material keep their authorship in the declared set beside every
@@ -205,6 +232,17 @@ static_assert((declared_set_mask() & (uint16_t{1} << COLOR_INDEX)) != 0,
 static_assert((declared_set_mask() & (uint16_t{1} << MATERIAL_INDEX)) != 0,
               "material's authorship lives in the declared set: its roster row must be "
               "Authorship::DeclaredSet");
+
+// A same-spool edit that could declare one of these would store its own value
+// over the spool's, and a spool that owned the colour would outrank the
+// colour a user picks.
+static_assert(spool_owned_mask() ==
+                  static_cast<uint16_t>((uint16_t{1} << MATERIAL_INDEX) |
+                                        (uint16_t{1} << index_of("brand")) |
+                                        (uint16_t{1} << index_of("spool_name")) |
+                                        (uint16_t{1} << index_of("spoolman_vendor_id"))),
+              "a linked spool owns material, brand, spool_name and spoolman_vendor_id, and "
+              "nothing else");
 
 /// True when this row's translation does not carry the field.
 template <typename Member> constexpr bool skipped = std::is_null_pointer_v<Member>;
@@ -288,10 +326,18 @@ Observation user_edit_observation(const SlotInfo& original, const SlotInfo& edit
     }
 
     // The user's statement is what moved. A field that reads the same as the
-    // editor opened on is not theirs to claim, whatever it holds.
+    // editor opened on is not theirs to claim, whatever it holds. On a linked
+    // lane the spool owns what it states about itself, so an edit that keeps
+    // the spool claims none of those fields however it moved them.
+    const bool linked = edited.spoolman_id > 0;
     for_each_field([&](const auto& f) {
         using Row = std::decay_t<decltype(f)>;
         if constexpr (!skipped<decltype(f.slot)>) {
+            if constexpr (Row::owner == Owner::SpoolWhenLinked) {
+                if (linked) {
+                    return;
+                }
+            }
             const auto& before = original.*(f.slot);
             const auto& after = edited.*(f.slot);
             if constexpr (Row::kind == FieldKind::Weight) {
@@ -309,6 +355,44 @@ Observation user_edit_observation(const SlotInfo& original, const SlotInfo& edit
         }
     });
     return obs;
+}
+
+SlotInfo keep_spool_owned_identity(const SlotInfo& original, const SlotInfo& edited,
+                                   const std::optional<Observation>& spool_record) {
+    SlotInfo applied = edited;
+    if (edited.spoolman_id <= 0 || edited.spoolman_id != original.spoolman_id) {
+        return applied;
+    }
+    // A record naming another spool states nothing about this one.
+    const bool describes_spool =
+        spool_record.has_value() && spool_record->spoolman_id == edited.spoolman_id;
+    for_each_field([&](const auto& f) {
+        using Row = std::decay_t<decltype(f)>;
+        if constexpr (Row::owner == Owner::SpoolWhenLinked && !skipped<decltype(f.slot)>) {
+            using Stated = std::decay_t<decltype(std::declval<const Observation&>().*(f.obs))>;
+            const Stated stated = describes_spool ? (*spool_record).*(f.obs) : Stated{};
+            applied.*(f.slot) = stated.has_value() ? *stated : original.*(f.slot);
+        }
+    });
+    return applied;
+}
+
+std::vector<std::string_view> spool_owned_fields_dropped(const SlotInfo& original,
+                                                         const SlotInfo& edited,
+                                                         const SlotInfo& applied) {
+    std::vector<std::string_view> dropped;
+    if (edited.spoolman_id <= 0 || edited.spoolman_id != original.spoolman_id) {
+        return dropped;
+    }
+    for_each_field([&](const auto& f) {
+        using Row = std::decay_t<decltype(f)>;
+        if constexpr (Row::owner == Owner::SpoolWhenLinked && !skipped<decltype(f.slot)>) {
+            if (edited.*(f.slot) != original.*(f.slot) && applied.*(f.slot) != edited.*(f.slot)) {
+                dropped.push_back(f.name);
+            }
+        }
+    });
+    return dropped;
 }
 
 ObservationSource classify_declaration(const FilamentSlotOverride& record) {
@@ -517,11 +601,20 @@ RecordAuthorship amend_authorship(const Observation& observed, const FilamentSlo
     // the bit. An observation only ever carries a declarable colour, but a
     // material arrives empty from a clear and from a backend whose normalized
     // spelling came back empty.
+    //
+    // A record with a spool id never declares a field the spool owns: the
+    // spool's own record states it, whatever this edit or an earlier record
+    // said.
     for_each_field_indexed([&](const auto& f, size_t index) {
         using Row = std::decay_t<decltype(f)>;
         if constexpr (Row::authorship == Authorship::DeclaredSet) {
             if (!can_declare(f, amended)) {
                 return;
+            }
+            if constexpr (Row::owner == Owner::SpoolWhenLinked) {
+                if (amended.spoolman_id > 0) {
+                    return;
+                }
             }
             bool value_unchanged = standing.*(f.record) == amended.*(f.record);
             if constexpr (Row::kind == FieldKind::Color) {

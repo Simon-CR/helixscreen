@@ -647,7 +647,9 @@ FilamentSlotOverride user_override_from_slot_info(const Observation& declaration
     ovr.remaining_weight_g = edited.remaining_weight_g;
     ovr.total_weight_g = edited.total_weight_g;
     ovr.color_name = edited.color_name;
-    ovr.material = material;
+    // A linked spool owns its material, so a linked record keeps the spool's
+    // spelling; a backend's normalized spelling is for firmware.
+    ovr.material = edited.spoolman_id > 0 ? edited.material : material;
     // Catalog product identity. Persisted so a reopen can restore the EXACT
     // product rather than the alphabetically-first variant of the same
     // vendor+material. Firmware has no notion of a catalog product, so a
