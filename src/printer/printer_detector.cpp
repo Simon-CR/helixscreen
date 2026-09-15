@@ -1981,8 +1981,13 @@ std::map<std::string, float> PrinterDetector::get_thermal_rates(const std::strin
     }
     const auto& persisted = ThermalRateManager::PERSISTED_HEATERS;
     for (const auto& [heater, rate] : printer->at("thermal_rates").items()) {
+        // C++17 forbids naming a structured binding in a lambda capture list, so
+        // the predicate compares against an ordinary local bound to it. Clang
+        // accepts the direct capture as a C++20 extension; the toolchains that
+        // build for the devices do not.
+        const auto& heater_name = heater;
         if (std::none_of(persisted.begin(), persisted.end(),
-                         [&heater](const char* name) { return heater == name; })) {
+                         [&heater_name](const char* name) { return heater_name == name; })) {
             spdlog::warn("[PrinterDetector] Ignoring thermal rate for '{}' on '{}': not a heater "
                          "the rate model keeps (extruder, heater_bed)",
                          heater, printer_name);
