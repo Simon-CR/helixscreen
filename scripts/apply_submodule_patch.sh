@@ -66,16 +66,30 @@ fi
 # Did this run actually start from a pristine checkout? The fatal verdict is
 # licensed by the answer, and the answer cannot come from the flag alone: on a
 # patched tree a healthy shared-file patch reads "neither" too.
+# The files this patch touches, from its own diff headers.
+patch_files() {
+  sed -n -e 's|^diff --git a/[^ ]* b/||p' -e 's|^+++ b/||p' "$patch_file" 2>/dev/null |
+    sort -u | grep -v '^/dev/null$' ||:
+}
+
 from_clean_verified() {
   local sentinel="${HELIX_FROM_CLEAN_SENTINEL:-}"
   if [ -n "$sentinel" ] && [ -f "$sentinel" ]; then
     [ "$(cat "$sentinel" 2>/dev/null)" = "1" ]
     return
   fi
-  # Standalone invocation with no recipe guard: judge the submodule directly.
-  # A submodule whose state git cannot read is treated as not verifiable.
-  git_submodule status --porcelain >/dev/null 2>&1 || return 1
-  [ -z "$(git_submodule status --porcelain 2>/dev/null)" ]
+  # Standalone invocation with no recipe guard: judge the submodule directly,
+  # scoped to the files this patch touches - the recipe guard checks its
+  # explicit file list the same way, and unrelated dirt (an untracked file
+  # anywhere in the tree) is not evidence about this patch. One status run
+  # answers both whether git can read the tree and what changed in it; a
+  # pathspec the checkout has no file for simply matches nothing, which is
+  # the pristine answer for a file the patch itself creates.
+  local files out
+  files=$(patch_files)
+  [ -n "$files" ] || files=.
+  out=$(git_submodule status --porcelain -- $files 2>/dev/null) || return 1
+  [ -z "$out" ]
 }
 
 # Marker-table verdict for this one patch: 0 present, 1 absent, 2 unknown

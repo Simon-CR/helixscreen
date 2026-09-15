@@ -142,6 +142,17 @@ EOF
     grep -q 'not verifiable in place' <<<"$output"
 }
 
+@test "dirt outside the patch's own files does not downgrade the fatal" {
+    # The standalone from-clean check is scoped to the files named by the
+    # patch's diff headers, the way the recipe guard scopes to its explicit
+    # file list: an untracked file elsewhere in the submodule is not evidence
+    # about this patch, and must not buy a dead patch the warn branch.
+    printf 'scratch\n' > "$SUB/unrelated.txt"
+    HELIX_PATCHES_FROM_CLEAN=1 run "$HELPER" "$SUB" "$ROOT/patches/dead.patch" "fixture patch"
+    [ "$status" -eq 1 ]
+    grep -q 'does not apply to a clean checkout' <<<"$output"
+}
+
 @test "a make run's sentinel settles the claim, not the tree's current state" {
     # mk/patches.mk judges the claim once at recipe start - before any stanza
     # has dirtied a shared file - and writes the answer where every stanza
