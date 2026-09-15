@@ -159,17 +159,22 @@ bool is_extrusion_safe(int current_temp, int min_extrusion_temp);
  * Klipper refuses extrusion below min_extrude_temp, which may be fractional, so the
  * whole-degree floor rounds up: a 180.5 minimum is 181, because 180 is refused. Every
  * surface that holds an int extrusion minimum takes it from here.
+ *
+ * @param extruder Klipper extruder name, SafetyLimits::min_extrude_temp_for(); the
+ *                 primary extruder unless named.
  */
-int extrusion_floor_c(const SafetyLimits& limits);
+int extrusion_floor_c(const SafetyLimits& limits, const std::string& extruder = "extruder");
 
 /**
- * @brief The hotend's max_temp in whole degrees
+ * @brief A hotend's max_temp in whole degrees
  *
- * The primary extruder's own ceiling, SafetyLimits::max_temp_for("extruder"), the
- * section min_extrude_temp is read from too. Rounded down, so a whole-degree target
- * never exceeds it. Until that section has been read it is the global sanity ceiling.
+ * That extruder's own ceiling, SafetyLimits::max_temp_for(), from the same section
+ * its min_extrude_temp is read from. Rounded down, so a whole-degree target never
+ * exceeds it. Until that section has been read it is the global sanity ceiling.
+ *
+ * @param extruder Klipper extruder name; the primary extruder unless named.
  */
-int nozzle_max_temp_c(const SafetyLimits& limits);
+int nozzle_max_temp_c(const SafetyLimits& limits, const std::string& extruder = "extruder");
 
 /**
  * @brief Gets a human-readable safety status message

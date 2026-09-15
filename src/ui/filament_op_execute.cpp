@@ -4,6 +4,7 @@
 #include "filament_op_execute.h"
 
 #include "ui_error_reporting.h"
+#include "ui_temperature_utils.h"
 #include "ui_update_queue.h"
 
 #include "ams_backend.h"
@@ -13,8 +14,10 @@
 #include "filament_op_router.h"
 #include "lvgl/src/others/translation/lv_translation.h"
 #include "moonraker_api.h"
+#include "printer_state.h"
 #include "safety_settings_manager.h"
 #include "standard_macros.h"
+#include "tool_state.h"
 
 #include <spdlog/spdlog.h>
 
@@ -26,6 +29,27 @@ namespace helix::ui {
 // ============================================================================
 // Live-state half of the decision
 // ============================================================================
+
+OpNozzle resolve_op_nozzle(AmsBackend* backend, int slot, PrinterState& state,
+                           const SafetyLimits& limits) {
+    std::string extruder;
+    if (backend && slot >= 0) {
+        extruder =
+            ToolState::instance().extruder_name_for_tool(backend->get_slot_info(slot).mapped_tool);
+    }
+    lv_subject_t* target = extruder.empty() ? nullptr : state.get_extruder_target_subject(extruder);
+    if (!target) {
+        extruder = state.active_extruder_name();
+        target = state.get_active_extruder_target_subject();
+    }
+
+    OpNozzle nozzle;
+    nozzle.extruder = extruder;
+    nozzle.target_c = target ? temperature::deci_to_degrees(lv_subject_get_int(target)) : 0;
+    nozzle.floor_c = temperature::extrusion_floor_c(limits, extruder);
+    nozzle.ceiling_c = temperature::nozzle_max_temp_c(limits, extruder);
+    return nozzle;
+}
 
 BackendCaps read_backend_caps(AmsBackend* backend, AmsSystemInfo& info_out, int target_slot) {
     BackendCaps caps;

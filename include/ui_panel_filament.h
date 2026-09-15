@@ -461,6 +461,7 @@ class FilamentPanel : public PanelBase {
     int bed_max_temp_ = 150;
     int chamber_max_temp_ = 150;
     int min_extrude_temp_ = 170; ///< Klipper's min_extrude_temp (default 170°C)
+    SafetyLimits limits_;        ///< As set_limits() last received them, for per-extruder lookups
 
     // Auto-preheat state for filament operations
     enum class PreheatOp { NONE, LOAD, UNLOAD, EXTRUDE, RETRACT, PURGE };
@@ -588,9 +589,10 @@ class FilamentPanel : public PanelBase {
     /// resolve_preheat_temp() without the min_extrude_temp_ tail: nullopt when no
     /// slot, external spool or preset names a material.
     std::optional<PreheatTempResult> resolve_material_preheat_temp(int target_slot) const;
-    /// Nozzle-temperature parameter values for @p op's macro, from the live extruder
-    /// target and the material resolve_material_preheat_temp() names, held above
-    /// min_extrude_temp_ and at most nozzle_max_temp_ (helix::ui::nozzle_temp_prefill()).
+    /// Nozzle-temperature parameter values for @p op's macro, from the live target of
+    /// the extruder the op heats and the material resolve_material_preheat_temp()
+    /// names, held above that extruder's extrusion minimum and at most its max_temp
+    /// (helix::ui::resolve_op_nozzle(), helix::ui::nozzle_temp_prefill()).
     std::map<std::string, std::string> macro_temp_prefill(helix::ui::FilamentMacroOp op) const;
     /// Which slot's material a given op should heat for. Load/Unload follow the
     /// dropdown selection (selected_op_slot); Extrude/Retract/Purge follow the

@@ -39,12 +39,12 @@ bool is_extrusion_safe(int current_temp, int min_extrusion_temp) {
     return current_temp >= min_extrusion_temp;
 }
 
-int extrusion_floor_c(const SafetyLimits& limits) {
-    return static_cast<int>(std::ceil(limits.min_extrude_temp_celsius));
+int extrusion_floor_c(const SafetyLimits& limits, const std::string& extruder) {
+    return static_cast<int>(std::ceil(limits.min_extrude_temp_for(extruder)));
 }
 
-int nozzle_max_temp_c(const SafetyLimits& limits) {
-    return static_cast<int>(std::floor(limits.max_temp_for("extruder")));
+int nozzle_max_temp_c(const SafetyLimits& limits, const std::string& extruder) {
+    return static_cast<int>(std::floor(limits.max_temp_for(extruder)));
 }
 
 const char* get_extrusion_safety_status(int current_temp, int min_extrusion_temp) {

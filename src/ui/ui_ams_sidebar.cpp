@@ -1338,12 +1338,11 @@ AmsOperationSidebar::macro_temp_prefill(helix::ui::FilamentMacroOp op, int slot_
         spdlog::debug("[AmsSidebar] No API — no temperature prefilled for slot {}", slot_index);
         return {};
     }
-    const int target_c = temperature::deci_to_degrees(
-        lv_subject_get_int(printer_state_.get_active_extruder_target_subject()));
-    const SafetyLimits& limits = api->get_safety_limits();
-    return helix::ui::nozzle_temp_prefill(op, target_c, material_load_temp_for_slot(slot_index),
-                                          temperature::extrusion_floor_c(limits),
-                                          temperature::nozzle_max_temp_c(limits));
+    const helix::ui::OpNozzle nozzle = helix::ui::resolve_op_nozzle(
+        AmsState::instance().get_backend(), slot_index, printer_state_, api->get_safety_limits());
+    return helix::ui::nozzle_temp_prefill(op, nozzle.target_c,
+                                          material_load_temp_for_slot(slot_index), nozzle.floor_c,
+                                          nozzle.ceiling_c);
 }
 
 void AmsOperationSidebar::handle_load_with_preheat(int slot_index) {

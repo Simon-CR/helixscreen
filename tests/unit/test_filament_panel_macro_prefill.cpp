@@ -16,6 +16,7 @@
  * macro runs with no dialog; otherwise the dialog opens with them typed in.
  */
 
+#include "ui_ams_sidebar.h"
 #include "ui_panel_filament.h"
 #include "ui_update_queue.h"
 
@@ -171,6 +172,33 @@ struct PrefillPanelHarness {
         limits.min_extrude_temp_celsius = min_extrude_c;
         limits.set_max_temp_for("extruder", nozzle_max_c);
         panel->set_limits(limits);
+    }
+
+    /// Two hotends, T0 on `extruder` and T1 on `extruder1`, as discovery builds them.
+    void use_two_extruders() {
+        state.init_extruders({"extruder", "extruder1"});
+        helix::PrinterDiscovery hardware;
+        hardware.parse_objects(nlohmann::json{"extruder", "extruder1"});
+        ToolState::instance().init_tools(hardware);
+        REQUIRE(ToolState::instance().tool_count() == 2);
+    }
+
+    /// `extruder` extrudes from 170 up to 300; `extruder1` from 200 up to 250. The
+    /// primary extruder's floor is also the global one, as the config parse leaves it.
+    static SafetyLimits two_extruder_limits() {
+        SafetyLimits limits;
+        limits.min_extrude_temp_celsius = 170.0;
+        limits.set_min_extrude_temp_for("extruder", 170.0);
+        limits.set_max_temp_for("extruder", 300.0);
+        limits.set_min_extrude_temp_for("extruder1", 200.0);
+        limits.set_max_temp_for("extruder1", 250.0);
+        return limits;
+    }
+
+    /// Both extruder targets, in degrees.
+    void set_extruder_targets(double extruder_c, double extruder1_c) {
+        state.update_from_status(
+            {{"extruder", {{"target", extruder_c}}}, {"extruder1", {{"target", extruder1_c}}}});
     }
 
     /// An external spool whose material heats to exactly @p nozzle_c: a name the
@@ -474,6 +502,118 @@ TEST_CASE_METHOD(LVGLUITestFixture,
 
     CHECK(h.prompt_count == 0);
     CHECK(h.sent_for("PURGE") == Scripts{"PURGE PURGE_TEMP=235"});
+}
+
+// =============================================================================
+// Multi-extruder: the limits and target are the op's own extruder's
+// =============================================================================
+
+namespace {
+constexpr const char* PURGE_TEMP_ONLY =
+    "{% set t = params.PURGE_TEMP|default(240)|int %}\nM109 S{t}\nG1 E30 F300";
+} // namespace
+
+/// A panel over two hotends whose loaded lane 1 names a material heating to
+/// @p nozzle_c and maps to @p lane_tool (T1 heats extruder1; -1 maps to none).
+/// T0, on extruder, is the active tool.
+struct TwoExtruderPurge {
+    explicit TwoExtruderPurge(int nozzle_c, int lane_tool = 1)
+        : h(std::make_unique<helix::test::LaneMaterialBackend>(/*lane=*/1, nozzle_c,
+                                                               /*selected_slot=*/-1, lane_tool)) {
+        h.use_two_extruders();
+        h.cache_macros({{"PURGE", PURGE_TEMP_ONLY}});
+        h.panel->set_limits(PrefillPanelHarness::two_extruder_limits());
+        TA::set_selected_material(*h.panel, -1);
+    }
+    PrefillPanelHarness h;
+};
+
+TEST_CASE_METHOD(LVGLUITestFixture, "Purge on a lane mapped to T1 stays under extruder1's ceiling",
+                 "[filament][prefill][multi_extruder]") {
+    // 260 is within extruder's 300 and above extruder1's 250.
+    TwoExtruderPurge t(/*nozzle_c=*/260);
+    t.h.set_extruder_targets(0.0, 0.0);
+
+    TA::execute_purge(*t.h.panel);
+
+    CHECK(t.h.prompt_count == 1);
+    CHECK(t.h.prompted_prefill.empty());
+    CHECK(t.h.sent_for("PURGE").empty());
+}
+
+TEST_CASE_METHOD(LVGLUITestFixture, "Purge on a lane mapped to T1 stays above extruder1's floor",
+                 "[filament][prefill][multi_extruder]") {
+    // 190 is above extruder's 170 and below extruder1's 200.
+    TwoExtruderPurge t(/*nozzle_c=*/190);
+    t.h.set_extruder_targets(0.0, 0.0);
+
+    TA::execute_purge(*t.h.panel);
+
+    CHECK(t.h.prompt_count == 1);
+    CHECK(t.h.prompted_prefill.empty());
+    CHECK(t.h.sent_for("PURGE").empty());
+}
+
+TEST_CASE_METHOD(LVGLUITestFixture, "Purge on a lane mapped to T1 reads extruder1's target",
+                 "[filament][prefill][multi_extruder]") {
+    TwoExtruderPurge t(/*nozzle_c=*/210);
+    t.h.set_extruder_targets(280.0, 230.0);
+
+    TA::execute_purge(*t.h.panel);
+
+    CHECK(t.h.prompt_count == 0);
+    CHECK(t.h.sent_for("PURGE") == Scripts{"PURGE PURGE_TEMP=230"});
+}
+
+TEST_CASE_METHOD(LVGLUITestFixture, "Purge on a lane mapped to no tool uses the active extruder",
+                 "[filament][prefill][multi_extruder]") {
+    TwoExtruderPurge t(/*nozzle_c=*/210, /*lane_tool=*/-1);
+    // 280 is within extruder's ceiling and above extruder1's.
+    t.h.set_extruder_targets(280.0, 230.0);
+
+    TA::execute_purge(*t.h.panel);
+
+    CHECK(t.h.prompt_count == 0);
+    CHECK(t.h.sent_for("PURGE") == Scripts{"PURGE PURGE_TEMP=280"});
+}
+
+/// The AMS sidebar loading lane 1, which names a material heating to @p nozzle_c
+/// and maps to T1, on the same two hotends.
+struct TwoExtruderSidebarLoad {
+    explicit TwoExtruderSidebarLoad(int nozzle_c)
+        : h(std::make_unique<helix::test::LaneMaterialBackend>(/*lane=*/1, nozzle_c,
+                                                               /*selected_slot=*/-1,
+                                                               /*lane_tool=*/1)) {
+        h.use_two_extruders();
+        h.cache_macros({{"LOAD_FILAMENT", helix::test::LOAD_FILAMENT_EXPRESSION_DEFAULT}});
+        h.api.set_safety_limits(PrefillPanelHarness::two_extruder_limits());
+    }
+    /// The sidebar runs its macro through its lifetime token, so it outlives the drain.
+    void load() {
+        sidebar.handle_load_with_preheat(1);
+        helix::ui::UpdateQueue::instance().drain();
+    }
+    PrefillPanelHarness h;
+    helix::ui::AmsOperationSidebar sidebar{h.state};
+};
+
+TEST_CASE_METHOD(LVGLUITestFixture, "The AMS sidebar prefills a T1 lane's load from extruder1",
+                 "[filament][prefill][multi_extruder][ams]") {
+    SECTION("its target") {
+        TwoExtruderSidebarLoad t(/*nozzle_c=*/210);
+        t.h.set_extruder_targets(280.0, 230.0);
+        t.load();
+        CHECK(t.h.prompt_count == 0);
+        CHECK(t.h.sent_for("LOAD_FILAMENT") == Scripts{"LOAD_FILAMENT EXTRUDER_TEMP=230"});
+    }
+    SECTION("its ceiling") {
+        TwoExtruderSidebarLoad t(/*nozzle_c=*/260);
+        t.h.set_extruder_targets(0.0, 0.0);
+        t.load();
+        CHECK(t.h.prompt_count == 1);
+        CHECK(t.h.prompted_prefill.empty());
+        CHECK(t.h.sent_for("LOAD_FILAMENT").empty());
+    }
 }
 
 TEST_CASE_METHOD(LVGLUITestFixture, "Purge offers its temperature only as PURGE_TEMP",

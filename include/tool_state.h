@@ -158,6 +158,10 @@ class ToolState {
     /// Returns tool name (e.g. "T0") for the given extruder name, or empty if not found.
     [[nodiscard]] std::string tool_name_for_extruder(const std::string& extruder_name) const;
 
+    /// Returns the extruder name (e.g. "extruder1") tool @p tool_index heats, or
+    /// empty when there is no such tool or it names no extruder.
+    [[nodiscard]] std::string extruder_name_for_tool(int tool_index) const;
+
     /// Returns the tool's physical label (e.g. "Tool 1") for the given extruder
     /// name, or empty if not found.
     [[nodiscard]] std::string display_label_for_extruder(const std::string& extruder_name) const;

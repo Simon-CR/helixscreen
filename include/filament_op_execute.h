@@ -23,6 +23,7 @@
 
 #include "filament_op_dispatch.h"
 #include "filament_op_router.h"
+#include "moonraker_types.h"
 #include "standard_macros.h"
 
 #include <functional>
@@ -32,6 +33,7 @@
 namespace helix {
 class AmsBackend;
 struct AmsError;
+class PrinterState;
 } // namespace helix
 
 namespace helix::ui {
@@ -58,6 +60,28 @@ namespace helix::ui {
  */
 [[nodiscard]] BackendCaps read_backend_caps(AmsBackend* backend, AmsSystemInfo& info_out,
                                             int target_slot);
+
+/// The extruder a filament op heats, and the numbers a nozzle prefill holds to.
+struct OpNozzle {
+    std::string extruder; ///< Klipper extruder name
+    int target_c = 0;     ///< Its live target, whole degrees
+    int floor_c = 0;      ///< temperature::extrusion_floor_c() for it
+    int ceiling_c = 0;    ///< temperature::nozzle_max_temp_c() for it
+};
+
+/**
+ * @brief Resolve the extruder an op on @p slot heats, with its target and limits.
+ *
+ * The slot's SlotInfo::mapped_tool names a tool, and that tool's extruder is the
+ * one. The active extruder stands in when there is no backend or slot, the slot
+ * maps to no tool, the tool names no extruder, or the printer state does not know
+ * that extruder.
+ *
+ * @param backend May be null.
+ * @param slot    The lane the op acts on; negative for none.
+ */
+[[nodiscard]] OpNozzle resolve_op_nozzle(AmsBackend* backend, int slot, PrinterState& state,
+                                         const SafetyLimits& limits);
 
 /// plan_load() with the StandardMacros LoadFilament slot read off the registry.
 [[nodiscard]] FilamentOpPlan plan_live_load(const AmsSystemInfo& info, const BackendCaps& caps,
