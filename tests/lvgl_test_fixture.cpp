@@ -10,6 +10,7 @@
 #include "test_helpers/refresh_period_hold_test_access.h"
 #include "test_helpers/screen_hide_hold_test_access.h"
 #include "test_helpers/update_queue_test_access.h"
+#include "theme_manager.h"
 
 #include <spdlog/spdlog.h>
 
@@ -54,40 +55,53 @@ static lv_obj_t* blank_screen() {
     return screen;
 }
 
+// The display is a process-wide singleton, so anything a previous test in
+// this shard did to it - or to the default-display slot - survives into the
+// next case, and every responsive decision downstream inherits it:
+// theme_manager_init() republishes the breakpoint subjects from
+// lv_display_get_default(), and that slot is not the fixture's by right -
+// test translation units create a display in static initialisers before
+// main(), and LVGL promotes the most recently created remaining display when
+// one is deleted.
+//
+// Restore order is load-bearing: rotation first, because a rotated display
+// is wrong on its own and the resolution getters swap their axes under
+// ROTATION_90/270 while lv_display_set_resolution() no-ops when the raw
+// pixel fields already match - so putting the geometry back from "what the
+// getters report" against a rotated display writes nothing and leaves the
+// axes swapped. Pixels and the default slot next. Last the derived layout
+// state (breakpoint subjects, XML px tokens, fonts): those are published
+// from the display by theme_manager_refresh_layout_constants(), they are
+// process-global, and widget_size::current_breakpoint() reads the subject
+// rather than the display, so putting back only the pixels leaves every
+// later test in this shard sizing widgets for a geometry that no longer
+// exists. The refresh is a no-op until the XML "globals" scope exists, so it
+// is safe from a plain fixture construction with no theme init behind it.
+void LVGLTestFixture::reclaim_display() {
+    if (s_display == nullptr) {
+        return;
+    }
+    if (lv_display_get_rotation(s_display) != LV_DISPLAY_ROTATION_0) {
+        lv_display_set_rotation(s_display, LV_DISPLAY_ROTATION_0);
+    }
+    const int32_t w = lv_display_get_horizontal_resolution(s_display);
+    const int32_t h = lv_display_get_vertical_resolution(s_display);
+    if (w != TEST_DISPLAY_WIDTH || h != TEST_DISPLAY_HEIGHT) {
+        lv_display_set_resolution(s_display, TEST_DISPLAY_WIDTH, TEST_DISPLAY_HEIGHT);
+    }
+    if (lv_display_get_default() != s_display) {
+        lv_display_set_default(s_display);
+    }
+    theme_manager_refresh_layout_constants(s_display);
+}
+
 LVGLTestFixture::LVGLTestFixture() : m_test_screen(nullptr) {
     ensure_lvgl_initialized();
 
-    // The display is a process-wide singleton, so anything a previous test in
-    // this shard did to it - or to the default-display slot - survives into
-    // this case. Every responsive decision downstream inherits it:
-    // theme_manager_init() republishes the breakpoint subjects from
-    // lv_display_get_default(), and that slot is not this fixture's by right -
-    // test translation units create a display in static initialisers before
-    // main(), and LVGL promotes the most recently created remaining display
-    // when one is deleted. Reclaim the slot for the fixture's own display and
-    // put its geometry back, before anything reads either; a test that wants a
-    // different display for its own body scopes that inside the body
-    // (ScopedResolution, or its own display).
-    //
-    // Rotation is restored first, and for two reasons: a rotated display is
-    // wrong on its own, and the resolution getters swap their axes under
-    // ROTATION_90/270 while lv_display_set_resolution() no-ops when the raw
-    // pixel fields already match - so putting the geometry back from "what
-    // the getters report" against a rotated display writes nothing and
-    // leaves the axes swapped.
-    if (s_display != nullptr) {
-        if (lv_display_get_rotation(s_display) != LV_DISPLAY_ROTATION_0) {
-            lv_display_set_rotation(s_display, LV_DISPLAY_ROTATION_0);
-        }
-        const int32_t w = lv_display_get_horizontal_resolution(s_display);
-        const int32_t h = lv_display_get_vertical_resolution(s_display);
-        if (w != TEST_DISPLAY_WIDTH || h != TEST_DISPLAY_HEIGHT) {
-            lv_display_set_resolution(s_display, TEST_DISPLAY_WIDTH, TEST_DISPLAY_HEIGHT);
-        }
-        if (lv_display_get_default() != s_display) {
-            lv_display_set_default(s_display);
-        }
-    }
+    // Hand this case the display state a fresh process would start with; a
+    // test that wants a different display for its own body scopes that
+    // inside the body (ScopedResolution, or its own display).
+    reclaim_display();
 
     // Initialize update queue once (static guard) - CRITICAL for helix::ui::queue_update()
     // Per L053/L054: Tests using UpdateQueue need proper lifecycle

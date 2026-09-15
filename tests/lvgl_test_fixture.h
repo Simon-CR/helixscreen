@@ -104,6 +104,18 @@ class LVGLTestFixture : public HelixTestFixture {
     LVGLTestFixture& operator=(LVGLTestFixture&&) = delete;
 
     /**
+     * @brief Put the shared display back the way a fresh process finds it
+     *
+     * Restores rotation, then resolution, then the default-display slot, then
+     * the derived layout state (breakpoint subjects, XML px tokens, fonts)
+     * republished from the display's geometry. Exactly what the constructor
+     * runs; public and static so a case that moves the display mid-body can
+     * hand whatever runs next the same state without constructing a second
+     * fixture inside a live one.
+     */
+    static void reclaim_display();
+
+    /**
      * @brief Advance LVGL's VIRTUAL clock by @p ms and pump timers
      * @param ms Duration of *simulated* time to advance
      *

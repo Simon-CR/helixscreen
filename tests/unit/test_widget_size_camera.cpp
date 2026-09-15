@@ -54,16 +54,19 @@
 
 #if HELIX_HAS_CAMERA
 
+#include "ui_breakpoint.h"
 #include "ui_update_queue.h"
 
 #include "../lvgl_ui_test_fixture.h"
 #include "../test_helpers/camera_widget_test_access.h"
 #include "../test_helpers/panel_widget_size_harness.h"
 #include "app_globals.h"
+#include "helix-xml/src/xml/lv_xml.h"
 #include "panel_widget_manager.h"
 #include "panel_widget_size.h"
 #include "printer_state.h"
 #include "src/ui/panel_widgets/camera_widget.h"
+#include "theme_manager.h"
 
 using namespace helix;
 using namespace helix::widget_size;
@@ -72,12 +75,17 @@ using namespace helix::widget_size;
 // below judges its resize ladder against the tier that display yields
 // (w_normal() at the fixture's 800x480 is Medium's 174px; at this case's
 // 1080x1920 the narrow axis is XXLarge's 309px, which swallows the 233px
-// Medium cell below). This case moves the resolution and rotation and
-// deliberately puts neither back, then checks the reset the direct way: a
-// fresh LVGLTestFixture constructed here must hand whatever runs next the
-// fixture's own geometry. Pinning it in the same case keeps the oracle with
-// the leak no matter where Catch2's shard boundaries fall; the case below
-// then shows the tier consequence end to end.
+// Medium cell below). This case moves the resolution and rotation, publishes
+// the leaked geometry into the layout subjects the way an aborted resize
+// scope leaves behind, and deliberately puts none of it back, then checks the
+// reset the direct way: LVGLTestFixture::reclaim_display() is exactly what
+// the next case's fixture constructor runs, called here as a plain static
+// rather than by constructing a second fixture inside the live one (a nested
+// fixture would tear the update queue down mid-case). A stray display holds
+// the default slot at reclaim time, so the slot restore executes on every
+// run of this case, not only in shards where a translation unit's static
+// display happens to sit there. Pinning it in the same case keeps the oracle
+// with the leak no matter where Catch2's shard boundaries fall.
 TEST_CASE_METHOD(LVGLUITestFixture,
                  "camera: a leaked display resolution does not reach the next case",
                  "[1563][widget_size][camera]") {
@@ -85,13 +93,37 @@ TEST_CASE_METHOD(LVGLUITestFixture,
     REQUIRE(disp != nullptr);
     lv_display_set_resolution(disp, 1080, 1920);
     lv_display_set_rotation(disp, LV_DISPLAY_ROTATION_90);
+    // Publish the leaked geometry into the process-global layout state, as
+    // an aborted resize scope leaves it.
+    theme_manager_refresh_layout_constants(disp);
 
-    LVGLTestFixture reclaimed;
+    lv_subject_t* const breakpoint = lv_xml_get_subject(nullptr, "ui_breakpoint");
+    lv_subject_t* const breakpoint_v = lv_xml_get_subject(nullptr, "ui_breakpoint_v");
+    REQUIRE(breakpoint != nullptr);
+    REQUIRE(breakpoint_v != nullptr);
+    // The leak landed in the derived subjects, not just the raw pixels.
+    REQUIRE(lv_subject_get_int(breakpoint) == to_int(UiBreakpoint::XXLarge));
+
+    // A stray display owning the default slot, as test translation units'
+    // static initializers leave behind.
+    lv_display_t* stray = lv_display_create(64, 64);
+    REQUIRE(stray != nullptr);
+    lv_display_set_default(stray);
+
+    LVGLTestFixture::reclaim_display();
+
     lv_display_t* const d = lv_display_get_default();
     CHECK(d == LVGLTestFixture::s_display);
     CHECK(lv_display_get_rotation(d) == LV_DISPLAY_ROTATION_0);
     CHECK(lv_display_get_horizontal_resolution(d) == TEST_DISPLAY_WIDTH);
     CHECK(lv_display_get_vertical_resolution(d) == TEST_DISPLAY_HEIGHT);
+    CHECK(lv_subject_get_int(breakpoint) == to_int(UiBreakpoint::Medium));
+    CHECK(lv_subject_get_int(breakpoint_v) == to_int(UiBreakpoint::Medium));
+    // Consumer level: current_breakpoint() reads the subject rather than the
+    // display, so a stale tier surfaces here as XXLarge's 309px band.
+    CHECK(w_normal() == w_normal(UiBreakpoint::Medium));
+
+    lv_display_delete(stray);
 }
 
 TEST_CASE_METHOD(LVGLUITestFixture,
