@@ -929,6 +929,13 @@ void PrintStartController::restore_filament_mapping() {
     // entries that took and retries the refused ones, so a reattached unit
     // gets its routing back. Finishing here would turn a temporary detach
     // into a permanent loss of the pre-print mapping.
+    //
+    // Retention has no clock, but it is bounded: the record ends when a
+    // replay delivers the refused entries, or when the next remap-carrying
+    // print start replaces the snapshot — whichever comes first. A record
+    // whose unit never returns costs one refused command and a warn line per
+    // boot; an expiry would cost the mapping itself, on exactly the user who
+    // reattaches the unit after it fired.
     if (restores_refused > 0) {
         spdlog::warn("[PrintStartController] {} restore command(s) refused — snapshot and "
                      "pending_remap.json retained for replay on next startup",
