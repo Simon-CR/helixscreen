@@ -902,6 +902,7 @@ void PrintStartController::restore_filament_mapping() {
     auto current_mapping = backend->get_tool_mapping();
 
     int restores_sent = 0;
+    int restores_refused = 0;
     for (size_t i = 0; i < saved_tool_mapping_.size(); ++i) {
         int saved_slot = saved_tool_mapping_[i];
         int current_slot = (i < current_mapping.size()) ? current_mapping[i] : -1;
@@ -911,6 +912,7 @@ void PrintStartController::restore_filament_mapping() {
                          current_slot, saved_slot);
             auto err = backend->set_tool_mapping(static_cast<int>(i), saved_slot);
             if (err.result != AmsResult::SUCCESS) {
+                ++restores_refused;
                 spdlog::error("[PrintStartController] Failed to restore T{}: {}", i,
                               err.technical_msg);
             } else {
@@ -920,6 +922,19 @@ void PrintStartController::restore_filament_mapping() {
     }
 
     spdlog::info("[PrintStartController] Sent {} restore command(s) on print end", restores_sent);
+
+    // A refused entry names a lane the backend does not currently report —
+    // typically a unit that detached since the snapshot was taken. Keep the
+    // snapshot and pending_remap.json: the next startup's replay skips the
+    // entries that took and retries the refused ones, so a reattached unit
+    // gets its routing back. Finishing here would turn a temporary detach
+    // into a permanent loss of the pre-print mapping.
+    if (restores_refused > 0) {
+        spdlog::warn("[PrintStartController] {} restore command(s) refused — snapshot and "
+                     "pending_remap.json retained for replay on next startup",
+                     restores_refused);
+        return;
+    }
 
     // Backends that echo their mapping back let us wait for firmware truth
     // instead of trusting a send. Those that don't fall back to "sent to a ready
