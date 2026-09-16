@@ -931,11 +931,18 @@ void PrintStartController::restore_filament_mapping() {
     // into a permanent loss of the pre-print mapping.
     //
     // Retention has no clock, but it is bounded: the record ends when a
-    // replay delivers the refused entries, or when the next remap-carrying
-    // print start replaces the snapshot — whichever comes first. A record
-    // whose unit never returns costs one refused command and a warn line per
-    // boot; an expiry would cost the mapping itself, on exactly the user who
-    // reattaches the unit after it fired.
+    // replay delivers the refused entries, or when a later print start
+    // actually SENDS remaps, since persist_remap_state() rewrites the file
+    // only then. A print whose mappings already match firmware sends nothing
+    // and leaves the file in place, so that start replaces the in-memory
+    // snapshot without clearing the record. A record whose unit never returns
+    // costs one refused command and a warn line per boot; an expiry would cost
+    // the mapping itself, on exactly the user who reattaches after it fired.
+    //
+    // A replay reverts a remap the user made by hand after the refusal. That
+    // is the feature's contract — put the mapping back the way it was before
+    // the print — and it happens at most once per boot, since this path arms
+    // no observer.
     if (restores_refused > 0) {
         spdlog::warn("[PrintStartController] {} restore command(s) refused — snapshot and "
                      "pending_remap.json retained for replay on next startup",
