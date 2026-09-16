@@ -1042,6 +1042,54 @@ TEST_CASE_METHOD(PrintStartCollectorHeaterFixture,
     REQUIRE(get_current_message() == "Heating Bed...");
 }
 
+// ============================================================================
+// Host-Side Pre-Start Echo Suppression
+// ============================================================================
+
+TEST_CASE_METHOD(PrintStartCollectorHeaterFixture,
+                 "Pre-start echo: the dispatched block's console echo claims no phase",
+                 "[print][collector][1571]") {
+    collector().start();
+    drain_async_updates();
+    drain_async_updates(); // Process start()'s INITIALIZING state update
+
+    // The K1C bed_mesh pre-start option from printer_database.json, values
+    // rendered. Its echo collides with the default profile three times:
+    // CX_ROUGH_G28 contains G28 (HOMING), CX_NOZZLE_CLEAR (CLEANING), and
+    // BED_MESH_CALIBRATE (BED_MESH) — none of which the printer has run.
+    const std::string block = "CX_ROUGH_G28 EXTRUDER_TEMP=240 BED_TEMP=60\n"
+                              "CX_NOZZLE_CLEAR\n"
+                              "ACCURATE_G28\n"
+                              "BED_MESH_CALIBRATE\n"
+                              "PRINT_PREPARED";
+    collector().note_host_side_pre_start(block);
+
+    SECTION("verbatim whole-block echo") {
+        send_gcode_response(block);
+        drain_async_updates();
+        CHECK(get_current_phase() == PrintStartPhase::INITIALIZING);
+    }
+
+    SECTION("per-line echo of a multi-line block") {
+        send_gcode_response("CX_ROUGH_G28 EXTRUDER_TEMP=240 BED_TEMP=60");
+        drain_async_updates();
+        CHECK(get_current_phase() == PrintStartPhase::INITIALIZING);
+        send_gcode_response("CX_NOZZLE_CLEAR");
+        drain_async_updates();
+        CHECK(get_current_phase() == PrintStartPhase::INITIALIZING);
+        send_gcode_response("BED_MESH_CALIBRATE");
+        drain_async_updates();
+        CHECK(get_current_phase() == PrintStartPhase::INITIALIZING);
+    }
+
+    // Positive control: the printer's own narration in the same window still
+    // claims its phase through the same collector, so the checks above cannot
+    // pass merely because nothing matched at all.
+    send_gcode_response("M190 S60");
+    drain_async_updates();
+    CHECK(get_current_phase() == PrintStartPhase::HEATING_BED);
+}
+
 TEST_CASE_METHOD(PrintStartCollectorHeaterFixture,
                  "Proactive detection: bed heating stays HEATING_BED until bed reaches target",
                  "[print][collector][proactive][heating]") {

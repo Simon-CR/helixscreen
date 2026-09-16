@@ -769,7 +769,7 @@ void PrintPreparationManager::start_print(const std::string& filename,
         // into the collector's own adaptive timeout.
         if (auto* mgr = get_moonraker_manager()) {
             if (auto collector = mgr->print_start_collector()) {
-                collector->note_host_side_pre_start();
+                collector->note_host_side_pre_start(combined);
             }
         }
 

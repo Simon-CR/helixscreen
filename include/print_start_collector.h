@@ -20,6 +20,7 @@
 #include <regex>
 #include <set>
 #include <string>
+#include <vector>
 
 /**
  * @file print_start_collector.h
@@ -81,10 +82,22 @@ class PrintStartCollector : public std::enable_shared_from_this<PrintStartCollec
      * the measured window, which on some printers is several minutes, so its
      * timings must not be averaged with printer-edge measurements.
      *
+     * Klipper echoes the dispatched text back through notify_gcode_response.
+     * That echo is our own command being repeated, not the printer narrating
+     * work, so on_gcode_response() refuses to read any signal out of a line
+     * that reproduces the block — profile patterns whose alternatives collide
+     * with the block's parameter names would otherwise claim phases before
+     * the printer has run any of them.
+     *
      * Safe to call after start(): it re-filters the loaded history in place.
-     * Idempotent.
+     * The window classification is idempotent; a second call still replaces
+     * the remembered block text, so a run dispatching two blocks suppresses
+     * both echoes.
+     *
+     * @param dispatched_block The exact gcode text dispatched, lines joined
+     *   by newlines (as built by build_pre_start_gcode_block)
      */
-    void note_host_side_pre_start();
+    void note_host_side_pre_start(const std::string& dispatched_block);
 
     /**
      * @brief Stop monitoring
@@ -269,6 +282,15 @@ class PrintStartCollector : public std::enable_shared_from_this<PrintStartCollec
      * @brief Handle incoming G-code response
      */
     void on_gcode_response(const nlohmann::json& msg);
+
+    /**
+     * @brief Whether a console line is the echo of the dispatched pre-start block
+     *
+     * The echo reproduces the dispatched text, either line-by-line or as the
+     * whole block, so a dispatched line appearing verbatim in the response
+     * identifies it. Caller must hold state_mutex_.
+     */
+    bool is_own_pre_start_echo_locked(const std::string& line) const;
 
     /**
      * @brief Check line against phase patterns
@@ -541,6 +563,12 @@ class PrintStartCollector : public std::enable_shared_from_this<PrintStartCollec
     /// externally started print never announces a host-side block, and neither
     /// does a screen-started print on a printer that runs none.
     helix::PreprintWindow window_{helix::PreprintWindow::PrinterEdge};
+
+    /// Trimmed lines of the host-side pre-start block this run dispatched.
+    /// A console line reproducing one of them is the printer echoing our own
+    /// text, so no pattern may read a phase out of it. Cleared in start() and
+    /// reset(), with the rest of the per-run state.
+    std::vector<std::string> host_pre_start_echo_lines_;
 
     // Duration-proportional progress weights (protected by state_mutex_)
     std::map<int, float> predicted_phase_weights_; ///< Phase -> fraction of total (0.0-1.0)
