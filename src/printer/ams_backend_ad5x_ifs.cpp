@@ -1146,8 +1146,16 @@ void AmsBackendAd5xIfs::update_slot_from_state(int slot_index) {
         entry->info.color_rgb = reading.rgb;
     }
 
-    // Material
-    entry->info.material = materials_[idx];
+    // Material follows the color rule above: an empty materials_[idx] is a
+    // slot no source has spoken for yet (parse_save_variables and
+    // handle_status_update run before parse_adventurer_json fills it), not
+    // the board stating the lane has no material. The vendor-cache filing
+    // below already treats it that way, and painting "" here would wipe an
+    // identity the lane model cannot restore — a sync carries no declaration
+    // of its own.
+    if (!materials_[idx].empty()) {
+        entry->info.material = materials_[idx];
+    }
 
     // Status based on sensor and active state
     bool is_active_slot = (system_info_.current_slot == slot_index);
@@ -2724,10 +2732,10 @@ std::string AmsBackendAd5xIfs::write_port_locked(int slot_index, SlotInfo& slot,
     // Mark slot dirty to prevent parse_save_variables from overwriting our edit
     dirty_[idx] = true;
 
-    // Convert color to hex string for our cached array
-    char hex[7];
-    snprintf(hex, sizeof(hex), "%06X", info.color_rgb & 0xFFFFFF);
-    colors_[idx] = hex;
+    // colors_[idx] / materials_[idx] are firmware-truth caches: only a printer
+    // frame (a parse) moves them. The edit's own values travel with the
+    // callers below and the firmware writers in apply_user_edit(); the echo
+    // parse is what finally lands them in the caches.
 
     // Normalize material to a value the IFS firmware will accept.
     // Empty input stays empty (an empty slot has no material), but any
@@ -2735,7 +2743,6 @@ std::string AmsBackendAd5xIfs::write_port_locked(int slot_index, SlotInfo& slot,
     // send "PLA+" or "Silk PLA" and hit "Invalid material type".
     const std::string normalized_material =
         info.material.empty() ? std::string{} : normalize_material(info.material);
-    materials_[idx] = normalized_material;
 
     // With no presence reading of any kind, infer it from the identity the
     // caller supplied: colour or material means occupied, neither means
@@ -2750,10 +2757,10 @@ std::string AmsBackendAd5xIfs::write_port_locked(int slot_index, SlotInfo& slot,
         port_presence_[idx] = has_data;
     }
 
-    spdlog::debug("{} slot {} written: dirty=true, color={}, material={} (raw={}), "
+    spdlog::debug("{} slot {} written: dirty=true, color={:06X}, material={} (raw={}), "
                   "presence={}",
-                  backend_log_tag(), slot_index, hex, normalized_material, info.material,
-                  port_presence_[idx]);
+                  backend_log_tag(), slot_index, info.color_rgb & 0xFFFFFF, normalized_material,
+                  info.material, port_presence_[idx]);
 
     // Update entry directly. Covers every SlotInfo field the caller may
     // have set, not just the IFS-native color/material, otherwise a
@@ -2780,35 +2787,20 @@ std::string AmsBackendAd5xIfs::write_port_locked(int slot_index, SlotInfo& slot,
 
 void AmsBackendAd5xIfs::settle_port_locked(int slot_index, uint32_t color_rgb,
                                            const std::string& material) {
-    // Treat the user's chosen color as the new "firmware truth" baseline
-    // so check_external_color_change() doesn't interpret the upcoming
-    // update_slot_from_state() call as a foreign edit and fire a
-    // redundant lane_data sync. The semantics match user intent: "I'm
-    // telling the system this IS the current color." A subsequent
-    // genuinely-external CHANGE_ZCOLOR will be detected against the
-    // user's chosen color.
-    //
-    // Applies to an edit (override just staged) and a sync alike, which must
-    // not retrigger a sync against last_firmware_color_ either. NO guard on color_rgb == 0: pure
-    // black is a legitimate user choice and recording it as the baseline is exactly what we want —
-    // the next firmware reading of black will compare equal and not trigger a bogus sync.
-    last_firmware_color_[slot_index] = color_rgb;
-
-    // Symmetric material baseline seed: treat the user's chosen material as
-    // the new firmware-truth baseline so the upcoming update_slot_from_state()
-    // -> check_external_type_change() doesn't misread it as a foreign edit
-    // and fire a redundant lane_data sync. Without this seed the material
-    // path lacked the baseline the color path already established above,
-    // reinforcing the missing-baseline gap on empty->insert (#981/#1065).
-    last_firmware_material_[slot_index] = material;
-
     // Recalculate slot status now that port_presence may have changed.
-    // update_slot_from_state() paints entry->info from the lane through
-    // apply_resolved_lane(). An edit's declaration is not on the
-    // lane yet: AmsBackend::commit_user_edit() files it once this call
-    // returns and then repaints through repaint_slot_from_lane(). A field no
-    // lane source observes keeps the value write_port_locked() wrote.
+    // update_slot_from_state() repaints identity from the firmware-truth
+    // caches and the lane's filed records. The write that led here is on
+    // neither: an edit's declaration is filed by commit_user_edit() once
+    // apply_user_edit() returns, and a sync files nothing at all. Paint the
+    // caller's values back over the firmware reading that call produced —
+    // without this, an edit or sync lands in entry->info only after the next
+    // parse, and a sync (which no declaration ever follows) never lands.
     update_slot_from_state(slot_index);
+
+    if (auto* entry = slots_.get_mut(slot_index)) {
+        entry->info.color_rgb = color_rgb;
+        entry->info.material = material;
+    }
 }
 
 AmsError AmsBackendAd5xIfs::apply_user_edit(int slot_index, const SlotInfo& info,
@@ -2819,9 +2811,9 @@ AmsError AmsBackendAd5xIfs::apply_user_edit(int slot_index, const SlotInfo& info
 
     auto idx = static_cast<size_t>(slot_index);
 
-    // Assigned inside the locked block below; hoisted here so the standalone
-    // module's write path (outside the lock, further down) reuses the exact
-    // normalized value the cached arrays got.
+    // Assigned inside the locked block below; hoisted here so the write paths
+    // (outside the lock, further down) carry the same normalized value
+    // write_port_locked() returned.
     std::string normalized_material;
 
     {
@@ -2848,6 +2840,13 @@ AmsError AmsBackendAd5xIfs::apply_user_edit(int slot_index, const SlotInfo& info
 
         settle_port_locked(slot_index, info.color_rgb, normalized_material);
     }
+
+    // Bare-hex spelling of the edit's colour — the wire form IFS_SET_MATERIAL,
+    // Adventurer5M.json and the _IFS_VARS payloads all carry. The caches still
+    // hold the printer's last reading until the echo parse; every writer below
+    // takes the edit's own values, not theirs.
+    char color_hex[7];
+    snprintf(color_hex, sizeof(color_hex), "%06X", info.color_rgb & 0xFFFFFF);
 
     // Persist user-provided metadata to the slot-override store.
     //
@@ -2903,8 +2902,6 @@ AmsError AmsBackendAd5xIfs::apply_user_edit(int slot_index, const SlotInfo& info
         // the full post-edit state, so always send both. COLOR is bare
         // hex because klipper's parser eats '#' as a comment start — the
         // module re-prefixes it on its side.
-        char color_hex[7];
-        snprintf(color_hex, sizeof(color_hex), "%06X", info.color_rgb & 0xFFFFFF);
         auto err = execute_gcode(
             "IFS_SET_MATERIAL SLOT=" +
             std::to_string(slot_index + 1) + // DISPLAY_NUMBERING_OK: gcode wire, not a label
@@ -2924,7 +2921,7 @@ AmsError AmsBackendAd5xIfs::apply_user_edit(int slot_index, const SlotInfo& info
         // dismiss manually. zmod re-reads Adventurer5M.json on every
         // GET_ZCOLOR call (no in-memory cache), so direct file writes are
         // picked up without ceremony.
-        auto err = write_adventurer_json(slot_index);
+        auto err = write_adventurer_json(slot_index, color_hex, normalized_material);
         {
             std::lock_guard<std::mutex> lock(mutex_);
             dirty_[idx] = false;
@@ -2942,8 +2939,11 @@ AmsError AmsBackendAd5xIfs::apply_user_edit(int slot_index, const SlotInfo& info
             std::string types_val;
             {
                 std::lock_guard<std::mutex> lock(mutex_);
-                colors_val = build_color_list_value();
-                types_val = build_type_list_value();
+                // The payload replaces the plugin's whole list, so splice the
+                // edited lane's values over the firmware-truth arrays; every
+                // other lane keeps what the printer last said.
+                colors_val = build_ifs_list_value(/*colors=*/true, slot_index, color_hex);
+                types_val = build_ifs_list_value(/*colors=*/false, slot_index, normalized_material);
             }
             auto colors_err = write_ifs_var("colors", colors_val);
             if (!colors_err.success()) {
@@ -3197,7 +3197,8 @@ std::string AmsBackendAd5xIfs::build_type_list_value() const {
     return build_ifs_list_value(/*colors=*/false);
 }
 
-std::string AmsBackendAd5xIfs::build_ifs_list_value(bool colors) const {
+std::string AmsBackendAd5xIfs::build_ifs_list_value(bool colors, int override_slot,
+                                                    const std::string& override_value) const {
     // Shape is plugin-specific (#1247):
     //
     //   * bambufy: 4-entry, PORT-indexed. `_RUNOUT_HEAD` iterates `ifs.types`
@@ -3215,15 +3216,26 @@ std::string AmsBackendAd5xIfs::build_ifs_list_value(bool colors) const {
     //
     // `_IFS_VARS` passes the value straight to SET_GCODE_VARIABLE, which evals
     // it as a Python literal; both shapes ride that unchanged.
+    //
+    // Entries come from the firmware-truth arrays; an edit's push splices its
+    // own value over its lane (the arrays still hold the printer's last
+    // reading until the echo parse). override_slot < 0 reads arrays only, and
+    // an EMPTY override_value is a value — a cleared material — so the slot
+    // index alone discriminates.
+    const auto port_entry = [&](int port) -> const std::string& {
+        if (port - 1 == override_slot) {
+            return override_value;
+        }
+        const auto i = static_cast<size_t>(port - 1);
+        return colors ? colors_[i] : materials_[i];
+    };
     std::ostringstream ss;
     ss << "\"[";
     if (var_prefix_ != "less_waste") {
         for (int i = 0; i < NUM_PORTS; ++i) {
             if (i > 0)
                 ss << ", ";
-            ss << "'"
-               << (colors ? colors_[static_cast<size_t>(i)] : materials_[static_cast<size_t>(i)])
-               << "'";
+            ss << "'" << port_entry(i + 1) << "'";
         }
         ss << "]\"";
         return ss.str();
@@ -3248,8 +3260,7 @@ std::string AmsBackendAd5xIfs::build_ifs_list_value(bool colors) const {
             port = (t < NUM_PORTS) ? t + 1 : UNMAPPED_PORT;
         }
         if (port >= 1 && port <= NUM_PORTS) {
-            const auto idx = static_cast<size_t>(port - 1);
-            ss << "'" << (colors ? colors_[idx] : materials_[idx]) << "'";
+            ss << "'" << port_entry(port) << "'";
         } else {
             // Unmapped tool: no lane, no colour. A candidate on an unmapped
             // tool can never pass lessWaste's port-sensor check, so the empty
@@ -3315,7 +3326,8 @@ void AmsBackendAd5xIfs::dispatch_ifs_vars_repair() {
     }
 }
 
-AmsError AmsBackendAd5xIfs::write_adventurer_json(int slot_index) {
+AmsError AmsBackendAd5xIfs::write_adventurer_json(int slot_index, const std::string& hex,
+                                                  const std::string& material) {
     // Same-host fast path: write the file via direct filesystem access.
     // Avoids Moonraker's HTTP upload, which on AD5X stock-ZMOD does an
     // os.rename across mount points (/root/printer_data/tmp →
@@ -3323,22 +3335,14 @@ AmsError AmsBackendAd5xIfs::write_adventurer_json(int slot_index) {
     // Bundle DQK7X96B (v0.99.52) was a bricked Klipper at boot from this
     // exact failure mode.
     if (!local_adventurer_json_path_.empty()) {
-        return write_adventurer_json_local(slot_index);
+        return write_adventurer_json_local(slot_index, hex, material);
     }
 
     if (!api_) {
         return AmsErrorHelper::invalid_parameter("No API connection");
     }
 
-    auto idx = static_cast<size_t>(slot_index);
     int port = slot_index + 1; // JSON uses 1-based slot numbering
-
-    std::string hex, material;
-    {
-        std::lock_guard<std::mutex> lock(mutex_);
-        hex = colors_[idx];
-        material = materials_[idx];
-    }
 
     auto fields = ffm_fields_for_slot(hex, material);
     const std::string color_field = std::move(fields.color);
@@ -3420,21 +3424,15 @@ AmsError AmsBackendAd5xIfs::write_adventurer_json(int slot_index) {
     return *result;
 }
 
-AmsError AmsBackendAd5xIfs::write_adventurer_json_local(int slot_index) {
+AmsError AmsBackendAd5xIfs::write_adventurer_json_local(int slot_index, const std::string& hex,
+                                                        const std::string& material) {
     if (local_adventurer_json_path_.empty()) {
         return AmsErrorHelper::command_failed("write_adventurer_json_local",
                                               "Local path not resolved");
     }
 
-    auto idx = static_cast<size_t>(slot_index);
     int port = slot_index + 1;
 
-    std::string hex, material;
-    {
-        std::lock_guard<std::mutex> lock(mutex_);
-        hex = colors_[idx];
-        material = materials_[idx];
-    }
     auto fields = ffm_fields_for_slot(hex, material);
     const std::string color_field = std::move(fields.color);
     const std::string type_field = std::move(fields.type);

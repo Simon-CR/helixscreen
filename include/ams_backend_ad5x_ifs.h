@@ -704,11 +704,18 @@ class AmsBackendAd5xIfs : public AmsSubscriptionBackend {
 
     /// Put @p info on port @p slot_index's caches and on @p slot, the half an
     /// edit and a sync share, and return the firmware-valid material spelling
-    /// written. Caller holds mutex_.
+    /// written. Colors and materials stay untouched here: they are
+    /// firmware-truth caches only a printer frame (a parse) moves, and a write
+    /// through them would repaint the VendorCache record with the caller's own
+    /// values before any gcode has left the process. Caller holds mutex_.
     std::string write_port_locked(int slot_index, SlotInfo& slot, const SlotInfo& info);
 
-    /// Take @p color_rgb and @p material as the port's firmware baseline, then
-    /// rebuild its status and paint. Caller holds mutex_.
+    /// Rebuild @p slot_index's status and paint, then lay @p color_rgb and
+    /// @p material back over the identity update_slot_from_state() took from
+    /// the firmware caches: the write that led here is on neither the caches
+    /// nor the lane yet (an edit's declaration is filed by
+    /// commit_user_edit() once apply_user_edit() returns; a sync files
+    /// nothing). Caller holds mutex_.
     void settle_port_locked(int slot_index, uint32_t color_rgb, const std::string& material);
     // Layer any configured FilamentSlotOverride for `slot_index` over `slot`,
     // mutating `slot` in place. Override wins for every non-default field;
@@ -942,8 +949,14 @@ class AmsBackendAd5xIfs : public AmsSubscriptionBackend {
     /// TOOL-indexed lists projected through tool_map_ (`variable_tools` — its
     /// `_RUNOUT_HEAD` backup scan iterates tool slots, not ports, and a
     /// port-indexed 4-entry payload truncates the arrays wholesale, #1247).
-    /// `colors` selects which per-port array supplies each entry.
-    std::string build_ifs_list_value(bool colors) const;
+    /// `colors` selects which per-port array supplies each entry. An edit's
+    /// push splices its own values over @p override_slot (the arrays still
+    /// hold the printer's last reading); every other call site reads the
+    /// arrays as firmware truth. @p override_slot < 0 reads arrays only.
+    /// An empty @p override_value is a value (a cleared material), so the
+    /// slot index alone discriminates.
+    std::string build_ifs_list_value(bool colors, int override_slot = -1,
+                                     const std::string& override_value = {}) const;
     /// The `_IFS_VARS tools=` payload: the ZMOD plugin contract's whole-table
     /// write (the macro replaces the array, not individual entries).
     std::string build_tool_map_value() const;
@@ -954,14 +967,20 @@ class AmsBackendAd5xIfs : public AmsSubscriptionBackend {
     /// because execute_gcode() blocks.
     void dispatch_ifs_vars_repair();
     AmsError write_ifs_var(const std::string& key, const std::string& value);
-    AmsError write_adventurer_json(int slot_index);
+    /// Persist @p hex (bare, no '#') and @p material to the slot's FFMInfo
+    /// entry. The values are the caller's — an edit's own, not the
+    /// firmware-truth caches, which still hold the printer's last reading
+    /// until the echo parse moves them.
+    AmsError write_adventurer_json(int slot_index, const std::string& hex,
+                                   const std::string& material);
     // Direct filesystem write to the resolved AD5X-stock-ZMOD config path. Used
     // when helix-screen runs on the same host as Moonraker AND the canonical
     // config path is present + writable; bypasses Moonraker's HTTP upload (which
     // does an os.rename across mount points on AD5X stock-ZMOD and corrupts the
     // file via EXDEV on the symlinked /usr/prog/config target). Returns
     // command_failed if the path isn't set or the read-modify-write fails.
-    AmsError write_adventurer_json_local(int slot_index);
+    AmsError write_adventurer_json_local(int slot_index, const std::string& hex,
+                                         const std::string& material);
     // Resolve the on-disk Adventurer5M.json path when running on the same host
     // as Moonraker. Sets local_adventurer_json_path_ to the realpath of the
     // file if it exists and is regular; otherwise leaves it empty so we fall
