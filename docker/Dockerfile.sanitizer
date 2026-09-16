@@ -60,6 +60,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libsystemd-dev \
         libusb-1.0-0-dev \
         libxml2-utils \
+        llvm \
         make \
         npm \
         pkg-config \
@@ -67,7 +68,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         python3-pip \
         python3-venv \
         tzdata \
+    && ln -sf "$(ls -d /usr/lib/llvm-*/bin/llvm-symbolizer | tail -1)" /usr/local/bin/llvm-symbolizer \
     && rm -rf /var/lib/apt/lists/*
+
+# ASan and TSan resolve frames by shelling out to llvm-symbolizer, found on PATH
+# or named by external_symbolizer_path. The llvm package installs it under
+# /usr/lib/llvm-<ver>/bin and puts nothing on PATH, so without the symlink above
+# every sanitizer frame in this image reports as `binary+0xOFFSET` with a
+# <null> function name, and a `race:` suppression can never match because
+# suppression matching runs on the symbolized frame.
 
 # mold comes from upstream, NOT from `apt install mold`. Jammy ships 1.0.3, which
 # drops the STB_GNU_UNIQUE symbol the compiler emits for a function-local static

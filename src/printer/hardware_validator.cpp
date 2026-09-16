@@ -256,7 +256,9 @@ void HardwareValidator::save_session_snapshot(Config* config,
     auto now = std::chrono::system_clock::now();
     auto time_t_now = std::chrono::system_clock::to_time_t(now);
     std::stringstream ss;
-    ss << std::put_time(std::gmtime(&time_t_now), "%Y-%m-%dT%H:%M:%SZ");
+    std::tm tm_buf{};
+    gmtime_r(&time_t_now, &tm_buf);
+    ss << std::put_time(&tm_buf, "%Y-%m-%dT%H:%M:%SZ");
     snapshot.timestamp = ss.str();
 
     // Save to config

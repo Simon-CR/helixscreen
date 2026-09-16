@@ -1265,7 +1265,9 @@ static void draw_x_axis_labels_cb(lv_event_t* e) {
         if (!graph->axis_font)
             continue;
         time_t tick_sec = static_cast<time_t>(tick_ms / 1000);
-        std::string tick_text = format_time(localtime(&tick_sec));
+        struct tm tick_tm {};
+        localtime_r(&tick_sec, &tick_tm);
+        std::string tick_text = format_time(&tick_tm);
         lv_point_t tick_size;
         lv_text_get_size(&tick_size, tick_text.c_str(), graph->axis_font, 0, 0, LV_COORD_MAX,
                          LV_TEXT_FLAG_NONE);
@@ -1301,8 +1303,9 @@ static void draw_x_axis_labels_cb(lv_event_t* e) {
 
         // Format time via central formatter (handles 12H/24H, leading zero strip)
         time_t time_sec = static_cast<time_t>(label_time_ms / 1000);
-        struct tm* tm_info = localtime(&time_sec);
-        std::string formatted = format_time(tm_info);
+        struct tm tm_buf {};
+        localtime_r(&time_sec, &tm_buf);
+        std::string formatted = format_time(&tm_buf);
         // Copy to static buffer — LVGL draw tasks need persistent string pointers
         static char time_str_buf[8][12]; // 8 labels max, 12 chars each
         static int time_str_idx = 0;
@@ -1354,8 +1357,9 @@ static void draw_x_axis_labels_cb(lv_event_t* e) {
     // (at least 80% of points have data) - prevents overlap with time-based labels
     if (graph->visible_point_count >= (graph->point_count * 4 / 5)) {
         time_t now_sec = static_cast<time_t>(latest_ms / 1000);
-        struct tm* tm_info = localtime(&now_sec);
-        std::string now_formatted = format_time(tm_info);
+        struct tm now_tm {};
+        localtime_r(&now_sec, &now_tm);
+        std::string now_formatted = format_time(&now_tm);
         static char now_str[12];
         strncpy(now_str, now_formatted.c_str(), 11);
         now_str[11] = '\0';
