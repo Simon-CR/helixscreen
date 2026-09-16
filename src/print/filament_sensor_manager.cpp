@@ -1117,8 +1117,9 @@ void FilamentSensorManager::update_from_status(const json& status) {
                 // This avoids the "Invalidate area not allowed during rendering" assertion
                 // and provides exception safety (try-catch wrapping)
                 spdlog::debug("[FilamentSensorManager] async_mode: deferring via ui_queue_update");
-                helix::ui::queue_update(
-                    [] { FilamentSensorManager::instance().update_subjects_on_main_thread(); });
+                helix::ui::queue_update("FilamentSensorManager::update_subjects", [] {
+                    FilamentSensorManager::instance().update_subjects_on_main_thread();
+                });
             }
         }
     }
