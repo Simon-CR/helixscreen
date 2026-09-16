@@ -29,9 +29,17 @@ std::string to_lower(std::string s) {
 
 SpoolmanSlotSaver::SpoolmanSlotSaver(IMoonrakerAPI* api) : api_(api) {}
 
+MissingFilamentFields SpoolmanSlotSaver::missing_filament_fields(const SlotInfo& slot) {
+    MissingFilamentFields missing;
+    missing.brand = slot.brand.empty();
+    missing.material = slot.material.empty();
+    // The default grey is a slot with no colour, not a grey filament.
+    missing.color = !helix::ams::is_declarable_color(slot.color_rgb);
+    return missing;
+}
+
 bool SpoolmanSlotSaver::is_filament_complete(const SlotInfo& slot) {
-    return !slot.brand.empty() && !slot.material.empty() &&
-           helix::ams::is_declarable_color(slot.color_rgb);
+    return !missing_filament_fields(slot).any();
 }
 
 ChangeSet SpoolmanSlotSaver::detect_changes(const SlotInfo& original, const SlotInfo& edited) {
@@ -51,7 +59,10 @@ ChangeSet SpoolmanSlotSaver::detect_changes(const SlotInfo& original, const Slot
     // matches on material + color and therefore resolves back to the same
     // filament record: a repoint that is a no-op by construction.
     if (original.brand != edited.brand || original.material != edited.material ||
-        original.color_rgb != edited.color_rgb || original.catalog_id != edited.catalog_id ||
+        original.color_rgb != edited.color_rgb) {
+        changes.filament_identity = true;
+    }
+    if (changes.filament_identity || original.catalog_id != edited.catalog_id ||
         original.product_name != edited.product_name) {
         changes.filament_level = true;
     }
@@ -164,11 +175,16 @@ void SpoolmanSlotSaver::save_impl(const SlotInfo& original, const SlotInfo& edit
                                   CompletionCallback on_complete) {
     // New-spool-on-save path — user entered manual filament info on an unlinked slot.
     if (!edited.spoolman_id) {
-        if (!is_filament_complete(edited)) {
-            spdlog::debug(
-                "[SpoolmanSlotSaver] No spoolman_id and incomplete fields — nothing to send");
+        const MissingFilamentFields missing = missing_filament_fields(edited);
+        if (missing.any()) {
+            // A new spool is a new filament, and Spoolman identifies one by
+            // vendor, material and colour. Nothing is sent, and the caller is
+            // told which field it wanted rather than that the save succeeded.
+            spdlog::info("[SpoolmanSlotSaver] A new spool needs a brand, a material and a "
+                         "colour (brand missing: {}, material missing: {}, colour missing: {})",
+                         missing.brand, missing.material, missing.color);
             if (on_complete)
-                on_complete(SaveResult{.success = true});
+                on_complete(SaveResult{.success = false, .missing = missing});
             return;
         }
 
@@ -257,9 +273,24 @@ void SpoolmanSlotSaver::save_impl(const SlotInfo& original, const SlotInfo& edit
                      "(brand={}, material={}, color={:#08x})",
                      spool_id, edited.brand, edited.material, edited.color_rgb);
 
-        if (!is_filament_complete(edited)) {
-            spdlog::info("[SpoolmanSlotSaver] Filament fields incomplete for spool {} — "
-                         "skipping Spoolman filament write",
+        const MissingFilamentFields missing = missing_filament_fields(edited);
+        if (missing.any()) {
+            if (changes.filament_identity) {
+                // The user moved one of the three fields a filament is
+                // identified by, and the slot cannot name all three. One Save
+                // is one outcome, so the weight waits with the rest rather
+                // than landing beside a failure.
+                spdlog::info("[SpoolmanSlotSaver] Spool {} needs a brand, a material and a "
+                             "colour (brand missing: {}, material missing: {}, colour "
+                             "missing: {})",
+                             spool_id, missing.brand, missing.material, missing.color);
+                if (on_complete)
+                    on_complete(SaveResult{.success = false, .missing = missing});
+                return;
+            }
+            // A catalog pick is HelixScreen's own, so an incomplete filament
+            // leaves Spoolman nothing to do and the rest of the save stands.
+            spdlog::info("[SpoolmanSlotSaver] Catalog pick alone for spool {}; no filament write",
                          spool_id);
             if (changes.spool_level) {
                 update_weight(spool_id, edited.remaining_weight_g, on_complete);

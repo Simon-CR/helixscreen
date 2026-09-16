@@ -99,6 +99,7 @@ The backend translates that schema to the generic struct. Vendor names appear **
 - Appliance backends claim their own names at **95** — they always beat the generic keyword tiers on the object that is actually theirs.
 - The generic backend carries the keyword tiers: `CHAMBER` 100 > `ENCLOSURE` 90 > `CAVITY` 85 > standalone `BOX` 60; -1 for compound names, -40 for air-quality tokens (`TVOC`, `CO2`, `HUMIDITY`, ...), floored at 1.
 - `try_set_chamber_heater` additionally breaks ties by object type: a settable `heater_generic` (weight 2) beats a `temperature_fan` (weight 1) at equal keyword confidence. The losing `temperature_fan` is still recorded as the **chamber cooling fan** so the integrated-style Maintaining readout works.
+- `try_set_chamber_sensor` applies the same rule to the sensor pick: a chamber-named `temperature_fan` competes as a sensor candidate — a printer whose only chamber thermistor is such a fan still gets a chamber sensor — and an equal-keyword tie resolves to the passive `temperature_sensor` (weight 2 over the fan's 1) in either iteration order.
 
 ### Which heater the printer has
 
@@ -141,7 +142,9 @@ the heater's rule against discovery's sensor pick:
 - A named object counts only while Klipper reports it in its object list. A saved name the printer
   does not report, such as one a model preset seeded, falls back to discovery's sensor pick, so the
   chamber reads the sensor the printer does have. The fallback is always discovery's sensor pick,
-  never its heater pick; the heater keeps its own type-blind fallback above.
+  never its heater pick; the heater keeps its own type-blind fallback above. A sensor absent for one
+  boot (a disconnected MCU, a config being edited) resumes its authority on the discovery that
+  reports it again.
 
 `PrinterState::set_hardware` publishes the result as `temperature_state().chamber_sensor_name()`
 and the `printer_has_chamber_sensor` capability, and re-resolves it on every discovery (each klippy

@@ -25,6 +25,7 @@
 
 #include "../helix_test_fixture.h"
 #include "../test_helpers/moonraker_client_mock_test_access.h"
+#include "../test_helpers/scoped_env.h"
 #include "moonraker_client_mock.h"
 
 #include <algorithm>
@@ -35,22 +36,6 @@
 using namespace helix;
 
 namespace {
-
-/// setenv for the test body, unset on scope exit — the mock reads these in
-/// populate_capabilities() (constructor and discover_printer), so they must
-/// be set before construction and stay set for the client's lifetime.
-class ScopedEnv {
-  public:
-    ScopedEnv(const char* name, const char* value) : name_(name) {
-        setenv(name_.c_str(), value, 1);
-    }
-    ~ScopedEnv() {
-        unsetenv(name_.c_str());
-    }
-
-  private:
-    std::string name_;
-};
 
 constexpr const char* TRIO_ENV =
     "heater_generic dragonbreath dragonbreath output_pin dragonbreath_filter";

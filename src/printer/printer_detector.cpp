@@ -9,6 +9,7 @@
 #include "config.h"
 #include "data_root_resolver.h"
 #include "json_utils.h"
+#include "klipper_extruder_naming.h"
 #include "lvgl/src/others/translation/lv_translation.h"
 #include "print_start_analyzer.h"
 #include "printer_discovery.h"
@@ -669,15 +670,13 @@ int execute_heuristic(const json& heuristic, const PrinterHardwareData& hardware
             }
         }
     } else if (type == "tool_count") {
-        // Count extruder objects from heaters (matching "extruder" prefix, excluding
-        // "extruder_stepper")
+        // Count extruders with the strict naming grammar: a tool count is
+        // exactly what it exists for, so an `extruder`-prefixed heater that is
+        // not a numbered extruder (extruder_mixing, extruder_stepper, a
+        // four-digit index) must not inflate it. Discovery's looser prefix
+        // match is for heater enumeration and stays loose.
         std::string pattern = heuristic.value("pattern", "");
-        int extruder_count = 0;
-        for (const auto& heater : hardware.heaters) {
-            if (heater.rfind("extruder", 0) == 0 && heater.rfind("extruder_stepper", 0) != 0) {
-                extruder_count++;
-            }
-        }
+        const int extruder_count = static_cast<int>(helix::count_extruder_names(hardware.heaters));
 
         // Parse expected count from pattern (tool_count_N)
         if (pattern.rfind("tool_count_", 0) == 0) {
@@ -1981,13 +1980,7 @@ std::map<std::string, float> PrinterDetector::get_thermal_rates(const std::strin
     }
     const auto& persisted = ThermalRateManager::PERSISTED_HEATERS;
     for (const auto& [heater, rate] : printer->at("thermal_rates").items()) {
-        // C++17 forbids naming a structured binding in a lambda capture list, so
-        // the predicate compares against an ordinary local bound to it. Clang
-        // accepts the direct capture as a C++20 extension; the toolchains that
-        // build for the devices do not.
-        const auto& heater_name = heater;
-        if (std::none_of(persisted.begin(), persisted.end(),
-                         [&heater_name](const char* name) { return heater_name == name; })) {
+        if (std::find(persisted.begin(), persisted.end(), heater) == persisted.end()) {
             spdlog::warn("[PrinterDetector] Ignoring thermal rate for '{}' on '{}': not a heater "
                          "the rate model keeps (extruder, heater_bed)",
                          heater, printer_name);

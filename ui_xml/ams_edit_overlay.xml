@@ -286,7 +286,23 @@
                slack and lands flush with the bottom of the last swatch row. -->
           <lv_obj height="content"
                   flex_grow="1" style_pad_all="0" flex_flow="column" style_pad_gap="#space_xs" scrollable="false">
-            <filament_catalog_selector name="details_catalog_selector" height="#swatch_col_height"/>
+            <!-- Spoolman owns a linked spool's brand and material, so with the
+                 server unreachable the selector gives way to a row that states
+                 what the slot carries. Both operands are Phase 9a subjects, so
+                 this is a cond= and not a subject_expr. -->
+            <filament_catalog_selector name="details_catalog_selector" height="#swatch_col_height">
+              <bind_flag_if cond="ams_edit_identity_is_spoolmans eq 1 and printer_has_spoolman eq 0" flag="hidden"/>
+            </filament_catalog_selector>
+            <lv_obj name="details_identity_readonly"
+                    width="100%" height="content" hidden="true" style_pad_all="0" flex_flow="column"
+                    style_pad_gap="#space_xs" scrollable="false" clickable="false">
+              <bind_flag_if cond="ams_edit_identity_is_spoolmans eq 0 or printer_has_spoolman eq 1" flag="hidden"/>
+              <text_body name="details_identity_label"
+                         bind_text="ams_edit_identity_text" long_mode="dots" clickable="false"/>
+              <text_small text="Spoolman is offline. Brand and material can change once it's back."
+                          translation_tag="Spoolman is offline. Brand and material can change once it's back."
+                          style_text_color="#text_muted" long_mode="wrap" clickable="false"/>
+            </lv_obj>
           </lv_obj>
         </lv_obj>
 

@@ -17,6 +17,10 @@
 #include <unordered_map>
 #include <unordered_set>
 
+namespace helix {
+class AmsBackend;
+} // namespace helix
+
 class IMoonrakerAPI;
 
 /**
@@ -77,6 +81,22 @@ class SpoolmanManager {
     void set_api(IMoonrakerAPI* api);
 
     void refresh_spoolman_weights();
+
+    /**
+     * @brief Fetch one linked spool now, outside the poll's pacing
+     *
+     * A save the user just made is the one moment a lane's Spoolman record is
+     * known stale, and the poll would leave it that way for up to its interval.
+     * This is one request per slot linked to @p spool_id, so it is not gated on
+     * the poll timer, the debounce or the circuit breaker, and it does not
+     * write the debounce clock: none of those pace a single deliberate read.
+     *
+     * A spool linked on two lanes is fetched for both.
+     *
+     * @param spool_id Spoolman spool id; <= 0 and an unresolvable id do nothing
+     */
+    static void refresh_spool(int spool_id);
+
     void start_spoolman_polling();
     void stop_spoolman_polling();
 
@@ -92,6 +112,18 @@ class SpoolmanManager {
      * again from the availability observer when Spoolman appears.
      */
     void ensure_poll_timer();
+
+    /**
+     * @brief Issue one slot's spool fetch and file the answer
+     *
+     * One fetch does the same thing whoever asked for it: the request, the
+     * not-found drop, the filing onto the lane and the slot, and the circuit
+     * breaker's failure count. The poll walks every linked slot through here;
+     * refresh_spool() walks the slots linked to one id.
+     *
+     * Called with mutex_ held, which is what makes api_ safe to read.
+     */
+    void fetch_linked_slot(int backend_index, int slot_index, int spoolman_id, bool local_weight);
 
   public:
     // ========================================================================
@@ -150,6 +182,24 @@ class SpoolmanManager {
      */
     static bool file_spool_on_lane(helix::ams::LaneId lane, const SpoolInfo& spool,
                                    bool backend_tracks_weight_locally);
+
+    /**
+     * @brief File @p spool on a slot's lane and carry a changed lane onward.
+     *
+     * The poll's own step, so a caller holding a fresh spool does what a fetch
+     * does: the lane record, then the slot's stored record, the backend's
+     * cached slot and the slot's subjects. A filing that changes nothing stops
+     * at the lane.
+     *
+     * @param owner         The backend holding the slot
+     * @param backend_index Its index in AmsState
+     * @param slot_index    Slot the spool is linked on (0-based, global)
+     * @param spool         The record Spoolman returned
+     * @param local_weight  The owning backend's tracks_weight_locally()
+     * @return whether the lane's Spoolman record changed
+     */
+    static bool apply_fetched_spool(helix::AmsBackend& owner, int backend_index, int slot_index,
+                                    const SpoolInfo& spool, bool local_weight);
 
     /// Mark a spool id as unresolvable (Spoolman answered "no such spool").
     static void note_identity_unresolvable(int spool_id);

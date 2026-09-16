@@ -350,6 +350,7 @@ translations:
   Bowden Length: 'Bowden-Länge'
   Bowden tube length from hub to toolhead: 'Länge des Bowdenschlauchs vom Hub zum Werkzeugkopf'
   Brand: Marke
+  Brand and material come from Spoolman: ''
   Brightness: Helligkeit
   Brightness level when LEDs turn on at startup: Helligkeitsstufe beim Einschalten
     der LEDs beim Start
@@ -736,8 +737,7 @@ translations:
   Could not verify Spoolman status. Moonraker may still be restarting.: Spoolman-Status
     konnte nicht überprüft werden. Moonraker startet möglicherweise noch neu.
   Couldn't save the material name: 'Materialname konnte nicht gespeichert werden'
-  Couldn't update Spoolman — saved locally: Spoolman konnte nicht aktualisiert werden
-    — lokal gespeichert
+  Couldn't save to Spoolman. Nothing changed on this printer.: ''
   Cover open: Abdeckung offen
   Crash Report: Absturzbericht
   Crash report sent — thank you!: Absturzbericht gesendet — vielen Dank!
@@ -993,6 +993,7 @@ translations:
   Events appear here after sessions and prints: Ereignisse erscheinen hier nach Sitzungen
     und Drucken
   Every extruder's temperature at once: Alle Extrudertemperaturen auf einmal
+  Everything else was saved. Change them in Spoolman.: ''
   Everything else was saved. Rename the material using letters, digits, spaces, and + - _ . ( ) /: 'Alles Übrige wurde gespeichert. Benennen Sie das Material mit Buchstaben, Ziffern, Leerzeichen sowie + - _ . ( ) / um'
   Excellent Accuracy: Ausgezeichnete Genauigkeit
   'Exception: {}': 'Ausnahme: {}'
@@ -2814,6 +2815,11 @@ translations:
   Spoolman has no spools configured: Spoolman hat keine Spulen konfiguriert
   Spoolman is not configured — nothing to remove.: Spoolman ist nicht konfiguriert –
     nichts zu entfernen.
+  Spoolman is offline, so brand and material can't be saved.: ''
+  Spoolman is offline. Brand and material can change once it's back.: ''
+  Spoolman needs a brand for this filament.: ''
+  Spoolman needs a color for this filament.: ''
+  Spoolman needs a material for this filament.: ''
   Spoolman removed.: Spoolman entfernt.
   Spoolman unavailable — filament weights may be stale: Spoolman nicht verfügbar —
     Filamentgewichte können veraltet sein

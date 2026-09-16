@@ -270,6 +270,30 @@ Under the load gate the 3B reaches 80-84 C and its firmware caps the ARM clock (
 
 The same defaults double the frame rate on a Pi 5 (4 GB, 60 Hz DSI panel) as well, on both binaries (`HELIX_DISPLAY_BACKEND=drm` and `=egl` alike): starfield 30.1 to 60.0 fps at 2.4-2.5% of a core (frame gap p50/p90 16.7 ms), toasters with 49 sprites 29.8 to 59.5 fps at 4.5%, pipes and idle unchanged at about 1% and 0.7%. The load gate passes everywhere (p99 under 0.2 ms, max about 6 ms) and the board never throttles: 66 C at the full 2400 MHz.
 
+### EGL against the dumb-DRM binary on the same Pi 3B (2026-09-15)
+
+Which binary is cheaper depends on the workload, so this rung is not a single win or loss for a
+board. Same install (`c9ca2fb6f`), same panel, two runs per arm, board at 62-65 C and unthrottled
+throughout. Figures are percent of one core.
+
+| Workload | EGL binary | DRM binary |
+|---|---|---|
+| idle home panel | 2.3 / 2.6 | 2.2 / 2.4 |
+| panel navigation, continuous swaps | **6.0 / 5.9** | 10.5 / 10.3 |
+| starfield | 37.4 / 36.2 | **16.2 / 15.8** |
+
+EGL is about 1.75x cheaper for active UI, because the GPU composites what a panel swap redraws.
+The DRM binary is about 2.3x cheaper for the starfield, because that saver changes nearly every
+pixel every frame and EGL pays a full-frame texture upload for it.
+
+**Where the cost lands matters as much as its size.** The starfield's EGL cost sits on the MAIN
+thread (`cpu_main` 25.6-26.4 of the 36-37 total); on the DRM binary the same work is off it
+(`cpu_main` 5.4-5.9 of 16). A saver that spends the UI thread is worse than its percentage looks.
+
+So a board is not simply "better on DRM". Defaulting a Pi 3B to the DRM binary would buy ~21
+points on a screensaver and give back ~4.5 on the interface people actually touch. The starfield's
+upload is the thing to attack, not the rung.
+
 ## nanovg: why it is unusable
 
 Three independent defects, all upstream in LVGL 9.5. The first alone is

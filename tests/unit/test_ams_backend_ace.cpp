@@ -1178,9 +1178,8 @@ TEST_CASE_METHOD(HelixTestFixture, "ACE weight persist leaves the lane's declara
 
     const auto declared = AceTestAccess::get_override(backend, 0);
     REQUIRE(declared.has_value());
-    REQUIRE(declared->user_locked_color);
-    REQUIRE(declared->user_locked_material);
-    REQUIRE(helix::ams::declared_field_names(declared->declared) == json::array({"brand"}));
+    REQUIRE(helix::ams::declared_field_names(declared->declared) ==
+            json::array({"color_rgb", "material", "brand"}));
 
     // What the meter does, through the one entry point weight reaches a lane by.
     backend.update_slot_weight(0, 730.0f, 1000.0f, /*persist=*/true);
@@ -1189,20 +1188,20 @@ TEST_CASE_METHOD(HelixTestFixture, "ACE weight persist leaves the lane's declara
     REQUIRE(after.has_value());
     CHECK(after->remaining_weight_g == Catch::Approx(730.0f));
     CHECK(after->total_weight_g == Catch::Approx(1000.0f));
-    CHECK(after->user_locked_color);
-    CHECK(after->user_locked_material);
-    CHECK(helix::ams::declared_field_names(after->declared) == json::array({"brand"}));
+    CHECK(helix::ams::declared_field_names(after->declared) ==
+          json::array({"color_rgb", "material", "brand"}));
     CHECK(after->brand == "Polymaker");
     CHECK(after->material == "PETG");
     CHECK(after->color_rgb == 0x1E5AA8u);
 
-    // And in the record a restart reads back, where the lock keys are what
-    // tells a stored declaration from a stored memory.
+    // And in the record a restart reads back, where the declared set and the
+    // lock keys written from it are what tell a stored declaration from a
+    // stored memory.
     const auto stored = api.mock_get_db_value("lane_data", "lane1");
     REQUIRE(!stored.is_null());
     CHECK(stored["helix_locked_color"] == true);
     CHECK(stored["helix_locked_material"] == true);
-    CHECK(stored["helix_declared"] == json::array({"brand"}));
+    CHECK(stored["helix_declared"] == json::array({"color_rgb", "material", "brand"}));
     CHECK(stored["remaining_weight_g"] == 730.0f);
 }
 
@@ -2284,8 +2283,8 @@ TEST_CASE("ACE publishes a persisted edit to lane_data as the user's own",
     REQUIRE(staged.has_value());
     REQUIRE(staged->material == "PETG");
     REQUIRE(staged->color_rgb == 0x1188FFu);
-    CHECK(staged->user_locked_color);
-    CHECK(staged->user_locked_material);
+    CHECK(helix::ams::declares_color(*staged));
+    CHECK(helix::ams::declares_material(*staged));
 
     // The record every other reader of the namespace actually sees.
     auto stored = api.mock_get_db_value("lane_data", "lane1");

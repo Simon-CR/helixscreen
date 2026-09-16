@@ -111,6 +111,9 @@ inline bool selector_entry_matches(const SelectorEntry& entry, const std::string
 
 /**
  * @brief Entries matching a query, in input order. Empty query = all entries.
+ *
+ * The result borrows from @p entries, so @p entries must outlive it. Passing a
+ * temporary leaves every returned pointer dangling.
  */
 std::vector<const SelectorEntry*> filter_selector_entries(const std::vector<SelectorEntry>& entries,
                                                           const std::string& query);
@@ -123,6 +126,10 @@ std::vector<const SelectorEntry*> filter_selector_entries(const std::vector<Sele
  * own singleton bucket named after the entry's label, so they stay reachable
  * from the tile grid without inventing an "Other" bucket that would compete
  * with real vendors.
+ *
+ * Each bucket borrows from @p entries, so @p entries must outlive the returned
+ * groups. Passing a temporary leaves every SelectorGroup::entries pointer
+ * dangling.
  */
 std::vector<SelectorGroup> group_selector_entries(const std::vector<SelectorEntry>& entries);
 

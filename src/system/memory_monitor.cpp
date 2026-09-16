@@ -511,37 +511,38 @@ void MemoryMonitor::fire_warning(MemoryPressureLevel level, const std::string& r
         spdlog::warn("[MemoryMonitor] No pressure responders registered — nothing to free");
     }
 
-    // Deferred completion log: both new responders (PrintStatusPanel tree,
-    // LVGL image cache) hop to the UI thread via queue_update, and a
-    // destroyed widget tree is actually freed by lv_obj_delete_async on the
-    // next LVGL async-handler pass. A sync get_current_stats() right after
-    // the loop would systematically undercount — the RSS delta would read
-    // "+0kB" even when multi-hundred-KB reclaim succeeded. Instead, hop
-    // through queue_update (runs in the next UpdateQueue tick, after our
-    // deferred reclaim work) and lv_async_call (runs AFTER process_pending's
-    // async-delete drain in the same lv_timer_handler pass), so the
-    // post-sample reflects sync responders, cache drops, AND widget deletes.
+    // Deferred completion log: responders (print-status tree, LVGL image
+    // cache) hop to the UI thread via queue_update, and a destroyed widget
+    // tree is actually freed by lv_obj_delete_async — a period-0 one-shot
+    // timer. A sync get_current_stats() right after the loop would
+    // systematically undercount: the RSS delta would read "+0kB" even when
+    // multi-hundred-KB reclaim succeeded. So would a single queue hop: the
+    // responders' callbacks run in this same UpdateQueue drain, before the
+    // lv_timer_handler pass that fires the delete timers. A period-based
+    // delay would not fix it either — readiness is timing, and a drain that
+    // spends longer than the period in callbacks makes the timer come due in
+    // the very pass the deletes fire. So the completion hops UpdateQueue
+    // twice: process_pending() swaps the queue before running callbacks, so
+    // work queued from inside a drain lands in the NEXT drain — one full
+    // handler pass after the delete timers of any responder that defers its
+    // delete within one hop. A responder that needed a second hop for its
+    // delete would queue that hop ahead of this sample, so its tree frees
+    // after it. The inner callback only samples and logs (no LVGL calls), so
+    // nothing else can reorder it.
     if (responders_fired > 0) {
 #ifdef __linux__
-        struct CompletionCtx {
-            size_t before_rss_kb;
-            size_t fired;
-        };
-        auto* ctx = new CompletionCtx{before_stats.vm_rss_kb, responders_fired};
-        helix::ui::queue_update([ctx]() {
-            lv_async_call(
-                [](void* ud) {
-                    auto* c = static_cast<CompletionCtx*>(ud);
-                    MemoryStats after = MemoryMonitor::get_current_stats();
-                    int64_t delta_kb = static_cast<int64_t>(after.vm_rss_kb) -
-                                       static_cast<int64_t>(c->before_rss_kb);
-                    spdlog::warn("[MemoryMonitor] Pressure response complete: {} responder(s), "
-                                 "RSS {}MB -> {}MB ({:+}kB)",
-                                 c->fired, c->before_rss_kb / 1024, after.vm_rss_kb / 1024,
-                                 delta_kb);
-                    delete c;
-                },
-                ctx);
+        const size_t before_rss_kb = before_stats.vm_rss_kb;
+        const size_t fired = responders_fired;
+        helix::ui::queue_update([before_rss_kb, fired]() {
+            helix::ui::queue_update([before_rss_kb, fired]() {
+                MemoryStats after = MemoryMonitor::get_current_stats();
+                int64_t delta_kb =
+                    static_cast<int64_t>(after.vm_rss_kb) - static_cast<int64_t>(before_rss_kb);
+                spdlog::warn("[MemoryMonitor] Pressure response complete: "
+                             "{} responder(s), "
+                             "RSS {}MB -> {}MB ({:+}kB)",
+                             fired, before_rss_kb / 1024, after.vm_rss_kb / 1024, delta_kb);
+            });
         });
 #endif
     }

@@ -320,26 +320,32 @@ the one list both translations walk - one bit per row, so making a new field edi
 flag of its own, no new pair of wire keys and no new routing branch: the field gains a bit by
 appearing on the roster, and the reader that routes it already walks that list. The bits are
 positional but the wire is keyed by field *name* (`helix_declared` in `lane_data`, `declared` in
-the local cache), so reordering the roster cannot invalidate a stored record. Today the set
-covers brand, spool name and Spoolman vendor id.
+the local cache), so reordering the roster cannot invalidate a stored record. The set covers
+every identity field: colour, material, brand, spool name and Spoolman vendor id.
 
-**Colour and material are deliberately NOT in that set.** Each keeps a lock flag instead
-(`user_locked_color` / `user_locked_material`), because two homes for one concept drift: the
-auto-mirror reads those flags directly
-([`src/printer/filament_slot_override_store.cpp#mirror_firmware_to_lane_data`](../../../src/printer/filament_slot_override_store.cpp)),
-and a co-author in the shared `lane_data` namespace keys on their presence to recognise a record
-as HelixScreen's, so each flag is load-bearing past authorship. The set is built so it *cannot*
-hold them: the only two functions that can set a bit admit only roster rows marked as keeping
-their authorship there, and a `static_assert` fails the build if colour or material is ever given
-that marking.
+**Colour and material live in that set too.** The `helix_locked_color` / `helix_locked_material`
+keys a stored record carries are written from their two bits rather than kept beside them, because
+two homes for one concept drift, and a `static_assert` fails the build if either row ever leaves
+the set. The keys stay on the wire for a reader that predates the set: a release 1.0 build on the
+same printer takes its authorship from them, and the Orca heal recognises HelixScreen's records by
+them. On load, `declared_fields_on_load()`
+([`src/printer/lane_translation.cpp#declared_fields_on_load`](../../../src/printer/lane_translation.cpp))
+reads a key only on an unlinked record, only when present and true, and only beside a value. A
+colour or material declaration always needs a value to stand over, so a declaration can never stop
+the auto-mirror
+([`src/printer/filament_slot_override_store.cpp#mirror_firmware_to_lane_data`](../../../src/printer/filament_slot_override_store.cpp))
+from filling an empty lane.
 
 **A record declares what an edit MOVED, not what it carried.** The spool editor seeds its
 working copy from the lane's current state, so a firmware-sourced brand, colour or material
 arrives in the committed struct untouched, and a record claiming those would outrank the firmware
 that supplied them and refuse every later correction (#965). `user_edit_observation()`
 ([`src/printer/lane_translation.cpp#user_edit_observation`](../../../src/printer/lane_translation.cpp))
-answers "what did this person move" from the two snapshots, and both the lock flags and the
-declared set are derived from that one answer rather than guessed again from the record's values.
+answers "what did this person move" from the two snapshots, and the declared set is derived
+from that one answer rather than guessed again from the record's values. On a lane linked to a
+Spoolman spool, what the spool states about itself (material, brand, spool name, vendor id) is not
+the person's to move: an edit that keeps the spool claims none of it, and
+`keep_spool_owned_identity()` puts the spool's values in its place.
 
 **Authorship accumulates.** One edit speaks only about the fields it moved, so `amend_authorship()`
 ([`src/printer/lane_translation.cpp#amend_authorship`](../../../src/printer/lane_translation.cpp))
@@ -347,7 +353,8 @@ merges what this edit declares onto what the record already declared rather than
 prior declaration survives only while the amended record still holds the value that declaration
 stood over: a value that moved with no declaration behind the move belongs to whoever moved it.
 Without the merge a brand-only edit would drop a colour declared before it, and the consumption
-meter's weight-only persist would drop every declaration on the lane at once.
+meter's weight-only persist would drop every declaration on the lane at once. A record with a
+spool id never declares a field the spool owns, whatever an earlier record carried.
 
 **A deliberate clear is a declaration, and it survives a restart** for the fields the set covers.
 The set is the one home that can tell "the user emptied this field" apart from "nobody ever set
@@ -355,9 +362,9 @@ it", so `sources_from_record()`
 ([`src/printer/lane_translation.cpp#sources_from_record`](../../../src/printer/lane_translation.cpp))
 files an empty value as the user's word when, and only when, the record's own set names it.
 A record written before the key existed carries no set, and its brand, spool name and vendor id
-count as declared only beside a true lock flag: that flag is the evidence a person edited the
-record at all, because the auto-mirror writes both flags false and can populate none of those
-three. Reading every value a legacy record happens to hold as a declaration would instead pin a
+count as declared only beside a colour or material declaration: that declaration is the evidence
+a person edited the record at all, because the auto-mirror declares neither and can populate none
+of those three. Reading every value a legacy record happens to hold as a declaration would instead pin a
 mirrored firmware brand as the user's word, where no later firmware correction could land on it.
 
 **A lane id is a block, not a slot index.** `lane_id_for(backend_index, slot)`

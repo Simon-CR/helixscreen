@@ -82,3 +82,42 @@ teardown() {
     run bash -c "find '$MAIN' -name .helix-claims -type d | wc -l"
     [ "$output" -eq 0 ]
 }
+
+# A failed take is loud; an unconditional release is silent on both sides. It hands
+# the lock to whoever asked and never tells the holder, so release refuses a claim a
+# different live process holds.
+
+@test "release refuses a claim another live session holds" {
+    "$CLAIM" take worktree:mainrepo "held by another" --pid "$OWNER" >/dev/null
+    run "$CLAIM" release worktree:mainrepo
+    [ "$status" -eq 1 ]
+    contains "REFUSED" "$output"
+    run "$CLAIM" check worktree:mainrepo
+    [ "$status" -eq 1 ]
+}
+
+@test "release --force drops a claim another live session holds" {
+    "$CLAIM" take worktree:mainrepo "held by another" --pid "$OWNER" >/dev/null
+    run "$CLAIM" release --force worktree:mainrepo
+    [ "$status" -eq 0 ]
+    run "$CLAIM" check worktree:mainrepo
+    [ "$status" -eq 0 ]
+}
+
+@test "release still clears a stale claim, which teardown-worktree depends on" {
+    sleep 60 &
+    dead=$!
+    "$CLAIM" take worktree:mainrepo "dead owner" --pid "$dead" >/dev/null
+    kill "$dead" 2>/dev/null
+    wait "$dead" 2>/dev/null || true
+    run "$CLAIM" release worktree:mainrepo
+    [ "$status" -eq 0 ]
+    contains "RELEASED" "$output"
+}
+
+@test "release drops a claim this session took" {
+    "$CLAIM" take worktree:mainrepo "mine" >/dev/null
+    run "$CLAIM" release worktree:mainrepo
+    [ "$status" -eq 0 ]
+    contains "RELEASED" "$output"
+}

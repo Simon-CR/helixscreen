@@ -38,7 +38,11 @@ FORGEX_BACKLIGHT="/root/printer_data/py/backlight.py"
 # still reports 1.4.1, and tag 1.3.1 ships a version.txt reading 1.3.0.
 #
 # Sourced at file scope by both helixscreen.init and helix-launcher.sh, so one
-# assignment covers both. An explicit HELIX_NO_SPLASH in the environment wins.
+# assignment covers both: every consumer reads it in the shell that did the
+# sourcing (helixscreen.init's early-splash decision, the launcher's splash
+# blocks). Assigned, deliberately not exported: the launcher inherits the init
+# script's environment, and an exported value here arrives as "already set"
+# ahead of helixscreen.env, outranking the operator's file.
 FORGEX_SPLASH_BIN="${FORGEX_SPLASH_BIN:-/opt/config/mod/.bin/exec/splash}"
 if [ -z "${HELIX_NO_SPLASH}" ]; then
     if [ -x "$FORGEX_SPLASH_BIN" ]; then
@@ -46,7 +50,6 @@ if [ -z "${HELIX_NO_SPLASH}" ]; then
     else
         HELIX_NO_SPLASH=0
     fi
-    export HELIX_NO_SPLASH
 fi
 
 # ForgeX 1.4.2 introduced netd, which owns every network decision in non-Stock

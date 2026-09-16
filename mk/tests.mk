@@ -1253,9 +1253,18 @@ TEST_TSAN_BIN := $(BIN_DIR)/helix-tests-tsan
 $(TEST_BIN): override CXXFLAGS += -DHELIX_HAS_ACE=1 -DHELIX_HAS_QIDI=1 -DHELIX_HAS_SNAPMAKER=1
 
 # Build and run tests with AddressSanitizer
-test-asan:
+# The sanitizer build alone. CI runs this as its own step so a slow build
+# cannot eat the test budget, and a timeout names the phase that died.
+test-asan-build:
 	$(ECHO) "$(CYAN)$(BOLD)Building tests with AddressSanitizer...$(RESET)"
 	@$(MAKE) $(ASAN_MAKE_OVERRIDES) TEST_BIN=$(TEST_ASAN_BIN) $(TEST_ASAN_BIN)
+
+test-tsan-build:
+	$(ECHO) "$(CYAN)$(BOLD)Building tests with ThreadSanitizer...$(RESET)"
+	@$(MAKE) $(TSAN_MAKE_OVERRIDES) TEST_BIN=$(TEST_TSAN_BIN) $(TEST_TSAN_BIN)
+
+
+test-asan: test-asan-build
 	$(ECHO) "$(CYAN)$(BOLD)Running tests with AddressSanitizer...$(RESET)"
 	@set -o pipefail; \
 	ASAN_OPTIONS=$(ASAN_RUN_OPTIONS) LSAN_OPTIONS=$(LSAN_RUN_OPTIONS) \
@@ -1287,9 +1296,7 @@ TSAN_SHARD_JOBS ?= $(shell n=$$(nproc 2>/dev/null || echo 4); if [ $$n -gt 16 ];
 # genuine race is never retried, so this cannot turn a real finding green.
 TSAN_SHARD_RETRIES ?= 3
 
-test-tsan:
-	$(ECHO) "$(CYAN)$(BOLD)Building tests with ThreadSanitizer...$(RESET)"
-	@$(MAKE) $(TSAN_MAKE_OVERRIDES) TEST_BIN=$(TEST_TSAN_BIN) $(TEST_TSAN_BIN)
+test-tsan: test-tsan-build
 	$(ECHO) "$(CYAN)$(BOLD)Running tests with ThreadSanitizer ($(TSAN_SHARDS) shards, $(TSAN_SHARD_JOBS) at a time, filter: $(TSAN_FILTER))...$(RESET)"
 	@shard_dir=$$(mktemp -d "$(SHARD_ARTIFACT_ROOT)/tsan-shards-XXXXXX"); \
 	inconclusive=""; \
@@ -1337,9 +1344,7 @@ test-tsan:
 	$(call report_sanitizer_result,TSAN,/tmp/tsan_output.txt,$(TSAN_REPORT_RE))
 
 # Run specific test with ASAN (usage: make test-asan-one TEST="[streaming]")
-test-asan-one:
-	$(ECHO) "$(CYAN)$(BOLD)Building tests with AddressSanitizer...$(RESET)"
-	@$(MAKE) $(ASAN_MAKE_OVERRIDES) TEST_BIN=$(TEST_ASAN_BIN) $(TEST_ASAN_BIN)
+test-asan-one: test-asan-build
 	$(ECHO) "$(CYAN)$(BOLD)Running test '$(TEST)' with AddressSanitizer...$(RESET)"
 	@set -o pipefail; \
 	ASAN_OPTIONS=$(ASAN_RUN_OPTIONS) LSAN_OPTIONS=$(LSAN_RUN_OPTIONS) \
@@ -1350,9 +1355,7 @@ test-asan-one:
 # a subset and pass on nothing useful.
 
 # Run specific test with TSAN (usage: make test-tsan-one TEST="[streaming]")
-test-tsan-one:
-	$(ECHO) "$(CYAN)$(BOLD)Building tests with ThreadSanitizer...$(RESET)"
-	@$(MAKE) $(TSAN_MAKE_OVERRIDES) TEST_BIN=$(TEST_TSAN_BIN) $(TEST_TSAN_BIN)
+test-tsan-one: test-tsan-build
 	$(ECHO) "$(CYAN)$(BOLD)Running test '$(TEST)' with ThreadSanitizer...$(RESET)"
 	@set -o pipefail; \
 	TSAN_OPTIONS="$(TSAN_RUN_OPTIONS)" $(TEST_TSAN_BIN) "$(TEST)" 2>&1 | tee /tmp/tsan_output.txt; \
@@ -1490,7 +1493,7 @@ tsan-app:
 # Test Help
 # ============================================================================
 
-.PHONY: help-test test-kiauh test-shell test-xml test-ui-pytest test-plugin test-serial test-hidden test-hidden-list test-asan test-tsan test-asan-one test-tsan-one clean-sanitizers
+.PHONY: help-test test-kiauh test-shell test-xml test-ui-pytest test-plugin test-serial test-hidden test-hidden-list test-asan test-asan-build test-tsan test-tsan-build test-asan-one test-tsan-one clean-sanitizers
 help-test:
 	@if [ -t 1 ] && [ -n "$(TERM)" ] && [ "$(TERM)" != "dumb" ]; then \
 		B='$(BOLD)'; G='$(GREEN)'; Y='$(YELLOW)'; C='$(CYAN)'; X='$(RESET)'; \

@@ -217,7 +217,8 @@ TEST_CASE("Selector: grouping puts every entry in exactly one bucket", "[selecto
 }
 
 TEST_CASE("Selector: buckets are named for the vendor and ordered alphabetically", "[selector]") {
-    const auto groups = group_selector_entries(sample_entries());
+    const auto entries = sample_entries();
+    const auto groups = group_selector_entries(entries);
     std::vector<std::string> names;
     for (const auto& g : groups) {
         names.push_back(g.name);
@@ -243,7 +244,8 @@ TEST_CASE("Selector: a vendor bucket holds exactly that vendor's machines, in or
 
 TEST_CASE("Selector: entries with no group become singleton buckets named for themselves",
           "[selector]") {
-    const auto groups = group_selector_entries(sample_entries());
+    const auto entries = sample_entries();
+    const auto groups = group_selector_entries(entries);
 
     const auto* custom = find_group(groups, "Custom/Other");
     REQUIRE(custom != nullptr);

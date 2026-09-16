@@ -287,17 +287,25 @@ unlinked one is split:
 
 | What the record holds | Filed as |
 |-----------------------|----------|
-| a `spool_id` above zero | `Spoolman`, for the whole identity: a linked lane's identity is the server's statement, and its lock keys only record that a colour rode in on the binding |
-| a colour or material beside a `helix_locked_*` key present and true **on the wire** | `LocalUser` |
-| a field named in the record's own `helix_declared` set | `LocalUser`, an emptied value included: the set is the one home that can say a user cleared a field |
-| `catalog_id` / `product_name` | `LocalUser` regardless of the lock keys: firmware has no concept of a catalog product, so a value there can only be a pick |
+| a `spool_id` above zero | `Spoolman` for the whole identity, except a colour the record's `helix_declared` names, which is `LocalUser`: the colour ladder puts a person above the server. A `helix_locked_*` key on a linked record is not read, since a release 1.0 writer set it on links and meter flushes alike |
+| a field named in the record's `helix_declared` set, colour and material included | `LocalUser`, an emptied brand, spool name or vendor id included: the set is the one home that can say a user cleared a field. Colour and material need a value |
+| on a record with no `spool_id`, a colour or material its `helix_declared` does not name, beside a `helix_locked_*` key present and true **on the wire** | `LocalUser`: how a record written before the set could name colour and material is read. Absent or false is `Remembered` |
+| `catalog_id` / `product_name` | `LocalUser` regardless of what the record declares: firmware has no concept of a catalog product, so a value there can only be a pick |
 | anything else the record carries | `Remembered`, which the resolver ranks **below** the current firmware frame |
 | `remaining_weight_g` / `total_weight_g` | `Metered`, always: a weight is a measurement whoever wrote it |
 
+A lane's stored record is amended from each changed Spoolman filing, through
+`AmsBackend::persist_external_identity()`
+(`include/ams_backend.h#AmsBackend/persist_external_identity`). It takes the
+identity the server states, leaves a declared colour, the weights, the catalog
+pick and the temperatures alone, claims no authorship, and writes nothing to
+firmware. A lane with no record gets none: a filing is not an edit.
+
 A record written before `helix_declared` existed carries no set, and its brand,
-spool name and vendor id count as declared only beside a true lock flag on the
-same record. That flag is the evidence a person edited the record at all, since
-the auto-mirror writes both flags false and can populate none of those three.
+spool name and vendor id count as declared only beside a colour or material
+declaration the same record carries. That declaration is the evidence a person
+edited the record at all, since the auto-mirror declares neither and can
+populate none of those three.
 
 Each backend's parse then ends with `apply_resolved_lane()`
 (`include/ams_backend.h#AmsBackend/apply_resolved_lane`), which lays

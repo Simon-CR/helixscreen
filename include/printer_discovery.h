@@ -16,7 +16,7 @@
 #include "ams_types.h"
 #include "chamber_heater_backend.h"  // For chamber::match — heater candidate scoring
 #include "display_numbering.h"       // helix::ui::tool_label — T<n> gcode tool naming
-#include "klipper_extruder_naming.h" // is_extruder_name: one hot end per numbered extruder
+#include "klipper_extruder_naming.h" // count_extruder_names: one hot end per numbered extruder
 #include "macro_patterns.h"          // Shared macro-name tables (nozzle clean, ...)
 #include "printer_detector.h"        // For BuildVolume struct
 
@@ -98,6 +98,7 @@ class PrinterDiscovery {
 
         constexpr int CHAMBER_HEATER_GENERIC_WEIGHT = 2;  // settable heater — preferred
         constexpr int CHAMBER_TEMPERATURE_FAN_WEIGHT = 1; // fan — only wins if no heater_generic
+        constexpr int CHAMBER_TEMPERATURE_SENSOR_WEIGHT = 2; // passive sensor — wins sensor ties
 
         // Promote the current object to the best chamber heater if its keyword
         // confidence (plus object-type tiebreak) exceeds the running best.
@@ -122,9 +123,18 @@ class PrinterDiscovery {
                 chamber_filter_fan_pin_ = std::string(m.backend->filter_fan_pin());
             }
         };
+        // Promote the current object to the best chamber sensor by the same rule
+        // the heater pick above uses: keyword confidence with an object-TYPE
+        // tiebreak, so an equal-keyword tie resolves to the passive
+        // temperature_sensor in either iteration order while a stronger keyword
+        // still wins whatever the type.
         auto try_set_chamber_sensor = [&](const std::string& full_name,
-                                          const std::string& object_name) {
-            int conf = chamber_keyword_confidence(object_name);
+                                          const std::string& object_name, int type_weight) {
+            int keyword_conf = chamber_keyword_confidence(object_name);
+            if (keyword_conf == 0) {
+                return; // not a chamber-named object — never a sensor candidate
+            }
+            int conf = keyword_conf * 10 + type_weight;
             if (conf > best_chamber_sensor_conf) {
                 has_chamber_sensor_ = true;
                 chamber_sensor_name_ = full_name;
@@ -188,7 +198,7 @@ class PrinterDiscovery {
             else if (name.rfind("temperature_sensor ", 0) == 0) {
                 sensors_.push_back(name);
                 std::string sensor_name = name.substr(19); // Remove "temperature_sensor " prefix
-                try_set_chamber_sensor(name, sensor_name);
+                try_set_chamber_sensor(name, sensor_name, CHAMBER_TEMPERATURE_SENSOR_WEIGHT);
             }
             // Temperature-controlled fans (also act as sensors). A chamber-named
             // temperature_fan is the heater equivalent — it actively drives air
@@ -199,6 +209,10 @@ class PrinterDiscovery {
                 std::string fan_name = name.substr(16); // Remove "temperature_fan " prefix
                 try_set_chamber_heater(name, fan_name, CHAMBER_TEMPERATURE_FAN_WEIGHT);
                 try_set_chamber_cooling_fan(name, fan_name);
+                // The fan reports chamber air temperature too, so it also competes
+                // for the sensor pick — a printer whose only chamber thermistor is
+                // a chamber-named temperature_fan still gets a chamber sensor.
+                try_set_chamber_sensor(name, fan_name, CHAMBER_TEMPERATURE_FAN_WEIGHT);
             }
             // TMC stepper drivers with built-in temperature (tmc2240, tmc5160)
             else if (name.rfind("tmc2240 ", 0) == 0 || name.rfind("tmc5160 ", 0) == 0) {
@@ -633,13 +647,10 @@ class PrinterDiscovery {
         //
         // Never overwrites real tool objects - a klipper-toolchanger name is
         // arbitrary, and ASSIGN_TOOL can remap it.
-        const auto extruder_heater_count =
-            std::count_if(heaters_.begin(), heaters_.end(), [](const std::string& heater) {
-                return helix::is_extruder_name(heater);
-            });
+        const std::size_t extruder_heater_count = helix::count_extruder_names(heaters_);
         if (tool_names_.empty() && extruder_heater_count > 1) {
-            for (int i = 0; i < extruder_heater_count; ++i) {
-                tool_names_.push_back(helix::ui::tool_label(i));
+            for (std::size_t i = 0; i < extruder_heater_count; ++i) {
+                tool_names_.push_back(helix::ui::tool_label(static_cast<int>(i)));
             }
         }
 

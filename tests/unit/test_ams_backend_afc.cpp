@@ -1452,8 +1452,8 @@ TEST_CASE("AFC persistence: skips SET_WEIGHT for zero or negative", "[ams][afc][
 
 namespace {
 
-/// An AFC lane carrying a user's edit that locked its colour and material and
-/// declared its brand, with a store behind it so a persist can be read back
+/// An AFC lane carrying a user's edit that declared its colour, material and
+/// brand, with a store behind it so a persist can be read back
 /// from the record a restart would load.
 struct AfcLockedLaneFixture : HelixTestFixture {
     MoonrakerClientMock client{MoonrakerClientMock::PrinterType::VORON_24};
@@ -1475,10 +1475,8 @@ struct AfcLockedLaneFixture : HelixTestFixture {
         REQUIRE(helix::test::apply_edit(helper, 0, edit).success());
 
         const auto locked = record();
-        REQUIRE(locked.user_locked_color);
-        REQUIRE(locked.user_locked_material);
         REQUIRE(helix::ams::declared_field_names(locked.declared) ==
-                nlohmann::json::array({"brand"}));
+                nlohmann::json::array({"color_rgb", "material", "brand"}));
         helper.clear_captured_gcodes();
     }
 
@@ -1514,12 +1512,11 @@ TEST_CASE_METHOD(AfcLockedLaneFixture, "AFC weight persist writes the weight and
     const auto after = record();
     CHECK(after.remaining_weight_g == Catch::Approx(730.0f));
     CHECK(after.total_weight_g == Catch::Approx(1000.0f));
-    CHECK(after.user_locked_color);
-    CHECK(after.user_locked_material);
-    CHECK(helix::ams::declared_field_names(after.declared) == nlohmann::json::array({"brand"}));
+    CHECK(helix::ams::declared_field_names(after.declared) ==
+          nlohmann::json::array({"color_rgb", "material", "brand"}));
     CHECK(stored["helix_locked_color"] == true);
     CHECK(stored["helix_locked_material"] == true);
-    CHECK(stored["helix_declared"] == nlohmann::json::array({"brand"}));
+    CHECK(stored["helix_declared"] == nlohmann::json::array({"color_rgb", "material", "brand"}));
 }
 
 TEST_CASE_METHOD(AfcLockedLaneFixture, "AFC weight update without persist writes nothing durable",
@@ -8032,6 +8029,6 @@ TEST_CASE("AFC marks a persisted edit as the user's own", "[ams][afc][filament_s
     REQUIRE(overrides.count(0) == 1);
     REQUIRE(overrides.at(0).material == "PETG");
     REQUIRE(overrides.at(0).color_rgb == 0x1188FFu);
-    CHECK(overrides.at(0).user_locked_color);
-    CHECK(overrides.at(0).user_locked_material);
+    CHECK(helix::ams::declares_color(overrides.at(0)));
+    CHECK(helix::ams::declares_material(overrides.at(0)));
 }

@@ -61,8 +61,11 @@ concurrency:
 #
 # test-asan and test-tsan restore nothing at all. -fsanitize=... is part of
 # every object hash, so build.yml's objects can never match them: a restore
-# there would download ~1.7 GB for a guaranteed 0% hit rate. Their 240-minute
-# caps already cover a cold sanitizer build.
+# there would download ~1.7 GB for a guaranteed 0% hit rate, and saving their
+# own family would cost ~3 GB of the budget above. They build cold every night,
+# which is wall clock nobody waits on -- but a cold sanitizer build runs 3-4
+# hours, so each job budgets its build and its test phase as separate steps.
+# One cap covering both let a slow build consume the test phase instead.
 
 env:
   CC: ccache clang
@@ -420,7 +423,11 @@ jobs:
     name: AddressSanitizer
     needs: gate
     runs-on: ubuntu-22.04
-    timeout-minutes: 240
+    # The job cap has to clear the sum of its step caps plus checkout,
+    # dependency setup and artifact upload. Below that, a step that reaches
+    # its own limit is killed by the job first and reports as a test failure
+    # rather than a timeout.
+    timeout-minutes: 360
 
     steps:
     - name: Checkout repository
@@ -460,11 +467,11 @@ jobs:
         key: deps-ubuntu-22.04-${{ hashFiles('lib/libhv/**/*.c', 'lib/libhv/**/*.cpp', 'lib/libhv/**/*.h', 'lib/wpa_supplicant/src/**/*.c', 'lib/wpa_supplicant/src/**/*.h', 'Makefile', 'mk/deps.mk') }}
         restore-keys: deps-ubuntu-22.04-
 
-    # No ccache restore here on purpose. -fsanitize=address is part of every
-    # object hash (ASAN_FLAGS, mk/tests.mk), and this job runs only
-    # `make test-asan`, so build.yml's ordinary objects can never match:
-    # restoring would download ~1.7 GB for a guaranteed 0% hit rate. The
-    # 240-minute cap already covers a fully cold ASAN build.
+    # No ccache here, restored or saved. -fsanitize=address is part of every
+    # object hash (ASAN_FLAGS, mk/tests.mk), so build.yml's objects can never match;
+    # saving this job's own family would cost ~3 GB of the 10 GB repo budget the
+    # policy at the top of this file exists to protect. This job builds cold, and
+    # the step split below is what keeps that affordable.
 
     - name: Cache npm downloads
       uses: actions/cache@v5
@@ -493,8 +500,12 @@ jobs:
     - name: Apply submodule patches
       run: make apply-patches
 
-    - name: Build and run with ASAN
-      timeout-minutes: 230
+    - name: Build with ASAN
+      timeout-minutes: 300
+      run: make test-asan-build
+
+    - name: Run ASAN tests
+      timeout-minutes: 45
       run: |
         make test-asan
         echo "ASAN tests complete"
@@ -514,7 +525,11 @@ jobs:
     name: ThreadSanitizer
     needs: gate
     runs-on: ubuntu-22.04
-    timeout-minutes: 240
+    # The job cap has to clear the sum of its step caps plus checkout,
+    # dependency setup and artifact upload. Below that, a step that reaches
+    # its own limit is killed by the job first and reports as a test failure
+    # rather than a timeout.
+    timeout-minutes: 375
 
     steps:
     - name: Checkout repository
@@ -554,11 +569,11 @@ jobs:
         key: deps-ubuntu-22.04-${{ hashFiles('lib/libhv/**/*.c', 'lib/libhv/**/*.cpp', 'lib/libhv/**/*.h', 'lib/wpa_supplicant/src/**/*.c', 'lib/wpa_supplicant/src/**/*.h', 'Makefile', 'mk/deps.mk') }}
         restore-keys: deps-ubuntu-22.04-
 
-    # No ccache restore here on purpose. -fsanitize=thread is part of every
-    # object hash (TSAN_FLAGS, mk/tests.mk), and this job runs only
-    # `make test-tsan`, so build.yml's ordinary objects can never match:
-    # restoring would download ~1.7 GB for a guaranteed 0% hit rate. The
-    # 240-minute cap already covers a fully cold TSAN build.
+    # No ccache here, restored or saved. -fsanitize=thread is part of every
+    # object hash (TSAN_FLAGS, mk/tests.mk), so build.yml's objects can never match;
+    # saving this job's own family would cost ~3 GB of the 10 GB repo budget the
+    # policy at the top of this file exists to protect. This job builds cold, and
+    # the step split below is what keeps that affordable.
 
     - name: Cache npm downloads
       uses: actions/cache@v5
@@ -587,12 +602,16 @@ jobs:
     - name: Apply submodule patches
       run: make apply-patches
 
-    - name: Build and run with TSAN
-      timeout-minutes: 230
+    - name: Build with TSAN
+      timeout-minutes: 300
+      run: make test-tsan-build
+
+    - name: Run TSAN tests
+      timeout-minutes: 60
       run: |
         # Exclude [eventloop] and [slow] tests — eventloop tests have their own
         # dedicated CI job, and [slow] tests (MoonrakerClientMock fixture) are
-        # too expensive under TSAN's 10-50x overhead, causing 230-min timeout.
+        # too expensive to finish under TSAN's 10-50x overhead.
         make test-tsan TSAN_FILTER="~[.] ~[eventloop] ~[slow]"
         echo "TSAN tests complete"
 

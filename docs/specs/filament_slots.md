@@ -1,6 +1,6 @@
 # Filament Slot Metadata — `lane_data` Convention
 
-**Status**: Informational, v1.8 (2026-09). See [Changelog](#changelog).
+**Status**: Informational, v1.9 (2026-09). See [Changelog](#changelog).
 
 This document describes HelixScreen's use of the `lane_data` Moonraker database
 namespace to share per-slot filament metadata with OrcaSlicer and other tools.
@@ -201,9 +201,9 @@ throw on unknown keys).
 | `remaining_weight_g` | float | optional | grams | Remaining filament weight. Negative = unset / unknown. | Spoolman, or user-entered. |
 | `total_weight_g` | float | optional | grams | Full-spool nominal weight. Negative = unset / unknown. | Spoolman, or user-entered. |
 | `color_name` | string | optional | free-form | Human-readable color label (e.g. `"Orange"`), distinct from the `color` hex value. Some user workflows care about the marketing name as well as the RGB. | User-edited, or auto-filled from Spoolman. |
-| `helix_locked_color` | boolean | optional | `true` / `false` | Marks this record's `color` as the user's own choice rather than a value HelixScreen mirrored from the printer or carried over from an earlier session. HelixScreen does not refresh a marked field from firmware. **Always emitted when HelixScreen authors the record, `false` included**, because an explicit `false` is what tells a mirrored colour apart from one nobody has claimed. **Absent is not `false`**: it means the record predates the key or another tool wrote it, and HelixScreen then leaves a colour the record already carries alone rather than refreshing it from firmware. | HelixScreen (`to_lane_data_record()`). |
-| `helix_locked_material` | boolean | optional | `true` / `false` | The same statement about `material` / `helix_material`. Always emitted, `false` included, on the same terms as `helix_locked_color`; absent carries the same meaning. | HelixScreen (`to_lane_data_record()`). |
-| `helix_declared` | array of strings | optional | JSON array of field names | The same authorship statement for the identity fields that carry no lock key of their own. A name in the array says the user entered or cleared that field themselves. The names are HelixScreen's own field names, not this record's key names: `brand` names the field written as `vendor` / `vendor_name`, `spool_name` the field written as `spool_name` / `name`, and `spoolman_vendor_id` is spelled the same either way. **Always emitted when HelixScreen authors the record, the empty array included**: an empty array says the record claims none of them, which an implementer has to be able to tell from a record written before the key existed. **Absent** means the latter. | HelixScreen (`to_lane_data_record()`). |
+| `helix_locked_color` | boolean | optional | `true` / `false` | Whether the record declares its `color` as the user's own choice, written by HelixScreen from `helix_declared` (true exactly when `helix_declared` names `color_rgb`), so an older reader of the namespace sees the same authorship. **Always emitted when HelixScreen authors the record, `false` included.** HelixScreen reads it only for a record whose `helix_declared` does not name `color_rgb`: on a record with no `spool_id`, a true value beside a colour the record carries is the user's declaration; false, absent, or any value on a record with a `spool_id` is not. | HelixScreen (`to_lane_data_record()`). |
+| `helix_locked_material` | boolean | optional | `true` / `false` | The same statement about `material` / `helix_material`, true exactly when `helix_declared` names `material`. Always emitted, `false` included, and read on the same terms as `helix_locked_color`. | HelixScreen (`to_lane_data_record()`). |
+| `helix_declared` | array of strings | optional | JSON array of field names | The authorship statement for the identity fields, colour and material included. A name in the array says the user entered or cleared that field themselves. The names are HelixScreen's own field names, not this record's key names: `color_rgb` names the field written as `color`, `material` the field written as `material` / `helix_material`, `brand` names the field written as `vendor` / `vendor_name`, `spool_name` the field written as `spool_name` / `name`, and `spoolman_vendor_id` is spelled the same either way. **Always emitted when HelixScreen authors the record, the empty array included**: an empty array says the record claims none of them, which an implementer has to be able to tell from a record written before the key existed. **Absent** means the latter. | HelixScreen (`to_lane_data_record()`). |
 
 Fields are emitted only when present. Empty strings, zero, and negative floats
 are treated as "not set" and omitted from the written record — reducing noise
@@ -296,12 +296,14 @@ The merge rule is **authorship-ranked, field-by-field**. What settles a field
 is not that the record carries a value for it but what the record says about
 who put it there:
 
-- A field the record claims as the user's own, via `helix_locked_color`,
-  `helix_locked_material` or a name in `helix_declared`, outranks whatever
-  the printer reports for that lane. This is what keeps a deliberate choice
+- A field the record names in `helix_declared`, or, on a record with no
+  `spool_id` whose `helix_declared` does not name that field, a colour or
+  material beside a true `helix_locked_*`, outranks whatever the printer
+  reports for that lane. This is what keeps a deliberate choice
   from being erased by the next status poll.
 - A record naming a `spool_id` is read as the spool server's statement about
-  that lane's identity, and ranks above a firmware report.
+  that lane's identity, and ranks above a firmware report, except a colour its
+  `helix_declared` names, which is the user's.
 - A field the record merely carries, claiming no authorship for it, stands
   only where firmware says nothing about that field. A firmware report of the
   same field on the current frame wins.
@@ -555,6 +557,11 @@ reader can resolve.
 
 ## Changelog
 
+- **v1.9 (2026-09-15)**: `helix_declared` names `color_rgb` and `material` as
+  well, and `helix_locked_color` / `helix_locked_material` are written from it.
+  A reader takes a lock key only for a field `helix_declared` does not name, on
+  a record with no `spool_id`, where a true key beside a value is the user's
+  declaration (§3, §5).
 - **v1.8 (2026-09-14)**: Documented the three authorship keys HelixScreen
   writes into every record it authors and which this document had never
   described: `helix_locked_color`, `helix_locked_material` and `helix_declared`

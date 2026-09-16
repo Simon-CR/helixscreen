@@ -15,6 +15,7 @@
 #include "display_numbering.h"
 #include "filament_slot_override.h"
 #include "filament_slot_override_store.h"
+#include "lane_translation.h"
 #include "lvgl/src/others/translation/lv_translation.h"
 #include "moonraker_api_mock.h"
 #include "moonraker_client_mock.h"
@@ -1679,17 +1680,17 @@ TEST_CASE_METHOD(SnapmakerFixture,
 
     const auto& body = history[0].body;
     REQUIRE(body.is_object());
-    CHECK(body["channel"].get<int>() == 2);
+    CHECK(body.at("channel").get<int>() == 2);
     REQUIRE(body.contains("info"));
     const auto& info_obj = body["info"];
-    CHECK(info_obj["VENDOR"].get<std::string>() == "Polymaker");
-    CHECK(info_obj["MAIN_TYPE"].get<std::string>() == "PLA");
-    CHECK(info_obj["SUB_TYPE"].get<std::string>() == "SnapSpeed");
-    CHECK(info_obj["RGB_1"].get<uint32_t>() == 0xFF5500u);
-    CHECK(info_obj["ALPHA"].get<int>() == 255);
-    CHECK(info_obj["HOTEND_MIN_TEMP"].get<int>() == 195);
-    CHECK(info_obj["HOTEND_MAX_TEMP"].get<int>() == 225);
-    CHECK(info_obj["BED_TEMP"].get<int>() == 60);
+    CHECK(info_obj.at("VENDOR").get<std::string>() == "Polymaker");
+    CHECK(info_obj.at("MAIN_TYPE").get<std::string>() == "PLA");
+    CHECK(info_obj.at("SUB_TYPE").get<std::string>() == "SnapSpeed");
+    CHECK(info_obj.at("RGB_1").get<uint32_t>() == 0xFF5500u);
+    CHECK(info_obj.at("ALPHA").get<int>() == 255);
+    CHECK(info_obj.at("HOTEND_MIN_TEMP").get<int>() == 195);
+    CHECK(info_obj.at("HOTEND_MAX_TEMP").get<int>() == 225);
+    CHECK(info_obj.at("BED_TEMP").get<int>() == 60);
     // CARD_UID and SKU intentionally omitted — let firmware preserve them.
     CHECK_FALSE(info_obj.contains("CARD_UID"));
     CHECK_FALSE(info_obj.contains("SKU"));
@@ -1728,8 +1729,8 @@ TEST_CASE_METHOD(SnapmakerFixture, "Snapmaker firmware POST omits unknown SUB_TY
     auto history = api.rest_mock().mock_get_post_history();
     REQUIRE(history.size() == 1);
     const auto& info_obj = history[0].body["info"];
-    CHECK(info_obj["VENDOR"].get<std::string>() == "Generic");
-    CHECK(info_obj["MAIN_TYPE"].get<std::string>() == "PETG");
+    CHECK(info_obj.at("VENDOR").get<std::string>() == "Generic");
+    CHECK(info_obj.at("MAIN_TYPE").get<std::string>() == "PETG");
     CHECK_FALSE(info_obj.contains("SUB_TYPE"));
 }
 
@@ -1773,8 +1774,8 @@ TEST_CASE_METHOD(SnapmakerFixture,
     auto history = api.rest_mock().mock_get_post_history();
     REQUIRE(history.size() == 1);
     const auto& info_obj = history[0].body["info"];
-    CHECK(info_obj["VENDOR"].get<std::string>() == "Polymaker");
-    CHECK(info_obj["MAIN_TYPE"].get<std::string>() == "PLA");
+    CHECK(info_obj.at("VENDOR").get<std::string>() == "Polymaker");
+    CHECK(info_obj.at("MAIN_TYPE").get<std::string>() == "PLA");
     CHECK_FALSE(info_obj.contains("SUB_TYPE"));
 }
 
@@ -1985,7 +1986,7 @@ json seated_tag_frame(uint32_t argb, const std::string& main_type) {
 }
 
 /// Slot 0's stored record as a link to spool 42 leaves it: the spool's colour
-/// and material rode in with the binding, so neither is locked.
+/// and material rode in with the binding, so neither is declared.
 helix::ams::FilamentSlotOverride linked_to_spool_42() {
     helix::ams::FilamentSlotOverride ovr;
     ovr.spoolman_id = 42;
@@ -1993,8 +1994,6 @@ helix::ams::FilamentSlotOverride linked_to_spool_42() {
     ovr.color_rgb = 0xFF5500;
     ovr.color_set = true;
     ovr.material = "PLA";
-    ovr.user_locked_color = false;
-    ovr.user_locked_material = false;
     return ovr;
 }
 
@@ -2102,13 +2101,11 @@ TEST_CASE_METHOD(SnapmakerFixture,
     SnapmakerLaneRig rig("mirror_unlinked_follows");
     AmsBackendSnapmaker& backend = *rig.backend_reg;
 
-    // Unlocked and unlinked: what the store remembers, which declares nothing.
+    // Undeclared and unlinked: what the store remembers.
     helix::ams::FilamentSlotOverride remembered;
     remembered.color_rgb = 0xABCDEF;
     remembered.color_set = true;
     remembered.material = "PLA";
-    remembered.user_locked_color = false;
-    remembered.user_locked_material = false;
     SnapmakerTestAccess::seed_override(backend, 0, remembered);
     {
         const auto loaded = helix::ams::lane_sources(rig.backend_reg.lane(0));
@@ -2130,7 +2127,7 @@ TEST_CASE_METHOD(SnapmakerFixture,
                  "Snapmaker firmware restating a colour the user's record holds leaves the stored "
                  "record on it",
                  "[ams][snapmaker][lane][1654]") {
-    // The stored record carries the colour with no lock, while the user's
+    // The stored record carries the colour undeclared, while the user's
     // record on the lane declares it. Both are filed directly: the override
     // through the load path, the declaration through the user's own funnel.
     SnapmakerLaneRig rig("mirror_keeps_user_value");
@@ -2140,8 +2137,6 @@ TEST_CASE_METHOD(SnapmakerFixture,
     unlocked.color_rgb = 0xFFFFFF;
     unlocked.color_set = true;
     unlocked.material = "PLA";
-    unlocked.user_locked_color = false;
-    unlocked.user_locked_material = false;
     SnapmakerTestAccess::seed_override(backend, 0, unlocked);
 
     helix::ams::Observation pick(helix::ams::ObservationSource::LocalUser);
@@ -2150,7 +2145,7 @@ TEST_CASE_METHOD(SnapmakerFixture,
     {
         const auto seeded = SnapmakerTestAccess::get_override(backend, 0);
         REQUIRE(seeded.has_value());
-        REQUIRE_FALSE(seeded->user_locked_color);
+        REQUIRE_FALSE(helix::ams::declares_color(*seeded));
         const auto before = helix::ams::lane_sources(rig.backend_reg.lane(0));
         REQUIRE(before.local_user.has_value());
         REQUIRE(before.local_user->color_rgb == 0xFFFFFFu);
