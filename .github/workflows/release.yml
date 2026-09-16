@@ -10,6 +10,11 @@ concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 
+# Every patch is judged from clean here (see build.yml for why the flag is
+# environment-wide rather than per-step).
+env:
+  HELIX_PATCHES_FROM_CLEAN: "1"
+
 jobs:
   # ============================================================================
   # Validate shell scripts before building release packages
@@ -199,6 +204,7 @@ jobs:
           -v "${{ github.workspace }}":/src \
           -v /tmp/.ccache-${{ matrix.docker_image || matrix.platform }}:/root/.cache/ccache \
           -e CCACHE_DIR=/root/.cache/ccache \
+          -e HELIX_PATCHES_FROM_CLEAN \
           -w /src \
           helixscreen/toolchain-${{ matrix.docker_image || matrix.platform }} \
           make PLATFORM_TARGET=${{ matrix.build_target || matrix.platform }} HELIX_PACKAGING=1 SKIP_OPTIONAL_DEPS=1 -j$(nproc)

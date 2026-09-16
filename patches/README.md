@@ -71,7 +71,7 @@ Applied in order by `mk/patches.mk`. Grouped by subsystem.
 | `lvgl-strdup-null-guard.patch` | `lv_string_builtin.c`, `lv_string_clib.c` | NULL input guard for lv_strdup | PR #9827 rejected — permanent |
 | `lvgl_observer_debug.patch` | `lv_observer.c` | Enhanced error logging with pointer/type info | Project-specific |
 | `lvgl_observer_remove_null_guard.patch` | `lv_observer.c` | NULL guard for observer removal | Project-specific |
-| `lvgl_obj_delete_null_guards.patch` | `lv_global.h`, `lv_event.c`, `lv_obj.c`, `lv_obj_tree.c` | Event depth counter for corruption detection, NULL guards + alignment/depth-limit checks in event_mark_deleted, async cancel before child recursion in obj_delete_core | Pending |
+| `lvgl_obj_delete_null_guards.patch` | `lv_obj.c` | NULL guard at the top of `lv_obj_destructor` reporting `obj_destructor_null` through the helix telemetry hook | Project-specific |
 | `lvgl_obj_flag_screen_parent_null_guard.patch` | `lv_obj.c`, `lv_obj.h` | NULL-parent guards on the layout-dirty calls in `lv_obj_add_flag`/`lv_obj_remove_flag`, so a screen (no parent) can be hidden and unhidden; `ScreenHideHold` unhides the active screen after a screensaver or software sleep. `lv_obj.h` gains `HELIX_LV_OBJ_FLAG_SCREEN_PARENT_GUARD`, and `display_manager.cpp` refuses to compile without it | Upstream bug, not yet submitted |
 | `lvgl_event_crash_hook.patch` | `lv_obj_event.c` | Weak-linked `helix_crash_note_event()` call at top of `event_send_core` — records innermost dispatch target+code for crash diagnostic reports | Project-specific |
 
@@ -149,7 +149,59 @@ Then `make reapply-patches` from clean and confirm every patch still reports as 
 folded patch usually still applies on a clean tree, so the duplication only surfaces later as
 a conflict or a doubled hunk.
 
-**Apply-check sentinels:** each patch's block in `mk/patches.mk` decides whether to apply. Some
-older blocks test "is file X dirty?", which breaks when a patch stops touching X or when another
-patch dirties it first. Prefer `git -C $(LVGL_DIR) apply --check <patch>` as the condition — it
-asks the real question and does not depend on file ownership.
+### A patch superseded by a later patch
+
+A from-clean fatal on a patch that regenerating does not fix is usually this: a later patch
+now owns every file the failing one touches — its guards were rewritten, its data structures
+replaced — so the old patch's hunks describe a tree that no longer exists anywhere. Because
+`git apply` is atomic, even one dead file kills the live hunks in the others.
+
+Distinguish it from ordinary drift before regenerating: for each file the failing patch
+touches, ask which patches also touch it and whether a later one now carries the same guard.
+
+```bash
+# which patches touch a file, in apply order (the order in mk/patches.mk)?
+grep -l "diff --git a/src/path/to/file.c" patches/*.patch
+```
+
+A wholly superseded patch is deleted — from `patches/`, from its `mk/patches.mk` stanza, and
+from `mk/patch-markers.tsv` (`make regen-patch-markers` after the first two) — not
+regenerated: regenerating it against the current tree just folds the later patch's hunks in.
+Keep the filename out of the graveyard debate entirely; a partially superseded patch (some
+files live, some dead) is reduced to its live sections and regenerated the shared-file way
+above, per file.
+
+**Apply verdicts:** each patch's block in `mk/patches.mk` calls
+`scripts/apply_submodule_patch.sh <submodule-dir> <patch> <label> [note]`, which decides three ways:
+apply it, recognize it as already applied (reverse check), or refuse. A bare `apply --check`
+cannot tell "already applied" from "drifted and will never apply" — both exit non-zero — and a
+file-dirty test breaks when a patch stops touching X or when another patch dirties it first.
+Patches that share a file can fail both checks on a correctly patched tree, so in-place runs
+warn and `make reapply-patches` is the run that judges: from clean, a patch that will not take
+its apply branch is fatal. The optional note (libhv patches carry one) names the runtime
+consequence of building without the patch, appended to the two verdicts that mean "this
+patch may be missing".
+
+The flag is a claim about the tree — "this run started from pristine submodules" — and the
+claim is verified, not assumed. `mk/patches.mk` settles it once at recipe start (before any
+stanza has dirtied a shared file) by asking git whether the patched files are pristine, and
+writes the answer where the helper reads it. A checkout that is not pristine — the state
+`make clean` leaves behind, stamp gone but submodules still patched — downgrades the fatal to
+the in-place warn with the remedy named, instead of failing a healthy tree and telling you to
+regenerate correct patches. CI runners are fresh clones, so every workflow sets
+`HELIX_PATCHES_FROM_CLEAN=1` at the workflow level, reaching applies inside plain `make -j`
+build steps — `scripts/check_workflow_submodules.py` fails a workflow that drops it.
+
+**Patch markers:** presence is checked separately from applicability. `mk/patch-markers.tsv`
+names, for every wired patch, one line it adds (or removes) that upstream never contained, and
+`scripts/check_patch_markers.py` greps the checkout for each on every build, failing with the
+patch's name and its consequence when one is missing. The marker is a plain text search: it
+needs no git, so it holds in a docker build rsynced from a worktree where the submodules are
+not repositories at all, and a sibling patch moving shared context cannot make a healthy tree
+fail it the way an apply-check can. Three states fail loudly rather than pass vacuously: a
+wired stanza with no row (new patch), a patch file whose hash no longer matches the table
+(changed patch), and a missing or reintroduced marker (missing patch). `make
+regen-patch-markers` reapplies from clean and rederives the table; run it whenever a patch
+changes. A patch qualifies for a marker with one added or removed line of at least 12
+characters that upstream does not contain and no other patch introduces — any real fix has
+one, and the generator refuses rather than leave a silent gap.

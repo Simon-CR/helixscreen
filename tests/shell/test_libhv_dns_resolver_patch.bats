@@ -56,10 +56,12 @@ setup() {
     grep -q '__mips__' "$PATCH"
 }
 
-@test "patches.mk guard keys on the hsocket.c wiring, not the orphan file" {
-    # Lock the fix: the guard must detect application by grepping hsocket.c for
-    # the wiring marker.
-    grep -qF 'grep -q "dns_resolv_resolve" "$(LIBHV_DIR)/base/hsocket.c"' "$PATCHES_MK"
+@test "patches.mk routes the dns patch through the apply verdict" {
+    # Detection is the helper's three-way verdict over the whole patch - the
+    # hsocket.c wiring hunk included - not a grep marker. A marker survives
+    # while the patch grows hunks, which would bless a stale revision as
+    # "already applied"; the verdict cannot.
+    grep -qF '$(APPLY_PATCH) $(LIBHV_DIR) $(PATCH_DIR)/libhv-dns-resolver-fallback.patch' "$PATCHES_MK"
 }
 
 @test "patches.mk does NOT reintroduce the broken absence-of-file detection" {
@@ -124,7 +126,8 @@ setup() {
     run grep -q 'dns_resolv_resolve' "$work/base/hsocket.c"
     [ "$status" -ne 0 ]   # confirm: starts unwired
 
-    # Heal sequence — mirrors the recipe in mk/patches.mk.
+    # Heal sequence — what `make reapply-patches` does: drop the orphan
+    # files, restore the tracked ones, apply from clean.
     if ! grep -q 'dns_resolv_resolve' "$work/base/hsocket.c"; then
         rm -f "$work/base/dns_resolv.c" "$work/base/dns_resolv.h"
         git -C "$work" checkout -- base/hsocket.c base/hplatform.h 2>/dev/null || true

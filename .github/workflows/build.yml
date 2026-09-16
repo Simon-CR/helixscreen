@@ -32,6 +32,15 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || (startsWith(github.ref, 'refs/heads/release/') && github.sha || github.ref) }}
   cancel-in-progress: ${{ fromJSON(github.ref != 'refs/heads/main') }}
 
+# Every patch application in this workflow is judged from clean: a runner is a
+# fresh clone, so a patch that can neither apply nor reverse is dead, and the
+# build must stop rather than link unpatched code. The flag rides the
+# environment rather than individual steps because the apply that matters
+# usually runs inside `make -j` - a step-level flag on a later apply step finds
+# the stamp current and judges nothing.
+env:
+  HELIX_PATCHES_FROM_CLEAN: "1"
+
 jobs:
   compile-ubuntu:
     name: Compile (Ubuntu 22.04)

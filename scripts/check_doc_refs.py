@@ -29,6 +29,13 @@
 # The index check is what makes lazy loading trustworthy: a doc missing from the
 # routing table is a doc nobody will find.
 #
+# A citation may name a file a wired patch CREATES (a header under lib/lvgl/
+# that exists only once the patches are applied). Its existence is patch state,
+# not doc state: a fresh clone before the first build, and a tree between
+# reset-patches and the next apply, do not have it, while every built tree does.
+# Those citations resolve against what patches/ create rather than the disk -
+# the same verdict as an uninitialized submodule: unverifiable, not broken.
+#
 # KNOWN GAP: a bare basename passes check_refs as soon as ANY file in the tree
 #   shares it, submodules included — `file.cpp` in prose resolves to
 #   lib/cpp-terminal/cpp-terminal/private/file.cpp. Harmless for a deliberate
@@ -54,6 +61,9 @@ import argparse
 import os
 import re
 import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from gen_patch_markers import stanzas  # noqa: E402 - single stanza grammar
 
 SKIP_DIRS = {'.git', '.worktrees', 'build', 'node_modules', '.venv', 'venv'}
 
@@ -315,7 +325,46 @@ def scan_devel_targets(paths):
     return sorted(walk_md(DOC_DIR))
 
 
-def check_refs(targets, allpaths, devel=False):
+def patch_created_files(targets):
+    """Repo-rooted paths that wired patches create.
+
+    Sourced from the nearest tree that has both mk/patches.mk and patches/:
+    the scan tree (a --devel scratch tree carries its own), else the CWD the
+    gate runs from. Only creation hunks count (`--- /dev/null`). Returns
+    paths rooted at the submodule dir (lib/lvgl/...), the shape a doc cites.
+    """
+    roots = []
+    for t in targets:
+        root = os.path.dirname(os.path.dirname(t))
+        if root and root not in roots:
+            roots.append(root)
+    roots.append(os.getcwd())
+    created = set()
+    subs = {'LVGL_DIR': 'lib/lvgl', 'LIBHV_DIR': 'lib/libhv'}
+    for root in roots:
+        mk = os.path.join(root, 'mk', 'patches.mk')
+        pdir = os.path.join(root, 'patches')
+        if not (os.path.isfile(mk) and os.path.isdir(pdir)):
+            continue
+        try:
+            wired = stanzas(mk)
+        except OSError:
+            continue
+        for dvar, name, _label, _note in wired:
+            sub = subs.get(dvar)
+            if not sub:
+                continue
+            try:
+                text = open(os.path.join(pdir, name), encoding='utf-8',
+                            errors='replace').read()
+            except OSError:
+                continue
+            for m in re.finditer(r'^--- /dev/null\n\+\+\+ b/(\S+)$', text, re.M):
+                created.add(f'{sub}/{m.group(1)}')
+    return created
+
+
+def check_refs(targets, allpaths, devel=False, created=()):
     problems = []
     # Basename index so a bare `THREADING.md` resolves without scanning all
     # ~70k repo paths per citation — the suffix fallback used to dominate the
@@ -359,6 +408,12 @@ def check_refs(targets, allpaths, devel=False):
             elif path in by_basename:
                 continue
             if path in allpaths_set:
+                continue
+            # A patch-created file is patch state, not a doc error (see the
+            # module docstring): exact and suffix forms, like allpaths above.
+            if path in created:
+                continue
+            if '/' in path and any(p.endswith('/' + path) for p in created):
                 continue
             line = text.count('\n', 0, m.start()) + 1
             problems.append((target, line, ref))
@@ -546,7 +601,8 @@ def main():
     exit_code = 0
 
     if do_refs:
-        problems = check_refs(targets, repo_files(), devel=devel)
+        problems = check_refs(targets, repo_files(), devel=devel,
+                              created=patch_created_files(targets))
         link_problems = check_links(targets)
         skipped = uninitialized_submodules()
 

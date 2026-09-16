@@ -56,7 +56,7 @@ EGL_LVGL_REPLACED := $(patsubst $(LVGL_DIR)/%.c,$(OBJ_DIR)/lvgl/%.o, \
     $(EGL_LVGL_VARIANT_SRCS) $(EGL_LVGL_SHADER_SRC))
 EGL_LVGL_OBJS := $(filter-out $(EGL_LVGL_REPLACED),$(LVGL_OBJS))
 
-$(EGL_LVGL_VARIANT_DIR)/%.o: $(LVGL_DIR)/%.c lv_conf.h $(PATCHES_STAMP) $(ABI_STAMP)
+$(EGL_LVGL_VARIANT_DIR)/%.o: $(LVGL_DIR)/%.c lv_conf.h $(PATCHES_STAMP) $(ABI_STAMP) | $(PATCH_MARKER_STAMP)
 	$(Q)mkdir -p $(dir $@)
 	$(ECHO) "$(CYAN)[CC/egl]$(RESET) $<"
 	$(Q)$(CC) $(EGL_LVGL_CFLAGS) $(DEPFLAGS) $(INCLUDES) $(LV_CONF) -c $< -o $@
@@ -66,7 +66,7 @@ $(EGL_LVGL_VARIANT_DIR)/%.o: $(LVGL_DIR)/%.c lv_conf.h $(PATCHES_STAMP) $(ABI_ST
 # must land at DIFFERENT object paths: the base build already wrote a C object
 # for this source, and linking that one into the EGL binary produces a binary
 # with no shaders and no error. An explicit rule beats the pattern above.
-$(EGL_LVGL_SHADER_OBJ): $(EGL_LVGL_SHADER_SRC) lv_conf.h $(PATCHES_STAMP) $(ABI_STAMP)
+$(EGL_LVGL_SHADER_OBJ): $(EGL_LVGL_SHADER_SRC) lv_conf.h $(PATCHES_STAMP) $(ABI_STAMP) | $(PATCH_MARKER_STAMP)
 	$(Q)mkdir -p $(dir $@)
 	$(ECHO) "$(CYAN)[CXX/egl]$(RESET) $< (raw string literals)"
 	$(Q)$(CXX) $(EGL_LVGL_CXXFLAGS) $(INCLUDES) $(LV_CONF) -c $< -o $@

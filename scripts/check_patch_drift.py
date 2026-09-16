@@ -2,13 +2,13 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Reject a vendored submodule whose applied patches are not the ones in patches/.
 
-mk/patches.mk guards every apply with a variant of "is this file already dirty?"
--- `git -C $(LVGL_DIR) diff --quiet src/drivers/evdev/lv_evdev.c`, or a grep for
-one marker string. What it never asks is "is it dirty with the CURRENT revision
-of this patch". So the first revision of a patch to reach a checkout is the one
-that stays there: editing the patch afterwards changes nothing for anybody whose
-submodule already carries the old hunks, and the recipe cheerfully reports
-"already applied".
+mk/patches.mk routes every apply through scripts/apply_submodule_patch.sh, whose
+verdict is three-way: apply, already-applied (reverse check), or refuse. The
+refuse branch is what a bare `git apply --check` cannot deliver honestly, and
+what a patched tree still cannot settle is whether the applied hunks are the
+CURRENT revision of the patch: the first revision of a patch to reach a checkout
+is the one that stays there, and editing the patch afterwards changes nothing
+for anybody whose submodule already carries the old hunks.
 
 That shipped. 86560d156 added lv_evdev_get_last_raw() to
 patches/lvgl-evdev-protocol-a.patch, main's lib/lvgl kept the previous revision,
@@ -70,11 +70,15 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 STAMP_NAME = "helix-patches-applied.json"
 STAMP_VERSION = 1
 
-# Every apply in mk/patches.mk has this shape, on one line:
-#   git -C $(LVGL_DIR) apply --check $(PATCH_DIR)/lvgl_sdl_window.patch
-# which binds the patch to its submodule without a hand-maintained table.
+# Every patch-to-submodule binding in mk/patches.mk has one of two shapes:
+#   a call to the shared apply helper, naming the submodule dir then the patch:
+#     $(APPLY_PATCH) $(LVGL_DIR) $(PATCH_DIR)/lvgl_sdl_window.patch "label"
+#   or a hand-written git invocation:
+#     git -C $(LIBHV_DIR) apply [--check] $(PATCH_DIR)/libhv-x.patch
+# Either way the $(<NAME>_DIR) adjacent to the $(PATCH_DIR)/ reference binds the
+# patch to its submodule without a hand-maintained table.
 APPLY_RE = re.compile(
-    r"git\s+-C\s+\$\((?P<var>[A-Z0-9_]+)_DIR\)\s+apply\b[^;\n]*?"
+    r"\$\((?P<var>[A-Z0-9_]+)_DIR\)[ \t]+(?:apply\b[^;\n]*?[ \t]?)?"
     r"\$\(PATCH_DIR\)/(?P<patch>[A-Za-z0-9_.-]+\.patch)"
 )
 
@@ -168,6 +172,7 @@ class Submodule:
     def __init__(self, var: str, rel: str, root: Path):
         self.var = var
         self.rel = rel
+        self.root = root
         self.path = root / rel
         self.patches: list[str] = []
 
@@ -305,6 +310,27 @@ class Finding:
         return f"{self.kind} {self.sub} {self.item}"
 
 
+def patch_in_any_ref(root: Path, name: str) -> bool | None:
+    """Does any ref of the superproject hold patches/<name>?
+
+    None when git cannot answer (not a repository, no git): the caller then
+    keeps the plain patch-removed verdict rather than guess.
+    """
+    try:
+        proc = subprocess.run(
+            ["git", "-C", str(root), "log", "--all", "--oneline", "--",
+             f"patches/{name}"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if proc.returncode != 0:
+        return None
+    return bool(proc.stdout.strip())
+
+
 def check_submodule(
     sub: Submodule, patch_dir: Path, pre_apply: bool
 ) -> tuple[list[Finding], str | None]:
@@ -373,6 +399,22 @@ def check_submodule(
 
     for name in sorted(stamped_patches):
         if name not in current_patches:
+            if patch_in_any_ref(sub.root, name) is False:
+                # A stamp entry is the only place this patch ever existed: an
+                # uncommitted file, applied and stamped, then deleted. Calling
+                # that "removed" claims its hunks linger in the submodule and
+                # sends someone hunting for a patch that never shipped.
+                findings.append(
+                    Finding(
+                        "stale-stamp-entry",
+                        sub.rel,
+                        name,
+                        "recorded in the stamp but exists in no ref - likely an "
+                        "uncommitted patch that was applied and then deleted. Run "
+                        "'make reapply-patches' to resync the stamp",
+                    )
+                )
+                continue
             findings.append(
                 Finding(
                     "patch-removed",

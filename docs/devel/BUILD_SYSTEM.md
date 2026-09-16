@@ -1016,23 +1016,24 @@ The build system automatically applies patches to git submodules before compilat
 - `HELIX_SDL_XPOS` - X coordinate for exact window position
 - `HELIX_SDL_YPOS` - Y coordinate for exact window position
 
-**Application Logic** (in `Makefile`):
+**Application Logic** (in `mk/patches.mk`):
 ```makefile
-apply-patches:
-	@echo "Checking LVGL patches..."
-	@if git -C $(LVGL_DIR) diff --quiet src/drivers/sdl/lv_sdl_window.c; then \
-		# File is clean, apply patch
-		git -C $(LVGL_DIR) apply ../patches/lvgl_sdl_window_position.patch
-	else \
-		# File already modified (patch applied)
-		echo "✓ LVGL SDL window position patch already applied"
-	fi
+	$(Q)$(APPLY_PATCH) $(LVGL_DIR) $(PATCH_DIR)/lvgl_sdl_window.patch "LVGL SDL window patch"
 ```
 
+`$(APPLY_PATCH)` is `scripts/apply_submodule_patch.sh`, which owns a three-way
+verdict for every patch: apply it, recognize it as already applied (reverse
+check), or report that it matches no reachable state of the submodule.
+
 **Status Messages**:
-- `✓ Patch applied successfully` - Patch was applied during this build
-- `✓ LVGL SDL window position patch already applied` - Patch was already present
-- `⚠ Cannot apply patch (already applied or conflicts)` - Manual intervention needed
+- `✓ <label> applied` - Patch was applied during this build
+- `✓ <label> already applied` - Reverse check recognized it; the tree keeps it
+- `✓ <label> already applied (marker present; sibling patches moved the context git compares)` - Neither check passes, but the marker table confirms the patch's effect is in the checkout; the routine case on shared files
+- `⚠ <label>: its marker is absent from the checkout - the patch's effect is missing` - Neither check passes and the marker is gone; run `make reapply-patches`
+- `⚠ <label> is not verifiable in place` - Neither check passes and the marker table has no row for the patch, so the verdict stays hedged; run `make reapply-patches` to judge from clean
+- `⚠ <submodule> is not pristine, so this run cannot judge patches from clean` - `HELIX_PATCHES_FROM_CLEAN=1` was set but the submodule already carries changes (the state `make clean` leaves), so the fatal verdict is not available and every patch is judged in place; run `make reapply-patches` to reset and judge from clean
+- `✗ <label> does not apply to a clean checkout` - The patch and the submodule disagree, on a run verified to have started from pristine submodules; regenerate the patch
+- `✗ <patch> ... Its marker is missing from <file>` - The patch's one distinctive line is absent from the checkout, so the build stops before compiling against unpatched code; run `make reapply-patches`. The marker check is a text search that needs no git, so it also fires in docker builds rsynced from worktrees. Companion messages name a changed patch file (`make regen-patch-markers`) and a wired stanza with no marker row.
 
 ### Adding New Patches
 
@@ -1049,10 +1050,18 @@ To add a new submodule patch:
    files are shared today (`src/misc/lv_event.c` by seven patches). Check with
    `grep -l "diff --git a/<path>" patches/*.patch` and use the pristine-file method in
    `patches/README.md` § "Regenerating a patch whose file is shared".
-3. **Update Makefile** to apply the patch in the `apply-patches` target. Use
-   `git -C $(LVGL_DIR) apply --check <patch>` as the apply condition rather than a
-   "is file X dirty?" test, which breaks as soon as another patch touches X.
-4. **Document** in `patches/README.md`
+3. **Update Makefile** to apply the patch in the `apply-patches` target, as one helper
+   stanza beside the others:
+   ```make
+   $(Q)$(APPLY_PATCH) $(LVGL_DIR) $(PATCH_DIR)/my-new-patch.patch "My new patch" "Without it <consequence>"
+   ```
+   The note is optional and names the runtime consequence of building without the patch;
+   the marker check prints it when the patch goes missing.
+4. **Regenerate the marker table** with `make regen-patch-markers` (it reapplies from
+   clean first, then rederives `mk/patch-markers.tsv`). Until you do, the build fails
+   naming the new patch — a wired stanza without a marker row is a coverage gap, not a
+   state the check tolerates.
+5. **Document** in `patches/README.md`
 
 ### Patch Gotchas (hard-won)
 
@@ -1063,18 +1072,15 @@ update checks failed with "Connection failed"). Both are now regression-tested i
 
 1. **Guard on the actual change, not on a side effect.** A patch that adds NEW
    files *and* edits an existing one must not gate re-application on the new
-   file's existence. The old guard used `[ ! -f base/dns_resolv.c ]`; a submodule
-   reset reverted the tracked `base/hsocket.c` (the wiring) but left the
-   untracked `dns_resolv.c` orphaned, so the guard declared "already applied" and
-   never re-wired `hsocket.c`. Result: resolver compiled but **never called**.
-   Guard on a marker string *inside the edited file* and self-heal:
-   ```make
-   if ! grep -q "dns_resolv_resolve" "$(LIBHV_DIR)/base/hsocket.c"; then
-       rm -f .../base/dns_resolv.c .../base/dns_resolv.h;   # drop orphans
-       git -C $(LIBHV_DIR) checkout -- base/hsocket.c;       # pristine
-       git -C $(LIBHV_DIR) apply .../libhv-dns-resolver-fallback.patch
-   fi
-   ```
+   file's existence. A submodule reset reverts the tracked `base/hsocket.c`
+   (the wiring) but leaves an untracked `dns_resolv.c` orphaned, so a
+   file-existence guard declares "already applied" and never re-wires
+   `hsocket.c` — the resolver compiles but is **never called**. Both layers in
+   `mk/patches.mk` answer this now: every stanza routes through the
+   `$(APPLY_PATCH)` verdict helper (which resets nothing and never assumes),
+   and `mk/patch-markers.tsv` fails the build when the patch's one distinctive
+   line is absent from the file it edits — on every build, docker trees
+   included.
 
 2. **A patched file compiled into a static `.a` must invalidate that `.a`.**
    `$(LIBHV_LIB)` (build/<plat>/lib/libhv.a) originally had **no
@@ -1666,25 +1672,19 @@ SDL2_LIBS := $(shell sdl2-config --libs)
 
 ### Patch Application Fails
 
-**Symptom**: `⚠ Cannot apply patch (already applied or conflicts)`
+**Symptom**: `✗ <label> does not apply to a clean checkout` (from `make reapply-patches`),
+or `⚠ <label>: its marker is absent from the checkout` / `⚠ <label> is not verifiable in place` (from an incremental build)
 
 **Causes**:
-1. Submodule was manually modified (expected if patch is working)
-2. Patch conflicts with newer LVGL version
-3. Patch file is corrupted
+1. The patch drifted: a sibling patch moved the context it needs, and it
+   matches no reachable state of the submodule
+2. The patch was edited without regenerating it against the patched tree
 
-**Solutions**:
+**Solution** — let the from-clean run name every drifted patch, then
+regenerate each one it names (`patches/README.md` § "Regenerating a patch
+whose file is shared"):
 ```bash
-# Check if file is modified (expected)
-git -C lvgl diff src/drivers/sdl/lv_sdl_window.c
-
-# Revert to original (re-applies patch on next build)
-git -C lvgl checkout src/drivers/sdl/lv_sdl_window.c
-make apply-patches
-
-# Force re-apply
-git -C lvgl checkout src/drivers/sdl/lv_sdl_window.c
-git -C lvgl apply ../patches/lvgl_sdl_window_position.patch
+make reapply-patches
 ```
 
 ### Build Performance

@@ -16,6 +16,11 @@ concurrency:
   # cancels anyway.
   cancel-in-progress: ${{ fromJSON(github.ref != 'refs/heads/main') }}
 
+# Every patch is judged from clean here (see build.yml for why the flag is
+# environment-wide rather than per-step).
+env:
+  HELIX_PATCHES_FROM_CLEAN: "1"
+
 jobs:
   build:
     runs-on: ubuntu-latest

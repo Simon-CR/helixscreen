@@ -211,3 +211,51 @@ print(r.indexed_docs())
     [ "$status" -eq 0 ]
     [ "$output" = "[]" ]
 }
+
+make_patch_fixture() {
+    # A scratch tree shaped like the repo's patch shelf: one wired LVGL patch
+    # with a creation hunk and a modification hunk.
+    mkdir -p "$BATS_TEST_TMPDIR/patches" "$BATS_TEST_TMPDIR/mk"
+    cat > "$BATS_TEST_TMPDIR/patches/zz_creates.patch" <<'EOF'
+diff --git a/src/zz_patch_created.h b/src/zz_patch_created.h
+new file mode 100644
+--- /dev/null
++++ b/src/zz_patch_created.h
+@@ -0,0 +1 @@
++int zz_patch_created(void);
+diff --git a/src/zz_modified_not_created.h b/src/zz_modified_not_created.h
+--- a/src/zz_modified_not_created.h
++++ b/src/zz_modified_not_created.h
+@@ -1 +1 @@
+-old
++new
+EOF
+    printf '$(Q)$(APPLY_PATCH) $(LVGL_DIR) $(PATCH_DIR)/zz_creates.patch "fixture patch"\n' \
+        > "$BATS_TEST_TMPDIR/mk/patches.mk"
+}
+
+@test "devel: a file a wired patch creates resolves on an unapplied tree" {
+    # The citation's existence is patch state, not doc state: a fresh clone
+    # before the first build, and a tree between reset-patches and the next
+    # apply, do not carry the file, while every built tree does. The gate
+    # resolves such citations against what patches/ create.
+    make_patch_fixture
+    cat > "$FIX/pc.md" <<'EOF'
+See `lib/lvgl/src/zz_patch_created.h` for the guard it installs.
+EOF
+    run python3 "$CHECK" --devel "$FIX/pc.md"
+    [ "$status" -eq 0 ]
+}
+
+@test "devel: a file a patch only modifies is still required to exist" {
+    # Only a creation hunk licenses the citation: a patch that merely edits a
+    # file says nothing about that file existing on an unapplied tree.
+    make_patch_fixture
+    cat > "$FIX/pm.md" <<'EOF'
+See `lib/lvgl/src/zz_modified_not_created.h` and `lib/lvgl/src/zz_never_anywhere.h`.
+EOF
+    run python3 "$CHECK" --devel "$FIX/pm.md"
+    [ "$status" -eq 1 ]
+    contains "zz_modified_not_created.h" "$output"
+    contains "zz_never_anywhere.h" "$output"
+}
