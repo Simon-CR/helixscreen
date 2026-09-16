@@ -1389,6 +1389,39 @@ TEST_CASE_METHOD(SnapmakerFixture,
     CHECK(info.color_rgb == 0xFF5500u);
 }
 
+TEST_CASE_METHOD(SnapmakerFixture, "Snapmaker clear_slot_override drops the Spoolman handles",
+                 "[ams][snapmaker][filament_slot_override][1625]") {
+    SnapmakerTmpCacheDir tmp("clear_spoolman_link");
+    MoonrakerClientMock client(MoonrakerClientMock::PrinterType::VORON_24);
+    helix::PrinterState state;
+    state.init_subjects(false);
+    MoonrakerAPIMock api(client, state);
+
+    helix::test::RegisteredBackend<AmsBackendSnapmaker> backend_reg(&api, nullptr);
+    AmsBackendSnapmaker& backend = *backend_reg;
+
+    // A filament_detect parse populates the units a clear walks.
+    SnapmakerTestAccess::handle_status(
+        backend,
+        make_filament_detect_status(0, "PLA", 0xFFFF5500u, "Polymaker", json::array({1, 2, 3, 4})));
+    REQUIRE(SnapmakerTestAccess::seed_live_spoolman_link(backend, 0, 42, 77, 3));
+    REQUIRE(backend.get_slot_info(0).spoolman_filament_id == 77);
+
+    backend.clear_slot_override(0);
+
+    // All three Spoolman handles die together. spool_name is the exception:
+    // RFID firmware owns it here and re-supplies it on the next status parse,
+    // so the clear leaves it standing (SlotInfo::clear_spoolman_link zeroes
+    // it, which is why this backend clears the handles by hand).
+    auto info = backend.get_slot_info(0);
+    CHECK(info.spoolman_id == 0);
+    CHECK(info.spoolman_vendor_id == 0);
+    CHECK(info.spoolman_filament_id == 0);
+    // The deliberate keep, pinned: a wholesale clear_spoolman_link() call
+    // here would zero a name RFID firmware still owns.
+    CHECK(info.spool_name == "Linked Spool");
+}
+
 TEST_CASE_METHOD(SnapmakerFixture,
                  "Snapmaker apply_user_edit writes override and survives status update",
                  "[ams][snapmaker][filament_slot_override]") {

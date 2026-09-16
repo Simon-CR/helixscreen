@@ -1499,9 +1499,7 @@ void AmsBackendAd5xIfs::clear_override_locked(int slot_index, SlotInfo& slot) {
     helix::ams::reset_lane_to_machine_readings(lane_id(slot_index));
 
     slot.brand.clear();
-    slot.spool_name.clear();
-    slot.spoolman_id = 0;
-    slot.spoolman_vendor_id = 0;
+    slot.clear_spoolman_link();
     slot.remaining_weight_g = -1.0f;
     slot.total_weight_g = -1.0f;
     slot.color_name.clear();

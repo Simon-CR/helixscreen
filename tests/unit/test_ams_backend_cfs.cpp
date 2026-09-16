@@ -2223,6 +2223,40 @@ TEST_CASE("CFS RFID fingerprint change clears override (hardware swap detected)"
     CHECK(info.color_rgb == 0x00FF00u);
 }
 
+TEST_CASE("CFS clear_slot_override drops the whole Spoolman link",
+          "[ams][cfs][filament_slot_override][1625]") {
+    CfsTmpCacheDir tmp("clear_spoolman_link");
+    MoonrakerClientMock client(MoonrakerClientMock::PrinterType::VORON_24);
+    helix::PrinterState state;
+    state.init_subjects(false);
+    MoonrakerAPIMock api(client, state);
+
+    helix::test::RegisteredBackend<AmsBackendCfs> backend_reg(&api, nullptr);
+    AmsBackendCfs& backend = *backend_reg;
+    auto store = std::make_unique<helix::ams::FilamentSlotOverrideStore>(&api, "cfs");
+    FilamentSlotOverrideStoreTestAccess::set_cache_directory(*store, tmp.path);
+    CfsTestAccess::inject_override_store(backend, std::move(store));
+
+    // A box parse populates the slots a clear walks.
+    json box = make_single_unit_box({"101001", "101001", "101001", "101001"},
+                                    {"0FF5500", "0FFFFFF", "00A2989", "0C12E1F"});
+    CfsTestAccess::handle_status(backend, make_cfs_notification(box));
+    REQUIRE(CfsTestAccess::seed_live_spoolman_link(backend, 0, 42, 77, 3));
+    REQUIRE(backend.get_slot_info(0).spoolman_filament_id == 77);
+
+    backend.clear_slot_override(0);
+
+    // All three handles die together: a slot cleared of its override must not
+    // keep naming a Spoolman record, and a surviving filament handle would.
+    // The RFID-kept fields (brand / color_name / total_weight_g) are pinned
+    // by the hardware-event clear test above.
+    auto info = backend.get_slot_info(0);
+    CHECK(info.spoolman_id == 0);
+    CHECK(info.spoolman_vendor_id == 0);
+    CHECK(info.spoolman_filament_id == 0);
+    CHECK(info.spool_name.empty());
+}
+
 TEST_CASE("CFS first RFID observation does NOT clear override",
           "[ams][cfs][filament_slot_override]") {
     // Even when the override was saved against a different (now-stale)

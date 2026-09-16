@@ -2663,10 +2663,7 @@ void AmsBackendHappyHare::clear_slot_override(int slot_index) {
         // name, so no firmware update will ever clear them.
         if (helix::printer::SlotEntry* entry = slots_.get_mut(slot_index)) {
             entry->info.brand.clear();
-            entry->info.spool_name.clear();
-            entry->info.spoolman_id = 0;
-            entry->info.spoolman_vendor_id = 0;
-            entry->info.spoolman_filament_id = 0;
+            entry->info.clear_spoolman_link();
             entry->info.remaining_weight_g = -1.0f;
             entry->info.total_weight_g = -1.0f;
             entry->info.color_name.clear();

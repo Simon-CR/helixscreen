@@ -743,12 +743,14 @@ class AmsBackendCfs : public AmsSubscriptionBackend {
     void update_runout_episode_locked();
 
     /// One-shot #1390 strip. When the lane captured at the runout edge reads
-    /// EMPTY and its override still remembers a Spoolman link, drop ONLY
-    /// spoolman_id / spoolman_vendor_id - brand, material, color, catalog
-    /// pick, declarations and temperatures describe the lane's contents and
+    /// EMPTY and its override still remembers a Spoolman link, drop ONLY the
+    /// Spoolman handles (spoolman_id / spoolman_filament_id /
+    /// spoolman_vendor_id) - brand, material, color, catalog pick,
+    /// declarations and temperatures describe the lane's contents and
     /// survive ("unlinking means stop tracking this in Spoolman, not forget
     /// what is in the lane", SlotInfo::clear_spoolman_link semantics applied
-    /// to the persisted record). The exhausted spool's id must not survive a
+    /// to the persisted record; spool_name stays too, as lane identity).
+    /// The exhausted spool's id must not survive a
     /// confirmed runout: the early return in clear_stale_override_on_
     /// removal_locked kept it alive, and it was re-asserted onto whatever
     /// fresh spool the user loaded next. Declarations do not protect the id -

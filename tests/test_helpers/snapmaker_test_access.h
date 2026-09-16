@@ -50,6 +50,23 @@ class SnapmakerTestAccess {
                                       std::unique_ptr<helix::ams::FilamentSlotOverrideStore> s) {
         b.override_store_ = std::move(s);
     }
+    /// Put a whole Spoolman link on the live slot — the shape a linked slot
+    /// carries. The persisted override record has no filament-id field, so
+    /// the live slot is the only half of a link a test can seed whole.
+    static bool seed_live_spoolman_link(AmsBackendSnapmaker& b, int slot_index, int spool_id,
+                                        int filament_id, int vendor_id) {
+        std::lock_guard<std::mutex> lock(b.mutex_);
+        if (b.system_info_.units.empty())
+            return false;
+        SlotInfo* slot = b.system_info_.units[0].get_slot(slot_index);
+        if (!slot)
+            return false;
+        slot->spoolman_id = spool_id;
+        slot->spoolman_filament_id = filament_id;
+        slot->spoolman_vendor_id = vendor_id;
+        slot->spool_name = "Linked Spool";
+        return true;
+    }
     static std::optional<std::string> last_rfid_uid(const AmsBackendSnapmaker& b, int slot_index) {
         std::lock_guard<std::mutex> lock(b.mutex_);
         return b.rfid_tracker_.baseline(slot_index);
