@@ -124,6 +124,17 @@ bool is_material_code_sentinel(const std::string& v) {
     return v.empty() || v == "none" || v == "None" || v == "-1" || v == "unknown";
 }
 
+/// The exclusive upper bound every slot-index check uses: the attached unit
+/// count once a unit-bearing frame has been parsed, the TNN alphabet (4
+/// units × 4 bays) until then. total_slots is 0 until the first such frame
+/// commits it, and that 0 means the box size is UNKNOWN, not "no bays" — the
+/// print-start mapping restore fires on klippy READY, unordered against the
+/// first box frame, and its recovery record is deleted when a send is
+/// refused, so the pre-frame window stays permissive.
+int slot_index_ceiling(int total_slots) {
+    return total_slots > 0 ? total_slots : 16;
+}
+
 /// Harvest the material_type codes a box status actually reported, keyed three
 /// ways for push_slot_identity_to_firmware's lookup chain (catalog id, then
 /// "brand|type", then type). Values are the FULL 6-char codes exactly as the
@@ -1887,12 +1898,13 @@ AmsError AmsBackendCfs::do_load_filament(int slot_index) {
     const bool bypass =
         slot_index == helix::ui::EXTERNAL_SPOOL_SLOT && macro_variant_ != CfsMacroVariant::Fork;
 
-    // The bound is the attached unit count, so a 4-slot CFS refuses index 7
-    // here instead of dispatching a load script for a bay that is not there.
+    // The bound is the attached unit count (the TNN alphabet while the box
+    // size is unknown), so a 4-slot CFS refuses index 7 here instead of
+    // dispatching a load script for a bay that is not there.
     int max_slot;
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        max_slot = system_info_.total_slots - 1;
+        max_slot = slot_index_ceiling(system_info_.total_slots) - 1;
     }
     if (!bypass && (slot_index < 0 || slot_index > max_slot)) {
         return AmsErrorHelper::invalid_slot(lane_noun(), slot_index, max_slot);
@@ -2225,10 +2237,11 @@ void AmsBackendCfs::push_slot_identity_to_firmware(int global_index, const std::
     // Validate slot index BEFORE formatting the gcode — invalid args trigger
     // an unhandled TypeError in box_wrapper that Klipper escalates to
     // invoke_shutdown. Better to silently no-op than to crash the printer.
-    // The bound is the attached unit count, so a write for a bay the box has
-    // not reported never leaves the app. A malformed frame inflating
-    // total_slots past the TNN alphabet is still caught by the static gcode
-    // builders, which refuse anything they cannot encode.
+    // The bound is the attached unit count (the TNN alphabet while the box
+    // size is unknown), so a write for a bay the box has not reported never
+    // leaves the app. A malformed frame inflating total_slots past the TNN
+    // alphabet is still caught by the static gcode builders, which refuse
+    // anything they cannot encode.
     //
     // No color-value validation here on purpose: pure black (0x000000) is a
     // legitimate user choice and we don't want to silently drop it. The
@@ -2237,7 +2250,7 @@ void AmsBackendCfs::push_slot_identity_to_firmware(int global_index, const std::
     int slot_count;
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        slot_count = system_info_.total_slots;
+        slot_count = slot_index_ceiling(system_info_.total_slots);
     }
     if (global_index < 0 || global_index >= slot_count) {
         spdlog::debug("{} push_slot_identity_to_firmware: skipping invalid slot {}",
@@ -2448,9 +2461,10 @@ AmsError AmsBackendCfs::set_tool_mapping_impl(int tool_number, int slot_index) {
     // Example: set_tool_mapping(0, 5) sends "BOX_MODIFY_TN T1A=T2B" — when the
     // slicer emits T0/T1A, the CFS routes from physical slot T2B (index 5).
     //
-    // slot_index names a bay, so its bound is the attached unit count: a remap
-    // naming a bay on an unattached unit is refused here instead of leaving
-    // firmware's routing table pointing at a bay that cannot feed.
+    // slot_index names a bay, so its bound is the attached unit count (the
+    // TNN alphabet while the box size is unknown): a remap naming a bay on an
+    // unattached unit is refused here instead of leaving firmware's routing
+    // table pointing at a bay that cannot feed.
     // tool_number is a routing-table KEY, not a bay: the T0-T15 key space
     // exists wherever firmware's map says it does — a slicer-driven remap or
     // Creality's own UI can hold a high key while fewer units are attached —
@@ -2459,7 +2473,7 @@ AmsError AmsBackendCfs::set_tool_mapping_impl(int tool_number, int slot_index) {
     int slot_count;
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        slot_count = system_info_.total_slots;
+        slot_count = slot_index_ceiling(system_info_.total_slots);
     }
     if (tool_number < 0 || tool_number >= CFS_MAX_SLOTS) {
         return AmsErrorHelper::tool_out_of_range(tool_number);
@@ -2492,11 +2506,12 @@ AmsError AmsBackendCfs::set_tool_mapping_impl(int tool_number, int slot_index) {
     // Only lanes the current parse actually knows about can be recorded: a
     // forward entry naming a lane with no SlotInfo has no reverse counterpart
     // to pair with, and resolve_op_button_slot() would hand the filament panel
-    // a slot index that get_slot_global() answers with nullptr. The validation
-    // above already refuses anything beyond the attached count; the re-read
-    // here only catches a unit detaching between that check and this lock, in
-    // which case the command still goes out but the local map stays untouched
-    // until a frame confirms where the lanes actually are.
+    // a slot index that get_slot_global() answers with nullptr. The guard
+    // above refuses bays past the attached count only once a frame has been
+    // parsed; this re-read catches the two windows the guard cannot — a unit
+    // detaching between that check and this lock, and a remap issued before
+    // the first box frame — where the command still goes out but the local
+    // map stays untouched until a frame confirms where the lanes actually are.
     {
         std::lock_guard<std::mutex> lock(mutex_);
         const int known_slots = system_info_.total_slots;

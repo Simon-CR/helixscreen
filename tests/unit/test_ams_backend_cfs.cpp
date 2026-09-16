@@ -1970,6 +1970,39 @@ TEST_CASE("CFS slot bounds agree across entry points (#1623)", "[ams][cfs][slot-
     }
 }
 
+// A backend that has parsed no box frame: total_slots is 0, which means the
+// box size is UNKNOWN, not that the box has no bays. The print-start mapping
+// restore fires on klippy READY, unordered against the first box frame, and
+// its recovery record is deleted when a send is refused - so the pre-frame
+// window must stay permissive, bounded only by the TNN alphabet.
+TEST_CASE("CFS slot bounds before the first box frame (#1623)", "[ams][cfs][slot-bounds][1623]") {
+    CfsRemapHelper helper;
+    helper.mark_running();
+    REQUIRE(helper.get_system_info().total_slots == 0);
+
+    SECTION("a remap before the first box frame is not refused") {
+        auto err = helper.set_tool_mapping(0, 2);
+        REQUIRE(err.result == AmsResult::SUCCESS);
+        REQUIRE_FALSE(helper.captured.empty());
+    }
+
+    SECTION("a load before the first box frame dispatches") {
+        auto err = helper.load_filament(2);
+        REQUIRE(err.result == AmsResult::SUCCESS);
+        REQUIRE_FALSE(helper.dispatched.empty());
+    }
+
+    SECTION("an identity write before the first box frame still leaves the app") {
+        helper.push_slot_identity_to_firmware(2, "PLA", "Generic", "", 0xFF0000);
+        REQUIRE_FALSE(helper.captured.empty());
+    }
+
+    SECTION("a slot past the TNN alphabet is refused even unparsed") {
+        auto err = helper.set_tool_mapping(0, 16);
+        REQUIRE(err.result == AmsResult::INVALID_SLOT);
+    }
+}
+
 TEST_CASE("CFS declares a persistent remap route and owns its table", "[ams][cfs][remap]") {
     CfsRemapHelper helper;
     REQUIRE(helper.owns_tool_mapping_table());
