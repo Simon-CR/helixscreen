@@ -314,7 +314,7 @@
   <translation tag="Bowden Length" fr="Longueur du bowden"/>
   <translation tag="Bowden tube length from hub to toolhead" fr="Longueur du tube bowden du hub à la tête d&apos;outil"/>
   <translation tag="Brand" fr="Marque"/>
-  <translation tag="Brand and material come from Spoolman"/>
+  <translation tag="Brand and material come from Spoolman" fr="La marque et le matériau proviennent de Spoolman"/>
   <translation tag="Brightness" fr="Luminosité"/>
   <translation tag="Brightness level when LEDs turn on at startup" fr="Niveau de luminosité lorsque les LED s&apos;allument au démarrage"/>
   <translation tag="BrightnessCLI" fr="Luminosité CLI"/>
@@ -649,7 +649,7 @@
   <translation tag="Could not update filaments" fr="Impossible de mettre à jour les filaments"/>
   <translation tag="Could not verify Spoolman status. Moonraker may still be restarting." fr="Impossible de vérifier l&apos;état de Spoolman. Moonraker est peut-être encore en cours de redémarrage."/>
   <translation tag="Couldn&apos;t save the material name" fr="Impossible d&apos;enregistrer le nom du matériau"/>
-  <translation tag="Couldn&apos;t save to Spoolman. Nothing changed on this printer."/>
+  <translation tag="Couldn&apos;t save to Spoolman. Nothing changed on this printer." fr="Impossible d&apos;enregistrer dans Spoolman. Rien n&apos;a été modifié sur cette imprimante."/>
   <translation tag="Cover open" fr="Capot ouvert"/>
   <translation tag="Crash Report" fr="Rapport de plantage"/>
   <translation tag="Crash report sent — thank you!" fr="Rapport de crash envoyé — merci !"/>
@@ -892,7 +892,7 @@
   <translation tag="Ethernet" fr="Ethernet"/>
   <translation tag="Events appear here after sessions and prints" fr="Les événements apparaissent ici après les sessions et impressions"/>
   <translation tag="Every extruder&apos;s temperature at once" fr="Température de chaque extrudeur"/>
-  <translation tag="Everything else was saved. Change them in Spoolman."/>
+  <translation tag="Everything else was saved. Change them in Spoolman." fr="Tout le reste a été enregistré. Modifiez-les dans Spoolman."/>
   <translation tag="Everything else was saved. Rename the material using letters, digits, spaces, and + - _ . ( ) /" fr="Tout le reste a été enregistré. Renommez le matériau en utilisant des lettres, des chiffres, des espaces et + - _ . ( ) /"/>
   <translation tag="Excellent Accuracy" fr="Excellente précision"/>
   <translation tag="Exception: {}" fr="Exception : {}"/>
@@ -2531,11 +2531,11 @@
   <translation tag="Spoolman found! Configuring..." fr="Spoolman trouvé ! Configuration..."/>
   <translation tag="Spoolman has no spools configured" fr="Spoolman n&apos;a aucune bobine configurée"/>
   <translation tag="Spoolman is not configured — nothing to remove." fr="Spoolman n&apos;est pas configuré — rien à supprimer."/>
-  <translation tag="Spoolman is offline, so brand and material can&apos;t be saved."/>
-  <translation tag="Spoolman is offline. Brand and material can change once it&apos;s back."/>
-  <translation tag="Spoolman needs a brand for this filament."/>
-  <translation tag="Spoolman needs a color for this filament."/>
-  <translation tag="Spoolman needs a material for this filament."/>
+  <translation tag="Spoolman is offline, so brand and material can&apos;t be saved." fr="Spoolman est hors ligne, la marque et le matériau ne peuvent donc pas être enregistrés."/>
+  <translation tag="Spoolman is offline. Brand and material can change once it&apos;s back." fr="Spoolman est hors ligne. La marque et le matériau pourront être modifiés à son retour."/>
+  <translation tag="Spoolman needs a brand for this filament." fr="Spoolman a besoin d&apos;une marque pour ce filament."/>
+  <translation tag="Spoolman needs a color for this filament." fr="Spoolman a besoin d&apos;une couleur pour ce filament."/>
+  <translation tag="Spoolman needs a material for this filament." fr="Spoolman a besoin d&apos;un matériau pour ce filament."/>
   <translation tag="Spoolman removed." fr="Spoolman supprimé."/>
   <translation tag="Spoolman unavailable — filament weights may be stale" fr="Spoolman indisponible — les poids de filament peuvent être obsolètes"/>
   <translation tag="Spoolman was not configured." fr="Spoolman n&apos;était pas configuré."/>

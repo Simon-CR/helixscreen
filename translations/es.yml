@@ -344,7 +344,7 @@ translations:
   Bowden Length: 'Longitud del bowden'
   Bowden tube length from hub to toolhead: 'Longitud del tubo bowden del hub al cabezal'
   Brand: Marca
-  Brand and material come from Spoolman: ''
+  Brand and material come from Spoolman: La marca y el material provienen de Spoolman
   Brightness: Brillo
   Brightness level when LEDs turn on at startup: Nivel de brillo cuando los LEDs se
     encienden al iniciar
@@ -733,7 +733,7 @@ translations:
   Could not verify Spoolman status. Moonraker may still be restarting.: No se pudo
     verificar el estado de Spoolman. Moonraker puede estar reiniciándose.
   Couldn't save the material name: 'No se pudo guardar el nombre del material'
-  Couldn't save to Spoolman. Nothing changed on this printer.: ''
+  Couldn't save to Spoolman. Nothing changed on this printer.: No se pudo guardar en Spoolman. No se cambió nada en esta impresora.
   Cover open: Tapa abierta
   Crash Report: Informe de fallo
   Crash report sent — thank you!: ¡Reporte de fallo enviado — gracias!
@@ -989,7 +989,7 @@ translations:
   Events appear here after sessions and prints: Los eventos aparecen aquí después
     de sesiones e impresiones
   Every extruder's temperature at once: La temperatura de todos los extrusores
-  Everything else was saved. Change them in Spoolman.: ''
+  Everything else was saved. Change them in Spoolman.: Todo lo demás se guardó. Cámbielos en Spoolman.
   Everything else was saved. Rename the material using letters, digits, spaces, and + - _ . ( ) /: 'Todo lo demás se guardó. Renombre el material usando letras, dígitos, espacios y + - _ . ( ) /'
   Excellent Accuracy: Precisión Excelente
   'Exception: {}': 'Excepción: {}'
@@ -2807,11 +2807,11 @@ translations:
   Spoolman has no spools configured: Spoolman no tiene bobinas configuradas
   Spoolman is not configured — nothing to remove.: Spoolman no está configurado —
     no hay nada que eliminar.
-  Spoolman is offline, so brand and material can't be saved.: ''
-  Spoolman is offline. Brand and material can change once it's back.: ''
-  Spoolman needs a brand for this filament.: ''
-  Spoolman needs a color for this filament.: ''
-  Spoolman needs a material for this filament.: ''
+  Spoolman is offline, so brand and material can't be saved.: Spoolman está desconectado, por lo que no se pueden guardar la marca y el material.
+  Spoolman is offline. Brand and material can change once it's back.: Spoolman está desconectado. La marca y el material se podrán cambiar cuando vuelva.
+  Spoolman needs a brand for this filament.: Spoolman necesita una marca para este filamento.
+  Spoolman needs a color for this filament.: Spoolman necesita un color para este filamento.
+  Spoolman needs a material for this filament.: Spoolman necesita un material para este filamento.
   Spoolman removed.: Spoolman eliminado.
   Spoolman unavailable — filament weights may be stale: Spoolman no disponible — los
     pesos del filamento pueden estar desactualizados

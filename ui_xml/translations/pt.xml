@@ -314,7 +314,7 @@
   <translation tag="Bowden Length" pt="Comprimento do bowden"/>
   <translation tag="Bowden tube length from hub to toolhead" pt="Comprimento do tubo bowden do hub ao cabeçote"/>
   <translation tag="Brand" pt="Marca"/>
-  <translation tag="Brand and material come from Spoolman"/>
+  <translation tag="Brand and material come from Spoolman" pt="Marca e material vêm do Spoolman"/>
   <translation tag="Brightness" pt="Brilho"/>
   <translation tag="Brightness level when LEDs turn on at startup" pt="Nível de brilho quando os LEDs ligam na inicialização"/>
   <translation tag="BrightnessCLI" pt="Brilho CLI"/>
@@ -649,7 +649,7 @@
   <translation tag="Could not update filaments" pt="Não foi possível atualizar os filamentos"/>
   <translation tag="Could not verify Spoolman status. Moonraker may still be restarting." pt="Não foi possível verificar o status do Spoolman. O Moonraker pode ainda estar reiniciando."/>
   <translation tag="Couldn&apos;t save the material name" pt="Não foi possível salvar o nome do material"/>
-  <translation tag="Couldn&apos;t save to Spoolman. Nothing changed on this printer."/>
+  <translation tag="Couldn&apos;t save to Spoolman. Nothing changed on this printer." pt="Não foi possível salvar no Spoolman. Nada foi alterado nesta impressora."/>
   <translation tag="Cover open" pt="Tampa aberta"/>
   <translation tag="Crash Report" pt="Relatório de Falha"/>
   <translation tag="Crash report sent — thank you!" pt="Relatório de erro enviado — obrigado!"/>
@@ -892,7 +892,7 @@
   <translation tag="Ethernet" pt="Ethernet"/>
   <translation tag="Events appear here after sessions and prints" pt="Eventos aparecem aqui após sessões e impressões"/>
   <translation tag="Every extruder&apos;s temperature at once" pt="A temperatura de todos os extrusores"/>
-  <translation tag="Everything else was saved. Change them in Spoolman."/>
+  <translation tag="Everything else was saved. Change them in Spoolman." pt="Todo o resto foi salvo. Altere-os no Spoolman."/>
   <translation tag="Everything else was saved. Rename the material using letters, digits, spaces, and + - _ . ( ) /" pt="Todo o resto foi salvo. Renomeie o material usando letras, dígitos, espaços e + - _ . ( ) /"/>
   <translation tag="Excellent Accuracy" pt="Precisão Excelente"/>
   <translation tag="Exception: {}" pt="Exceção: {}"/>
@@ -2531,11 +2531,11 @@
   <translation tag="Spoolman found! Configuring..." pt="Spoolman encontrado! Configurando..."/>
   <translation tag="Spoolman has no spools configured" pt="Spoolman não tem carretéis configurados"/>
   <translation tag="Spoolman is not configured — nothing to remove." pt="Spoolman não está configurado — nada a remover."/>
-  <translation tag="Spoolman is offline, so brand and material can&apos;t be saved."/>
-  <translation tag="Spoolman is offline. Brand and material can change once it&apos;s back."/>
-  <translation tag="Spoolman needs a brand for this filament."/>
-  <translation tag="Spoolman needs a color for this filament."/>
-  <translation tag="Spoolman needs a material for this filament."/>
+  <translation tag="Spoolman is offline, so brand and material can&apos;t be saved." pt="O Spoolman está offline, então marca e material não podem ser salvos."/>
+  <translation tag="Spoolman is offline. Brand and material can change once it&apos;s back." pt="O Spoolman está offline. Marca e material poderão ser alterados quando ele voltar."/>
+  <translation tag="Spoolman needs a brand for this filament." pt="O Spoolman precisa de uma marca para este filamento."/>
+  <translation tag="Spoolman needs a color for this filament." pt="O Spoolman precisa de uma cor para este filamento."/>
+  <translation tag="Spoolman needs a material for this filament." pt="O Spoolman precisa de um material para este filamento."/>
   <translation tag="Spoolman removed." pt="Spoolman removido."/>
   <translation tag="Spoolman unavailable — filament weights may be stale" pt="Spoolman indisponível — os pesos do filamento podem estar desatualizados"/>
   <translation tag="Spoolman was not configured." pt="Spoolman não estava configurado."/>

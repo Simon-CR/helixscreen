@@ -314,7 +314,7 @@
   <translation tag="Bowden Length" zh="波顿管长度"/>
   <translation tag="Bowden tube length from hub to toolhead" zh="从集线器到工具头的波顿管长度"/>
   <translation tag="Brand" zh="品牌"/>
-  <translation tag="Brand and material come from Spoolman"/>
+  <translation tag="Brand and material come from Spoolman" zh="品牌和材料来自 Spoolman"/>
   <translation tag="Brightness" zh="亮度"/>
   <translation tag="Brightness level when LEDs turn on at startup" zh="启动时 LED 开启的亮度级别"/>
   <translation tag="BrightnessCLI" zh="亮度 CLI"/>
@@ -649,7 +649,7 @@
   <translation tag="Could not update filaments" zh="无法更新耗材"/>
   <translation tag="Could not verify Spoolman status. Moonraker may still be restarting." zh="无法验证 Spoolman 状态。Moonraker 可能仍在重启中。"/>
   <translation tag="Couldn&apos;t save the material name" zh="无法保存材料名称"/>
-  <translation tag="Couldn&apos;t save to Spoolman. Nothing changed on this printer."/>
+  <translation tag="Couldn&apos;t save to Spoolman. Nothing changed on this printer." zh="无法保存到 Spoolman。此打印机上未做任何更改。"/>
   <translation tag="Cover open" zh="盖子未关闭"/>
   <translation tag="Crash Report" zh="崩溃报告"/>
   <translation tag="Crash report sent — thank you!" zh="崩溃报告已发送 — 谢谢！"/>
@@ -892,7 +892,7 @@
   <translation tag="Ethernet" zh="以太网"/>
   <translation tag="Events appear here after sessions and prints" zh="会话和打印后事件将显示在此处"/>
   <translation tag="Every extruder&apos;s temperature at once" zh="同时查看所有挤出机温度"/>
-  <translation tag="Everything else was saved. Change them in Spoolman."/>
+  <translation tag="Everything else was saved. Change them in Spoolman." zh="其他内容均已保存。请在 Spoolman 中修改。"/>
   <translation tag="Everything else was saved. Rename the material using letters, digits, spaces, and + - _ . ( ) /" zh="其他内容均已保存。请使用字母、数字、空格以及 + - _ . ( ) / 重命名材料"/>
   <translation tag="Excellent Accuracy" zh="精度极佳"/>
   <translation tag="Exception: {}" zh="异常: {}"/>
@@ -2531,11 +2531,11 @@
   <translation tag="Spoolman found! Configuring..." zh="已找到 Spoolman！正在配置..."/>
   <translation tag="Spoolman has no spools configured" zh="Spoolman 未配置料盘"/>
   <translation tag="Spoolman is not configured — nothing to remove." zh="Spoolman 未配置 — 无需移除。"/>
-  <translation tag="Spoolman is offline, so brand and material can&apos;t be saved."/>
-  <translation tag="Spoolman is offline. Brand and material can change once it&apos;s back."/>
-  <translation tag="Spoolman needs a brand for this filament."/>
-  <translation tag="Spoolman needs a color for this filament."/>
-  <translation tag="Spoolman needs a material for this filament."/>
+  <translation tag="Spoolman is offline, so brand and material can&apos;t be saved." zh="Spoolman 离线，无法保存品牌和材料。"/>
+  <translation tag="Spoolman is offline. Brand and material can change once it&apos;s back." zh="Spoolman 离线。恢复后可更改品牌和材料。"/>
+  <translation tag="Spoolman needs a brand for this filament." zh="Spoolman 需要该耗材的品牌。"/>
+  <translation tag="Spoolman needs a color for this filament." zh="Spoolman 需要该耗材的颜色。"/>
+  <translation tag="Spoolman needs a material for this filament." zh="Spoolman 需要该耗材的材料。"/>
   <translation tag="Spoolman removed." zh="Spoolman 已移除。"/>
   <translation tag="Spoolman unavailable — filament weights may be stale" zh="Spoolman不可用 — 耗材重量可能已过期"/>
   <translation tag="Spoolman was not configured." zh="Spoolman 未配置。"/>
