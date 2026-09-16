@@ -129,7 +129,9 @@ std::optional<std::string> parse_installed_version(const PrinterDiscovery& hardw
 std::string printer_cfg_backup_name() {
     const std::time_t now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
     char stamp[24] = {};
-    std::strftime(stamp, sizeof(stamp), "%Y%m%d-%H%M%S", std::localtime(&now));
+    std::tm tm_buf{};
+    localtime_r(&now, &tm_buf);
+    std::strftime(stamp, sizeof(stamp), "%Y%m%d-%H%M%S", &tm_buf);
     return std::string("printer.cfg.helixbak-") + stamp;
 }
 

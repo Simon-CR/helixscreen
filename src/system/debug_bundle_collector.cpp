@@ -68,7 +68,9 @@ json DebugBundleCollector::collect(const BundleOptions& options) {
     auto now = std::chrono::system_clock::now();
     auto time_t_now = std::chrono::system_clock::to_time_t(now);
     char time_buf[64];
-    std::strftime(time_buf, sizeof(time_buf), "%Y-%m-%dT%H:%M:%SZ", std::gmtime(&time_t_now));
+    std::tm tm_buf{};
+    gmtime_r(&time_t_now, &tm_buf);
+    std::strftime(time_buf, sizeof(time_buf), "%Y-%m-%dT%H:%M:%SZ", &tm_buf);
     bundle["timestamp"] = time_buf;
 
     try {
