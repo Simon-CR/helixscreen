@@ -22,18 +22,22 @@
 
 #include "../lvgl_test_fixture.h"
 #include "../test_helpers/cfs_test_access.h"
+#include "../test_helpers/config_dir_guard.h"
 #include "../test_helpers/print_start_controller_test_access.h"
 #include "ams_backend_ad5x_ifs.h"
 #include "ams_backend_afc.h"
 #include "ams_backend_cfs.h"
 #include "ams_backend_happy_hare.h"
 #include "ams_state.h"
+#include "data_root_resolver.h"
 #include "moonraker_api_mock.h"
 #include "moonraker_client_mock.h"
 #include "print_job_ref.h"
 #include "printer_state.h"
 #include "slot_registry.h"
 
+#include <filesystem>
+#include <fstream>
 #include <memory>
 #include <vector>
 
@@ -46,14 +50,19 @@ namespace {
 
 // Counts the restore commands the controller actually dispatches. Returns
 // SUCCESS the way the real backends do (execute_gcode is fire-and-forget), so
-// the test pins the CONTROLLER's behavior rather than a mock that reports
-// failures the production code would never see.
+// the default mode pins the CONTROLLER's behavior rather than a mock that
+// reports failures the production code would never see. `refuse_remaps`
+// returns synchronous refusals instead — the shape a slot bound produces for
+// a lane on a unit the box is not reporting.
 class CountingAfcBackend : public AmsBackendAfc {
   public:
     CountingAfcBackend() : AmsBackendAfc(nullptr, nullptr) {}
 
     AmsError set_tool_mapping_impl(int tool_number, int slot_index) override {
         calls.push_back({tool_number, slot_index});
+        if (refuse_remaps) {
+            return AmsErrorHelper::invalid_slot(lane_noun(), slot_index, 3);
+        }
         return AmsErrorHelper::success();
     }
 
@@ -90,6 +99,7 @@ class CountingAfcBackend : public AmsBackendAfc {
     };
     std::vector<Call> calls;
     std::vector<int> current;
+    bool refuse_remaps = false;
     bool echoes_firmware = false;
     uint64_t generation = 0;
 };
@@ -175,6 +185,49 @@ TEST_CASE("remap restore: halted Klipper does not consume the saved mapping",
     // stranded the printer on the print's mapping with no record of the real one.
     CHECK_FALSE(PrintStartControllerTestAccess::saved_mapping(h.controller).empty());
     CHECK(PrintStartControllerTestAccess::saved_backend_index(h.controller) == 0);
+}
+
+// ============================================================================
+// A refused send is not a delivered send. A slot bound refuses a lane on a
+// detached unit: the box got smaller mid-print, and the snapshot still names
+// the missing bay. The record must survive so the next startup's replay
+// retries the refused entries and skips the ones that took — a reattached
+// unit gets its routing back. Clearing here makes a temporary detach a
+// permanent loss of the pre-print mapping.
+// ============================================================================
+
+TEST_CASE("remap restore: refused sends retain the record for replay", "[remap-restore][1623]") {
+    LVGLTestFixture fx;
+    ConfigDirGuard config_dir{"remap_refused"};
+    ScopedCountingBackend be{{1, 2}};
+    be.backend->refuse_remaps = true;
+    Harness h;
+    h.set_klippy(KlippyState::READY);
+
+    // Echoing backends take the "restores_sent == 0" branch; no-echo backends
+    // (K1) take the send-as-delivery branch. Both clear through
+    // finish_restore(), so both must retain on refusal.
+    SECTION("echoing backend") {
+        be.backend->echoes_firmware = true;
+    }
+    SECTION("no-echo backend") {}
+
+    // The crash-recovery record on disk, the way persist_remap_state() writes
+    // it — the file recover_pending_remap() replays on the next startup.
+    const auto record = std::filesystem::path(helix::get_user_config_dir()) / "pending_remap.json";
+    std::filesystem::create_directories(record.parent_path());
+    {
+        std::ofstream ofs(record);
+        ofs << "{\"backend_index\":0,\"tool_mapping\":[2,1]}";
+    }
+
+    PrintStartControllerTestAccess::seed_saved_mapping(h.controller, {2, 1}, 0);
+    PrintStartControllerTestAccess::restore(h.controller);
+
+    REQUIRE(be.backend->calls.size() == 2); // both differing entries attempted
+    CHECK_FALSE(PrintStartControllerTestAccess::saved_mapping(h.controller).empty());
+    CHECK(PrintStartControllerTestAccess::saved_backend_index(h.controller) == 0);
+    CHECK(std::filesystem::exists(record));
 }
 
 TEST_CASE("remap restore: klippy ERROR and STARTUP are also not delivery",

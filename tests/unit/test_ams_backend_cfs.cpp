@@ -788,6 +788,30 @@ static json make_single_unit_box(const std::vector<std::string>& material_types,
     return box;
 }
 
+// A box with `unit_count` connected units (four empty bays each). The bound
+// every entry point validates against is the attached unit count, so a test
+// that names a bay places the boundary with this builder: total_slots is
+// 4 * unit_count and every index past it is absent hardware.
+static json make_multi_unit_box(int unit_count) {
+    json box = json{{"state", "connect"}, {"filament", 0},       {"auto_refill", 1},
+                    {"enable", 1},        {"filament_useup", 1}, {"map", json::object()}};
+    for (int u = 1; u <= unit_count; ++u) {
+        box["T" + std::to_string(u)] =
+            json{{"state", "connect"},
+                 {"filament", "None"},
+                 {"temperature", "27"},
+                 {"dry_and_humidity", "48"},
+                 {"version", "1.1.3"},
+                 {"sn", "SERIAL"},
+                 {"vender", json::array({"none", "none", "none", "none"})},
+                 {"remain_len", json::array({"-1", "-1", "-1", "-1"})},
+                 {"color_value", json::array({"-1", "-1", "-1", "-1"})},
+                 {"material_type", json::array({"-1", "-1", "-1", "-1"})},
+                 {"change_color_num", json::array({"-1", "-1", "-1", "-1"})}};
+    }
+    return box;
+}
+
 using helix::printer::AmsBackendCfs;
 
 TEST_CASE("CFS backend status parsing", "[ams][cfs]") {
@@ -1276,6 +1300,9 @@ TEST_CASE("CFS K1 macro variant (#968)", "[ams][cfs]") {
 TEST_CASE("CFS change_tool selects load-vs-swap from filament_loaded (#968)", "[ams][cfs][k1]") {
     CfsK1RemapHelper backend;
     backend.mark_running();
+    // change_tool's slot bound is the attached unit count, so the box must
+    // have reported its lanes before a tool can name one.
+    CfsTestAccess::handle_status(backend, make_cfs_notification(make_multi_unit_box(1)));
 
     SECTION("nozzle EMPTY but slot preloaded → fresh load (no cut)") {
         // The exact K1 CFS state from the report: current_slot >= 0 (a cassette
@@ -1324,6 +1351,7 @@ TEST_CASE("CFS push_slot_identity_to_firmware writes color + observed material c
     CfsRemapHelper helper;
 
     SECTION("no firmware-observed code → color-only + same-material refresh") {
+        CfsTestAccess::handle_status(helper, make_cfs_notification(make_multi_unit_box(1)));
         helper.push_slot_identity_to_firmware(0, "PETG", "Generic", "", 0xFF0000);
         // The follow-up BOX_UPDATE_SAME_MATERIAL_LIST mirrors Creality's own
         // master-server, which refreshes the auto-refill equivalence groups
@@ -1339,6 +1367,8 @@ TEST_CASE("CFS push_slot_identity_to_firmware writes color + observed material c
     }
 
     SECTION("baseline present but code never observed → still color-only") {
+        // Slot 5 is a bay on the second unit, so the box reports two units.
+        CfsTestAccess::handle_status(helper, make_cfs_notification(make_multi_unit_box(2)));
         CfsTestAccess::set_last_rfid_uid(helper, 5, "101001|0FF0000");
         helper.push_slot_identity_to_firmware(5, "PETG", "Generic", "", 0x00FF00);
         REQUIRE(helper.captured.size() == 2);
@@ -1617,6 +1647,9 @@ TEST_CASE("CFS parse_box_status infers active slot from tool map", "[ams][cfs]")
 
 TEST_CASE("CFS set_tool_mapping emits BOX_MODIFY_TN with TNN keys/values", "[ams][cfs][remap]") {
     CfsRemapHelper helper;
+    // The whole TNN alphabet is addressable, so this box reports all four
+    // units: 16 bays, and index 16 past the last one.
+    CfsTestAccess::handle_status(helper, make_cfs_notification(make_multi_unit_box(4)));
 
     SECTION("Identity within unit 1: T1A → T1A") {
         auto err = helper.set_tool_mapping(0, 0);
@@ -1723,6 +1756,9 @@ TEST_CASE("CFS refresh_rfid probes each connected unit via BOX_INFO_REFRESH",
 TEST_CASE("CFS push_slot_identity_to_firmware emits BOX_MODIFY_TN_DATA",
           "[ams][cfs][firmware_writeback]") {
     CfsRemapHelper helper;
+    // The ADDR/NUM arithmetic spans the whole TNN alphabet, so this box
+    // reports all four units and every index below is an attached bay.
+    CfsTestAccess::handle_status(helper, make_cfs_notification(make_multi_unit_box(4)));
 
     SECTION("Slot 0 (T1A) red 0xFF0000 → ADDR=1 NUM=A DATA=0FF0000") {
         helper.push_slot_identity_to_firmware(0, "", "", "", 0xFF0000);
@@ -1769,6 +1805,7 @@ TEST_CASE("CFS push_slot_identity_to_firmware skips invalid inputs (must NOT cra
         // must NOT skip it — that's the bug fixed by the color_set boolean.
         // Caller (apply_user_edit) is responsible for not invoking when color
         // wasn't actually set (color_set=false on the override).
+        CfsTestAccess::handle_status(helper, make_cfs_notification(make_multi_unit_box(1)));
         helper.push_slot_identity_to_firmware(0, "", "", "", 0);
         REQUIRE(helper.captured ==
                 std::vector<std::string>{
@@ -1826,23 +1863,14 @@ TEST_CASE("CFS set_tool_mapping updates local tool_to_slot_map", "[ams][cfs][rem
         CHECK(after[3] == -1);
     }
 
-    SECTION("a remap onto a lane the box has not reported is sent but not recorded") {
-        // Slot 5 lives in unit T2, which this payload reports as state "None" —
-        // not connected. The command still goes out, because firmware is the
-        // authority and a unit we have not yet parsed a frame for may well be
-        // there; the frame that describes it is what makes the mapping real.
-        //
-        // What must NOT happen is recording it locally. A forward entry naming
-        // a lane with no SlotInfo has no mapped_tool to pair with, so the two
-        // directions could never agree — and resolve_op_button_slot() would
-        // hand the filament panel slot 5, which get_slot_global() answers with
-        // nullptr. This assertion used to read `after[1] == 5`, from when the
-        // forward map was written on its own and nothing had to match it.
-        const size_t sent_before = helper.captured.size();
-        REQUIRE(helper.set_tool_mapping(1, 5).result == AmsResult::SUCCESS);
-
-        REQUIRE(helper.captured.size() == sent_before + 1);
-        CHECK(helper.captured.back() == "BOX_MODIFY_TN T1B=T2B");
+    SECTION("a remap onto a lane the box has not reported is refused") {
+        // Slot 5 lives in unit T2, which this payload reports as state "None"
+        // — not connected. Sending BOX_MODIFY_TN anyway would leave firmware's
+        // routing table pointing at a bay that cannot feed, so the remap is
+        // refused outright and neither direction of the local map moves.
+        // (#1623)
+        REQUIRE(helper.set_tool_mapping(1, 5).result == AmsResult::INVALID_SLOT);
+        REQUIRE(helper.captured.empty());
 
         auto after = helper.get_tool_mapping();
         CHECK(after == baseline);
@@ -1860,6 +1888,118 @@ TEST_CASE("CFS set_tool_mapping updates local tool_to_slot_map", "[ams][cfs][rem
             REQUIRE(lane != nullptr);
             CHECK(lane->mapped_tool == t);
         }
+    }
+}
+
+// =============================================================================
+// Slot-index bounds (prestonbrown/helixscreen#1623)
+// =============================================================================
+//
+// total_slots is the attached unit count (four bays per unit), so a one-unit
+// box has bays 0-3 and index 7 names a bay on hardware that is not attached.
+// Every entry point must answer that index with the same bound: the attached
+// count. The bypass sentinel is exempt everywhere — it is a target, not a bay.
+TEST_CASE("CFS slot bounds agree across entry points (#1623)", "[ams][cfs][slot-bounds][1623]") {
+    CfsRemapHelper helper;
+    helper.mark_running();
+
+    CfsTestAccess::handle_status(helper, make_cfs_notification(make_single_unit_box(
+                                             {"101001", "101001", "101001", "101001"},
+                                             {"0000000", "0FFFFFF", "00A2989", "0C12E1F"})));
+    REQUIRE(helper.get_system_info().total_slots == 4);
+
+    SECTION("set_tool_mapping refuses a slot on an unattached unit") {
+        auto err = helper.set_tool_mapping(0, 7);
+        REQUIRE(err.result == AmsResult::INVALID_SLOT);
+        REQUIRE(helper.captured.empty());
+    }
+
+    SECTION("a remap's tool number is bounded by the alphabet, not the attached count") {
+        auto err = helper.set_tool_mapping(7, 1);
+        REQUIRE(err.result == AmsResult::SUCCESS);
+        REQUIRE_FALSE(helper.captured.empty());
+    }
+
+    SECTION("load_filament refuses a slot on an unattached unit") {
+        auto err = helper.load_filament(7);
+        REQUIRE(err.result == AmsResult::INVALID_SLOT);
+        REQUIRE(helper.dispatched.empty());
+    }
+
+    SECTION("change_tool's bound is the TNN alphabet, not the attached count") {
+        // `tool` is a routing key over firmware's T0-T15 table, not a bay
+        // index: plan_load() feeds a lane's mapped_tool here verbatim, and
+        // that key can sit high while fewer units are attached. Which bay the
+        // key resolves to is the table's business; encodability is the only
+        // question this bound answers.
+        auto err = helper.change_tool(7);
+        REQUIRE(err.result == AmsResult::SUCCESS);
+        REQUIRE_FALSE(helper.dispatched.empty());
+    }
+
+    SECTION("push_slot_identity_to_firmware skips an unattached bay") {
+        helper.push_slot_identity_to_firmware(7, "PLA", "Generic", "", 0xFF0000);
+        REQUIRE(helper.captured.empty());
+    }
+
+    SECTION("every refusal quotes the attached count, not the family maximum") {
+        auto mapping_err = helper.set_tool_mapping(0, 7);
+        REQUIRE(mapping_err.result == AmsResult::INVALID_SLOT);
+
+        SlotInfo edit;
+        edit.material = "PLA";
+        edit.color_rgb = 0xFF5500;
+        auto edit_err = helix::test::apply_edit(helper, 7, edit);
+        REQUIRE(edit_err.result == AmsResult::INVALID_SLOT);
+
+        // set_slot_info has always quoted the attached count; a mismatch here
+        // is one of the entry points still spelling the bound as 16 or 15.
+        REQUIRE(mapping_err.technical_msg == edit_err.technical_msg);
+        REQUIRE(mapping_err.technical_msg.find("(0-3)") != std::string::npos);
+    }
+
+    SECTION("an attached bay still passes: set_tool_mapping and load_filament") {
+        REQUIRE(helper.set_tool_mapping(0, 3).result == AmsResult::SUCCESS);
+        REQUIRE(helper.load_filament(3).result == AmsResult::SUCCESS);
+    }
+
+    SECTION("an attached bay still passes: change_tool") {
+        // Its own section: a dispatched load marks the backend busy, so the
+        // two ops cannot share a run.
+        REQUIRE(helper.change_tool(3).result == AmsResult::SUCCESS);
+    }
+}
+
+// A backend that has parsed no box frame: total_slots is 0, which means the
+// box size is UNKNOWN, not that the box has no bays. The print-start mapping
+// restore fires on klippy READY, unordered against the first box frame, and
+// its recovery record is deleted when a send is refused - so the pre-frame
+// window must stay permissive, bounded only by the TNN alphabet.
+TEST_CASE("CFS slot bounds before the first box frame (#1623)", "[ams][cfs][slot-bounds][1623]") {
+    CfsRemapHelper helper;
+    helper.mark_running();
+    REQUIRE(helper.get_system_info().total_slots == 0);
+
+    SECTION("a remap before the first box frame is not refused") {
+        auto err = helper.set_tool_mapping(0, 2);
+        REQUIRE(err.result == AmsResult::SUCCESS);
+        REQUIRE_FALSE(helper.captured.empty());
+    }
+
+    SECTION("a load before the first box frame dispatches") {
+        auto err = helper.load_filament(2);
+        REQUIRE(err.result == AmsResult::SUCCESS);
+        REQUIRE_FALSE(helper.dispatched.empty());
+    }
+
+    SECTION("an identity write before the first box frame still leaves the app") {
+        helper.push_slot_identity_to_firmware(2, "PLA", "Generic", "", 0xFF0000);
+        REQUIRE_FALSE(helper.captured.empty());
+    }
+
+    SECTION("a slot past the TNN alphabet is refused even unparsed") {
+        auto err = helper.set_tool_mapping(0, 16);
+        REQUIRE(err.result == AmsResult::INVALID_SLOT);
     }
 }
 
@@ -3815,6 +3955,7 @@ TEST_CASE("CFS load routes the bypass sentinel instead of refusing it", "[ams][c
     SECTION("stock K2: a real bay still gets the bay script") {
         CfsRemapHelper backend;
         backend.mark_running();
+        CfsTestAccess::handle_status(backend, make_cfs_notification(make_multi_unit_box(1)));
 
         REQUIRE(backend.load_filament(0).result == AmsResult::SUCCESS);
         REQUIRE(backend.dispatched.size() == 1);
@@ -3824,6 +3965,7 @@ TEST_CASE("CFS load routes the bypass sentinel instead of refusing it", "[ams][c
     SECTION("Fork keeps its own T<external> attended load") {
         CfsRemapHelper backend;
         backend.mark_running();
+        CfsTestAccess::handle_status(backend, make_cfs_notification(make_multi_unit_box(1)));
         CfsTestAccess::set_macro_variant_fork(backend);
 
         // Fork resolves the external bay through its own T command, so the
