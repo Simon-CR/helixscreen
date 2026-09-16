@@ -43,6 +43,19 @@ std::string trim_trailing_ellipsis(const std::string& s) {
     return s.substr(0, end);
 }
 
+/// Strip leading/trailing whitespace, so a dispatched line and its console
+/// echo compare equal regardless of the block's trailing newline or the
+/// terminal's padding.
+std::string trim_whitespace(const std::string& s) {
+    const auto* ws = " \t\r\n";
+    const size_t begin = s.find_first_not_of(ws);
+    if (begin == std::string::npos) {
+        return {};
+    }
+    const size_t end = s.find_last_not_of(ws);
+    return s.substr(begin, end - begin + 1);
+}
+
 /// Status text shown while a phase is current.
 ///
 /// IDLE has no text of its own: the pre-print banner is hidden outside a print
@@ -158,6 +171,7 @@ void PrintStartCollector::start() {
         held_for_ = {};
         // Assume the narrower window until something says otherwise.
         window_ = helix::PreprintWindow::PrinterEdge;
+        host_pre_start_echo_lines_.clear();
         detected_phases_.clear();
         current_phase_ = PrintStartPhase::INITIALIZING;
         print_start_detected_ = false;
@@ -374,9 +388,23 @@ void PrintStartCollector::stop() {
     }
 }
 
-void PrintStartCollector::note_host_side_pre_start() {
+void PrintStartCollector::note_host_side_pre_start(const std::string& dispatched_block) {
     {
         std::lock_guard<std::mutex> lock(state_mutex_);
+        host_pre_start_echo_lines_.clear();
+        size_t begin = 0;
+        while (begin <= dispatched_block.size()) {
+            const size_t newline = dispatched_block.find('\n', begin);
+            const std::string line = trim_whitespace(dispatched_block.substr(
+                begin, newline == std::string::npos ? std::string::npos : newline - begin));
+            if (!line.empty()) {
+                host_pre_start_echo_lines_.push_back(line);
+            }
+            if (newline == std::string::npos) {
+                break;
+            }
+            begin = newline + 1;
+        }
         if (window_ == helix::PreprintWindow::HostPreStart) {
             return; // already declared
         }
@@ -421,6 +449,7 @@ void PrintStartCollector::reset() {
         layer_zero_seen_.store(false, std::memory_order_relaxed);
         first_layer_observed_.store(-1, std::memory_order_relaxed);
         layer_advanced_.store(false, std::memory_order_relaxed);
+        host_pre_start_echo_lines_.clear();
     }
     fallbacks_enabled_.store(false);
 
@@ -892,6 +921,21 @@ void PrintStartCollector::check_fallback_completion() {
 // PRIVATE METHODS
 // ============================================================================
 
+bool PrintStartCollector::is_own_pre_start_echo_locked(const std::string& line) const {
+    const std::string trimmed = trim_whitespace(line);
+    if (trimmed.empty()) {
+        return false;
+    }
+    for (const auto& dispatched : host_pre_start_echo_lines_) {
+        // Equality covers the per-line echo; containment covers a console
+        // that repeats the whole block (or decorates the line around it).
+        if (trimmed == dispatched || trimmed.find(dispatched) != std::string::npos) {
+            return true;
+        }
+    }
+    return false;
+}
+
 void PrintStartCollector::on_gcode_response(const json& msg) {
     if (!active_.load()) {
         return;
@@ -914,6 +958,20 @@ void PrintStartCollector::on_gcode_response(const json& msg) {
     }
 
     spdlog::trace("[PrintStartCollector] G-code: {}", line);
+
+    // Klipper echoes dispatched gcode back through the console. A line that
+    // reproduces the host-side pre-start block is our own text being repeated
+    // before the printer has run any of it, so nothing in it — pattern match,
+    // marker, or plugin signal — may be read as the printer narrating work.
+    // Unrelated lines arriving in the same window are still honoured.
+    {
+        std::lock_guard<std::mutex> lock(state_mutex_);
+        if (is_own_pre_start_echo_locked(line)) {
+            spdlog::debug("[PrintStartCollector] Ignoring echo of dispatched pre-start gcode: {}",
+                          line);
+            return;
+        }
+    }
 
     // Check for HELIX:PHASE signals (highest priority - definitive signals from plugin/macros)
     if (check_helix_phase_signal(line)) {
