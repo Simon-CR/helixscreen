@@ -164,3 +164,48 @@ make_remote_worktree() {
     [ "$status" -ne 0 ]
     contains "that is the main tree" "$output"
 }
+
+# ---------------------------------------------------------- submodule pointers
+#
+# .git/modules/<name> is common to every worktree, so initializing a submodule
+# inside one aims that shared core.worktree at it. Teardown has to aim it back
+# at the main checkout before deleting the directory, or every other worktree
+# symlinking that submodule fails `git status` with "cannot chdir". The two
+# module depths carry different ../ runs and are restored independently, and a
+# pointer aimed anywhere else is not the script's to touch.
+
+fake_module_pointer() {
+    mkdir -p "$MAIN/.git/modules/$1"
+    printf '[core]\n\tworktree = %s\n' "$2" > "$MAIN/.git/modules/$1/config"
+}
+
+module_pointer() {
+    git config --file "$MAIN/.git/modules/$1/config" --get core.worktree
+}
+
+@test "a submodule pointer aimed into the removed worktree is restored" {
+    make_worktree doomed
+    mkdir -p "$MAIN/lib/glm"
+    fake_module_pointer glm "../../../.worktrees/doomed/lib/glm"
+    run "$SCRIPT" doomed --into master
+    [ "$status" -eq 0 ]
+    [ "$(module_pointer glm)" = "../../../lib/glm" ]
+}
+
+@test "a restored pointer keeps the deeper lib/ module ../ run" {
+    make_worktree doomed
+    mkdir -p "$MAIN/lib/ftxui"
+    fake_module_pointer lib/ftxui "../../../../.worktrees/doomed/lib/ftxui"
+    run "$SCRIPT" doomed --into master
+    [ "$status" -eq 0 ]
+    [ "$(module_pointer lib/ftxui)" = "../../../../lib/ftxui" ]
+}
+
+@test "a pointer aimed outside the removed worktree is left alone" {
+    make_worktree doomed
+    mkdir -p "$MAIN/lib/spdlog"
+    fake_module_pointer spdlog "../../../lib/spdlog"
+    run "$SCRIPT" doomed --into master
+    [ "$status" -eq 0 ]
+    [ "$(module_pointer spdlog)" = "../../../lib/spdlog" ]
+}
