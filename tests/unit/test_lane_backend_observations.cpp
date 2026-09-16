@@ -33,6 +33,7 @@
 #include "test_helpers/backend_user_edit.h"
 #include "test_helpers/cfs_test_access.h"
 #include "test_helpers/happy_hare_test_access.h"
+#include "test_helpers/log_capture.h"
 #include "test_helpers/qidi_box_test_access.h"
 #include "test_helpers/registered_backend.h"
 #include "test_helpers/scoped_runtime_config.h"
@@ -2973,6 +2974,19 @@ std::unique_ptr<helix::ams::FilamentSlotOverrideStore> toolchanger_store(LaneDat
     return db.store("toolchanger", helix::ams::LaneKeyStyle::Tool);
 }
 
+/// A tool changer held in the state a resync has to speak up about: started
+/// (so a lane-record store is owed) but with none behind it. start() is final
+/// on AmsSubscriptionBackend and drags in subscription setup, so the flag
+/// start() would set is set directly.
+class StartedStorelessToolChanger : public AmsBackendToolChanger {
+  public:
+    using AmsBackendToolChanger::AmsBackendToolChanger;
+
+    void mark_running_for_test() {
+        running_ = true;
+    }
+};
+
 } // namespace
 
 // --- The one backend that files -------------------------------------------
@@ -3187,6 +3201,56 @@ TEST_CASE_METHOD(LVGLTestFixture, "a resync with no store is a no-op, not a cras
     helix::ui::UpdateQueue::instance().drain();
 
     CHECK(helix::ams::known_lanes().empty());
+}
+
+// The no-op above is only correct while the missing store is expected. On a
+// backend that is live and reachable, firmware stating no identity of its own
+// makes the persisted record the producer, and naming no store to read it
+// from means the resync the caller asked for cannot be issued. The three
+// cases below are one contract: the first proves the branch and its needle
+// are live, the other two pin the two states where a missing store is
+// expected and must stay quiet.
+
+TEST_CASE_METHOD(LVGLTestFixture, "a live backend that names no store says the resync was skipped",
+                 "[lane][ingest][resync]") {
+    LaneDataDb db;
+    RegisteredBackend<StartedStorelessToolChanger> harness(&db.api, nullptr);
+    harness->mark_running_for_test();
+
+    helix::LogCapture cap;
+    harness->request_resync();
+
+    REQUIRE(cap.count_containing("request_resync(): no lane-record store") == 1);
+    const auto levels = cap.levels_for("request_resync(): no lane-record store");
+    REQUIRE(levels.size() == 1);
+    CHECK(levels[0] == spdlog::level::warn);
+}
+
+TEST_CASE_METHOD(LVGLTestFixture, "a resync before the backend starts stays quiet about no store",
+                 "[lane][ingest][resync]") {
+    // The store is built in on_started(), which start() has not run, so a
+    // missing store here is expected -- the print-select view reaches this
+    // path whenever it opens before the backend's start() has succeeded.
+    LaneDataDb db;
+    RegisteredBackend<StartedStorelessToolChanger> harness(&db.api, nullptr);
+
+    helix::LogCapture cap;
+    harness->request_resync();
+
+    CHECK(cap.count_containing("request_resync(): no lane-record store") == 0);
+}
+
+TEST_CASE_METHOD(LVGLTestFixture, "a resync on a backend with no API stays quiet about no store",
+                 "[lane][ingest][resync]") {
+    // No API: no store is ever built and none is owed, whatever the running
+    // flag says.
+    RegisteredBackend<StartedStorelessToolChanger> harness(nullptr, nullptr);
+    harness->mark_running_for_test();
+
+    helix::LogCapture cap;
+    harness->request_resync();
+
+    CHECK(cap.count_containing("request_resync(): no lane-record store") == 0);
 }
 
 // ============================================================================
