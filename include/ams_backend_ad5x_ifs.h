@@ -1550,13 +1550,14 @@ class AmsBackendAd5xIfs : public AmsSubscriptionBackend {
     // Startup safety: on_started() loads overrides_ from Moonraker DB BEFORE
     // any firmware parse runs, and last_firmware_color_ stays empty until the
     // first parse — so the startup window can't flag the initial observation
-    // as an external edit. settle_port_locked() also pre-updates this map with the
-    // user's chosen color before calling update_slot_from_state() so a Helix-
-    // initiated color edit isn't misread as a foreign one on the same call.
+    // as an external edit. The map records only what parses read; an edit
+    // never touches it. When firmware echoes an edit back, that delta fires
+    // the mirror, whose declared_on_lane guard skips the fields the user
+    // declared — an edit survives its own echo through the declaration, not
+    // through this baseline.
     //
     // Access is always under mutex_ (written/read from update_slot_from_state
-    // -> check_external_color_change and from settle_port_locked's pre-update, all
-    // of which run under the lock).
+    // -> check_external_color_change, which runs under the lock).
     std::unordered_map<int, uint32_t> last_firmware_color_;
     // Per-slot previous firmware MATERIAL, mirroring last_firmware_color_.
     // Drives check_external_type_change so a type-only firmware edit refreshes

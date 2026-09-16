@@ -1256,12 +1256,11 @@ void AmsBackendAd5xIfs::update_slot_from_state(int slot_index) {
 bool AmsBackendAd5xIfs::check_external_color_change(int slot_index,
                                                     std::optional<uint32_t> observed_color,
                                                     bool slot_has_filament) {
-    // observed_color is whatever color this parse (or caller) believes is
-    // currently in the slot — typically firmware-truth from the parse path,
-    // but settle_port_locked() also pre-updates the baseline with the user's
-    // chosen color before calling update_slot_from_state(), so this helper
-    // can be fed a user-provided color too. Either way, the "did it change
-    // from what we last saw?" contract is the same.
+    // observed_color is the reading update_slot_from_state() took from
+    // colors_[idx]: firmware truth from a printer frame, always. A user edit
+    // never reaches this helper as a value — it rides the lane's declaration,
+    // so when the echo parse lands the edited colour here, the delta fires
+    // and the mirror's declared_on_lane guard keeps the edit (#965).
     //
     // `nullopt` is the explicit "no reading available" signal (empty
     // colors_[idx], unread slot, transient JSON parse race). Treat as
@@ -1315,8 +1314,13 @@ bool AmsBackendAd5xIfs::check_external_color_change(int slot_index,
     // save_async doesn't make us re-fire every poll.
     it->second = color;
 
+    // Provenance-neutral wording: the delta between two firmware readings is
+    // a fact, but whether it is our own write echoing back or a foreign edit
+    // is not knowable here — that discrimination is the round-trip echo
+    // guard's job. The mirror itself is safe either way: declared fields are
+    // skipped, so our own echo lands as a no-op.
     spdlog::info("{} Slot {} firmware color changed #{:06X} -> #{:06X}, "
-                 "syncing override + Moonraker DB lane_data (external edit detected)",
+                 "syncing override + Moonraker DB lane_data",
                  backend_log_tag(), slot_index, old_color, color);
 
     // External edit (Mainsail console, AD5X LCD, native zmod dialog,
@@ -1415,7 +1419,7 @@ bool AmsBackendAd5xIfs::check_external_type_change(int slot_index,
     }
 
     spdlog::info("{} Slot {} firmware material changed {} -> {}, syncing override "
-                 "+ Moonraker DB lane_data (external type edit detected)",
+                 "+ Moonraker DB lane_data",
                  backend_log_tag(), slot_index, old_material, observed_material);
 
     // OverwriteAlways mirror skips user-locked material (#965), so a genuine
@@ -3990,7 +3994,7 @@ bool AmsBackendAd5xIfs::on_gcode_response_line(const std::string& line) {
         // applied all 24 in sequence, so the slot ended up on the LAST swatch
         // (#161616) and the last material in the whitelist (PETG-CF) until the
         // confirming GET_ZCOLOR corrected it ~1s later — a visible flicker,
-        // a false "external edit detected" delta, and a lane_data write per
+        // a false external-edit delta, and a lane_data write per
         // phantom apply (25 server.database.post_item requests queued in 300ms
         // on a 473MB MIPS AD5X). 87 echoed buttons produced 162 phantom applies
         // in a two-minute session.
