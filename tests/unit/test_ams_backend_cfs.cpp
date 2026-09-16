@@ -1914,16 +1914,27 @@ TEST_CASE("CFS slot bounds agree across entry points (#1623)", "[ams][cfs][slot-
         REQUIRE(helper.captured.empty());
     }
 
+    SECTION("a remap's tool number is bounded by the alphabet, not the attached count") {
+        auto err = helper.set_tool_mapping(7, 1);
+        REQUIRE(err.result == AmsResult::SUCCESS);
+        REQUIRE_FALSE(helper.captured.empty());
+    }
+
     SECTION("load_filament refuses a slot on an unattached unit") {
         auto err = helper.load_filament(7);
         REQUIRE(err.result == AmsResult::INVALID_SLOT);
         REQUIRE(helper.dispatched.empty());
     }
 
-    SECTION("change_tool refuses a tool with no bay behind it") {
+    SECTION("change_tool's bound is the TNN alphabet, not the attached count") {
+        // `tool` is a routing key over firmware's T0-T15 table, not a bay
+        // index: plan_load() feeds a lane's mapped_tool here verbatim, and
+        // that key can sit high while fewer units are attached. Which bay the
+        // key resolves to is the table's business; encodability is the only
+        // question this bound answers.
         auto err = helper.change_tool(7);
-        REQUIRE(err.result == AmsResult::INVALID_SLOT);
-        REQUIRE(helper.dispatched.empty());
+        REQUIRE(err.result == AmsResult::SUCCESS);
+        REQUIRE_FALSE(helper.dispatched.empty());
     }
 
     SECTION("push_slot_identity_to_firmware skips an unattached bay") {

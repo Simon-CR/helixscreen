@@ -1998,18 +1998,6 @@ AmsError AmsBackendCfs::do_change_tool(int tool) {
     if (err.result != AmsResult::SUCCESS)
         return err;
 
-    // `tool` doubles as the target slot (CFS bays map 1:1 to tools), so the
-    // bound is the attached unit count: a 4-slot CFS refuses tool 7 rather
-    // than dispatch a swap script for a bay that is not there.
-    int max_slot;
-    {
-        std::lock_guard<std::mutex> lock(mutex_);
-        max_slot = system_info_.total_slots - 1;
-    }
-    if (tool < 0 || tool > max_slot) {
-        return AmsErrorHelper::invalid_slot(lane_noun(), tool, max_slot);
-    }
-
     bool needs_unload = false;
     {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -2024,11 +2012,16 @@ AmsError AmsBackendCfs::do_change_tool(int tool) {
         needs_unload = needs_unload_before_load(system_info_, tool);
     }
 
-    // Validate gcode before mutating state
+    // `tool` is a routing key over firmware's T0-T15 table, not a bay index:
+    // plan_load() feeds a lane's mapped_tool here verbatim, and that key can
+    // sit high while fewer units are attached. The 1:1 slot identity (CFS bays
+    // map 1:1 to tools) is what lets the builders below encode it as a bay
+    // TNN; encodability is the only bound a key needs.
     std::string gcode =
         needs_unload ? swap_gcode(tool, macro_variant_) : load_gcode(tool, macro_variant_);
     if (gcode.empty()) {
-        return AmsErrorHelper::invalid_slot(lane_noun(), tool, max_slot);
+        // 15 = the last encodable TNN index; slot_to_tnn refuses anything past it.
+        return AmsErrorHelper::invalid_slot(lane_noun(), tool, 15);
     }
 
     {
@@ -2455,15 +2448,20 @@ AmsError AmsBackendCfs::set_tool_mapping_impl(int tool_number, int slot_index) {
     // Example: set_tool_mapping(0, 5) sends "BOX_MODIFY_TN T1A=T2B" — when the
     // slicer emits T0/T1A, the CFS routes from physical slot T2B (index 5).
     //
-    // The bound is the attached unit count, so a remap naming a bay on an
-    // unattached unit is refused here instead of leaving firmware's routing
-    // table pointing at a bay that cannot feed.
+    // slot_index names a bay, so its bound is the attached unit count: a remap
+    // naming a bay on an unattached unit is refused here instead of leaving
+    // firmware's routing table pointing at a bay that cannot feed.
+    // tool_number is a routing-table KEY, not a bay: the T0-T15 key space
+    // exists wherever firmware's map says it does — a slicer-driven remap or
+    // Creality's own UI can hold a high key while fewer units are attached —
+    // so its bound is the TNN alphabet.
+    constexpr int CFS_MAX_SLOTS = 16; // 4 units × 4 slots
     int slot_count;
     {
         std::lock_guard<std::mutex> lock(mutex_);
         slot_count = system_info_.total_slots;
     }
-    if (tool_number < 0 || tool_number >= slot_count) {
+    if (tool_number < 0 || tool_number >= CFS_MAX_SLOTS) {
         return AmsErrorHelper::tool_out_of_range(tool_number);
     }
     if (slot_index < 0 || slot_index >= slot_count) {
