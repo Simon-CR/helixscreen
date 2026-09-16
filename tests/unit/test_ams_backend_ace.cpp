@@ -1419,6 +1419,32 @@ TEST_CASE("ACE clear_slot_override is a no-op when no override is present",
     CHECK(info.material == "PETG");
 }
 
+TEST_CASE("ACE clear_slot_override drops the whole Spoolman link",
+          "[ams][ace][filament_slot_override][1625]") {
+    AceTmpCacheDir tmp("clear_spoolman_link");
+    MoonrakerClientMock client(MoonrakerClientMock::PrinterType::VORON_24);
+    helix::PrinterState state;
+    state.init_subjects(false);
+    MoonrakerAPIMock api(client, state);
+
+    helix::test::RegisteredBackend<AmsBackendAce> backend_reg(&api, nullptr);
+    AmsBackendAce& backend = *backend_reg;
+
+    AceTestAccess::parse_ace(backend, make_ace_slot_payload("loaded", 0xFF5500, "PLA"));
+    REQUIRE(AceTestAccess::seed_live_spoolman_link(backend, 0, 42, 77, 3));
+    REQUIRE(backend.get_slot_info(0).spoolman_filament_id == 77);
+
+    backend.clear_slot_override(0);
+
+    // All three handles die together: a slot cleared of its override must not
+    // keep naming a Spoolman record, and a surviving filament handle would.
+    auto info = backend.get_slot_info(0);
+    CHECK(info.spoolman_id == 0);
+    CHECK(info.spoolman_vendor_id == 0);
+    CHECK(info.spoolman_filament_id == 0);
+    CHECK(info.spool_name.empty());
+}
+
 // ============================================================================
 // Native Anycubic GoKlipper (filament_hub) schema parsing.
 //

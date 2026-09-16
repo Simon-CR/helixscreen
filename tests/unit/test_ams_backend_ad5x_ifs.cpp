@@ -6413,6 +6413,35 @@ TEST_CASE("AD5X IFS clear_slot_override erases in-memory override and MR DB entr
     CHECK(info.material == "PLA");
 }
 
+TEST_CASE("AD5X IFS clear_slot_override drops the whole Spoolman link",
+          "[ams][ad5x_ifs][filament_slot_override][1625]") {
+    Ad5xIfsTmpCacheDir tmp("clear_spoolman_link");
+    MoonrakerClientMock client(MoonrakerClientMock::PrinterType::VORON_24);
+    helix::PrinterState state;
+    state.init_subjects(false);
+    MoonrakerAPIMock api(client, state);
+
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(&api, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
+
+    // Prime with a firmware parse so slots_ has an entry to reset.
+    Ad5xIfsTestAccess::parse_adventurer_json(backend, R"({
+        "FFMInfo": {"ffmColor1": "#FF5500", "ffmType1": "PLA"}
+    })");
+    REQUIRE(Ad5xIfsTestAccess::seed_live_spoolman_link(backend, 0, 42, 77, 3));
+    REQUIRE(backend.get_slot_info(0).spoolman_filament_id == 77);
+
+    backend.clear_slot_override(0);
+
+    // All three handles die together: a slot cleared of its override must not
+    // keep naming a Spoolman record, and a surviving filament handle would.
+    auto info = backend.get_slot_info(0);
+    CHECK(info.spoolman_id == 0);
+    CHECK(info.spoolman_vendor_id == 0);
+    CHECK(info.spoolman_filament_id == 0);
+    CHECK(info.spool_name.empty());
+}
+
 TEST_CASE("AD5X IFS clear_slot_override is safe when no override is present",
           "[ams][ad5x_ifs][filament_slot_override]") {
     Ad5xIfsTmpCacheDir tmp("task16_clear_slot_override_noop");

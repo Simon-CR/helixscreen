@@ -144,6 +144,19 @@ class AmsBackendAfcTestHelper : public AmsBackendAfc {
             entry->info.extruder_name = extruder_name;
     }
 
+    // Put a whole Spoolman link on the live slot — the shape a linked slot
+    // carries. The persisted override record has no filament-id field, so
+    // the live slot is the only half of a link a test can seed whole.
+    void set_lane_spoolman_link(int lane_index, int spool_id, int filament_id, int vendor_id) {
+        auto* entry = AfcTestAccess::slots(*this).get_mut(lane_index);
+        if (entry) {
+            entry->info.spoolman_id = spool_id;
+            entry->info.spoolman_filament_id = filament_id;
+            entry->info.spoolman_vendor_id = vendor_id;
+            entry->info.spool_name = "Linked Spool";
+        }
+    }
+
     // AFC_extruder.lane_loaded — the lane this extruder currently holds.
     void set_extruder_lane_loaded(const std::string& extruder_name, const std::string& lane_name) {
         AfcTestAccess::extruder_sensors(*this)[extruder_name].lane_loaded = lane_name;
@@ -6462,7 +6475,7 @@ TEST_CASE("AFC override survives an eject that clears firmware fields", "[ams][a
     CHECK(after.total_weight_g == Catch::Approx(1000.0f));
 }
 
-TEST_CASE("AFC clear_slot_override drops the retained identity", "[ams][afc][override]") {
+TEST_CASE("AFC clear_slot_override drops the retained identity", "[ams][afc][override][1625]") {
     AmsBackendAfcTestHelper helper;
     helper.initialize_test_lanes(4);
     helper.initialize_slots_from_discovery();
@@ -6472,6 +6485,8 @@ TEST_CASE("AFC clear_slot_override drops the retained identity", "[ams][afc][ove
     info.spoolman_id = 86;
     info.material = "ASA";
     helix::test::apply_edit(helper, 0, info);
+    helper.set_lane_spoolman_link(0, 86, 77, 3);
+    REQUIRE(helper.get_slot_info(0).spoolman_filament_id == 77);
 
     helper.clear_slot_override(0);
     helper.feed_afc_stepper("lane1", {{"spool_id", nullptr}, {"material", ""}});
@@ -6479,6 +6494,10 @@ TEST_CASE("AFC clear_slot_override drops the retained identity", "[ams][afc][ove
     const SlotInfo after = helper.get_slot_info(0);
     CHECK(after.brand.empty());
     CHECK(after.spoolman_id == 0);
+    // All three handles die together: a surviving filament handle would keep
+    // naming a Spoolman record the cleared slot is no longer linked to.
+    CHECK(after.spoolman_filament_id == 0);
+    CHECK(after.spoolman_vendor_id == 0);
 }
 
 TEST_CASE("AFC persist_override records a deliberate pure black", "[ams][afc][override]") {

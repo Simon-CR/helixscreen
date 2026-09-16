@@ -80,6 +80,20 @@ class AmsBackendHappyHareTestHelper : public AmsBackendHappyHare {
         return HappyHareTestAccess::overrides(*this).count(slot_index) > 0;
     }
 
+    /// Put a whole Spoolman link on the live slot — the shape a linked slot
+    /// carries. The persisted override record has no filament-id field, so
+    /// the live slot is the only half of a link a test can seed whole.
+    void set_gate_spoolman_link(int slot_index, int spool_id, int filament_id, int vendor_id) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        auto* entry = HappyHareTestAccess::slots(*this).get_mut(slot_index);
+        if (entry) {
+            entry->info.spoolman_id = spool_id;
+            entry->info.spoolman_filament_id = filament_id;
+            entry->info.spoolman_vendor_id = vendor_id;
+            entry->info.spool_name = "Linked Spool";
+        }
+    }
+
     void clear_slot_override(int slot_index) {
         AmsBackendHappyHare::clear_slot_override(slot_index);
     }
@@ -3968,7 +3982,7 @@ TEST_CASE("HappyHare override survives a gate-map update that omits identity",
 }
 
 TEST_CASE("HappyHare clear_slot_override drops the retained identity",
-          "[ams][happyhare][override]") {
+          "[ams][happyhare][override][1625]") {
     helix::test::RegisteredBackend<AmsBackendHappyHareTestHelper> helper_reg;
     AmsBackendHappyHareTestHelper& helper = *helper_reg;
     helper.initialize_test_gates(4);
@@ -3977,12 +3991,18 @@ TEST_CASE("HappyHare clear_slot_override drops the retained identity",
     info.brand = "Polymaker";
     info.spoolman_id = 42;
     helix::test::apply_edit(helper, 0, info);
+    helper.set_gate_spoolman_link(0, 42, 77, 3);
+    REQUIRE(helper.get_slot_info(0).spoolman_filament_id == 77);
 
     helper.clear_slot_override(0);
 
     const SlotInfo after = helper.get_slot_info(0);
     CHECK(after.brand.empty());
     CHECK(after.spoolman_id == 0);
+    // All three handles die together: a surviving filament handle would keep
+    // naming a Spoolman record the cleared slot is no longer linked to.
+    CHECK(after.spoolman_filament_id == 0);
+    CHECK(after.spoolman_vendor_id == 0);
 }
 
 TEST_CASE("HappyHare persist_override records a deliberate pure black",

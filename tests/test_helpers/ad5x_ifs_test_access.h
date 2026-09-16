@@ -36,6 +36,21 @@ class Ad5xIfsTestAccess {
     static void handle_status(AmsBackendAd5xIfs& b, const json& n) {
         b.handle_status_update(n);
     }
+    // Put a whole Spoolman link on the live slot — the shape a linked slot
+    // carries. The persisted override record has no filament-id field, so
+    // the live slot is the only half of a link a test can seed whole.
+    static bool seed_live_spoolman_link(AmsBackendAd5xIfs& b, int slot_index, int spool_id,
+                                        int filament_id, int vendor_id) {
+        std::lock_guard<std::mutex> lock(b.mutex_);
+        helix::printer::SlotEntry* entry = b.slots_.get_mut(slot_index);
+        if (!entry)
+            return false;
+        entry->info.spoolman_id = spool_id;
+        entry->info.spoolman_filament_id = filament_id;
+        entry->info.spoolman_vendor_id = vendor_id;
+        entry->info.spool_name = "Linked Spool";
+        return true;
+    }
     // Standalone IFS module surface (ifs / ifs_materials objects).
     static bool module_live(const AmsBackendAd5xIfs& b) {
         return b.ifs_module_live_.load();

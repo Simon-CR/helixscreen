@@ -2025,8 +2025,12 @@ void AmsBackendSnapmaker::clear_override_locked(int slot_index, SlotInfo& slot) 
     // resolve() still reporting the identity just removed.
     helix::ams::reset_lane_to_machine_readings(lane_id(slot_index));
 
+    // All three Spoolman handles die with the override. The full
+    // SlotInfo::clear_spoolman_link() is withheld here: it also zeroes
+    // spool_name, which Snapmaker RFID firmware owns and re-supplies.
     slot.spoolman_id = 0;
     slot.spoolman_vendor_id = 0;
+    slot.spoolman_filament_id = 0;
     slot.remaining_weight_g = -1.0f;
     slot.color_name.clear();
     // The catalog pick is override-exclusive on every backend — no AMS
