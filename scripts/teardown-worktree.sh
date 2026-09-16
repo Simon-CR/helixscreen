@@ -238,29 +238,6 @@ if (( GIT_POINTER_OK )); then
         fi
     fi
 
-    # A branch that never received a commit is indistinguishable from a merged one
-    # by topology: "tip is an ancestor of $INTO" is true both for a branch whose
-    # work landed and for one still sitting where it was created, and
-    # `rev-list --count $INTO..$BRANCH` is 0 in both cases. The reflog is the only
-    # local record that separates them - a single entry means the branch was
-    # created and never moved, so the tree is either work that has not committed
-    # yet or an abandoned scratch. Removing the first costs someone their session.
-    if [[ -n "$BRANCH" ]]; then
-        MOVES="$( { git -C "$MAIN_ABS" reflog show "$BRANCH" 2>/dev/null || true; } | wc -l | tr -d ' ')"
-        if [[ "$MOVES" == "1" ]]; then
-            if (( FORCE )); then
-                say "${YELLOW}! '$BRANCH' has no commits of its own; removing anyway (--force).${RESET}"
-            else
-                say "${RED}Error: '$BRANCH' has no commits of its own.${RESET}"
-                say "  Its tip is still where the branch was created, so this is either"
-                say "  work in progress that has not committed yet or an abandoned tree,"
-                say "  and nothing on disk distinguishes them."
-                say "Pass ${CYAN}--force${RESET} if it is genuinely abandoned."
-                exit 1
-            fi
-        fi
-    fi
-
     # The private submodules are the ones that can hold work nothing else has.
     # lvgl and libhv are routinely dirty from patches/ and that is reproducible;
     # helix-xml is our own repo and is edited directly, so unpushed commits there
@@ -286,7 +263,8 @@ if [[ -n "$BRANCH" ]] && (( ! KEEP_BRANCH )); then
     if ! git -C "$MAIN_ABS" rev-parse --verify --quiet "$INTO" >/dev/null; then
         say "${YELLOW}! '$INTO' does not resolve; keeping the branch.${RESET}"
     elif git -C "$MAIN_ABS" merge-base --is-ancestor "$BRANCH" "$INTO" 2>/dev/null; then
-        say "${GREEN}Branch tip is an ancestor of $INTO - its work is contained there.${RESET}"
+        AHEAD="$( { git -C "$MAIN_ABS" log --oneline "$INTO..$BRANCH" 2>/dev/null || true; } | wc -l | tr -d ' ')"
+        say "${GREEN}Branch tip is an ancestor of $INTO ($AHEAD commits outstanding).${RESET}"
         DELETE_BRANCH=1
     else
         say "${YELLOW}! '$BRANCH' is NOT contained in '$INTO' - keeping it.${RESET}"
