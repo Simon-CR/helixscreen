@@ -4013,6 +4013,10 @@ void AmsBackendCfs::strip_spoolman_link_on_runout_locked(SlotInfo& slot, int slo
     // which is what the retraction below is for.
     slot.spoolman_id = 0;
     slot.spoolman_vendor_id = 0;
+    // Zero over zero: no wire field carries a filament id and the poll
+    // replaces the units wholesale, so the live slot holds none here. Dropped
+    // anyway so the three handles cannot come apart once a filament id
+    // survives a poll (#1632).
     slot.spoolman_filament_id = 0;
 
     // The lane's own records lose the handle too, and only the handle: #1390 is
