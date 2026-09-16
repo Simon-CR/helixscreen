@@ -71,7 +71,7 @@ pid_starttime() {
 # A Bash tool call is a transient shell, so its own pid is useless as an owner.
 # Walk to the nearest `claude` ancestor, which lives as long as the session.
 session_pid() {
-    local p=$$ ppid comm hops=0
+    local p=$$ ppid comm hops=0 pgid
     while [ "$p" -gt 1 ] && [ "$hops" -lt 40 ]; do
         comm=$(cat "/proc/$p/comm" 2>/dev/null) || break
         [ "$comm" = "claude" ] && { printf '%s' "$p"; return 0; }
@@ -82,7 +82,15 @@ session_pid() {
         [ "$ppid" = "$p" ] && break
         p=$ppid; hops=$((hops+1))
     done
-    printf '%s' "$PPID"
+    # Outside a Claude session $PPID names whichever shell happened to invoke
+    # this, so a take and a release in the same run can derive different owners
+    # and the claim becomes unreleasable by the run that took it. Every process
+    # in a run shares one process group, and the group leader is itself a pid
+    # with a start time, so liveness is derived exactly as before.
+    pgid=$(ps -o pgid= -p $$ 2>/dev/null | tr -d ' ')
+    case "$pgid" in ''|*[!0-9]*) printf '%s' "$PPID"; return 0;; esac
+    [ -e "/proc/$pgid" ] || [ "$(uname -s)" != Linux ] || { printf '%s' "$PPID"; return 0; }
+    printf '%s' "$pgid"
 }
 
 json_get() { sed -n "s/.*\"$2\"[[:space:]]*:[[:space:]]*\"\{0,1\}\([^\",}]*\)\"\{0,1\}.*/\1/p" <<<"$1" | head -1; }

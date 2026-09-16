@@ -121,3 +121,29 @@ teardown() {
     [ "$status" -eq 0 ]
     contains "RELEASED" "$output"
 }
+
+# Outside a Claude session there is no `claude` ancestor to anchor the owner to,
+# so the owner is derived from the caller's own process. A run that takes in one
+# shell and releases from a child shell must still recognise its own claim: bats
+# `run`, a wrapper script and a CI step all have that shape, and an owner that
+# differs between the two leaves a LIVE claim nobody can release.
+#
+# The shape needs all three of: no `claude` ancestor (the detached launcher exits,
+# forks so its child reparents to init), the taker's parent still alive at release time,
+# and a release whose own parent differs. The trailing `true` supplies the last
+# one: `bash -c` with a single command execs it, keeping the parent unchanged.
+@test "a run with no claude ancestor releases a claim it took from a child shell" {
+    local out="$BATS_TEST_TMPDIR/detached.out"
+    setsid --fork bash -c "cd '$MAIN'
+        sleep 0.5
+        '$CLAIM' take worktree:mainrepo mine
+        bash -c \"'$CLAIM' release worktree:mainrepo; true\"
+        '$CLAIM' check worktree:mainrepo" > "$out" 2>&1 &
+    local i
+    for i in $(seq 200); do
+        [ -f "$out" ] && grep -qE "FREE|LIVE" "$out" 2>/dev/null && break
+        sleep 0.05
+    done
+    contains "RELEASED" "$(cat "$out")"
+    contains "FREE" "$(cat "$out")"
+}
