@@ -5279,7 +5279,9 @@ TEST_CASE("AD5X IFS user-edited slot survives firmware FFMInfo revert (#965 regr
     edit.material = "PLA";
     edit.color_rgb = 0xFF5500;
     helix::test::edit_slot_as_user(backend, 0, edit);
-    REQUIRE(Ad5xIfsTestAccess::last_firmware_color(backend, 0) == 0xFF5500u);
+    // An edit files no firmware reading: the baselines move only when a
+    // printer frame arrives, so before the first parse there is none.
+    REQUIRE_FALSE(Ad5xIfsTestAccess::last_firmware_color(backend, 0).has_value());
 
     {
         auto staged = Ad5xIfsTestAccess::get_override(backend, 0);
@@ -5355,6 +5357,177 @@ TEST_CASE("AD5X IFS auto-mirror still tracks firmware for slots with no user loc
     auto info = backend.get_slot_info(0);
     CHECK(info.color_rgb == 0x0055FFu);
     CHECK(info.material == "PETG");
+}
+
+TEST_CASE("AD5X IFS user edit does not file as firmware truth without a printer frame (#1631)",
+          "[ams][ad5x_ifs][1631]") {
+    // colors_[]/materials_[] and their last_firmware_* baselines are the
+    // firmware side of the backend: only a printer frame may move them. An
+    // edit routed through them repaints the VendorCache record with the
+    // user's own values before any gcode has left the process, and once the
+    // override is cleared the lane asserts the abandoned edit as what the
+    // machine said (prestonbrown/helixscreen#1631).
+    Ad5xIfsTmpCacheDir tmp("ifs_user_edit_not_vendor_cache");
+    MoonrakerClientMock client(MoonrakerClientMock::PrinterType::VORON_24);
+    helix::PrinterState state;
+    state.init_subjects(false);
+    MoonrakerAPIMock api(client, state);
+
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(&api, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
+    auto store = std::make_unique<helix::ams::FilamentSlotOverrideStore>(&api, "ifs");
+    FilamentSlotOverrideStoreTestAccess::set_cache_directory(*store, tmp.path);
+    Ad5xIfsTestAccess::inject_override_store(backend, std::move(store));
+
+    // Firmware's last word: lane 1 reads PETG / #00FF00.
+    Ad5xIfsTestAccess::parse_adventurer_json(backend, R"({
+        "FFMInfo": {"ffmColor1": "#00FF00", "ffmType1": "PETG"}
+    })");
+    const auto lane = backend.lane_id(0);
+    auto vendor = helix::ams::lane_sources(lane).vendor_cache;
+    REQUIRE(vendor.has_value());
+    REQUIRE(vendor->color_rgb == 0x00FF00u);
+    REQUIRE(vendor->material == "PETG");
+
+    // The user edits lane 1 to PLA / #7EC8E3. No printer frame follows.
+    SlotInfo edit;
+    edit.color_rgb = 0x7EC8E3;
+    edit.material = "PLA";
+    helix::test::edit_slot_as_user(backend, 0, edit);
+
+    // Firmware's record still states its own last reading.
+    vendor = helix::ams::lane_sources(lane).vendor_cache;
+    REQUIRE(vendor.has_value());
+    CHECK(vendor->color_rgb == 0x00FF00u);
+    CHECK(vendor->material == "PETG");
+
+    // The edit stands behind the lane as the user's declaration.
+    const auto local = helix::ams::lane_sources(lane).local_user;
+    REQUIRE(local.has_value());
+    CHECK(local->color_rgb == 0x7EC8E3u);
+    CHECK(local->material == "PLA");
+
+    // The matching echo — firmware republishing what the write carried —
+    // must not revert the edit one frame later.
+    Ad5xIfsTestAccess::parse_adventurer_json(backend, R"({
+        "FFMInfo": {"ffmColor1": "#7EC8E3", "ffmType1": "PLA"}
+    })");
+    auto info = backend.get_slot_info(0);
+    CHECK(info.color_rgb == 0x7EC8E3u);
+    CHECK(info.material == "PLA");
+}
+
+TEST_CASE("AD5X IFS apply_user_edit writes the edited values to Adventurer5M.json (#1631)",
+          "[ams][ad5x_ifs][1631]") {
+    // The firmware writers must carry the edit's own values, not whatever
+    // the firmware-truth arrays hold: a write sourced from the arrays would
+    // upload the stale pre-edit reading right back to the printer.
+    Ad5xIfsTmpCacheDir tmp("ifs_user_edit_json_carries_edit");
+    MoonrakerClientMock client(MoonrakerClientMock::PrinterType::VORON_24);
+    helix::PrinterState state;
+    state.init_subjects(false);
+    MoonrakerAPIMock api(client, state);
+
+    helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(&api, nullptr);
+    AmsBackendAd5xIfs& backend = *backend_reg;
+    auto store = std::make_unique<helix::ams::FilamentSlotOverrideStore>(&api, "ifs");
+    FilamentSlotOverrideStoreTestAccess::set_cache_directory(*store, tmp.path);
+    Ad5xIfsTestAccess::inject_override_store(backend, std::move(store));
+
+    const std::string json_path = (tmp.path / "Adventurer5M.json").string();
+    {
+        std::ofstream out(json_path);
+        out << R"({"FFMInfo": {"ffmColor1": "#00FF00", "ffmType1": "PETG",)"
+            << R"( "ffmColor2": "#0000FF", "ffmType2": "ABS"}})";
+    }
+    Ad5xIfsTestAccess::set_local_adventurer_json_path(backend, json_path);
+
+    // Firmware truth as the printer last stated it.
+    Ad5xIfsTestAccess::parse_adventurer_json(backend, R"({
+        "FFMInfo": {"ffmColor1": "#00FF00", "ffmType1": "PETG",
+                    "ffmColor2": "#0000FF", "ffmType2": "ABS"}
+    })");
+
+    SlotInfo edit;
+    edit.color_rgb = 0x7EC8E3;
+    edit.material = "PLA";
+    helix::test::edit_slot_as_user(backend, 0, edit);
+
+    std::ifstream in(json_path);
+    std::stringstream buf;
+    buf << in.rdbuf();
+    auto doc = json::parse(buf.str());
+    REQUIRE(doc.contains("FFMInfo"));
+    // The edited lane carries the edit, not the stale reading.
+    CHECK(doc["FFMInfo"]["ffmColor1"] == "#7EC8E3");
+    CHECK(doc["FFMInfo"]["ffmType1"] == "PLA");
+    // The read-modify-write leaves every other lane alone.
+    CHECK(doc["FFMInfo"]["ffmColor2"] == "#0000FF");
+    CHECK(doc["FFMInfo"]["ffmType2"] == "ABS");
+}
+
+TEST_CASE("AD5X IFS apply_user_edit _IFS_VARS payload merges the edited lane with firmware's "
+          "(#1631)",
+          "[ams][ad5x_ifs][1631]") {
+    // _IFS_VARS replaces the plugin's whole colors/types list, so the push
+    // after an edit must splice the edited lane over the firmware-truth
+    // arrays — every other lane keeps what the printer last said. lessWaste
+    // shape: 16 tool-indexed entries, identity map until a remap is parsed.
+    Ad5xIfsTmpCacheDir tmp("ifs_user_edit_vars_merge");
+    MoonrakerClientMock client(MoonrakerClientMock::PrinterType::VORON_24);
+    helix::PrinterState state;
+    state.init_subjects(false);
+    MoonrakerAPIMock api(client, state);
+
+    helix::test::RegisteredBackend<GcodeCapturingBackend> backend_reg(&api, nullptr);
+    GcodeCapturingBackend& backend = *backend_reg;
+    Ad5xIfsTestAccess::set_has_ifs_vars(backend, true);
+    Ad5xIfsTestAccess::set_var_prefix(backend, "less_waste");
+    auto store = std::make_unique<helix::ams::FilamentSlotOverrideStore>(&api, "ifs");
+    FilamentSlotOverrideStoreTestAccess::set_cache_directory(*store, tmp.path);
+    Ad5xIfsTestAccess::inject_override_store(backend, std::move(store));
+
+    const std::string json_path = (tmp.path / "Adventurer5M.json").string();
+    {
+        std::ofstream out(json_path);
+        out << R"({"FFMInfo": {"ffmColor1": "#00FF00", "ffmType1": "PETG",)"
+            << R"( "ffmColor2": "#112233", "ffmType2": "ABS",)"
+            << R"( "ffmColor3": "#445566", "ffmType3": "TPU",)"
+            << R"( "ffmColor4": "#778899", "ffmType4": "PA"}})";
+    }
+    Ad5xIfsTestAccess::set_local_adventurer_json_path(backend, json_path);
+
+    Ad5xIfsTestAccess::parse_adventurer_json(backend, R"({
+        "FFMInfo": {"ffmColor1": "#00FF00", "ffmType1": "PETG",
+                    "ffmColor2": "#112233", "ffmType2": "ABS",
+                    "ffmColor3": "#445566", "ffmType3": "TPU",
+                    "ffmColor4": "#778899", "ffmType4": "PA"}
+    })");
+
+    SlotInfo edit;
+    edit.color_rgb = 0x7EC8E3;
+    edit.material = "PLA";
+    helix::test::edit_slot_as_user(backend, 0, edit);
+
+    std::string expected_colors = "\"['7EC8E3', '112233', '445566', '778899'";
+    std::string expected_types = "\"['PLA', 'ABS', 'TPU', 'PA'";
+    for (int t = 4; t < 16; ++t) {
+        expected_colors += ", ''";
+        expected_types += ", ''";
+    }
+    expected_colors += "]\"";
+    expected_types += "]\"";
+
+    bool colors_ok = false;
+    bool types_ok = false;
+    for (const auto& g : backend.captured_gcodes) {
+        if (g == "_IFS_VARS colors=" + expected_colors)
+            colors_ok = true;
+        if (g == "_IFS_VARS types=" + expected_types)
+            types_ok = true;
+    }
+    CHECK(colors_ok);
+    CHECK(types_ok);
 }
 
 TEST_CASE("AD5X IFS apply_user_edit with no store still updates in-memory map",
@@ -6124,8 +6297,10 @@ TEST_CASE("AD5X IFS apply_user_edit does not wipe override on color edit",
     CHECK(staged->brand == "Polymaker");
     CHECK(staged->color_rgb == 0x00FF00u);
 
-    // Baseline should have advanced to the user's chosen color.
-    CHECK(Ad5xIfsTestAccess::last_firmware_color(backend, 0) == 0x00FF00u);
+    // The baseline holds the printer's last reading: an edit is not a
+    // firmware observation, so the baseline does not move until the echo
+    // parse below reports the new color back.
+    CHECK(Ad5xIfsTestAccess::last_firmware_color(backend, 0) == 0xFF5500u);
 
     // Follow-up firmware parse with the NEW color should also not clear
     // (baseline now matches — no swap signal).
@@ -6187,10 +6362,10 @@ TEST_CASE("AD5X IFS sync_external_identity does not wipe existing override",
     CHECK(staged->spoolman_id == 42);
     CHECK(staged->color_rgb == 0xFF5500u);
 
-    // Baseline should have advanced to the previewed color, so a subsequent
-    // parse that mirrors the preview color reads as "no change" and doesn't
-    // clear either. (Saved override still wins until persist=true is called.)
-    CHECK(Ad5xIfsTestAccess::last_firmware_color(backend, 0) == 0x00FF00u);
+    // The baseline holds the printer's last reading: a preview is not a
+    // firmware observation, so the baseline stays where the parse left it.
+    // (Saved override still wins until persist=true is called.)
+    CHECK(Ad5xIfsTestAccess::last_firmware_color(backend, 0) == 0xFF5500u);
 }
 
 TEST_CASE("AD5X IFS firmware color unchanged across parses does NOT clear",
@@ -6749,11 +6924,8 @@ TEST_CASE("AD5X IFS write_adventurer_json_local read-modify-writes the on-disk f
     AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::set_local_adventurer_json_path(backend, tmp.path.string());
 
-    // Stage new color + material on slot 0 (port 1) and trigger the write.
-    Ad5xIfsTestAccess::set_color(backend, 0, "AABBCC");
-    Ad5xIfsTestAccess::set_material(backend, 0, "TPU");
-
-    auto err = Ad5xIfsTestAccess::write_adventurer_json_local(backend, 0);
+    // Write a new color + material for slot 0 (port 1).
+    auto err = Ad5xIfsTestAccess::write_adventurer_json_local(backend, 0, "AABBCC", "TPU");
     REQUIRE(err.success());
 
     // Read the file back; slot 1 should be updated and other slots untouched.
@@ -6779,10 +6951,8 @@ TEST_CASE("AD5X IFS write_adventurer_json_local creates FFMInfo if missing",
     helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
     AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::set_local_adventurer_json_path(backend, tmp.path.string());
-    Ad5xIfsTestAccess::set_color(backend, 1, "112233");
-    Ad5xIfsTestAccess::set_material(backend, 1, "PETG");
 
-    auto err = Ad5xIfsTestAccess::write_adventurer_json_local(backend, 1);
+    auto err = Ad5xIfsTestAccess::write_adventurer_json_local(backend, 1, "112233", "PETG");
     REQUIRE(err.success());
 
     std::ifstream f(tmp.path);
@@ -6799,7 +6969,7 @@ TEST_CASE("AD5X IFS write_adventurer_json_local rejects empty path",
     AmsBackendAd5xIfs& backend = *backend_reg;
     // local path not set — direct write must report failure so caller falls
     // back to Moonraker upload.
-    auto err = Ad5xIfsTestAccess::write_adventurer_json_local(backend, 0);
+    auto err = Ad5xIfsTestAccess::write_adventurer_json_local(backend, 0, "FF0000", "PLA");
     CHECK_FALSE(err.success());
 }
 
@@ -6821,12 +6991,11 @@ TEST_CASE("AD5X IFS write_adventurer_json_local rejects unparseable existing fil
     helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
     AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::set_local_adventurer_json_path(backend, tmp.path.string());
-    Ad5xIfsTestAccess::set_color(backend, 0, "FF0000");
 
-    auto err = Ad5xIfsTestAccess::write_adventurer_json_local(backend, 0);
+    auto err = Ad5xIfsTestAccess::write_adventurer_json_local(backend, 0, "FF0000", "PLA");
     // Recovery: write a fresh-baseline FFMInfo block. The corrupted-file case
-    // is exactly the bricked-printer state — auto-repair from the values we
-    // have in colors_/materials_ is the whole point of the direct-write fix.
+    // is exactly the bricked-printer state — auto-repair is the whole point of
+    // the direct-write fix.
     REQUIRE(err.success());
 
     std::ifstream f(tmp.path);
@@ -6842,9 +7011,8 @@ TEST_CASE("AD5X IFS write_adventurer_json_local atomic — leaves no .tmp on suc
     helix::test::RegisteredBackend<AmsBackendAd5xIfs> backend_reg(nullptr, nullptr);
     AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::set_local_adventurer_json_path(backend, tmp.path.string());
-    Ad5xIfsTestAccess::set_color(backend, 2, "ABCDEF");
 
-    auto err = Ad5xIfsTestAccess::write_adventurer_json_local(backend, 2);
+    auto err = Ad5xIfsTestAccess::write_adventurer_json_local(backend, 2, "ABCDEF", "TPU");
     REQUIRE(err.success());
 
     // The atomic-rename pattern uses <path>.tmp as the staging file. After a
@@ -9542,10 +9710,7 @@ TEST_CASE("AD5X IFS write_adventurer_json_local persists '?'/empty sentinels for
 
     // Cleared slot: empty material, placeholder gray colour (the in-memory
     // "no colour" sentinel parse_adventurer_json maps empty ffmColor to).
-    Ad5xIfsTestAccess::set_color(backend, 0, "808080");
-    Ad5xIfsTestAccess::set_material(backend, 0, "");
-
-    auto err = Ad5xIfsTestAccess::write_adventurer_json_local(backend, 0);
+    auto err = Ad5xIfsTestAccess::write_adventurer_json_local(backend, 0, "808080", "");
     REQUIRE(err.success());
 
     std::ifstream f(tmp.path);
@@ -9566,10 +9731,7 @@ TEST_CASE("AD5X IFS write_adventurer_json_local clears colour for an explicitly 
     Ad5xIfsTestAccess::set_local_adventurer_json_path(backend, tmp.path.string());
 
     // Empty colour string and empty material -> both sentinels.
-    Ad5xIfsTestAccess::set_color(backend, 1, "");
-    Ad5xIfsTestAccess::set_material(backend, 1, "");
-
-    auto err = Ad5xIfsTestAccess::write_adventurer_json_local(backend, 1);
+    auto err = Ad5xIfsTestAccess::write_adventurer_json_local(backend, 1, "", "");
     REQUIRE(err.success());
 
     std::ifstream f(tmp.path);
@@ -9588,10 +9750,7 @@ TEST_CASE("AD5X IFS write_adventurer_json_local writes real colour/type for a no
     AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::set_local_adventurer_json_path(backend, tmp.path.string());
 
-    Ad5xIfsTestAccess::set_color(backend, 2, "AABBCC");
-    Ad5xIfsTestAccess::set_material(backend, 2, "TPU");
-
-    auto err = Ad5xIfsTestAccess::write_adventurer_json_local(backend, 2);
+    auto err = Ad5xIfsTestAccess::write_adventurer_json_local(backend, 2, "AABBCC", "TPU");
     REQUIRE(err.success());
 
     std::ifstream f(tmp.path);
@@ -9621,10 +9780,7 @@ TEST_CASE("AD5X IFS write_adventurer_json_local writes zmod's default colour whe
     Ad5xIfsTestAccess::set_local_adventurer_json_path(backend, tmp.path.string());
 
     // Real material, no colour: the poisoned combination.
-    Ad5xIfsTestAccess::set_color(backend, 0, "");
-    Ad5xIfsTestAccess::set_material(backend, 0, "PLA");
-
-    auto err = Ad5xIfsTestAccess::write_adventurer_json_local(backend, 0);
+    auto err = Ad5xIfsTestAccess::write_adventurer_json_local(backend, 0, "", "PLA");
     REQUIRE(err.success());
 
     std::ifstream f(tmp.path);
@@ -9645,10 +9801,7 @@ TEST_CASE("AD5X IFS write_adventurer_json_local writes zmod's default colour whe
 
     // 808080 is our in-memory "no colour" placeholder; it must not reach the
     // file as an empty ffmColor either.
-    Ad5xIfsTestAccess::set_color(backend, 1, "808080");
-    Ad5xIfsTestAccess::set_material(backend, 1, "PETG");
-
-    auto err = Ad5xIfsTestAccess::write_adventurer_json_local(backend, 1);
+    auto err = Ad5xIfsTestAccess::write_adventurer_json_local(backend, 1, "808080", "PETG");
     REQUIRE(err.success());
 
     std::ifstream f(tmp.path);
@@ -9670,16 +9823,15 @@ TEST_CASE("AD5X IFS write_adventurer_json_local keeps the empty-slot sentinels w
     // No material at all: the firmware-native "no filament" pair must survive.
     // A genuinely empty slot never reaches the RUN_ZCOLOR submenu, so the empty
     // ffmColor is harmless there and is what stock ZMOD itself writes.
+    std::string hex;
     SECTION("empty hex") {
-        Ad5xIfsTestAccess::set_color(backend, 2, "");
-        Ad5xIfsTestAccess::set_material(backend, 2, "");
+        hex = "";
     }
     SECTION("808080 placeholder hex") {
-        Ad5xIfsTestAccess::set_color(backend, 2, "808080");
-        Ad5xIfsTestAccess::set_material(backend, 2, "");
+        hex = "808080";
     }
 
-    auto err = Ad5xIfsTestAccess::write_adventurer_json_local(backend, 2);
+    auto err = Ad5xIfsTestAccess::write_adventurer_json_local(backend, 2, hex, "");
     REQUIRE(err.success());
 
     std::ifstream f(tmp.path);
@@ -9697,10 +9849,7 @@ TEST_CASE("AD5X IFS write_adventurer_json_local leaves a fully-specified slot al
     AmsBackendAd5xIfs& backend = *backend_reg;
     Ad5xIfsTestAccess::set_local_adventurer_json_path(backend, tmp.path.string());
 
-    Ad5xIfsTestAccess::set_color(backend, 3, "FF7700");
-    Ad5xIfsTestAccess::set_material(backend, 3, "ABS");
-
-    auto err = Ad5xIfsTestAccess::write_adventurer_json_local(backend, 3);
+    auto err = Ad5xIfsTestAccess::write_adventurer_json_local(backend, 3, "FF7700", "ABS");
     REQUIRE(err.success());
 
     std::ifstream f(tmp.path);

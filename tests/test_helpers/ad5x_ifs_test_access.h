@@ -436,8 +436,12 @@ class Ad5xIfsTestAccess {
     }
     // Drive the local read-modify-write path directly so tests can assert
     // file content without going through the full apply_user_edit pipeline.
-    static AmsError write_adventurer_json_local(AmsBackendAd5xIfs& b, int slot_index) {
-        return b.write_adventurer_json_local(slot_index);
+    // The values are the caller's own, as production passes them: the writer
+    // takes no reading from the firmware-truth caches.
+    static AmsError write_adventurer_json_local(AmsBackendAd5xIfs& b, int slot_index,
+                                                const std::string& hex,
+                                                const std::string& material) {
+        return b.write_adventurer_json_local(slot_index, hex, material);
     }
     // tool_map snapshot: copy out for comparison without holding mutex_.
     static std::array<int, AmsBackendAd5xIfs::TOOL_MAP_SIZE> tool_map(const AmsBackendAd5xIfs& b) {
