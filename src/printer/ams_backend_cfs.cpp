@@ -3920,9 +3920,7 @@ void AmsBackendCfs::clear_override_locked(int slot_index, SlotInfo& slot) {
     // resolve() still reporting the identity just removed.
     helix::ams::reset_lane_to_machine_readings(lane_id(slot_index));
 
-    slot.spool_name.clear();
-    slot.spoolman_id = 0;
-    slot.spoolman_vendor_id = 0;
+    slot.clear_spoolman_link();
     slot.remaining_weight_g = -1.0f;
     // The catalog pick is override-exclusive on every backend — no AMS
     // firmware carries a branded product id — so a clear always drops it.
@@ -4015,6 +4013,7 @@ void AmsBackendCfs::strip_spoolman_link_on_runout_locked(SlotInfo& slot, int slo
     // which is what the retraction below is for.
     slot.spoolman_id = 0;
     slot.spoolman_vendor_id = 0;
+    slot.spoolman_filament_id = 0;
 
     // The lane's own records lose the handle too, and only the handle: #1390 is
     // exactly that a bay's identity outlives the spool and labels the one
