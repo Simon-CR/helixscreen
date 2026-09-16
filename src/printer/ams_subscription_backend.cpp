@@ -121,6 +121,16 @@ void AmsSubscriptionBackend::request_resync() {
     }
     auto* store = lane_record_store();
     if (!store) {
+        // The persisted record is this backend's identity producer (firmware
+        // states none of its own) and there is no store to read it from, so
+        // the resync cannot be issued. Only a started backend with an
+        // attached API owes a store: a store is built in on_started(), and
+        // one with no API never builds it, so a pre-start or API-less resync
+        // is expected to find nothing and stays quiet.
+        if (running_ && api_) {
+            spdlog::warn("{} request_resync(): no lane-record store to re-read; resync skipped",
+                         backend_log_tag());
+        }
         return;
     }
     // The record map is keyed by slot index, so the lambda needs this

@@ -53,7 +53,10 @@ class AmsSubscriptionBackend : public AmsBackend {
     /// mid-session has to answer for an edit made or in flight since it loaded.
     ///
     /// Runs only where firmware_publishes_lane_identity() is false. Elsewhere
-    /// there is nothing to file, so no request is issued.
+    /// there is nothing to file, so no request is issued. A backend that
+    /// names no store cannot issue the re-read; that skip is logged at warn
+    /// on a started backend with an attached API, and is expected and silent
+    /// before start or without one.
     void request_resync() override;
 
     // --- Event system (final) ---
